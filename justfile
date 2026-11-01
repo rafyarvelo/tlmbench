@@ -58,13 +58,15 @@ fuzz-smoke secs="30":
     [ ${#dirs[@]} -gt 0 ] || { echo "fuzz-smoke: no fuzz targets yet, skipping"; exit 0; }
     for d in "${dirs[@]}"; do
       for t in $(cd "$d/.." && cargo +"$RUST_NIGHTLY" fuzz list); do
-        (cd "$d/.." && cargo +"$RUST_NIGHTLY" fuzz run "$t" -- -max_total_time={{secs}})
+        mkdir -p "$d/corpus/$t" "$d/seeds/$t"   # seeds/<target>: committed starting inputs
+        (cd "$d/.." && cargo +"$RUST_NIGHTLY" fuzz run "$t" "fuzz/corpus/$t" "fuzz/seeds/$t" -- -max_total_time={{secs}})
       done
     done
 
-# Fuzz one target until stopped: just fuzz decode fixed_width
+# Fuzz one target until stopped: just fuzz decode reference
 fuzz crate target:
-    cd crates/{{crate}} && cargo +"$RUST_NIGHTLY" fuzz run {{target}}
+    mkdir -p crates/{{crate}}/fuzz/corpus/{{target}} crates/{{crate}}/fuzz/seeds/{{target}}
+    cd crates/{{crate}} && cargo +"$RUST_NIGHTLY" fuzz run {{target}} fuzz/corpus/{{target}} fuzz/seeds/{{target}}
 
 # Prove nothing is written next to the data (see ci/ro_check.py)
 ro-test:

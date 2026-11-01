@@ -1,0 +1,33 @@
+# Fuzz targets for the decoders (they parse untrusted files). Run with the nightly from ci/versions.env:
+#   just fuzz decode reference      just fuzz-smoke
+[package]
+name = "tlmbench-decode-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+tlmbench-core = { path = "../../core" }
+tlmbench-decode = { path = ".." }
+
+# its own workspace: the root workspace excludes it
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "reference"
+path = "fuzz_targets/reference.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "csv"
+path = "fuzz_targets/csv.rs"
+test = false
+doc = false
+bench = false
