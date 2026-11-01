@@ -1,0 +1,9 @@
+schema = 1
+
+[[recipe]]
+name = "Accel magnitude"
+expr = "sqrt(accel_x^2 + accel_y^2 + accel_z^2)"
+unit = "g"
+category = "Derived"
+decimals = 3
+automatic = true

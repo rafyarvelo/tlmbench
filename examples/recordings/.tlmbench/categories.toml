@@ -1,0 +1,37 @@
+schema = 1
+
+[[category]]
+id = "alarm"
+name = "Alarm"
+color = "#FF5A6E"
+show_on_charts = true
+
+[[category]]
+id = "quality"
+name = "Data quality"
+color = "#FFB547"
+show_on_charts = true
+
+[[category]]
+id = "signal"
+name = "Signal loss"
+color = "#9D8CFF"
+show_on_charts = true
+
+[[category]]
+id = "mode"
+name = "Mode change"
+color = "#F25FC0"
+show_on_charts = true
+
+[[category]]
+id = "milestone"
+name = "Milestone"
+color = "#3FCF8E"
+show_on_charts = true
+
+[[category]]
+id = "check"
+name = "Check failed"
+color = "#FF7847"
+show_on_charts = true

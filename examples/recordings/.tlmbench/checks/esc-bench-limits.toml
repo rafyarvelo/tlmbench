@@ -1,0 +1,34 @@
+schema = 1
+name = "ESC bench limits"
+runs_on_any_file = false
+
+[[check]]
+name = "ESC temperatures under 75 °C"
+kind = "check"
+group = "Thermal"
+expect = "max(esc_temp_1, esc_temp_2) < 75"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "Current under 40 A"
+kind = "check"
+group = "Power"
+expect = "current_a < 40"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "Supply above 22 V under load"
+kind = "check"
+group = "Power"
+expect = "battery_v > 22"
+when = "throttle_pct > 50"
+severity = "fail"
+grace = 0
+settle = 2
+enabled = true

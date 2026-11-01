@@ -1,0 +1,9 @@
+schema = 1
+
+[[recipe]]
+name = "Power"
+expr = "battery_v * current_a"
+unit = "W"
+category = "Derived"
+decimals = 1
+automatic = true

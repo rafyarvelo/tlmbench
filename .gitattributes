@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.html linguist-language=HTML
+*.toml linguist-language=TOML
+*.png binary
+# recordings, when test fixtures need real ones, go through Git LFS
+*.bin filter=lfs diff=lfs merge=lfs -text
+*.parquet filter=lfs diff=lfs merge=lfs -text

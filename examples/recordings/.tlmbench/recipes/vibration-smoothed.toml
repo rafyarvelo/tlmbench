@@ -1,0 +1,9 @@
+schema = 1
+
+[[recipe]]
+name = "Vibration (smoothed)"
+expr = "lowpass(abs(accel_z - 1), 2)"
+unit = "g"
+category = "Derived"
+decimals = 3
+automatic = false

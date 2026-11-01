@@ -1,0 +1,172 @@
+schema = 1
+name = "Flight acceptance"
+runs_on_any_file = true
+info_groups = ["Environment"]
+
+[[check]]
+name = "Enough satellites while armed"
+kind = "check"
+group = "GPS"
+expect = "gps_sats >= 12"
+when = "armed == 1"
+severity = "fail"
+grace = 5
+settle = 0
+enabled = true
+
+[[check]]
+name = "HDOP below 1.1"
+kind = "check"
+group = "GPS"
+expect = "gps_hdop < 1.1"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "3D fix held while armed"
+kind = "check"
+group = "GPS"
+expect = "gps_fix == 3"
+when = "armed == 1"
+severity = "warn"
+grace = 2
+settle = 0
+enabled = true
+
+[[check]]
+name = "Ground speed under 20 m/s"
+kind = "check"
+group = "GPS"
+expect = "max(gps_speed) < 20"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "Battery above 21 V while armed"
+kind = "check"
+group = "Power"
+expect = "battery_v > 21"
+when = "armed == 1"
+severity = "fail"
+grace = 1
+settle = 0
+enabled = true
+
+[[check]]
+name = "Cells within 120 mV of each other"
+kind = "check"
+group = "Power"
+expect = "max(cell_1_v, cell_2_v, cell_3_v, cell_4_v, cell_5_v, cell_6_v) - min(cell_1_v, cell_2_v, cell_3_v, cell_4_v, cell_5_v, cell_6_v) < 0.12"
+when = "armed == 1"
+severity = "fail"
+grace = 2
+settle = 0
+enabled = true
+
+[[check]]
+name = "Battery power under 1 kW"
+kind = "check"
+group = "Power"
+expect = "\"Battery power\" < 1000"
+severity = "fail"
+grace = 2
+settle = 0
+enabled = true
+
+[[check]]
+name = "Peak current under 40 A"
+kind = "check"
+group = "Power"
+expect = "max(current_a) < 40"
+when = "armed == 1"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "RPM below 7500 in Mission"
+kind = "check"
+group = "Propulsion"
+expect = "motor_rpm < 7500"
+when = "flight_mode == 'Mission'"
+severity = "fail"
+grace = 0.5
+settle = 0
+enabled = true
+
+[[check]]
+name = "RPM within 5% of its target"
+kind = "check"
+group = "Propulsion"
+expect = "abs(motor_rpm - motor_rpm_target) <= 0.05 * motor_rpm_target"
+when = "armed == 1"
+severity = "warn"
+grace = 1
+settle = 0
+enabled = true
+
+[[check]]
+name = "Motors within 400 rpm"
+kind = "check"
+group = "Propulsion"
+expect = "max(motor_rpm, motor_2_rpm, motor_3_rpm, motor_4_rpm) - min(motor_rpm, motor_2_rpm, motor_3_rpm, motor_4_rpm) < 400"
+when = "armed == 1"
+severity = "fail"
+grace = 1
+settle = 0
+enabled = true
+
+[[check]]
+name = "ESC 1 peak under 80 °C"
+kind = "check"
+group = "Propulsion"
+expect = "max(esc_temp_1) < 80"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "Failsafe under 5 s in all"
+kind = "check"
+group = "Status"
+expect = "duration(failsafe) < 5"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "At least 30 min in Mission"
+kind = "check"
+group = "Status"
+expect = "duration(flight_mode == 'Mission') > 1800"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "Ends disarmed"
+kind = "check"
+group = "Status"
+expect = "last(armed) == 0"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "Air temperature under 30 °C"
+kind = "check"
+group = "Environment"
+expect = "air_temp < 30"
+severity = "fail"
+grace = 0
+settle = 0
+enabled = true

@@ -1,0 +1,11 @@
+{
+  "name": "tlmbench-prototype-tests",
+  "private": true,
+  "description": "Browser tests for the TelemetryBench HTML prototype (Playwright, Chromium).",
+  "scripts": {
+    "test": "./run.sh"
+  },
+  "devDependencies": {
+    "playwright": "1.48.2"
+  }
+}

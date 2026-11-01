@@ -1,0 +1,43 @@
+schema = 1
+name = "Event rules"
+runs_on_any_file = true
+
+[[check]]
+name = "Shock"
+kind = "rule"
+group = "Alarm"
+expect = "abs(accel_x) > 1.6"
+category = "alarm"
+grace = 0
+settle = 0
+enabled = true
+
+[[check]]
+name = "ESC hot"
+kind = "rule"
+group = "Alarm"
+expect = "past_warn(esc_temp_1)"
+category = "alarm"
+grace = 5
+settle = 0
+enabled = true
+
+[[check]]
+name = "Few satellites"
+kind = "rule"
+group = "Signal loss"
+expect = "gps_sats < 13"
+category = "signal"
+grace = 10
+settle = 0
+enabled = true
+
+[[check]]
+name = "Low battery"
+kind = "rule"
+group = "Data quality"
+expect = "battery_v < 22.4"
+category = "quality"
+grace = 5
+settle = 0
+enabled = false

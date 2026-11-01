@@ -1,0 +1,27 @@
+// Check rows in Rules & checks: select and deselect (click again, Esc, empty space), a tooltip with what it reads, and opening its channels.
+const T = require('./lib');
+T.run('checksel', async ({ p, check, wait, until, menu, pick, paneCount }) => {
+  await p.evaluate(() => document.querySelector('[data-rail="checks"]').click());
+  await until(() => !/hecking/.test(document.getElementById('checksBody').innerText) && document.querySelector('#checksBody .crow'), null, 30000);
+  const row = () => p.locator('#checksBody .crow', { hasText: 'RPM below 7500 in Mission' }).first();
+  const selN = () => p.evaluate(() => document.querySelectorAll('#checksBody .crow.sel').length);
+  const tip = await row().getAttribute('data-tip');
+  check('the tooltip says what it expects, when, and which channels', /Expect motor_rpm < 7500/.test(tip) && /when flight_mode == 'Mission'/.test(tip) && /channels: motor_rpm, flight_mode/.test(tip), tip);
+  await row().click({ position: { x: 40, y: 8 } }); await wait(300);
+  check('click selects it', (await selN()) === 1);
+  await row().click({ position: { x: 40, y: 8 } }); await wait(200);
+  check('a second click deselects it', (await selN()) === 0);
+  await row().click({ position: { x: 40, y: 8 } }); await wait(200); await p.keyboard.press('Escape'); await wait(200);
+  check('Esc deselects', (await selN()) === 0);
+  await row().click({ position: { x: 40, y: 8 } }); await wait(200);
+  await p.evaluate(() => { const h = document.querySelector('#checksBody .ckhelp, #checksBody'); h.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await wait(200);
+  check('a click on empty space in the panel deselects', (await selN()) === 0);
+  const n0 = await paneCount();
+  await row().hover(); await row().locator('[data-cchan]').click(); await wait(200);
+  check('its channels button offers new chart, selected pane, new table', /Open its 2 channels in a new chart/.test((await menu()).join('|')) && /Add its 2 channels to the selected pane/.test((await menu()).join('|')), await menu());
+  await pick(/in a new chart$/); await wait(800);
+  const last = await p.evaluate(() => [...document.querySelectorAll('#stack section.pane')].map(s => [...s.querySelectorAll('[data-chip]')].map(c => c.dataset.chip).join(',')));
+  check('...and opens them in a new chart', (await paneCount()) === n0 + 1 && last.some(x => x === 'motor_rpm,flight_mode'), last);
+  await row().click({ button: 'right', position: { x: 40, y: 8 } }); await wait(200);
+  check('right-click has the same actions and Edit', /Edit this check/.test((await menu()).join('|')) && /Deselect/.test((await menu()).join('|')), await menu());
+});

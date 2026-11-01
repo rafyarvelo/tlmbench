@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "name": "Motors side by side",
+  "by": "m.ortiz",
+  "panes": [
+    {
+      "channels": [
+        "motor_rpm"
+      ],
+      "beside": false,
+      "view": "chart"
+    },
+    {
+      "channels": [
+        "motor_2_rpm"
+      ],
+      "beside": true,
+      "view": "chart"
+    },
+    {
+      "channels": [
+        "motor_3_rpm"
+      ],
+      "beside": false,
+      "view": "chart"
+    },
+    {
+      "channels": [
+        "motor_4_rpm"
+      ],
+      "beside": true,
+      "view": "chart"
+    },
+    {
+      "channels": [
+        "throttle_pct"
+      ],
+      "beside": false,
+      "view": "chart"
+    }
+  ]
+}

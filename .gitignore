@@ -1,0 +1,17 @@
+# test output
+prototype/tests/out/
+prototype/tests/fail_*.png
+node_modules/
+
+# build output (once the app exists)
+/target/
+/dist/
+*.whl
+__pycache__/
+
+# never commit recordings or caches; examples/ holds configuration only
+*.bin
+*.tlmcache/
+examples/recordings/*
+!examples/recordings/.tlmbench/
+.DS_Store

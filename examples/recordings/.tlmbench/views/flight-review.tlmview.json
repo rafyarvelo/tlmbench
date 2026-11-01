@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "name": "Flight review",
+  "by": "a.chen",
+  "panes": [
+    {
+      "channels": [
+        "accel_x"
+      ],
+      "beside": false,
+      "view": "chart"
+    },
+    {
+      "channels": [
+        "motor_rpm"
+      ],
+      "beside": false,
+      "view": "chart"
+    },
+    {
+      "channels": [
+        "battery_v",
+        "current_a"
+      ],
+      "beside": false,
+      "view": "chart"
+    }
+  ]
+}
