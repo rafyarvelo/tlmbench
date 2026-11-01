@@ -955,7 +955,7 @@ These targets are starting points for a mid-range laptop (8 cores, 16 GB, SSD); 
 - Benchmarks with `criterion` for parsing, pyramid build and viewport queries, tracked per commit.
 - Fuzz the binary decoders (`cargo-fuzz`) since they parse untrusted files.
 - Golden-output tests for the CLI and Python bindings: convert, check, derive and export html on fixed recordings, compared byte for byte (exports through their checksum manifest).
-- Prototype suite: 21 browser tests (Playwright) with one runner, `./run.sh`. It runs three at a time, then the timing tests alone: how fast rows appear, and a 100+ widget frame. Each test checks behaviour, not pixels (the chart and table libraries are stubbed). The same flows become the app's end-to-end tests against the real core.
+- Prototype suite: browser tests (Playwright) with one runner, `./run.sh`. It runs three at a time, then the timing tests alone: how fast rows appear, and a 100+ widget frame. Each test checks behaviour, not pixels (the chart and table libraries are stubbed). The same flows become the app's end-to-end tests against the real core.
 
 ## Roadmap
 
