@@ -1,0 +1,6 @@
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+# wasip2: decoder and alignment plugins (WASM components); unknown-unknown: the browser-only core
+targets = ["wasm32-wasip2", "wasm32-unknown-unknown"]
+profile = "minimal"

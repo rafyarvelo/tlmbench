@@ -1,0 +1,14 @@
+{
+  // Same list as .devcontainer/devcontainer.json; all on Open VSX, so Cursor installs them too (no Pylance: it is VS Code only)
+  "recommendations": [
+    "rust-lang.rust-analyzer",
+    "tamasfe.even-better-toml",
+    "ms-playwright.playwright",
+    "ms-python.python",
+    "detachhead.basedpyright",
+    "charliermarsh.ruff",
+    "vadimcn.vscode-lldb",
+    "editorconfig.editorconfig",
+    "tauri-apps.tauri-vscode"
+  ]
+}

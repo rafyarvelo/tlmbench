@@ -1,0 +1,15 @@
+{
+  "rust-analyzer.check.command": "clippy",
+  "[rust]": { "editor.formatOnSave": true },
+  "[toml]": { "editor.formatOnSave": true },
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "files.watcherExclude": {
+    "**/target/**": true,
+    "**/node_modules/**": true,
+    "**/.ci-cache/**": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/.ci-cache": true
+  }
+}

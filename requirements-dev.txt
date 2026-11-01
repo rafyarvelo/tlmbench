@@ -1,0 +1,5 @@
+# Python bindings: build and test (Python 3.12). Installed by `just setup` into .venv, and into /opt/venv in the CI image.
+maturin==1.16.0
+pytest==9.2.0
+numpy==2.5.4
+pyarrow==26.0.0

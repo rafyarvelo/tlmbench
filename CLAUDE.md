@@ -20,6 +20,10 @@ The v1 code has not started; the roadmap (Phases 1–5) is in `docs/design.md`.
 - `prototype/plotter.html`: the UI prototype (~11k lines, one file, no build step). Data is synthesized in the
   page; Share and Export are simulated. Published copy: https://claude.ai/artifact/L3Aw4dwFS24oqwfU1yJDv5
 - `prototype/tests/`: Playwright tests, one `t_*.js` per area, `./run.sh` to run them (see its README).
+- `docs/development.md`: setup (`brew bundle`, `ci/setup.sh`), recipes, pinned versions, CI. `docs/follow-ups.md`:
+  deferred work (large recordings, benchmark tracking).
+- `justfile`, `ci/`: the same recipes run on the Mac and in CI (`just ci-linux` in the image from `ci/Dockerfile`).
+  Tool versions are pinned in `rust-toolchain.toml`, `ci/versions.env`, `requirements-dev.txt` and the tests' package.json.
 - `examples/recordings/.tlmbench/`: shared configuration in the formats the app writes (TOML for files people
   edit, JSON for layouts, one small file per object).
 
@@ -27,8 +31,8 @@ The v1 code has not started; the roadmap (Phases 1–5) is in `docs/design.md`.
 
 - After any edit, check the script parses:
   `python3 -c "import re;s=open('prototype/plotter.html').read();m=re.findall(r'<script>(.*?)</script>',s,re.S);open('/tmp/check.js','w').write(m[-1])" && node --check /tmp/check.js`
-- Run the tests for the area you touched, then the whole suite before you finish: `cd prototype/tests && ./run.sh`
-  (`./run.sh t_checks t_rules` runs some). Timing tests (`t_loading`, `t_perf_gauges`) run alone at the end.
+- Run the tests for the area you touched, then the whole suite before you finish: `just proto-test`
+  (`just proto-test t_checks t_rules` runs some). Timing tests (`t_loading`, `t_perf_gauges`) run alone at the end.
 - Add or extend a test for every behaviour change; update the table in `prototype/tests/README.md`.
 - Tests talk to the page through small hooks on `window` (`__tlmChecks`, `__tlmDerived`, `__tlmGauges`,
   `__tlmPlay`, `__tlmToml`). Top-level `const`s aren't reachable from Playwright, so add to a hook if needed.

@@ -8,6 +8,8 @@ node_modules/
 /dist/
 *.whl
 __pycache__/
+.venv/
+.ci-cache/
 
 # never commit recordings or caches; examples/ holds configuration only
 *.bin

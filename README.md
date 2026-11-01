@@ -18,6 +18,7 @@ of the roadmap in `docs/design.md`.
 
 ```
 docs/                 design doc (exported from the living doc) and links to the decision log and audit
+ci/                   CI image (Dockerfile), pinned versions, setup and read-only check scripts
 prototype/            single-file HTML prototype of the UI
   tests/              Playwright browser tests for the prototype (./run.sh)
 examples/recordings/.tlmbench/
@@ -38,14 +39,14 @@ app/                  Tauri shell and the web UI (one renderer for time, live, X
 viewer/               the reduced frontend bundle used by HTML exports and the browser-only mode
 ```
 
-## Running the prototype tests
+## Development
+
+Native on the Mac, Linux in CI. See `docs/development.md`.
 
 ```
-cd prototype/tests
-npm install
-npx playwright install chromium
-./run.sh            # all tests, three at a time; timing tests run alone at the end
-./run.sh t_checks   # one test
+brew bundle && ci/setup.sh   # then open a new shell
+just proto-test           # the prototype's Playwright suite (just proto-test t_checks runs one)
+just lint test bench      # once the Cargo workspace exists
 ```
 
 ## Shared configuration
