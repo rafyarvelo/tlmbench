@@ -13,6 +13,7 @@ publish = false
 tlmbench-core = { path = "crates/core" }
 rayon = "1.12.0"
 thiserror = "2.0.21"
+serde = { version = "1.0.229", features = ["derive"] }
 proptest = "1.12.0"
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 

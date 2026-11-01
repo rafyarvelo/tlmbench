@@ -13,7 +13,7 @@
 
 use rayon::prelude::*;
 
-use crate::{Times, Timestamp, Value};
+use crate::{Samples, Times, Timestamp, Value};
 
 /// The time range `[t0, t1)` drawn across `width_px` pixel columns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,7 +72,7 @@ pub(crate) enum Emit {
 const PARALLEL_MIN_SAMPLES: usize = 1 << 21;
 
 /// Reduces one channel for a viewport. `values[i]` is the sample at `times.at(i)`; times must not decrease.
-pub fn m4<T: Times + ?Sized, V: Value>(times: &T, values: &[V], vp: Viewport) -> Trace {
+pub fn m4<T: Times + ?Sized, S: Samples + ?Sized>(times: &T, values: &S, vp: Viewport) -> Trace {
     let (kind, emits) = reduce(times, values, vp);
     let mut t = Vec::with_capacity(emits.len());
     let mut y = Vec::with_capacity(emits.len());
@@ -80,7 +80,7 @@ pub fn m4<T: Times + ?Sized, V: Value>(times: &T, values: &[V], vp: Viewport) ->
         match e {
             Emit::Sample(i) => {
                 t.push(times.at(i));
-                y.push(values[i].to_f32());
+                y.push(values.get(i).to_f32());
             }
             Emit::Gap(at) => {
                 t.push(at);
@@ -91,7 +91,11 @@ pub fn m4<T: Times + ?Sized, V: Value>(times: &T, values: &[V], vp: Viewport) ->
     Trace { kind, bucket_ns: vp.bucket_ns(), t, y }
 }
 
-pub(crate) fn reduce<T: Times + ?Sized, V: Value>(times: &T, values: &[V], vp: Viewport) -> (TraceKind, Vec<Emit>) {
+pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
+    times: &T,
+    values: &S,
+    vp: Viewport,
+) -> (TraceKind, Vec<Emit>) {
     assert_eq!(times.len(), values.len(), "times and values differ in length");
     let n = times.len();
     if n == 0 || vp.t1 <= vp.t0 || vp.width_px == 0 {
@@ -154,29 +158,23 @@ pub(crate) fn reduce<T: Times + ?Sized, V: Value>(times: &T, values: &[V], vp: V
 /// Appends the first, min, max and last samples of `values[start..end]` in index order (each once), or a gap
 /// if the bucket has no non-NaN samples. Ties go to the earliest sample.
 #[inline]
-fn reduce_bucket<V: Value>(values: &[V], start: usize, end: usize, bucket_t: Timestamp, out: &mut Vec<Emit>) {
-    let bucket = &values[start..end];
-    let Some(first) = bucket.iter().position(|v| !v.is_nan()) else {
+fn reduce_bucket<S: Samples + ?Sized>(values: &S, start: usize, end: usize, bucket_t: Timestamp, out: &mut Vec<Emit>) {
+    let mut bucket = values.range(start, end);
+    let Some(first) = bucket.clone().position(|v| !v.is_nan()) else {
         if !matches!(out.last(), Some(Emit::Gap(_))) {
             out.push(Emit::Gap(bucket_t));
         }
         return;
     };
-    let last = bucket.iter().rposition(|v| !v.is_nan()).unwrap_or(first);
-    let body = &bucket[first..=last];
+    let last = bucket.rposition(|v| !v.is_nan()).unwrap_or(first);
+    let mut body = values.range(start + first, start + last + 1);
 
     // Comparisons with NaN are false, so starting from a real value skips NaNs.
-    let (mut mn, mut mx) = (body[0], body[0]);
-    for &v in body {
-        if v < mn {
-            mn = v;
-        }
-        if v > mx {
-            mx = v;
-        }
-    }
-    let imin = first + body.iter().position(|&v| v == mn).unwrap_or(0);
-    let imax = first + body.iter().position(|&v| v == mx).unwrap_or(0);
+    let v0 = values.get(start + first);
+    let (mn, mx) =
+        body.clone().fold((v0, v0), |(mn, mx), v| (if v < mn { v } else { mn }, if v > mx { v } else { mx }));
+    let imin = first + body.clone().position(|v| v == mn).unwrap_or(0);
+    let imax = first + body.position(|v| v == mx).unwrap_or(0);
 
     let mut idx = [first, imin.min(imax), imin.max(imax), last];
     idx.iter_mut().for_each(|i| *i += start);

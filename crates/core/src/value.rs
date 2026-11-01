@@ -1,4 +1,4 @@
-//! Sample value types a channel can hold.
+//! Sample value types a channel can hold, and access to a channel's samples.
 
 /// A sample value. Comparisons follow the type's own order; NaN (floats only) is a missing sample.
 pub trait Value: Copy + PartialOrd + Send + Sync + 'static {
@@ -42,5 +42,62 @@ impl Value for f64 {
     #[inline]
     fn to_f32(self) -> f32 {
         self as f32
+    }
+}
+
+/// One channel's samples: a slice in memory, or a field read in place from records in a mapped file.
+pub trait Samples: Sync {
+    type Item: Value;
+
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Sample `i` (`i < len()`).
+    fn get(&self, i: usize) -> Self::Item;
+
+    /// Samples `start..end`, in order.
+    fn range(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> impl DoubleEndedIterator<Item = Self::Item> + ExactSizeIterator + Clone;
+}
+
+impl<V: Value> Samples for [V] {
+    type Item = V;
+
+    fn len(&self) -> usize {
+        <[V]>::len(self)
+    }
+
+    #[inline]
+    fn get(&self, i: usize) -> V {
+        self[i]
+    }
+
+    #[inline]
+    fn range(&self, start: usize, end: usize) -> impl DoubleEndedIterator<Item = V> + ExactSizeIterator + Clone {
+        self[start..end].iter().copied()
+    }
+}
+
+impl<V: Value> Samples for Vec<V> {
+    type Item = V;
+
+    fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+
+    #[inline]
+    fn get(&self, i: usize) -> V {
+        self[i]
+    }
+
+    #[inline]
+    fn range(&self, start: usize, end: usize) -> impl DoubleEndedIterator<Item = V> + ExactSizeIterator + Clone {
+        self[start..end].iter().copied()
     }
 }

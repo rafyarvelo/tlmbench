@@ -674,6 +674,7 @@ dependencies = [
  "criterion",
  "proptest",
  "rayon",
+ "serde",
 ]
 
 [[package]]
