@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["crates/core"]
+members = ["crates/core", "crates/decode"]
+exclude = ["crates/decode/fuzz"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,9 +12,20 @@ publish = false
 
 [workspace.dependencies]
 tlmbench-core = { path = "crates/core" }
+tlmbench-decode = { path = "crates/decode" }
 rayon = "1.12.0"
 thiserror = "2.0.21"
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+blake3 = "1.8.7"
+bytemuck = "1.25.2"
+csv-core = "0.1.13"
+dirs = "7.0.0"
+lexical-core = "1.0.6"
+memchr = "2.8.3"
+memmap2 = "0.9.12"
+toml = "1.1.8"
+tempfile = "3.27.0"
 proptest = "1.12.0"
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 

@@ -17,3 +17,4 @@ __pycache__/
 examples/recordings/*
 !examples/recordings/.tlmbench/
 .DS_Store
+*.tlm
