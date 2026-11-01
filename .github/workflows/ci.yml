@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The CI image is tagged by a hash of its inputs, so it is rebuilt only when one of them changes
+  image:
+    name: CI image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      ref: ${{ steps.tag.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: tag
+        run: |
+          hash=$(cat ci/Dockerfile ci/versions.env ci/setup.sh rust-toolchain.toml requirements-dev.txt \
+            prototype/tests/package.json prototype/tests/package-lock.json | sha256sum | cut -c1-16)
+          echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/tlmbench-ci:$hash" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: exists
+        run: |
+          if docker manifest inspect "${{ steps.tag.outputs.ref }}" > /dev/null 2>&1; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.exists.outputs.hit != 'true'
+        uses: docker/setup-qemu-action@v4
+      - if: steps.exists.outputs.hit != 'true'
+        uses: docker/setup-buildx-action@v4
+      - if: steps.exists.outputs.hit != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ci/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tag.outputs.ref }}
+
+  # Core, CLI, Python, prototype tests, read-only proof, fuzz smoke and the WebKitGTK app build, in the CI image
+  linux:
+    needs: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .ci-cache
+            target
+          key: linux-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
+          restore-keys: linux-
+      - name: just ci-linux
+        # The fixture folder is mounted read-only, so any write next to the data fails
+        run: |
+          mkdir -p .ci-cache/registry .ci-cache/git
+          docker run --rm --shm-size=1g -w /work -e CI \
+            -v "$PWD:/work" \
+            -v "$PWD/.ci-cache/registry:/usr/local/cargo/registry" \
+            -v "$PWD/.ci-cache/git:/usr/local/cargo/git" \
+            -v "$PWD/prototype/tests/fold:/data/ro:ro" \
+            -e TLMBENCH_RO_DIR=/data/ro -e TLMBENCH_RO_REQUIRED=1 \
+            "${{ needs.image.outputs.ref }}" \
+            bash -c "(cd prototype/tests && npm ci --no-audit --no-fund) && just ci-linux"
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prototype-test-output
+          path: |
+            prototype/tests/out/
+            prototype/tests/fail_*.png
+
+  # Core tests and the app build against the other two WebViews (WKWebView, WebView2)
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pinned versions
+        run: grep -E '^[A-Z_]+=' ci/versions.env >> "$GITHUB_ENV"
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just@${{ env.JUST_VERSION }},cargo-nextest@${{ env.NEXTEST_VERSION }},tauri-cli@${{ env.TAURI_CLI_VERSION }}
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ matrix.os }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
+          restore-keys: ${{ matrix.os }}-
+      - run: just ci-native

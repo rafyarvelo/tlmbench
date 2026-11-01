@@ -1,0 +1,7 @@
+# The CI image needs only its setup inputs
+*
+!ci/
+!rust-toolchain.toml
+!requirements-dev.txt
+!prototype/tests/package.json
+!prototype/tests/package-lock.json

@@ -1,0 +1,34 @@
+// The CI image as a dev container, for debugging a Linux CI failure in GitHub Codespaces (no local disk).
+// Day-to-day development is native on the Mac: see docs/development.md.
+{
+  "name": "tlmbench CI image",
+  "build": { "dockerfile": "../ci/Dockerfile", "context": ".." },
+  "remoteUser": "vscode",
+  "runArgs": ["--shm-size=1g"],
+  "mounts": [
+    "source=${localWorkspaceFolder}/prototype/tests/fold,target=/data/ro,type=bind,readonly"
+  ],
+  "containerEnv": {
+    "TLMBENCH_RO_DIR": "/data/ro",
+    "TLMBENCH_RO_REQUIRED": "1"
+  },
+  "postCreateCommand": "cd prototype/tests && npm ci",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "ms-playwright.playwright",
+        "ms-python.python",
+        "detachhead.basedpyright",
+        "charliermarsh.ruff",
+        "vadimcn.vscode-lldb",
+        "editorconfig.editorconfig",
+        "tauri-apps.tauri-vscode"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python"
+      }
+    }
+  }
+}
