@@ -25,7 +25,7 @@ T.run('tables', async ({ p, check, paneCount, text, wait, until, expandTree }) =
   // Columns: clicking a name brings that column into view (and shows it if it was hidden), in a table of 12 channels
   await expandTree();
   { const ids = ['accel_x', 'accel_y', 'accel_z', 'gyro_x', 'gyro_y', 'gyro_z', 'roll', 'pitch', 'yaw', 'motor_rpm', 'battery_v', 'current_a'];
-    await p.click(`.chan[data-ch="${ids[0]}"] .nm`); for (const id of ids.slice(1)) await p.click(`.chan[data-ch="${id}"] .nm`, { modifiers: ['Control'] });
+    await p.click(`.chan[data-ch="${ids[0]}"] .nm`); for (const id of ids.slice(1)) await p.click(`.chan[data-ch="${id}"] .nm`, { modifiers: ['ControlOrMeta'] });
     await p.evaluate(() => [...document.querySelectorAll('#exSelBar button')].find(b => /^Table$/.test(b.textContent)).click()); await wait(1500); }
   const T0 = await p.evaluate(() => { const secs = [...document.querySelectorAll('#stack section.pane')].filter(s => s.querySelector('.tscroll')); let best = 0, bw = -1; secs.forEach((s, k) => { const n = s.querySelectorAll('.tth[data-cid]').length; if (n > bw) { bw = n; best = k; } }); return [...document.querySelectorAll('#stack section.pane')].indexOf(secs[best]); });
   await p.setViewportSize({ width: 820, height: 900 }); await wait(900); // narrow, so the table is wider than its pane

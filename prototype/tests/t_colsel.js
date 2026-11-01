@@ -9,6 +9,6 @@ T.run('colsel', async ({ p, check, wait, text }) => {
   check('Shift-click on a header selects the range', (await n()) === 4, await n());
   await hdr(ids[5]).locator('.tck').click({ modifiers: ['Shift'] }); await wait(200);
   check('Shift-click on a checkbox extends it', (await n()) === 6, await n());
-  await hdr(ids[8]).click({ position: { x: 30, y: 10 }, modifiers: ['Control'] }); await wait(200);
+  await hdr(ids[8]).click({ position: { x: 30, y: 10 }, modifiers: ['ControlOrMeta'] }); await wait(200);
   check('Ctrl-click adds one', (await n()) === 7, await n());
 }, { settings: { fileOpenNew: 'table', fileOpen: 'table' }, wait: 5000 });

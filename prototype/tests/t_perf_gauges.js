@@ -6,7 +6,7 @@ T.run('perf_gauges', async ({ p, check, wait, until, expandTree }) => {
   // every channel of the flight in one pane, as gauges, then a copy of that pane: 100+ cards
   const ids = await p.evaluate(() => [...document.querySelectorAll('.chan[data-ch]')].map(e => e.dataset.ch).filter(id => !/[·@]/.test(id)));
   await p.click(`.chan[data-ch="${ids[0]}"] .nm`);
-  for (const id of ids.slice(1)) await p.click(`.chan[data-ch="${id}"] .nm`, { modifiers: ['Control'] });
+  for (const id of ids.slice(1)) await p.click(`.chan[data-ch="${id}"] .nm`, { modifiers: ['ControlOrMeta'] });
   await p.evaluate(() => [...document.querySelectorAll('#exSelBar button')].find(b => /^Chart$/.test(b.textContent)).click()); await wait(1500);
   const idx = await p.evaluate(() => [...document.querySelectorAll('#stack section.pane')].findIndex(sec => sec.querySelector('[data-chip="status_bits"]')));
   await p.evaluate(i => document.querySelectorAll('#stack section.pane [data-viewmenu]')[i].click(), idx); await wait(200);

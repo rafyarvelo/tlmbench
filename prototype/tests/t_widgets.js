@@ -4,7 +4,7 @@ T.run('widgets', async ({ p, check, expandTree, menu, pick, wait, until }) => {
   await expandTree();
   const ids = ['motor_rpm', 'motor_rpm_target', 'motor_2_rpm', 'motor_3_rpm', 'motor_4_rpm', 'status_bits', 'flight_mode', 'accel_x', 'accel_y', 'gps_lat', 'gps_lon', 'battery_v'];
   await p.click(`.chan[data-ch="${ids[0]}"] .nm`);
-  for (const id of ids.slice(1)) await p.click(`.chan[data-ch="${id}"] .nm`, { modifiers: ['Control'] });
+  for (const id of ids.slice(1)) await p.click(`.chan[data-ch="${id}"] .nm`, { modifiers: ['ControlOrMeta'] });
   await p.evaluate(() => [...document.querySelectorAll('#exSelBar button')].find(b => /^Chart$/.test(b.textContent)).click()); await wait(1500);
   const idx = await p.evaluate(() => [...document.querySelectorAll('#stack section.pane')].findIndex(sec => sec.querySelector('[data-chip="status_bits"]')));
   await p.evaluate(i => document.querySelectorAll('#stack section.pane [data-viewmenu]')[i].click(), idx); await wait(200);

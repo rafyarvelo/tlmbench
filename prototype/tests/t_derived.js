@@ -37,7 +37,7 @@ T.run('derived', async ({ p, check, drop, csv, expandTree, menu, pick, wait, unt
   check('a cutoff above half the rate is refused with a reason', /below half the sample rate/.test(fl.err || ''), fl.err);
 
   await expandTree();
-  await p.click('.chan[data-ch="battery_v"] .nm'); await p.click('.chan[data-ch="current_a"] .nm', { modifiers: ['Control'] }); await wait(200);
+  await p.click('.chan[data-ch="battery_v"] .nm'); await p.click('.chan[data-ch="current_a"] .nm', { modifiers: ['ControlOrMeta'] }); await wait(200);
   const bar = await p.evaluate(() => document.getElementById('exSelBar').innerText);
   check('selection bar offers Derive…', /Derive/.test(bar), bar);
   await p.evaluate(() => [...document.querySelectorAll('#exSelBar button')].find(b => b.textContent === 'Derive…').click()); await wait(300);

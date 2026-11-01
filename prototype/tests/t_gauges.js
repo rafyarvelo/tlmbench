@@ -4,7 +4,7 @@ T.run('gauges', async ({ p, check, paneCount, expandTree, menu, pick, wait, sett
   await expandTree();
   const ids = ['motor_rpm', 'esc_temp_1', 'battery_v', 'throttle_pct', 'roll', 'yaw', 'flight_mode', 'current_a', 'gps_sats'];
   await p.click(`.chan[data-ch="${ids[0]}"] .nm`);
-  for (const id of ids.slice(1)) await p.click(`.chan[data-ch="${id}"] .nm`, { modifiers: ['Control'] });
+  for (const id of ids.slice(1)) await p.click(`.chan[data-ch="${id}"] .nm`, { modifiers: ['ControlOrMeta'] });
   await p.evaluate(() => [...document.querySelectorAll('#exSelBar button')].find(b => /^Chart$/.test(b.textContent)).click()); await wait(1500);
   const last = await p.evaluate(() => [...document.querySelectorAll('#stack section.pane')].findIndex(sec => sec.querySelector('[data-chip="yaw"]')));
   await p.evaluate(i => document.querySelectorAll('#stack section.pane [data-viewmenu]')[i].click(), last); await wait(200);

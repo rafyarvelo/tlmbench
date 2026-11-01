@@ -13,7 +13,7 @@ T.run('explorer', async ({ p, check, paneCount, text, expandTree, menu, wait, se
   await p.click('.chan[data-ch="gyro_z"] .nm'); await wait(200);
   check('click selects a channel', await p.evaluate(() => document.querySelector('.chan[data-ch="gyro_z"]').classList.contains('rsel')));
   check('...without plotting it', (await plotted()) === on0);
-  await p.click('.chan[data-ch="yaw"] .nm', { modifiers: ['Control'] }); await wait(150);
+  await p.click('.chan[data-ch="yaw"] .nm', { modifiers: ['ControlOrMeta'] }); await wait(150);
   check('Ctrl-click adds to the selection', /2 channels/.test(await text('#exSelBar')), await text('#exSelBar'));
   await p.evaluate(() => [...document.querySelectorAll('#exSelBar button')].find(b => /^Chart$/.test(b.textContent)).click()); await wait(800);
   check('selection → new chart', (await paneCount()) === n0 + 1);

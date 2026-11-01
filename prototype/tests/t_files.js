@@ -16,7 +16,7 @@ T.run('files', async ({ p, check, tabs, panes, text, drop, csv, pick, menu, wait
   check('Show all lists every file again', (await p.evaluate(() => document.querySelectorAll('.fitem').length)) > 2);
 
   // Compare two selected files
-  await p.click('.fitem[data-file="main"] .fname'); await p.click('.fitem[data-file="0415"] .fname', { modifiers: ['Control'] }); await wait(200);
+  await p.click('.fitem[data-file="main"] .fname'); await p.click('.fitem[data-file="0415"] .fname', { modifiers: ['ControlOrMeta'] }); await wait(200);
   check('Compare in the selection bar', /Compare/.test(await text('#exSelBar')));
   await p.evaluate(() => [...document.querySelectorAll('#exSelBar button')].find(b => b.textContent === 'Compare').click()); await wait(2500);
   check('compare tab', (await tabs()).some(x => /synthetic_flight vs flight_0415\*/.test(x)), await tabs());

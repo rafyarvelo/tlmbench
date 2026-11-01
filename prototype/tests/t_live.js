@@ -49,7 +49,7 @@ T.run('live', async ({ p, check, tabs, paneCount, text, expandTree, wait }) => {
   check('live table counts rows up to now', /rows in view/.test(st) && !/2,160,001|60,001/.test(st), st);
 
   // derived channel on the live file
-  await p.click('.chan[data-ch="battery_v"] .nm'); await p.click('.chan[data-ch="current_a"] .nm', { modifiers: ['Control'] }); await wait(150);
+  await p.click('.chan[data-ch="battery_v"] .nm'); await p.click('.chan[data-ch="current_a"] .nm', { modifiers: ['ControlOrMeta'] }); await wait(150);
   await p.evaluate(() => [...document.querySelectorAll('#exSelBar button')].find(b => b.textContent === 'Derive…').click()); await wait(300);
   await p.selectOption('#recDlg [data-r="tpl"]', 'prod'); await wait(150);
   check('derive on live data', /samples/.test(await p.textContent('#recStat')));
