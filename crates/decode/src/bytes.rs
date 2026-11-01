@@ -26,6 +26,16 @@ impl Deref for Bytes {
     }
 }
 
+impl Bytes {
+    /// Hints that the bytes will be read front to back, so the OS reads ahead (a no-op where unsupported).
+    pub(crate) fn advise_sequential(&self) {
+        #[cfg(unix)]
+        if let Bytes::Mapped(m) = self {
+            let _ = m.advise(memmap2::Advice::Sequential);
+        }
+    }
+}
+
 /// Maps a file read-only. Mapping is page-aligned, so typed views of it are aligned too.
 pub(crate) fn map(path: &Path) -> Result<Bytes> {
     let file = File::open(path).map_err(io_err(path))?;

@@ -32,7 +32,9 @@ pub struct Schema {
     pub data_start: usize,
     pub columns: Vec<Column>,
     pub time: TimeColumn,
-    /// The data has a quote character somewhere, so it can't be split at arbitrary newlines.
+    /// Read with the general CSV reader, in one piece: quotes were seen (a quoted field may hold a newline, so the
+    /// data can't be split at arbitrary line ends). Set when the sampled rows have a quote, or when a chunk read on
+    /// the fast path meets one (`Rows::quotes`) and the file is read again.
     pub quoted: bool,
 }
 
@@ -78,6 +80,8 @@ pub struct Rows {
     pub rows: usize,
     /// Rows left out because their time didn't parse.
     pub skipped: usize,
+    /// The fast path met a quote character and stopped: read the file again with `Schema::quoted` set.
+    pub quotes: bool,
 }
 
 /// Cheap check for a text file worth parsing as CSV: the extension, or printable text with a delimiter.
@@ -88,6 +92,59 @@ pub fn looks_like_csv(path: &Path, head: &[u8]) -> bool {
     }
     let line = head.split(|&c| c == b'\n').next().unwrap_or_default();
     !head.contains(&0) && line.iter().any(|c| matches!(c, b',' | b';' | b'\t'))
+}
+
+/// A reader of rows: advance, then read fields of the current row.
+trait RowReader {
+    fn next(&mut self) -> bool;
+    fn field(&self, i: usize) -> &[u8];
+    fn is_blank(&self) -> bool;
+}
+
+/// Rows of data with no quote characters: lines split at the delimiter with memchr (the fast path; about 10x
+/// faster than the general CSV state machine).
+struct Lines<'a> {
+    input: &'a [u8],
+    pos: usize,
+    line: &'a [u8],
+    /// Delimiter positions in `line`, then its length.
+    ends: Vec<usize>,
+    delimiter: u8,
+}
+
+impl<'a> Lines<'a> {
+    fn new(delimiter: u8, input: &'a [u8]) -> Self {
+        Self { input, pos: 0, line: &[], ends: Vec::with_capacity(64), delimiter }
+    }
+}
+
+impl RowReader for Lines<'_> {
+    fn next(&mut self) -> bool {
+        if self.pos >= self.input.len() {
+            return false;
+        }
+        let rest = &self.input[self.pos..];
+        let end = memchr::memchr(b'\n', rest).unwrap_or(rest.len());
+        self.pos += end + 1;
+        let line = &rest[..end];
+        self.line = line.strip_suffix(b"\r").unwrap_or(line);
+        self.ends.clear();
+        self.ends.extend(memchr::memchr_iter(self.delimiter, self.line));
+        self.ends.push(self.line.len());
+        true
+    }
+
+    #[inline]
+    fn field(&self, i: usize) -> &[u8] {
+        match self.ends.get(i) {
+            Some(&end) => &self.line[if i == 0 { 0 } else { self.ends[i - 1] + 1 }..end],
+            None => &[],
+        }
+    }
+
+    fn is_blank(&self) -> bool {
+        self.line.iter().all(u8::is_ascii_whitespace)
+    }
 }
 
 /// One record's fields, reusing buffers between records.
@@ -160,7 +217,7 @@ impl<'a> Records<'a> {
         }
     }
 
-    fn field(&self, i: usize) -> &[u8] {
+    fn field_(&self, i: usize) -> &[u8] {
         if i >= self.nfields {
             return &[];
         }
@@ -168,8 +225,22 @@ impl<'a> Records<'a> {
         &self.out[start..self.ends[i]]
     }
 
+    fn is_blank_(&self) -> bool {
+        (0..self.nfields).all(|i| self.field_(i).iter().all(u8::is_ascii_whitespace))
+    }
+}
+
+impl RowReader for Records<'_> {
+    fn next(&mut self) -> bool {
+        Records::next(self)
+    }
+
+    fn field(&self, i: usize) -> &[u8] {
+        self.field_(i)
+    }
+
     fn is_blank(&self) -> bool {
-        (0..self.nfields).all(|i| self.field(i).iter().all(u8::is_ascii_whitespace))
+        self.is_blank_()
     }
 }
 
@@ -292,7 +363,8 @@ pub fn scan(bytes: &[u8]) -> Result<Schema> {
     if let TimeColumn::Numeric { index, .. } | TimeColumn::Iso { index } = time {
         columns[index].kind = Kind::Time;
     }
-    let quoted = memchr::memchr(b'"', &bytes[data_start..]).is_some();
+    // quotes in the sampled rows only: the rest of the file is checked chunk by chunk as it is parsed
+    let quoted = memchr::memchr(b'"', &bytes[data_start..rec.pos.max(data_start)]).is_some();
     Ok(Schema { delimiter, data_start, columns, time, quoted })
 }
 
@@ -325,8 +397,19 @@ pub fn parse(bytes: &[u8], range: Range<usize>, schema: &Schema) -> Rows {
         columns: numeric.iter().map(|_| Vec::with_capacity(est)).collect(),
         rows: 0,
         skipped: 0,
+        quotes: false,
     };
-    let mut rec = Records::new(schema.delimiter, &bytes[range]);
+    if schema.quoted {
+        parse_rows(Records::new(schema.delimiter, &bytes[range]), schema, &numeric, &mut out);
+    } else if memchr::memchr(b'"', &bytes[range.clone()]).is_some() {
+        out.quotes = true;
+    } else {
+        parse_rows(Lines::new(schema.delimiter, &bytes[range]), schema, &numeric, &mut out);
+    }
+    out
+}
+
+fn parse_rows(mut rec: impl RowReader, schema: &Schema, numeric: &[usize], out: &mut Rows) {
     while rec.next() {
         if rec.is_blank() {
             continue;
@@ -345,21 +428,26 @@ pub fn parse(bytes: &[u8], range: Range<usize>, schema: &Schema) -> Rows {
         if schema.time != TimeColumn::Index {
             out.t.push(t);
         }
-        for (col, &i) in out.columns.iter_mut().zip(&numeric) {
+        for (col, &i) in out.columns.iter_mut().zip(numeric) {
             let f = rec.field(i);
-            col.push(if is_missing(f) { f64::NAN } else { parse_number(f).unwrap_or(f64::NAN) });
+            col.push(parse_number(f).unwrap_or(f64::NAN));
         }
         out.rows += 1;
     }
-    out
 }
 
 /// Parses a whole CSV in memory (tests and fuzzing; the cache streams chunks instead).
 pub fn parse_all(bytes: &[u8]) -> Result<(Schema, Rows)> {
-    let schema = scan(bytes)?;
+    let mut schema = scan(bytes)?;
+    let parts: Vec<Rows> = split(bytes, &schema, CHUNK_BYTES).into_iter().map(|r| parse(bytes, r, &schema)).collect();
+    let parts = if parts.iter().any(|r| r.quotes) {
+        schema.quoted = true;
+        split(bytes, &schema, CHUNK_BYTES).into_iter().map(|r| parse(bytes, r, &schema)).collect()
+    } else {
+        parts
+    };
     let mut all = Rows::default();
-    for range in split(bytes, &schema, CHUNK_BYTES) {
-        let r = parse(bytes, range, &schema);
+    for r in parts {
         if all.columns.is_empty() {
             all.columns = vec![Vec::new(); r.columns.len()];
         }
@@ -376,6 +464,7 @@ pub fn parse_all(bytes: &[u8]) -> Result<(Schema, Rows)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::Just;
 
     #[test]
     fn nasty_headers() {
@@ -438,6 +527,67 @@ mod tests {
         csv.push_str("bad,2\n");
         let (_, rows) = parse_all(csv.as_bytes()).unwrap();
         assert_eq!((rows.t.len(), rows.skipped), (20, 1));
+    }
+
+    proptest::proptest! {
+        /// The memchr fast path reads unquoted data exactly as the general CSV reader does.
+        #[test]
+        fn fast_path_matches_csv_core(
+            rows in proptest::collection::vec(
+                proptest::collection::vec(
+                    proptest::prop_oneof![
+                        "-?[0-9]{1,6}(\\.[0-9]{0,4})?", Just(String::new()), Just("N/A".to_string()),
+                        Just(" 7 ".to_string()), Just("1e3".to_string()), Just("x".to_string()),
+                    ],
+                    0..5,
+                ),
+                0..40,
+            ),
+            crlf in proptest::bool::ANY,
+        ) {
+            let nl = if crlf { "\r\n" } else { "\n" };
+            let mut csv = format!("time,a,b,c{nl}");
+            for (i, r) in rows.iter().enumerate() {
+                csv.push_str(&format!("{i}"));
+                for f in r {
+                    csv.push(',');
+                    csv.push_str(f);
+                }
+                csv.push_str(nl);
+                if i % 7 == 3 {
+                    csv.push_str(nl); // blank line
+                }
+            }
+            let b = csv.as_bytes();
+            let mut schema = scan(b).unwrap();
+            proptest::prop_assume!(!schema.quoted);
+            let fast = parse(b, schema.data_start..b.len(), &schema);
+            schema.quoted = true;
+            let general = parse(b, schema.data_start..b.len(), &schema);
+            proptest::prop_assert_eq!(fast.t, general.t);
+            proptest::prop_assert_eq!(fast.rows, general.rows);
+            for (x, y) in fast.columns.iter().zip(&general.columns) {
+                proptest::prop_assert_eq!(x.len(), y.len());
+                for (p, q) in x.iter().zip(y) {
+                    proptest::prop_assert!(p == q || (p.is_nan() && q.is_nan()), "{} vs {}", p, q);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn quotes_past_the_sample_switch_to_the_general_reader() {
+        let mut csv = String::from("time,v,note\n");
+        for i in 0..20_000 {
+            csv.push_str(&format!("{i},{i},x\n"));
+        }
+        csv.push_str("20000,1,\"two\nlines\"\n20001,2,y\n");
+        let b = csv.as_bytes();
+        assert!(!scan(b).unwrap().quoted);
+        let (schema, rows) = parse_all(b).unwrap();
+        assert!(schema.quoted);
+        assert_eq!(rows.rows, 20_002);
+        assert_eq!(*rows.t.last().unwrap(), 20_001_000_000_000);
     }
 
     #[test]

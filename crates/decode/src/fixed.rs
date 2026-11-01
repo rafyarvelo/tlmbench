@@ -88,9 +88,11 @@ impl FixedWidth {
             TimeSpec::Field { field, .. } => TimeSource::Column { name: field.clone() },
             TimeSpec::Index => TimeSource::Index,
         };
+        // fixed-rate and index times can't go backwards; a time field is checked record by record
+        let check = matches!(me.desc.time, TimeSpec::Field { .. });
         let (first, last) = me
             .with_times(|t| {
-                if let Some(i) = (1..t.len()).find(|&i| t.at(i) < t.at(i - 1)) {
+                if check && let Some(i) = (1..t.len()).find(|&i| t.at(i) < t.at(i - 1)) {
                     return Err(i);
                 }
                 Ok((t.len() > 0).then(|| (t.at(0), t.at(t.len() - 1))))

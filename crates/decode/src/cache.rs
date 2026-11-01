@@ -7,9 +7,13 @@
 //!
 //! The key is a fingerprint of the source: its size and modification time, and a BLAKE3 hash of its first and
 //! last MiB and 64 blocks spread through it. Hashing whole multi-GB files would cost about a second on each open.
+//!
+//! The source is read with positioned reads, each worker reading its own 8 MB chunk. Parallel page faults on one
+//! memory map serialize on macOS (about 330 MB/s on an M1 for a 2.4 GB CSV); separate reads run at disk speed.
 
 use std::fs::{self, File};
-use std::io::{BufWriter, Write};
+use std::io::{self, BufWriter, Write};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -35,21 +39,92 @@ pub fn cache_root(over: Option<&Path>) -> PathBuf {
     dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("tlmbench")
 }
 
-fn fingerprint(path: &Path, data: &[u8]) -> Result<String> {
-    let meta = fs::metadata(path).map_err(io_err(path))?;
-    let mtime = meta.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-    let mut h = blake3::Hasher::new();
-    h.update(&(data.len() as u64).to_le_bytes());
-    h.update(&mtime.to_le_bytes());
-    const EDGE: usize = 1 << 20;
-    const BLOCK: usize = 4096;
-    h.update(&data[..data.len().min(EDGE)]);
-    h.update(&data[data.len().saturating_sub(EDGE)..]);
-    for k in 1..64 {
-        let at = data.len() / 64 * k;
-        h.update(&data[at..(at + BLOCK).min(data.len())]);
+/// Bytes read for the schema: the header and the sample rows.
+const HEAD_BYTES: usize = 16 << 20;
+
+/// The source file, read with positioned reads.
+#[derive(Debug)]
+struct Source {
+    path: PathBuf,
+    file: File,
+    len: u64,
+    mtime_ns: u128,
+}
+
+impl Source {
+    fn open(path: &Path) -> Result<Self> {
+        let file = File::open(path).map_err(io_err(path))?;
+        let meta = file.metadata().map_err(io_err(path))?;
+        let mtime_ns = meta.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+        Ok(Self { path: path.to_owned(), file, len: meta.len(), mtime_ns })
     }
-    Ok(h.finalize().to_hex()[..32].to_owned())
+
+    /// Up to `len` bytes from `at` (fewer at the end of the file).
+    fn read(&self, at: u64, len: usize) -> Result<Vec<u8>> {
+        let len = len.min(self.len.saturating_sub(at) as usize);
+        let mut buf = vec![0; len];
+        read_exact_at(&self.file, &mut buf, at).map_err(io_err(&self.path))?;
+        Ok(buf)
+    }
+
+    fn fingerprint(&self) -> Result<String> {
+        const EDGE: usize = 1 << 20;
+        const BLOCK: usize = 4096;
+        let mut h = blake3::Hasher::new();
+        h.update(&self.len.to_le_bytes());
+        h.update(&self.mtime_ns.to_le_bytes());
+        h.update(&self.read(0, EDGE)?);
+        h.update(&self.read(self.len.saturating_sub(EDGE as u64), EDGE)?);
+        for k in 1..64 {
+            h.update(&self.read(self.len / 64 * k, BLOCK)?);
+        }
+        Ok(h.finalize().to_hex()[..32].to_owned())
+    }
+
+    /// Ranges of about `target` bytes from `start` to the end, each ending at a line end.
+    fn split(&self, start: u64, target: u64) -> Result<Vec<Range<u64>>> {
+        const WINDOW: usize = 64 << 10;
+        let mut out = Vec::new();
+        let mut a = start;
+        while a < self.len {
+            let mut probe = a + target;
+            let b = loop {
+                if probe >= self.len {
+                    break self.len;
+                }
+                let w = self.read(probe, WINDOW)?;
+                match memchr::memchr(b'\n', &w) {
+                    Some(i) => break probe + i as u64 + 1,
+                    None => probe += w.len() as u64,
+                }
+            };
+            out.push(a..b);
+            a = b;
+        }
+        Ok(out)
+    }
+}
+
+#[cfg(unix)]
+fn read_exact_at(file: &File, buf: &mut [u8], at: u64) -> io::Result<()> {
+    std::os::unix::fs::FileExt::read_exact_at(file, buf, at)
+}
+
+#[cfg(windows)]
+fn read_exact_at(file: &File, mut buf: &mut [u8], mut at: u64) -> io::Result<()> {
+    use std::os::windows::fs::FileExt;
+    while !buf.is_empty() {
+        match file.seek_read(buf, at) {
+            Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+            Ok(n) => {
+                buf = &mut buf[n..];
+                at += n as u64;
+            }
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -86,13 +161,12 @@ pub struct CsvRecording {
 
 /// Opens a CSV through the cache under `root`, building the cache entry first if needed.
 pub fn open_csv(path: &Path, root: &Path) -> Result<CsvRecording> {
-    let source = bytes::map(path)?;
-    let dir = root.join("csv").join(fingerprint(path, &source)?);
+    let source = Source::open(path)?;
+    let dir = root.join("csv").join(source.fingerprint()?);
     let manifest = match read_manifest(&dir) {
         Some(m) => m,
-        None => build(path, &source, &dir)?,
+        None => build(&source, &dir)?,
     };
-    drop(source);
     load(path, &dir, manifest)
 }
 
@@ -101,14 +175,30 @@ fn read_manifest(dir: &Path) -> Option<Manifest> {
     (m.version == MANIFEST_VERSION).then_some(m)
 }
 
-fn build(path: &Path, source: &[u8], dir: &Path) -> Result<Manifest> {
-    let schema = csv::scan(source).map_err(|e| format_err(path, e.to_string()))?;
+fn build(source: &Source, dir: &Path) -> Result<Manifest> {
+    let path = source.path.as_path();
+    let mut head = source.read(0, HEAD_BYTES)?;
+    if (head.len() as u64) < source.len
+        && let Some(end) = memchr::memrchr(b'\n', &head)
+    {
+        head.truncate(end + 1); // whole rows only
+    }
+    let schema = csv::scan(&head).map_err(|e| format_err(path, e.to_string()))?;
+    drop(head);
     let parent = dir.parent().expect("cache dirs have a parent");
     fs::create_dir_all(parent).map_err(io_err(parent))?;
     let tmp = parent.join(format!(".{}.tmp-{}", dir.file_name().unwrap().to_string_lossy(), std::process::id()));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp).map_err(io_err(&tmp))?;
-    let result = write_columns(path, source, &schema, &tmp);
+    let mut schema = schema;
+    let mut result =
+        if schema.quoted { write_quoted(source, &schema, &tmp) } else { write_fast(source, &schema, &tmp) };
+    if let Ok(None) = result {
+        // a chunk met a quote: read the whole file with the general CSV reader instead
+        schema.quoted = true;
+        result = write_quoted(source, &schema, &tmp);
+    }
+    let result = result.map(|m| m.expect("the general reader never asks to start over"));
     let manifest = match result {
         Ok(m) => m,
         Err(e) => {
@@ -126,7 +216,38 @@ fn build(path: &Path, source: &[u8], dir: &Path) -> Result<Manifest> {
     Ok(manifest)
 }
 
-fn write_columns(path: &Path, source: &[u8], schema: &csv::Schema, dir: &Path) -> Result<Manifest> {
+/// Unquoted data: 8 MB chunks, each read and parsed by its own worker.
+fn write_fast(source: &Source, schema: &csv::Schema, dir: &Path) -> Result<Option<Manifest>> {
+    let chunks = source.split(schema.data_start as u64, csv::CHUNK_BYTES as u64)?;
+    write_columns(source, &chunks, schema, dir, &|r: &Range<u64>| {
+        let b = source.read(r.start, (r.end - r.start) as usize)?;
+        Ok(csv::parse(&b, 0..b.len(), schema))
+    })
+}
+
+/// Quoted data: the whole file in one piece through the general CSV reader, from a memory map.
+fn write_quoted(source: &Source, schema: &csv::Schema, dir: &Path) -> Result<Option<Manifest>> {
+    let map = bytes::map(&source.path)?;
+    map.advise_sequential();
+    let whole = schema.data_start as u64..map.len() as u64;
+    let chunks = std::slice::from_ref(&whole);
+    write_columns(source, chunks, schema, dir, &|r: &Range<u64>| {
+        Ok(csv::parse(&map, r.start as usize..r.end as usize, schema))
+    })
+}
+
+type ParseChunk<'a> = dyn Fn(&Range<u64>) -> Result<csv::Rows> + Sync + 'a;
+
+/// Parses the chunks and writes every column; `Ok(None)` when the fast path met a quote and the file must be read
+/// again.
+fn write_columns(
+    source: &Source,
+    chunks: &[Range<u64>],
+    schema: &csv::Schema,
+    dir: &Path,
+    parse_chunk: &ParseChunk,
+) -> Result<Option<Manifest>> {
+    let path = source.path.as_path();
     let create = |name: &str| {
         let p = dir.join(name);
         File::create(&p).map(|f| BufWriter::with_capacity(1 << 20, f)).map_err(io_err(p))
@@ -136,43 +257,75 @@ fn write_columns(path: &Path, source: &[u8], schema: &csv::Schema, dir: &Path) -
     let numeric: Vec<_> = schema.numeric_columns().map(|(_, c)| c.clone()).collect();
     let mut outs = (0..numeric.len()).map(|k| create(&format!("c{k}.f64"))).collect::<Result<Vec<_>>>()?;
 
-    let chunks = csv::split(source, schema, csv::CHUNK_BYTES);
-    let (mut rows, mut skipped) = (0usize, 0usize);
-    let (mut t_first, mut t_last) = (None, None::<i64>);
+    // Batches parse in parallel while a writer thread writes the previous batch in order.
     let batch = rayon::current_num_threads() * 2;
-    for group in chunks.chunks(batch) {
-        let parsed: Vec<csv::Rows> = group.par_iter().map(|r| csv::parse(source, r.clone(), schema)).collect();
-        for p in parsed {
-            if let Some(w) = &mut t_out {
-                if let Some(i) = p.t.windows(2).position(|w| w[1] < w[0]) {
-                    return Err(format_err(path, format!("time goes backwards at data row {}", rows + i + 2)));
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<csv::Rows>>(1);
+    let written = std::thread::scope(|s| {
+        let writer = s.spawn(move || -> Result<(usize, usize, Option<i64>, Option<i64>)> {
+            let (mut rows, mut skipped) = (0usize, 0usize);
+            let (mut t_first, mut t_last) = (None, None::<i64>);
+            for parsed in rx {
+                for p in parsed {
+                    if let Some(w) = &mut t_out {
+                        if let Some(i) = p.t.windows(2).position(|w| w[1] < w[0]) {
+                            return Err(format_err(path, format!("time goes backwards at data row {}", rows + i + 2)));
+                        }
+                        if let (Some(prev), Some(&first)) = (t_last, p.t.first())
+                            && first < prev
+                        {
+                            return Err(format_err(path, format!("time goes backwards at data row {}", rows + 1)));
+                        }
+                        t_first = t_first.or(p.t.first().copied());
+                        t_last = p.t.last().copied().or(t_last);
+                        w.write_all(bytemuck::cast_slice(&p.t)).map_err(io_err(dir))?;
+                    }
+                    for (w, col) in outs.iter_mut().zip(&p.columns) {
+                        w.write_all(bytemuck::cast_slice(col)).map_err(io_err(dir))?;
+                    }
+                    rows += p.rows;
+                    skipped += p.skipped;
                 }
-                if let (Some(prev), Some(&first)) = (t_last, p.t.first())
-                    && first < prev
-                {
-                    return Err(format_err(path, format!("time goes backwards at data row {}", rows + 1)));
+            }
+            for mut w in t_out.into_iter().chain(outs) {
+                w.flush().map_err(io_err(dir))?;
+            }
+            Ok((rows, skipped, t_first, t_last))
+        });
+        let (mut quotes, mut read_error) = (false, None);
+        for group in chunks.chunks(batch) {
+            let parsed = match group.par_iter().map(parse_chunk).collect::<Result<Vec<csv::Rows>>>() {
+                Ok(p) => p,
+                Err(e) => {
+                    read_error = Some(e);
+                    break;
                 }
-                t_first = t_first.or(p.t.first().copied());
-                t_last = p.t.last().copied().or(t_last);
-                w.write_all(bytemuck::cast_slice(&p.t)).map_err(io_err(dir))?;
+            };
+            if parsed.iter().any(|r| r.quotes) {
+                quotes = true;
+                break;
             }
-            for (w, col) in outs.iter_mut().zip(&p.columns) {
-                w.write_all(bytemuck::cast_slice(col)).map_err(io_err(dir))?;
+            if tx.send(parsed).is_err() {
+                break; // the writer stopped with an error
             }
-            rows += p.rows;
-            skipped += p.skipped;
         }
-    }
-    for mut w in t_out.into_iter().chain(outs) {
-        w.flush().map_err(io_err(dir))?;
+        drop(tx);
+        let written = writer.join().expect("the cache writer doesn't panic");
+        match read_error {
+            Some(e) => Err(e),
+            None => written.map(|w| (w, quotes)),
+        }
+    });
+    let ((rows, skipped, t_first, t_last), quotes) = written?;
+    if quotes {
+        return Ok(None);
     }
     let time = match schema.time {
         TimeColumn::Numeric { index, .. } | TimeColumn::Iso { index } => Some(schema.columns[index].name.clone()),
         TimeColumn::Index => None,
     };
-    Ok(Manifest {
+    Ok(Some(Manifest {
         version: MANIFEST_VERSION,
-        source_size: source.len() as u64,
+        source_size: source.len,
         rows,
         skipped_rows: skipped,
         time,
@@ -184,7 +337,7 @@ fn write_columns(path: &Path, source: &[u8], schema: &csv::Schema, dir: &Path) -
         skipped_columns: schema.columns.iter().filter(|c| c.kind == csv::Kind::Text).map(|c| c.name.clone()).collect(),
         t_first,
         t_last,
-    })
+    }))
 }
 
 fn load(path: &Path, dir: &Path, m: Manifest) -> Result<CsvRecording> {
@@ -267,6 +420,21 @@ mod tests {
         assert_eq!(fs::metadata(&manifest).unwrap().modified().unwrap(), before);
         // nothing beside the source
         assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn quotes_found_late_restart_with_the_general_reader() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("late_quotes.csv");
+        let mut text = String::from("time,v,note\n");
+        for i in 0..400_000 {
+            text.push_str(&format!("{i},{i},x\n"));
+        }
+        text.push_str("400000,1,\"two\nlines\"\n400001,2,y\n");
+        fs::write(&src, &text).unwrap();
+        let r = open_csv(&src, &tmp.path().join("cache")).unwrap();
+        assert_eq!(r.info().samples, 400_002);
+        assert_eq!(r.info().t_last, Some(400_001_000_000_000));
     }
 
     #[test]
