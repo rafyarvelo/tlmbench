@@ -71,7 +71,8 @@ fn trim_float(v: f64, digits: usize) -> String {
 }
 
 /// Parses an ISO 8601 date or date-time: `2023-01-03`, `2023-01-03T10:20:30`, `2023-01-03 10:20:30.123456789`,
-/// with an optional `Z` or `±hh:mm` offset. No offset means UTC.
+/// with an optional `Z` or `±hh:mm` offset. No offset means UTC. Times outside the i64 nanosecond range (about
+/// 1677–2262) are None.
 pub fn parse_iso(s: &str) -> Option<Timestamp> {
     let b = s.trim().as_bytes();
     let num = |r: std::ops::Range<usize>| -> Option<u32> {
@@ -85,7 +86,8 @@ pub fn parse_iso(s: &str) -> Option<Timestamp> {
     if !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
         return None;
     }
-    let mut t = days_from_civil(y, mo, d) * 86_400 * NS_PER_S;
+    // i128 until the end: a year like 9489 overflows i64 nanoseconds
+    let mut t = days_from_civil(y, mo, d) as i128 * 86_400 * NS_PER_S as i128;
     let mut i = 10;
     if i < b.len() && (b[i] == b'T' || b[i] == b' ') {
         if b.len() < i + 9 || b[i + 3] != b':' || b[i + 6] != b':' {
@@ -95,7 +97,7 @@ pub fn parse_iso(s: &str) -> Option<Timestamp> {
         if hh > 23 || mm > 59 || ss > 60 {
             return None;
         }
-        t += (hh as i64 * 3600 + mm as i64 * 60 + ss as i64) * NS_PER_S;
+        t += (hh as i128 * 3600 + mm as i128 * 60 + ss as i128) * NS_PER_S as i128;
         i += 9;
         if i < b.len() && (b[i] == b'.' || b[i] == b',') {
             let start = i + 1;
@@ -106,18 +108,19 @@ pub fn parse_iso(s: &str) -> Option<Timestamp> {
             if i == start {
                 return None;
             }
-            t += fraction_ns(&b[start..i]);
+            t += fraction_ns(&b[start..i]) as i128;
         }
     }
-    match b.get(i) {
-        None => Some(t),
-        Some(b'Z' | b'z') if i + 1 == b.len() => Some(t),
+    let t = match b.get(i) {
+        None => t,
+        Some(b'Z' | b'z') if i + 1 == b.len() => t,
         Some(&sign @ (b'+' | b'-')) if b.len() == i + 6 && b[i + 3] == b':' => {
-            let off = (num(i + 1..i + 3)? as i64 * 3600 + num(i + 4..i + 6)? as i64 * 60) * NS_PER_S;
-            Some(if sign == b'+' { t - off } else { t + off })
+            let off = (num(i + 1..i + 3)? as i128 * 3600 + num(i + 4..i + 6)? as i128 * 60) * NS_PER_S as i128;
+            if sign == b'+' { t - off } else { t + off }
         }
-        _ => None,
-    }
+        _ => return None,
+    };
+    Timestamp::try_from(t).ok()
 }
 
 /// Up to 9 fraction digits as nanoseconds (more digits are truncated).
@@ -173,6 +176,8 @@ mod tests {
         assert_eq!(parse_iso("2023-01-03"), Some(1_672_704_000 * NS_PER_S));
         assert_eq!(parse_iso("2026-11-01 01:00:00+01:00"), parse_iso("2026-11-01T00:00:00Z"));
         assert_eq!(parse_iso("1969-12-31T23:59:59.5Z"), Some(-NS_PER_S / 2));
+        assert_eq!(parse_iso("9489-01-09"), None); // past 2262: out of i64 nanoseconds (found by fuzzing)
+        assert_eq!(parse_iso("2262-04-11T23:47:16.854775807Z"), Some(i64::MAX));
         for bad in ["", "2023", "2023-13-01", "2023-01-01T25:00:00", "2023-01-01T10:00", "N/A", "2023-01-01x"] {
             assert_eq!(parse_iso(bad), None, "{bad:?}");
         }
