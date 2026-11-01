@@ -1,0 +1,354 @@
+//! M4 downsampling straight from raw samples.
+//!
+//! For a viewport of W pixel columns, each column's bucket keeps its first, min, max and last samples (in time
+//! order). A polyline through those points draws the same pixels as one through every raw sample, so the reply
+//! is at most about 4W points whatever the file size.
+//!
+//! Buckets sit on a global grid (`floor(t / bucket_ns)`), not on the viewport's left edge, so panning at a fixed
+//! zoom picks the same samples and the line doesn't shimmer. When the view holds at most 4W samples the raw
+//! samples are cheaper than M4 and are returned as they are.
+//!
+//! Missing samples: NaN values never become a bucket's min or max. A bucket with no samples, or only NaNs, is a
+//! gap: the trace gets one NaN point there, which breaks the line.
+
+use rayon::prelude::*;
+
+use crate::{Times, Timestamp, Value};
+
+/// The time range `[t0, t1)` drawn across `width_px` pixel columns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Viewport {
+    pub t0: Timestamp,
+    pub t1: Timestamp,
+    pub width_px: u32,
+}
+
+impl Viewport {
+    /// Bucket width in nanoseconds: the time one pixel column covers, at least 1 ns.
+    pub fn bucket_ns(&self) -> i64 {
+        let span = self.t1 as i128 - self.t0 as i128;
+        (span / self.width_px.max(1) as i128).clamp(1, i64::MAX as i128) as i64
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TraceKind {
+    /// Every sample in the view (at most 4W of them).
+    Raw,
+    /// First, min, max and last of each pixel column's bucket.
+    M4,
+}
+
+/// One channel reduced for a viewport. Includes the nearest sample on each side of the view, so the line runs
+/// to the edges. A NaN in `y` is a gap.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Trace {
+    pub kind: TraceKind,
+    /// Bucket width used (M4), or the bucket width the view would use (raw).
+    pub bucket_ns: i64,
+    pub t: Vec<Timestamp>,
+    pub y: Vec<f32>,
+}
+
+impl Trace {
+    pub fn len(&self) -> usize {
+        self.t.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.t.is_empty()
+    }
+}
+
+/// What the reduction emits, before times and values are looked up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Emit {
+    Sample(usize),
+    /// A gap starting at this time.
+    Gap(Timestamp),
+}
+
+/// Views with more samples than this are reduced on several threads.
+const PARALLEL_MIN_SAMPLES: usize = 1 << 21;
+
+/// Reduces one channel for a viewport. `values[i]` is the sample at `times.at(i)`; times must not decrease.
+pub fn m4<T: Times + ?Sized, V: Value>(times: &T, values: &[V], vp: Viewport) -> Trace {
+    let (kind, emits) = reduce(times, values, vp);
+    let mut t = Vec::with_capacity(emits.len());
+    let mut y = Vec::with_capacity(emits.len());
+    for e in emits {
+        match e {
+            Emit::Sample(i) => {
+                t.push(times.at(i));
+                y.push(values[i].to_f32());
+            }
+            Emit::Gap(at) => {
+                t.push(at);
+                y.push(f32::NAN);
+            }
+        }
+    }
+    Trace { kind, bucket_ns: vp.bucket_ns(), t, y }
+}
+
+pub(crate) fn reduce<T: Times + ?Sized, V: Value>(times: &T, values: &[V], vp: Viewport) -> (TraceKind, Vec<Emit>) {
+    assert_eq!(times.len(), values.len(), "times and values differ in length");
+    let n = times.len();
+    if n == 0 || vp.t1 <= vp.t0 || vp.width_px == 0 {
+        return (TraceKind::Raw, Vec::new());
+    }
+    let bw = vp.bucket_ns();
+
+    let (lo, hi) = (times.lower_bound(vp.t0), times.lower_bound(vp.t1));
+    if hi - lo <= 4 * vp.width_px as usize {
+        let mut out = Vec::with_capacity(hi - lo + 2);
+        out.extend(lo.checked_sub(1).map(Emit::Sample));
+        out.extend((lo..hi).map(Emit::Sample));
+        if hi < n {
+            out.push(Emit::Sample(hi));
+        }
+        return (TraceKind::Raw, out);
+    }
+
+    // Whole buckets on the global grid, including the parts outside [t0, t1) of the first and last ones.
+    let (b_first, b_last) = (vp.t0.div_euclid(bw), (vp.t1 - 1).div_euclid(bw));
+    let bucket_start = |b: i64| times.lower_bound(b.saturating_mul(bw));
+    let (lo, hi) = (bucket_start(b_first), bucket_start(b_last + 1));
+
+    let reduce_buckets = |from: i64, to: i64| {
+        let mut out = Vec::with_capacity(4 * (to - from) as usize);
+        let mut start = bucket_start(from);
+        for b in from..to {
+            let end = bucket_start(b + 1);
+            reduce_bucket(values, start, end, b * bw, &mut out);
+            start = end;
+        }
+        out
+    };
+
+    let buckets = b_last - b_first + 1;
+    let parts: Vec<Vec<Emit>> = if hi - lo >= PARALLEL_MIN_SAMPLES && buckets > 1 {
+        let chunks = (rayon::current_num_threads() as i64 * 4).min(buckets);
+        (0..chunks)
+            .into_par_iter()
+            .map(|c| reduce_buckets(b_first + buckets * c / chunks, b_first + buckets * (c + 1) / chunks))
+            .collect()
+    } else {
+        vec![reduce_buckets(b_first, b_last + 1)]
+    };
+
+    let mut out = Vec::with_capacity(parts.iter().map(Vec::len).sum::<usize>() + 2);
+    out.extend(lo.checked_sub(1).map(Emit::Sample));
+    for e in parts.into_iter().flatten() {
+        // runs of empty buckets are one gap, also across chunk boundaries
+        if !(matches!(e, Emit::Gap(_)) && matches!(out.last(), Some(Emit::Gap(_)))) {
+            out.push(e);
+        }
+    }
+    if hi < n {
+        out.push(Emit::Sample(hi));
+    }
+    (TraceKind::M4, out)
+}
+
+/// Appends the first, min, max and last samples of `values[start..end]` in index order (each once), or a gap
+/// if the bucket has no non-NaN samples. Ties go to the earliest sample.
+#[inline]
+fn reduce_bucket<V: Value>(values: &[V], start: usize, end: usize, bucket_t: Timestamp, out: &mut Vec<Emit>) {
+    let bucket = &values[start..end];
+    let Some(first) = bucket.iter().position(|v| !v.is_nan()) else {
+        if !matches!(out.last(), Some(Emit::Gap(_))) {
+            out.push(Emit::Gap(bucket_t));
+        }
+        return;
+    };
+    let last = bucket.iter().rposition(|v| !v.is_nan()).unwrap_or(first);
+    let body = &bucket[first..=last];
+
+    // Comparisons with NaN are false, so starting from a real value skips NaNs.
+    let (mut mn, mut mx) = (body[0], body[0]);
+    for &v in body {
+        if v < mn {
+            mn = v;
+        }
+        if v > mx {
+            mx = v;
+        }
+    }
+    let imin = first + body.iter().position(|&v| v == mn).unwrap_or(0);
+    let imax = first + body.iter().position(|&v| v == mx).unwrap_or(0);
+
+    let mut idx = [first, imin.min(imax), imin.max(imax), last];
+    idx.iter_mut().for_each(|i| *i += start);
+    let mut prev = usize::MAX;
+    for i in idx {
+        if i != prev {
+            out.push(Emit::Sample(i));
+            prev = i;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RateTimes;
+    use proptest::prelude::*;
+
+    /// Brute force: group every sample by its bucket, one bucket at a time, with no binary searches.
+    fn reference<T: Times + ?Sized>(times: &T, values: &[f32], vp: Viewport) -> (TraceKind, Vec<Emit>) {
+        let n = times.len();
+        if n == 0 || vp.t1 <= vp.t0 || vp.width_px == 0 {
+            return (TraceKind::Raw, vec![]);
+        }
+        let bw = vp.bucket_ns();
+        let in_view: Vec<usize> = (0..n).filter(|&i| (vp.t0..vp.t1).contains(&times.at(i))).collect();
+        let context = |range: &[usize], out: &mut Vec<Emit>, before: bool| {
+            let edge = if before { range.first() } else { range.last() };
+            let idx = match (edge, before) {
+                (Some(&i), true) => i.checked_sub(1),
+                (Some(&i), false) => Some(i + 1).filter(|&j| j < n),
+                (None, _) => None,
+            };
+            out.extend(idx.map(Emit::Sample));
+        };
+        if in_view.len() <= 4 * vp.width_px as usize {
+            let mut out = vec![];
+            if in_view.is_empty() {
+                let lo = (0..n).find(|&i| times.at(i) >= vp.t0).unwrap_or(n);
+                out.extend(lo.checked_sub(1).map(Emit::Sample));
+                if lo < n {
+                    out.push(Emit::Sample(lo));
+                }
+                return (TraceKind::Raw, out);
+            }
+            context(&in_view, &mut out, true);
+            out.extend(in_view.iter().map(|&i| Emit::Sample(i)));
+            context(&in_view, &mut out, false);
+            return (TraceKind::Raw, out);
+        }
+        let (bf, bl) = (vp.t0.div_euclid(bw), (vp.t1 - 1).div_euclid(bw));
+        let all: Vec<usize> = (0..n).filter(|&i| (bf..=bl).contains(&times.at(i).div_euclid(bw))).collect();
+        let mut out = vec![];
+        context(&all, &mut out, true);
+        for b in bf..=bl {
+            let idx: Vec<usize> =
+                all.iter().copied().filter(|&i| times.at(i).div_euclid(bw) == b && !values[i].is_nan()).collect();
+            if idx.is_empty() {
+                if !matches!(out.last(), Some(Emit::Gap(_))) {
+                    out.push(Emit::Gap(b * bw));
+                }
+                continue;
+            }
+            let mn = idx.iter().map(|&i| values[i]).fold(f32::INFINITY, f32::min);
+            let mx = idx.iter().map(|&i| values[i]).fold(f32::NEG_INFINITY, f32::max);
+            let imin = *idx.iter().find(|&&i| values[i] == mn).unwrap();
+            let imax = *idx.iter().find(|&&i| values[i] == mx).unwrap();
+            let mut pick = vec![idx[0], imin, imax, *idx.last().unwrap()];
+            pick.sort();
+            pick.dedup();
+            out.extend(pick.into_iter().map(Emit::Sample));
+        }
+        context(&all, &mut out, false);
+        (TraceKind::M4, out)
+    }
+
+    /// Sorted timestamps with repeats and jumps (gaps), and values with NaN runs and repeated extremes.
+    fn series() -> impl Strategy<Value = (Vec<Timestamp>, Vec<f32>)> {
+        (1usize..600).prop_flat_map(|n| {
+            (
+                proptest::collection::vec(prop_oneof![8 => 0i64..5, 1 => Just(0), 1 => 50i64..400], n),
+                proptest::collection::vec(prop_oneof![8 => (-4i32..4).prop_map(|v| v as f32), 1 => Just(f32::NAN)], n),
+                -1000i64..1000,
+            )
+                .prop_map(|(steps, values, start)| {
+                    let times = steps
+                        .iter()
+                        .scan(start, |t, s| {
+                            *t += s;
+                            Some(*t)
+                        })
+                        .collect();
+                    (times, values)
+                })
+        })
+    }
+
+    fn viewport() -> impl Strategy<Value = Viewport> {
+        (-1500i64..40_000, 1i64..40_000, 1u32..80).prop_map(|(t0, span, w)| Viewport { t0, t1: t0 + span, width_px: w })
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(2000))]
+
+        #[test]
+        fn matches_brute_force((times, values) in series(), vp in viewport()) {
+            prop_assert_eq!(reduce(&times, &values, vp), reference(&times, &values, vp));
+        }
+
+        #[test]
+        fn rate_times_match_brute_force(
+            values in proptest::collection::vec(prop_oneof![8 => -100f32..100.0, 1 => Just(f32::NAN)], 1..800),
+            rate in 1u32..5000, t0 in -10_000_000i64..10_000_000, vp in viewport(), scale in 1i64..200_000,
+        ) {
+            let times = RateTimes::from_rate(t0, rate as f64, values.len());
+            let vp = Viewport { t0: vp.t0 * scale, t1: vp.t1 * scale, width_px: vp.width_px };
+            prop_assert_eq!(reduce(&times, &values, vp), reference(&times, &values, vp));
+        }
+
+        /// The pixel-exactness argument: every bucket's min and max survive the reduction.
+        #[test]
+        fn keeps_every_bucket_extreme((times, values) in series(), vp in viewport()) {
+            let trace = m4(&times, &values, vp);
+            let bw = vp.bucket_ns();
+            for (i, (&t, &v)) in times.iter().zip(&values).enumerate() {
+                if v.is_nan() || !(vp.t0..vp.t1).contains(&t) { continue; }
+                let b = t.div_euclid(bw);
+                let kept = trace.t.iter().zip(&trace.y).filter(|(tt, _)| tt.div_euclid(bw) == b).map(|(_, y)| *y);
+                let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+                for y in kept.filter(|y| !y.is_nan()) { lo = lo.min(y); hi = hi.max(y); }
+                prop_assert!(lo <= v && v <= hi, "sample {} ({}, {}) outside its bucket's kept range", i, t, v);
+            }
+        }
+    }
+
+    #[test]
+    fn parallel_path_matches_sequential() {
+        let n = PARALLEL_MIN_SAMPLES * 3;
+        let times = RateTimes::from_rate(0, 1000.0, n);
+        let values: Vec<f32> =
+            (0..n).map(|i| if i % 100_003 < 50 { f32::NAN } else { ((i as f32) * 0.001).sin() }).collect();
+        let vp = Viewport { t0: 0, t1: times.at(n - 1) + 1, width_px: 1500 };
+        let (kind, par) = reduce(&times, &values, vp);
+        assert_eq!(kind, TraceKind::M4);
+        // the same viewport split by hand into sequential pieces gives the same emits
+        let bw = vp.bucket_ns();
+        let mut seq = vec![];
+        let mut start = 0;
+        for b in vp.t0.div_euclid(bw)..=(vp.t1 - 1).div_euclid(bw) {
+            let end = times.lower_bound((b + 1) * bw);
+            reduce_bucket(&values, start, end, b * bw, &mut seq);
+            start = end;
+        }
+        assert_eq!(par, seq);
+    }
+
+    #[test]
+    fn sparse_view_returns_raw_samples_with_neighbours() {
+        let times: Vec<Timestamp> = (0..100).map(|i| i * 10).collect();
+        let values: Vec<f32> = (0..100).map(|i| i as f32).collect();
+        let tr = m4(&times, &values, Viewport { t0: 205, t1: 255, width_px: 1000 });
+        assert_eq!(tr.kind, TraceKind::Raw);
+        assert_eq!(tr.t, vec![200, 210, 220, 230, 240, 250, 260]);
+    }
+
+    #[test]
+    fn empty_buckets_become_one_gap() {
+        let mut times: Vec<Timestamp> = (0..1000).collect();
+        times.extend(5000..6000);
+        let values = vec![1.0f32; times.len()];
+        let tr = m4(&times, &values, Viewport { t0: 0, t1: 6000, width_px: 60 });
+        assert_eq!(tr.kind, TraceKind::M4);
+        assert_eq!(tr.y.iter().filter(|y| y.is_nan()).count(), 1);
+    }
+}
