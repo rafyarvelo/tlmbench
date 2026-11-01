@@ -9,8 +9,10 @@ python := env("TLMBENCH_VENV", ".venv") / "bin/python"
 # The data folder `ro-test` proves untouched, and whether it must be read-only (CI mounts it read-only)
 ro_dir := env("TLMBENCH_RO_DIR", "prototype/tests/fold")
 ro_required := env("TLMBENCH_RO_REQUIRED", "")
-# Commands run against that folder; each roadmap phase adds the CLI and core calls it brings
-ro_commands := ""
+# Commands run against that folder (its cache goes to a temp folder); each roadmap phase adds what it brings
+ro_commands := "--cmd 'c=$(mktemp -d); find \"" + ro_dir + "\" -name \"*.csv\" -exec target/debug/tlmbench info --cache \"$c\" {} +; r=$?; rm -rf \"$c\"; exit $r'"
+# Generated recordings (never in the repo; see docs/follow-ups.md for the large sets)
+data := env("TLMBENCH_DATA", home_directory() / "tlmbench-data")
 
 default:
     @just --list --unsorted
@@ -66,16 +68,17 @@ fuzz crate target:
 
 # Prove nothing is written next to the data (see ci/ro_check.py)
 ro-test:
+    cargo build -q -p tlmbench
     python3 ci/ro_check.py "{{ro_dir}}" {{ if ro_required != "" { "--require-ro" } else { "" } }} {{ro_commands}}
 
 # ro-test against a read-only disk image of the folder (macOS)
 ro-test-mac:
     #!/usr/bin/env bash
     set -euo pipefail
-    img="$(mktemp -d)/tlmbench-ro.dmg"; mnt="$(mktemp -d)"
+    tmp="$(mktemp -d)"; img="$tmp/tlmbench-ro.dmg"; mnt="$tmp/mnt"; mkdir "$mnt"
     hdiutil create -quiet -srcfolder "{{ro_dir}}" -format UDRO "$img"   # UDRO: a read-only image
     hdiutil attach -quiet -readonly -nobrowse -mountpoint "$mnt" "$img"
-    trap 'hdiutil detach -quiet "$mnt"; rm -f "$img"' EXIT
+    trap 'hdiutil detach -quiet "$mnt"; rm -rf "$tmp"' EXIT
     TLMBENCH_RO_DIR="$mnt" TLMBENCH_RO_REQUIRED=1 just ro-test
 
 # Run the desktop app with hot reload (Mac: WKWebView, as shipped)
@@ -91,6 +94,14 @@ ci-linux: lint test bench-smoke proto-test ro-test fuzz-smoke app-build
 
 # Everything the macOS and Windows CI jobs run
 ci-native: lint test app-build
+
+# Write synthetic recordings: just gen --samples 10M --channels 4 (see tools/gen)
+gen *args:
+    cargo run -q --release -p tlmbench-gen -- {{args}}
+
+# The Phase 1 gate recording: 100M samples of one channel, as .tlm (~400 MB) and CSV (~2 GB)
+gen-gate:
+    cargo run -q --release -p tlmbench-gen -- --samples 100M --channels 1 --out "{{data}}/gate" --name gate-100M
 
 # Remove Rust build output (it grows to 10+ GB over time)
 clean:

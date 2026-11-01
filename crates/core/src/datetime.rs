@@ -42,6 +42,14 @@ pub fn format_utc(t: Timestamp) -> String {
     format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}{frac}Z")
 }
 
+/// Times before 2000 are taken as relative to the start of the recording (seconds from 0), not dates.
+pub const RELATIVE_BEFORE: Timestamp = 946_684_800 * NS_PER_S;
+
+/// A time for display: RFC 3339 for dates, `+12.5 s` / `+01:02:03` for relative times.
+pub fn format_time(t: Timestamp) -> String {
+    if t.abs() < RELATIVE_BEFORE { format!("+{}", format_duration(t)) } else { format_utc(t) }
+}
+
 /// Formats a duration in nanoseconds as `1d 02:03:04.5`, `02:03:04` or `3.25 s`.
 pub fn format_duration(ns: i64) -> String {
     let s = ns as f64 / 1e9;
@@ -50,9 +58,9 @@ pub fn format_duration(ns: i64) -> String {
     }
     let total = ns / NS_PER_S;
     let (d, h, m, sec) = (total / 86_400, total / 3600 % 24, total / 60 % 60, total % 60);
-    let frac = ns % NS_PER_S;
-    let frac =
-        if frac == 0 { String::new() } else { trim_float(frac as f64 / 1e9, 3).trim_start_matches('0').to_owned() };
+    // milliseconds, truncated (rounding could carry into the seconds)
+    let ms = ns % NS_PER_S / 1_000_000;
+    let frac = if ms == 0 { String::new() } else { format!(".{ms:03}").trim_end_matches('0').to_owned() };
     let day = if d > 0 { format!("{d}d ") } else { String::new() };
     format!("{day}{h:02}:{m:02}:{sec:02}{frac}")
 }
@@ -183,9 +191,16 @@ mod tests {
     }
 
     #[test]
+    fn relative_times() {
+        assert_eq!(format_time(19_990_000_000), "+19.99 s");
+        assert_eq!(format_time(1_767_225_600 * NS_PER_S), "2026-01-01T00:00:00Z");
+    }
+
+    #[test]
     fn durations() {
         assert_eq!(format_duration(3_250_000_000), "3.25 s");
         assert_eq!(format_duration(10_000 * NS_PER_S), "02:46:40");
         assert_eq!(format_duration((90_061 * NS_PER_S) + 500_000_000), "1d 01:01:01.5");
+        assert_eq!(format_duration(99_999_900_000), "00:01:39.999");
     }
 }

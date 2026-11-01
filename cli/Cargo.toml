@@ -1,0 +1,25 @@
+[package]
+name = "tlmbench"
+description = "TelemetryBench command line: inspect, convert, check and export recordings without a window"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tlmbench"
+path = "src/main.rs"
+
+[dependencies]
+tlmbench-core.workspace = true
+tlmbench-decode.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

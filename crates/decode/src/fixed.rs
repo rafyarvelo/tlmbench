@@ -8,7 +8,7 @@ use tlmbench_core::{ChannelInfo, RateTimes, Recording, RecordingInfo, TimeSource
 
 use crate::bytes::{self, Bytes};
 use crate::descriptor::{DType, Descriptor, Endian, TimeSpec};
-use crate::error::{Result, format_err, io_err};
+use crate::error::{Error, Result, format_err, io_err};
 use crate::reference;
 use crate::strided::{FieldTimes, Pod, Strided};
 
@@ -34,7 +34,10 @@ impl FixedWidth {
     /// Opens a fixed-width file laid out by a separate descriptor file.
     pub fn open_with_descriptor(path: &Path, descriptor: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(descriptor).map_err(io_err(descriptor))?;
-        let desc = Descriptor::parse(&text).map_err(|e| format_err(descriptor, e.to_string()))?;
+        let desc = Descriptor::parse(&text).map_err(|e| match e {
+            Error::Descriptor(msg) => Error::Descriptor(format!("{}: {msg}", descriptor.display())),
+            other => other,
+        })?;
         let bytes = bytes::map(path)?;
         let header_len = desc.header_size as usize;
         let name = desc.name.clone().unwrap_or_else(|| "fixed-width".into());

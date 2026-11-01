@@ -1,0 +1,16 @@
+[package]
+name = "tlmbench-gen"
+description = "Deterministic synthetic recordings for tests and benchmarks (sine + noise + spikes + gaps)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tlmbench-core.workspace = true
+tlmbench-decode.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true
