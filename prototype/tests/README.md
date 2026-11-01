@@ -2,7 +2,7 @@
 
 Setup once: `npm install` here (installs Playwright), then `npx playwright install chromium`.
 
-`./run.sh` runs the suite: every `t_*.js` here (26 tests), three at a time, about 4 minutes in all. Timing tests
+`./run.sh` runs the suite: every `t_*.js` here (27 tests), three at a time, about 4 minutes in all. Timing tests
 (`t_loading`, how fast rows appear; `t_perf_gauges`, how long 100+ widgets take to draw) run alone at the end so
 other tests' load can't skew them.
 It prints PASS or FAIL per test with the checks that failed, then a summary, and exits 1 on any failure.
@@ -23,7 +23,7 @@ It prints PASS or FAIL per test with the checks that failed, then a summary, and
 | t_layouts | save as, New tab, delete + undo, shared views, closing tabs |
 | t_settings | apply and save, Basic/All, search, time labels, theme |
 | t_home | start page, Open folder, session row, Open only this |
-| t_events | the Events panel: category chips (hide, only this, All), Expand all / Collapse all in the title row, the compact header, rule rows in the editor (group follows category, + Timing) |
+| t_events | the Events panel: category chips (hide, only this, All, None; the charts follow them per tab, or not when unlinked), Expand all / Collapse all in the title row, the compact header, rule rows in the editor (group follows category, + Timing) |
 | t_gauges | Gauges view: widget per channel, auto type, follows time, type and range menu, your own SVG widgets (sanitised), persistence |
 | t_widgets | commanded vs actual, bar group, flags, state timeline, XY dot and GPS track, min/max marks; pairs and groups found by name, ungroup/separate, persistence; widget sizes; a shared code widget behind the trust prompt; dragging widget titles |
 | t_rules | rules and checks in one editor: old rules moved to "Event rules", rule rows (lists: magnitude, outside, past the limits), on/off, kind switch, + Rule, rule events, editing a rule event, Mark when… |
@@ -35,6 +35,7 @@ It prints PASS or FAIL per test with the checks that failed, then a summary, and
 | t_share | Share… as TOML (rule sets, events, categories, recipes), Export to HTML (Full or Light by budget), no sessions beside the data |
 | t_colsel | table column selection: Shift-click ranges from the header or checkbox, Ctrl-click |
 | t_colors | channel colours cycle evenly past eight channels |
+| t_checksel | check rows: select and deselect, the tooltip, opening a check's channels |
 | t_phone | phone layout: scroll position kept, time labels on every chart, long names on selected rows |
 
 Each test uses `lib.js`: `T.run(name, async h => { ... }, opts)`. `h.check(label, condition, got)` records a

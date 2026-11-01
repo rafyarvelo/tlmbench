@@ -482,6 +482,11 @@ body.dnd-panel aside.side.empty, body.dnd-panel aside.insp.empty { display: flex
 .evcats { display: flex; flex-wrap: nowrap; gap: 4px; margin: 0 0 6px; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); }
 .evcats::-webkit-scrollbar { display: none; }
 .evcat { flex: none; }
+.evlink { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--fg-muted); cursor: pointer; padding: 0; }
+.evlink svg { width: 13px; height: 13px; } .evlink[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-line); }
+.evcfix { position: sticky; left: 0; z-index: 1; display: inline-flex; gap: 4px; flex: none; padding-right: 4px; background: var(--surface); box-shadow: 6px 0 6px -4px var(--surface); }
+.evcat.all[aria-pressed="true"] { color: var(--fg); border-color: var(--accent-line); background: var(--accent-soft); }
+.evcat.all[aria-pressed="false"] { text-decoration: none; opacity: 1; color: var(--fg-muted); background: transparent; }
 .evcat { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; min-height: 24px; border-radius: 12px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); font: 11.5px var(--font-ui); cursor: pointer; }
 .evcat i { width: 8px; height: 8px; border-radius: 4px; flex: none; }
 .evcat small { color: var(--fg-muted); font-family: var(--font-data); }
@@ -643,6 +648,7 @@ body.dnd-panel aside.side.empty, body.dnd-panel aside.insp.empty { display: flex
 .ckatt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; padding: 2px 0 8px; }
 .ckatt label { display: inline-flex; align-items: center; gap: 5px; }
 .cklab { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-muted); min-width: 52px; } .cklab.sm { min-width: 0; text-transform: none; letter-spacing: 0; }
+.cksnl { display: inline-flex; align-items: center; gap: 8px; margin-left: 14px; flex: 0 1 320px; min-width: 0; } .cksnl .cksname { flex: 1; min-width: 0; }
 .ckrow { border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin: 6px 0; display: flex; flex-direction: column; gap: 6px; }
 .ckrow.focus { box-shadow: 0 0 0 2px var(--accent); }
 .ckr1, .ckr2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -3005,7 +3011,7 @@ const snap = (panes) => JSON.stringify(layoutOf(panes));
    (file 1, plain channel names). A workspace tab ({ idx }) shows a saved, built-in or shared layout
    against whichever files are open. "Save as…" turns a file tab into a workspace tab. */
 let tabs = [], activeTab = 0;
-function stashTab() { const t = tabs[activeTab]; if (!t) return; rememberFileLayout(); Object.assign(t, { idx: state.wsIdx, panes: state.panes, base: state.wsBase, sel: state.sel, color: state.color, play: state.play ? Object.assign({}, state.play, { running: false }) : null }); }
+function stashTab() { const t = tabs[activeTab]; if (!t) return; rememberFileLayout(); Object.assign(t, { idx: state.wsIdx, panes: state.panes, base: state.wsBase, sel: state.sel, color: state.color, play: state.play ? Object.assign({}, state.play, { running: false }) : null, evf: evFilterState() }); }
 const tabName = t => t.idx == null ? (t.label || 'Untitled') : (allWs()[t.idx] || { name: '?' }).name;
 function restoreTab(k) {
   activeTab = k;
@@ -3014,6 +3020,7 @@ function restoreTab(k) {
   // a live tab is a file tab whose files grow; the live strip comes with it
   if (!(t.live && LIVES[t.live]) || liveActive !== t.live) exitLive();
   state.wsIdx = t.idx; state.panes = t.panes || []; state.wsBase = t.base; state.sel = t.sel || 0; state.color = t.color || {};
+  applyEvFilterState(t.evf || (t.idx != null && allWs()[t.idx] ? allWs()[t.idx].events : null));
   wsNotice = null;
   // a file tab makes its file the reference while it is in front
   const fl = t.ref && FILES.find(f => f.key === t.ref);
@@ -3195,7 +3202,7 @@ function askForSlot(ws, n, done) {
 }
 function shareView(name) {
   const files = FILES.filter(f => f.open).map(f => ({ path: `${f.folder}/${f.name}`, slot: f.slot, align: f.align, offset: f.offset }));
-  const entry = { id: 's' + Date.now().toString(36), name, by: 'you', file: slugify(name) + '.tlmview.json', files, view: [state.t0, state.t1], panes: layoutOf() };
+  const entry = { id: 's' + Date.now().toString(36), name, by: 'you', file: slugify(name) + '.tlmview.json', files, view: [state.t0, state.t1], panes: layoutOf(), events: evFilterState() };
   sharedWs.push(entry); persistShared();
   const n = { text: `Shared as .tlmbench/${entry.file}. Anyone who opens this folder sees it under "Shared in this folder".`, undo: () => { sharedWs = sharedWs.filter(w => w !== entry); persistShared(); updateWsStatus(); renderFiles(); } };
   wsNotice = n; updateWsStatus(); renderFiles();
@@ -3321,6 +3328,7 @@ state.wsIdx = null; state.wsBase = '[]';
 let wsNotice = null;
 function loadWorkspace(ws, idx) {
   if (idx != null) state.wsIdx = idx;
+  applyEvFilterState(ws.events || null);
   // older layouts named files directly (accel_x@0415): open that file and use its slot name
   const legacy = id => { const m = /^(.*)@(\w+)$/.exec(id); if (!m) return id; const f = FILES.find(x => x.short === m[2]); if (!f) return id; if (!f.open) openFile(f.key, true); return idFor(m[1], f.slot); };
   state.panes = ws.panes.map(p => Object.assign({ ids: p.ids.map(legacy).filter(id => BYID[id]), beside: !!p.beside, mode: p.mode }, p.noEvents ? { noEvents: true } : {}, p.axis ? { axis: JSON.parse(JSON.stringify(p.axis)) } : {}, p.x ? { x: legacy(p.x) } : {}, p.widgets ? { widgets: JSON.parse(JSON.stringify(p.widgets)) } : {}));
@@ -3544,7 +3552,7 @@ function updateWsStatus() {
 function saveWs() {
   const ws = allWs()[state.wsIdx];
   if (!ws || readOnly(ws)) { openSaveAs(); return; }
-  ws.panes = layoutOf();
+  ws.panes = layoutOf(); ws.events = evFilterState();
   persistWs();
   state.wsBase = snap();
   updateWsStatus();
@@ -3590,7 +3598,7 @@ function bindWorkspaces() {
     closeTabMenu();
     if (nameMode === 'new') { switchWorkspace(insertUserWs({ name, panes: [] })); return; }
     if (nameMode === 'share') { shareView(name); return; }
-    state.wsIdx = insertUserWs({ name, panes: layoutOf() });
+    state.wsIdx = insertUserWs({ name, panes: layoutOf(), events: evFilterState() });
     if (tabs[activeTab]) delete tabs[activeTab].label;
     state.wsBase = snap();
     updateWsStatus();
@@ -4045,7 +4053,23 @@ const evInPane = (ev, files) => !files || files.has(ev.file);
 const catOf = ev => settings.eventCats.find(c => c.id === ev.cat) || null;
 const evColor = ev => (catOf(ev) || { color: '#8A94A3' }).color;
 const evCatName = ev => (catOf(ev) || { name: 'Uncategorized' }).name;
-const evShown = ev => { if (fileOff(evFile(ev)) === null) return false; const c = catOf(ev); return !c || c.show !== false; };
+const evChartsFollow = () => settings.evChartsFollow !== false;
+// on charts: with "Charts follow these filters" (default) the Events panel's chips, source and file toggles decide;
+// otherwise each category's "Show on charts" setting does. The text filter only ever narrows the list.
+const evShown = ev => {
+  if (fileOff(evFile(ev)) === null) return false;
+  if (!evChartsFollow()) { const c = catOf(ev); return !c || c.show !== false; }
+  if (evHiddenCats.has(ev.cat || '') || evHiddenFiles.has(ev.file)) return false;
+  const src = evFilter.src; return src === 'all' || !src || (src === 'rule' ? ev.src === 'rule' : ev.src !== 'rule');
+};
+// a tab's event filters: saved with the tab and with layouts; a new tab starts from Settings › "Show on charts"
+const evFilterState = () => ({ hide: [...evHiddenCats], src: evFilter.src || 'all' });
+function applyEvFilterState(st) {
+  evHiddenCats.clear(); evHiddenFiles.clear();
+  (st ? st.hide || [] : settings.eventCats.filter(c => c.show === false).map(c => c.id)).forEach(k => evHiddenCats.add(k));
+  evFilter.src = st && st.src ? st.src : 'all';
+}
+function evFiltersChanged() { renderEventList(); if (evChartsFollow()) { redrawOverlays(); if (overview) overview.redraw(false); } }
 const hexRgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
 // The visible event covering time t (instants match the sample at t), or null.
 function eventAt(t, halfSample, idx) {
@@ -5518,7 +5542,7 @@ function renderCatRows() {
   const count = id => allEvents().filter(e => e.cat === id).length;
   host.innerHTML = settings.eventCats.map((c, k) => `<div class="evtype"><input type="color" data-catcolor="${k}" value="${c.color}" aria-label="${esc(c.name)} color">`
     + `<input class="catname" data-catname="${k}" value="${esc(c.name)}" aria-label="Category name" spellcheck="false"><span class="muted" style="font-size: 11px" title="Events in this category">${count(c.id)}</span>`
-    + `<label class="switch"><input type="checkbox" role="switch" data-catshow="${k}"${c.show !== false ? ' checked' : ''}><span>Show</span></label>`
+    + `<label class="switch" data-tip="Shown on charts when a tab opens. In a tab, the Events panel's chips decide (unless its link is off)"><input type="checkbox" role="switch" data-catshow="${k}"${c.show !== false ? ' checked' : ''}><span>Show</span></label>`
     + `<button class="pclose" data-catdel="${k}" aria-label="Delete ${esc(c.name)}" title="Delete category; its events become Uncategorized">×</button></div>`).join('')
     || '<p class="hint">No categories. Events show in grey.</p>';
   const edit = (k, patch) => { saveSetting('eventCats', settings.eventCats.map((c, i) => i === k ? Object.assign({}, c, patch) : c)); applySetting('events'); };
@@ -6756,10 +6780,12 @@ function revealEvent(id, rowEl) {
   if (item) { item.scrollIntoView({ block: 'nearest' }); item.classList.remove('flash'); void item.offsetWidth; item.classList.add('flash'); }
   if (ev.chans && rowEl) { const mf = evFile(ev); const cell = mf && rowEl.querySelector(`[data-col="${CSS.escape(idFor(ev.chans[0], mf.slot))}"]`); if (cell) cell.scrollIntoView({ inline: 'center', block: 'nearest' }); }
 }
-let evFilter = { q: '', group: '', src: 'all' }; const evClosed = new Set(), evHiddenFiles = new Set(), evHiddenCats = new Set(); let evCloseAll = false;
+let evFilter = { q: '', group: '', src: 'all' }; const evClosed = new Set(), evHiddenFiles = new Set(), evHiddenCats = new Set((settings.eventCats || []).filter(c => c.show === false).map(c => c.id)); let evCloseAll = false; // the first tab starts from Settings › Show on charts
 // Where "+ Marker at A" and "+ Range A–B" put the new event: the file of the selected pane's first channel, else file 1.
 function evAddTo() { const p = state.panes[state.sel], c = p && p.ids.map(id => BYID[id]).find(Boolean); return (c && c.file && c.file.key) || (fileInSlot(1) || {}).key; }
+let evCatFocus = null; // the chip just clicked stays in view after the list redraws
 function renderEventList() {
+  const oldCats = document.querySelector('#evList .evcats'), catScroll = oldCats ? oldCats.scrollLeft : 0;
   $('app').classList.toggle('no-files', !anyFileOpen());
   if (!anyFileOpen()) { $('evList').innerHTML = '<p class="hint">Open a recording to see its events. Each file keeps its own; rules run on every open file.</p>'; return; }
   const openF = FILES.filter(f => f.open && !f.unreadable).sort((a, b) => a.slot - b.slot), multi = openF.length > 1;
@@ -6774,7 +6800,7 @@ function renderEventList() {
   // category chips: click shows or hides that category in the list; double-click (or Alt-click) shows only it
   const cats = []; every.filter(ev => !evHiddenFiles.has(ev.file)).forEach(ev => { const id = ev.cat || ''; let c = cats.find(x => x.id === id); if (!c) cats.push(c = { id, n: 0, name: evCatName(ev), color: evColor(ev) }); c.n++; });
   cats.sort((a, b) => { const ia = settings.eventCats.findIndex(c => c.id === a.id), ib = settings.eventCats.findIndex(c => c.id === b.id); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
-  const catBar = cats.length > 1 ? `<div class="evcats" role="group" aria-label="Show events by category">${cats.map(c => `<button class="evcat" data-evcat="${esc(c.id)}" aria-pressed="${!evHiddenCats.has(c.id)}" data-tip="${evHiddenCats.has(c.id) ? 'Show' : 'Hide'} ${esc(c.name)} in this list. Double-click to show only ${esc(c.name)}. (Whether a category shows on the charts is in Settings › Event categories.)"><i style="background:${esc(c.color)}"></i>${esc(c.name)}<small>${c.n}</small></button>`).join('')}${evHiddenCats.size ? '<button class="evcat all" data-evcatall data-tip="Show every category">All</button>' : ''}</div>` : '';
+  const catBar = cats.length > 1 ? `<div class="evcats" role="group" aria-label="Show events by category"><span class="evcfix"><button class="evcat all" data-evcatall aria-pressed="${!evHiddenCats.size}" data-tip="Show every category">All</button><button class="evcat all" data-evcatnone aria-pressed="${cats.every(c => evHiddenCats.has(c.id))}" data-tip="Hide every category; then click the ones you want">None</button><button class="evlink" data-evlink aria-pressed="${evChartsFollow()}" aria-label="Charts follow these filters" data-tip="${evChartsFollow() ? 'Charts follow these filters (on): what\'s hidden here is hidden on the charts too. Click to filter only this list.' : 'Charts follow these filters (off): the charts use each category\'s Show on charts setting. Click to link them.'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>${evChartsFollow() ? '' : '<path d="M4 4l16 16"/>'}</svg></button></span>${cats.map(c => `<button class="evcat" data-evcat="${esc(c.id)}" aria-pressed="${!evHiddenCats.has(c.id)}" data-tip="${evHiddenCats.has(c.id) ? 'Show' : 'Hide'} ${esc(c.name)} in this list. Double-click to show only ${esc(c.name)}.${evChartsFollow() ? ' The charts follow.' : ''}"><i style="background:${esc(c.color)}"></i>${esc(c.name)}<small>${c.n}</small></button>`).join('')}</div>` : '';
   const bar = `<div class="evfilter"><input type="search" class="sel" id="evQ" placeholder="Filter" value="${esc(f.q)}" aria-label="Filter events by name, category or channel"><select class="sel" id="evGroup" aria-label="Group events"><option value="">No groups</option><option value="file"${f.group === 'file' ? ' selected' : ''}>By file</option><option value="cat"${f.group === 'cat' ? ' selected' : ''}>By category</option><option value="name"${f.group === 'name' ? ' selected' : ''}>By name (rule)</option><option value="channel"${f.group === 'channel' ? ' selected' : ''}>By channel</option><option value="src"${f.group === 'src' ? ' selected' : ''}>By source</option></select><select class="sel" id="evSrc" aria-label="Which events"><option value="all">All</option><option value="rule"${f.src === 'rule' ? ' selected' : ''}>Rules</option><option value="other"${f.src === 'other' ? ' selected' : ''}>File + yours</option></select></div>`
     + catBar
     + (multi ? `<div class="evfiles" role="group" aria-label="Show events of">${openF.map(fl => { const n = every.filter(e => e.file === fl.key).length, on = !evHiddenFiles.has(fl.key); return `<button class="evfile" data-evfile="${fl.key}" aria-pressed="${on}" title="${on ? 'Hide' : 'Show'} the events of ${esc(fl.name)} in this list">${settings.fileLabel === 'number' ? `<b class="slotn">${fl.slot}</b>` : '<span></span>'}<span>${esc(fl.name)}</span><span class="muted">${n}</span></button>`; }).join('')}</div>` : '')
@@ -6791,16 +6817,19 @@ function renderEventList() {
   $('evList').innerHTML = bar + (every.length ? (list.length ? `<div class="evcols" aria-hidden="true"><span>Event</span><span>Start · duration</span></div>` : '<p class="hint">No events match.</p>') : '<p class="hint">No events. Place cursor A (and B) and add a marker or range, or add a rule.</p>')
     + (f.group ? groups.map(g => { const open = !evClosed.has(g.k); return `<button class="evgroup" data-evg="${esc(g.k)}" aria-expanded="${open}">${ICON.chev}${f.group === 'file' ? `${settings.fileLabel === 'number' ? `<b class="slotn">${g.slot}</b>` : ''}<span>${esc(g.k.split('\u2002')[1] || g.k)}</span>` : `<span>${esc(g.k)}</span>`}<span class="muted">${g.items.length}</span></button>` + (open ? g.items.slice(0, 200).map(rowOf).join('') + (g.items.length > 200 ? `<p class="hint">${g.items.length - 200} more; filter to narrow.</p>` : '') : ''); }).join('')
       : list.slice(0, 300).map(rowOf).join('') + (list.length > 300 ? `<p class="hint">${list.length - 300} more; filter or group to narrow.</p>` : ''));
+  { const nc = $('evList').querySelector('.evcats'); if (nc) { nc.scrollLeft = catScroll; const f = evCatFocus && nc.querySelector(`[data-evcat="${CSS.escape(evCatFocus)}"]`); if (f) { const a = f.offsetLeft - nc.offsetLeft, b = a + f.offsetWidth; if (a < nc.scrollLeft + 36) nc.scrollLeft = Math.max(0, a - 36); else if (b > nc.scrollLeft + nc.clientWidth - 16) nc.scrollLeft = b - nc.clientWidth + 16; } } evCatFocus = null; }
   $('evQ').oninput = e => { evFilter.q = e.target.value; const pos = e.target.selectionStart; renderEventList(); const n = $('evQ'); n.focus(); n.setSelectionRange(pos, pos); };
   $('evGroup').onchange = e => { evFilter.group = e.target.value; evFilter.groupSet = true; renderEventList(); };
-  $('evList').querySelectorAll('[data-evfile]').forEach(b => b.onclick = () => { const k = b.dataset.evfile; if (evHiddenFiles.has(k)) evHiddenFiles.delete(k); else evHiddenFiles.add(k); renderEventList(); });
-  $('evSrc').onchange = e => { evFilter.src = e.target.value; renderEventList(); };
+  $('evList').querySelectorAll('[data-evfile]').forEach(b => b.onclick = () => { const k = b.dataset.evfile; if (evHiddenFiles.has(k)) evHiddenFiles.delete(k); else evHiddenFiles.add(k); evFiltersChanged(); });
+  $('evSrc').onchange = e => { evFilter.src = e.target.value; evFiltersChanged(); };
   $('evList').querySelectorAll('[data-evcat]').forEach(b => {
-    let t = 0; const id = b.dataset.evcat, only = () => { evHiddenCats.clear(); settings.eventCats.map(c => c.id).concat('', cats.map(c => c.id)).forEach(k => { if (k !== id) evHiddenCats.add(k); }); renderEventList(); }; // every other category, including ones that arrive later
-    b.onclick = e => { if (e.altKey) return only(); clearTimeout(t); t = setTimeout(() => { if (evHiddenCats.has(id)) evHiddenCats.delete(id); else evHiddenCats.add(id); renderEventList(); }, 220); };
+    let t = 0; const id = b.dataset.evcat; b.addEventListener('click', () => { evCatFocus = id; }, true); const only = () => { evHiddenCats.clear(); settings.eventCats.map(c => c.id).concat('', cats.map(c => c.id)).forEach(k => { if (k !== id) evHiddenCats.add(k); }); evFiltersChanged(); }; // every other category, including ones that arrive later
+    b.onclick = e => { if (e.altKey) return only(); clearTimeout(t); t = setTimeout(() => { if (evHiddenCats.has(id)) evHiddenCats.delete(id); else evHiddenCats.add(id); evFiltersChanged(); }, 220); };
     b.ondblclick = e => { e.preventDefault(); clearTimeout(t); only(); };
   });
-  const ca = $('evList').querySelector('[data-evcatall]'); if (ca) ca.onclick = () => { evHiddenCats.clear(); renderEventList(); };
+  const ca = $('evList').querySelector('[data-evcatall]'); if (ca) ca.onclick = () => { evHiddenCats.clear(); evFiltersChanged(); };
+  const lk = $('evList').querySelector('[data-evlink]'); if (lk) lk.onclick = () => { saveSetting('evChartsFollow', !evChartsFollow()); renderEventList(); redrawOverlays(); if (overview) overview.redraw(false); };
+  const cn = $('evList').querySelector('[data-evcatnone]'); if (cn) cn.onclick = () => { settings.eventCats.map(c => c.id).concat('', cats.map(c => c.id)).forEach(k => evHiddenCats.add(k)); evFiltersChanged(); };
   $('evList').querySelectorAll('[data-evg]').forEach(b => b.onclick = () => { const k = b.dataset.evg; if (evClosed.has(k)) evClosed.delete(k); else evClosed.add(k); renderEventList(); });
   const byId = id => allEvents().find(e => e.id === id);
   $('evList').querySelectorAll('[data-ev]').forEach(b => b.addEventListener('click', () => {
@@ -11152,9 +11181,9 @@ function openCheckEditor(setId, opts = {}) {
     // event categories, editable right here: colour, name, shown on charts, delete, add
     const catCount = id => allEvents().filter(e => e.cat === id).length, catUse = id => set.checks.filter(k => k.kind === 'mark' && k.cat === id).length;
     const catsHtml = () => `<details class="ckcats" data-ckcats${catsOpen ? ' open' : ''}><summary><span class="cklab">Event categories</span><span class="muted">${settings.eventCats.map(c => `<i style="background:${esc(c.color)}"></i>${esc(c.name)}`).join(' ')}</span></summary>
-      <div class="ckcatrows">${settings.eventCats.map((c, j) => `<div class="evtype"><input type="color" data-ccolor="${j}" value="${esc(c.color)}" aria-label="${esc(c.name)} colour"><input class="sel catname" data-cname="${j}" value="${esc(c.name)}" aria-label="Category name" spellcheck="false"><span class="muted" style="font-size: 11px" data-tip="Events in this category now · rules in this set that mark it">${catCount(c.id)} event${catCount(c.id) === 1 ? '' : 's'} · ${catUse(c.id)} rule${catUse(c.id) === 1 ? '' : 's'}</span><label class="switch" data-tip="Show this category's events on the charts"><input type="checkbox" role="switch" data-cshow="${j}"${c.show !== false ? ' checked' : ''}><span>Show</span></label><button class="pclose" data-cdel="${j}" aria-label="Delete ${esc(c.name)}" data-tip="Delete this category: its events become Uncategorized (grey)">×</button></div>`).join('')}</div>
+      <div class="ckcatrows">${settings.eventCats.map((c, j) => `<div class="evtype"><input type="color" data-ccolor="${j}" value="${esc(c.color)}" aria-label="${esc(c.name)} colour"><input class="sel catname" data-cname="${j}" value="${esc(c.name)}" aria-label="Category name" spellcheck="false"><span class="muted" style="font-size: 11px" data-tip="Events in this category now · rules in this set that mark it">${catCount(c.id)} event${catCount(c.id) === 1 ? '' : 's'} · ${catUse(c.id)} rule${catUse(c.id) === 1 ? '' : 's'}</span><label class="switch" data-tip="Shown on charts when a tab opens; in a tab, the Events chips decide"><input type="checkbox" role="switch" data-cshow="${j}"${c.show !== false ? ' checked' : ''}><span>Show</span></label><button class="pclose" data-cdel="${j}" aria-label="Delete ${esc(c.name)}" data-tip="Delete this category: its events become Uncategorized (grey)">×</button></div>`).join('')}</div>
       <div class="lvbtns"><button class="tbtn sm" data-cadd>+ Category</button><span class="spacer"></span><button class="tbtn sm" data-csettings data-tip="The same list in Settings › Events">Open in Settings</button></div></details>`;
-    d.innerHTML = `<header><b>Rules and checks</b><input class="sel cksname" data-sname value="${esc(set.name)}" aria-label="Set name"><span class="spacer"></span><button class="pclose" data-x aria-label="Close">×</button></header>
+    d.innerHTML = `<header><b>Rules and checks</b><label class="cksnl"><span class="cklab">Set name</span><input class="sel cksname" data-sname value="${esc(set.name)}" placeholder="e.g. Flight acceptance" spellcheck="false" data-tip="The name of this set of rules and checks: shown in Rules &amp; checks, on badges, in folder runs and reports, and as its file name when shared"></label><span class="spacer"></span><button class="pclose" data-x aria-label="Close">×</button></header>
       <div class="recbody ckbody">
         <div class="ckatt"><span class="cklab">Runs on</span>
           <label><input type="checkbox" data-att="all"${att.all ? ' checked' : ''}> every file with these channels</label>
@@ -11344,6 +11373,7 @@ function openAtViolation(key, s, g) {
 }
 window.__tlmPlay = { state: () => state.play && { t: state.play.t, loop: state.play.loop, stopAt: state.play.stopAt.slice(), running: state.play.running, note: state.play.note }, cursors: (a, b) => { state.A = a; state.B = b; redrawOverlays(); syncPlayStrip(); }, seek: t => seekPlay(t), speed: v => { if (state.play) state.play.speed = v; } };
 window.__tlmToml = { roundtrip: () => { const L = [{ name: 'Power "W"', expr: 'battery_v * current_a', unit: 'W', cat: 'Derived', dec: 1, auto: true }], t = recipesToml(L), b = parseToml(t).recipe[0]; return { ok: b.name === L[0].name && b.expr === L[0].expr && b.decimals === 1 && b.automatic === true, t }; }, parse: parseToml, setToml, recipesToml, categoriesToml, toToml, slugOf, sets: () => checkSets(), views: () => allWs().filter(w => w.shared), sharedWidgets: () => SHARED_WIDGETS };
+window.__tlmEvents = { shown: () => allEvents().filter(evShown).length, total: () => allEvents().filter(e => fileOff(evFile(e)) !== null).length, cat: id => allEvents().filter(e => e.cat === id && evShown(e)).length };
 window.__tlmGauges = { draw: t => updateGauges(t), stats: () => Object.assign({}, gaugeStats), reset: () => Object.keys(gaugeStats).forEach(k => { gaugeStats[k] = 0; }), now: () => fileTileAt() }; // for tests
 window.__tlmChecks = { res: (key, set) => { const r = CHECK_RES.get(key + '|' + set); return r ? r.res : null; }, runCheck, parsePick, buildPick }; // for tests
 // live files: their checks run again every few seconds on what has arrived

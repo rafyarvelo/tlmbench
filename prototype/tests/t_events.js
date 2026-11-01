@@ -23,7 +23,24 @@ T.run('events', async ({ p, check, wait, until }) => {
   check('Collapse all groups an ungrouped list by category and closes every group', g.by === 'cat' && g.groups >= 3 && g.open === 0 && g.rows === 0, g);
   await p.click('#evExpand'); await wait(300);
   check('Expand all opens them again', await p.evaluate(() => document.querySelectorAll('#evList [data-evg][aria-expanded="false"]').length === 0 && document.querySelectorAll('#evList .ev[data-ev]').length > 0));
-  // compact header: filter and grouping on one line, category chips on one scrolling row
+  // the chip row scrolls; clicking a chip keeps the row where it was, and All stays first
+  const sc = await p.evaluate(() => { const r = document.querySelector('#evList .evcats'); r.scrollLeft = r.scrollWidth; return { left: r.scrollLeft, over: r.scrollWidth > r.clientWidth + 4, first: r.firstElementChild.matches('.evcfix') && r.firstElementChild.firstElementChild.matches('[data-evcatall]') }; });
+  const lastChip = await p.evaluate(() => [...document.querySelectorAll('#evList .evcat[data-evcat]')].pop().dataset.evcat);
+  await p.evaluate(id => document.querySelector(`#evList .evcat[data-evcat="${CSS.escape(id)}"]`).click(), lastChip); await wait(500);
+  const sc2 = await p.evaluate(id => { const r = document.querySelector('#evList .evcats'), c = r.querySelector(`[data-evcat="${CSS.escape(id)}"]`), rb = r.getBoundingClientRect(), cb = c.getBoundingClientRect(); return { left: r.scrollLeft, inView: cb.left >= rb.left - 1 && cb.right <= rb.right + 1, allFirst: r.firstElementChild.matches('.evcfix'), allX: r.firstElementChild.getBoundingClientRect().left - rb.left }; }, lastChip);
+  check('All and None are always first, pinned at the left', sc.first && sc2.allFirst && Math.abs(sc2.allX) < 2, [sc, sc2]);
+  check('clicking a chip far along the row keeps the row scrolled there, chip in view', sc.over && sc2.left > 0 && sc2.inView, [sc, sc2]);
+  await p.evaluate(() => document.querySelector('#evList [data-evcatall]').click()); await wait(300);
+
+  // None hides every category; then a click shows just the ones you want
+  await p.evaluate(() => document.querySelector('#evList [data-evcatnone]').click()); await wait(300);
+  const none = await p.evaluate(() => ({ rows: document.querySelectorAll('#evList .ev[data-ev]').length, on: document.querySelectorAll('#evList .evcat[data-evcat][aria-pressed="true"]').length, pressed: document.querySelector('#evList [data-evcatnone]').getAttribute('aria-pressed') }));
+  check('None hides every category', none.rows === 0 && none.on === 0 && none.pressed === 'true', none);
+  await p.evaluate(() => document.querySelector('#evList .evcat[data-evcat="alarm"]').click()); await wait(500);
+  const one = await p.evaluate(() => ({ rows: document.querySelectorAll('#evList .ev[data-ev]').length, on: [...document.querySelectorAll('#evList .evcat[data-evcat][aria-pressed="true"]')].map(b => b.dataset.evcat) }));
+  check('...then clicking a chip shows just that one', one.rows > 0 && one.on.join() === 'alarm', one);
+  await p.evaluate(() => document.querySelector('#evList [data-evcatall]').click()); await wait(300);
+
   const hdr = await p.evaluate(() => { const q = document.getElementById('evQ').getBoundingClientRect(), g = document.getElementById('evGroup').getBoundingClientRect(), c = document.querySelector('#evList .evcats'); return { line: Math.abs(q.top - g.top) < 2, oneRow: getComputedStyle(c).flexWrap === 'nowrap' }; });
   check('filter and grouping share a line; chips stay on one row', hdr.line && hdr.oneRow, hdr);
   // the rules editor: a rule's group follows its category (no group field); timing hides behind + Timing until set
@@ -34,4 +51,24 @@ T.run('events', async ({ p, check, wait, until }) => {
   await p.evaluate(() => document.querySelector('.chkdlg .ckrow.mk [data-ktime]').closest('.ckrow').querySelector('[data-ktime]').click()); await wait(300);
   check('+ Timing reveals grace and settle', await p.evaluate(() => document.activeElement && document.activeElement.dataset.kf === 'grace'));
   await p.evaluate(() => document.querySelector('.chkdlg [data-x]').click()); await wait(200);
+
+  // the charts follow the chips (per tab); the link turns that off; a new tab starts from Settings
+  await p.evaluate(() => { if (!document.querySelector('#evList .evcats')) document.querySelector('[data-rail="events"]').click(); }); await wait(300);
+  const E = () => p.evaluate(() => ({ shown: window.__tlmEvents.shown(), total: window.__tlmEvents.total(), alarm: window.__tlmEvents.cat('alarm') }));
+  const e0 = await E();
+  await p.evaluate(() => document.querySelector('#evList [data-evcatnone]').click()); await wait(300);
+  check('with None, the charts show no events either', (await E()).shown === 0 && e0.shown === e0.total, [e0, await E()]);
+  await p.evaluate(() => document.querySelector('#evList [data-evlink]').click()); await wait(300);
+  check('unlinking: the charts go back to Settings › Show on charts, the list stays filtered', (await E()).shown === e0.total && (await p.evaluate(() => document.querySelectorAll('#evList .ev[data-ev]').length)) === 0);
+  await p.evaluate(() => document.querySelector('#evList [data-evlink]').click()); await wait(200);
+  await p.evaluate(() => document.querySelector('#evList [data-evcatall]').click()); await wait(200);
+  await p.evaluate(() => document.querySelector('#evList .evcat[data-evcat="alarm"]').click()); await wait(500);
+  const e1 = await E();
+  check('hiding a category hides it on the charts', e1.alarm === 0 && e1.shown === e0.total - e0.alarm, [e0, e1]);
+  await p.click('#wsTabNew'); await wait(250);
+  await p.evaluate(() => document.querySelector('#addMenu [data-new]').click()); await wait(300);
+  await p.fill('#wsName', 'Fresh'); await p.click('#wsNameOk'); await wait(800);
+  check('a new tab starts with every category shown (Settings)', (await E()).alarm === e0.alarm);
+  await p.locator('#wsTabs .wstab').nth(0).click(); await wait(600);
+  check('the first tab still hides Alarm', (await E()).alarm === 0);
 });
