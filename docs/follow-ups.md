@@ -44,10 +44,17 @@ In order, picking up where the work stopped (Nov 2, 2026; Gate 3's core half pas
 
 1. ~~Tail a growing file~~ (done: `file://` sources, `tlmbench-gen --append`, reported in `just gate3 core`).
 2. ~~The store opens a recording that grows~~ (done: `Store::open_live`, a growing pyramid, tests/live.rs).
-3. The rest of the UI port, each step with app tests and a screenshot, keeping `just gate` and `just gate2` passing:
-   the pane stack and its menus, the Explorer, tabs and the time modes.
-4. Follow mode, the live strip and the transport in the ported UI; then `just gate3 app` (a live tab following the
-   stream, Gate 1's frame rule) and Phase 3 marked done on the roadmap.
+3. The rest of the UI port. Done: Svelte, the app UI tests with a fake core, the shell (rail, top bar, Settings,
+   Measure docking, status bar), the pane stack (rows of columns, ⋯ menu, Undo, drag), Explorer (Open folder, tree,
+   filter, select-first rows), tabs (one per file, session restore). Left: the time modes and the transport (Play:
+   play/pause, Space, scrubber, speed, window presets, Follow, playhead on charts and overview, A–B loop, each tab's
+   playhead kept), from the prototype's `t_playback`; the pane view switch and "Axis and scale…" come when the app
+   has tables and axis settings.
+4. Follow mode, the live strip and the transport in the ported UI: Tauri commands over `tlmbench_live` (connect a
+   source into a session in the Recordings folder, its health, stop) with views of the growing file through
+   `Store::open_live` (refresh about every 50 ms); a live tab is a file tab whose file grows (design: Live
+   streaming). Then `just gate3 app` (a live tab following the stream, Gate 1's frame rule) and Phase 3 marked done
+   on the roadmap (the living doc's roadmap widget and text, re-exported).
 
 ## Phase 3 loose ends
 
