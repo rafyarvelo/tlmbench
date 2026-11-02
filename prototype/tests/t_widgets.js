@@ -66,7 +66,9 @@ T.run('widgets', async ({ p, check, expandTree, menu, pick, wait, until }) => {
   await pick(/^Large \(2 wide\)$/); await wait(400);
   const sz = await p.evaluate(() => { const g = document.querySelector('#stack .gw[data-gw="battery_v"]'); return { s: g.dataset.gsize, col: getComputedStyle(g).gridColumnStart }; });
   check('Large spans two columns', sz.s === 'L' && /span 2/.test(sz.col), sz);
-  await wait(2300); await p.reload();
+  // reload only once the session (saved every 2 s) holds the size, so a slow machine can't race it
+  check('the size is saved', await until(() => Object.keys(localStorage).some(k => /^plotter\.cache\.session\.[^.]+$/.test(k) && /"size":"L"/.test(localStorage.getItem(k))), null, 10000));
+  await p.reload();
   const sz2 = await until(() => { const g = document.querySelector('#stack .gw[data-gw="battery_v"]'); return g && g.dataset.gsize ? g.dataset.gsize : null; }, null, 15000);
   check('the size is kept', sz2 === 'L', sz2);
 

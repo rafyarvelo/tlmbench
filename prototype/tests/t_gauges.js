@@ -50,7 +50,8 @@ T.run('gauges', async ({ p, check, paneCount, expandTree, menu, pick, wait, sett
   check('scripts and handlers removed', await p.evaluate(() => !window.__pwned && !document.querySelector('#stack .gw[data-gw="current_a"] script') && !document.querySelector('#stack .gw[data-gw="current_a"] [onload]')));
   check('bindings filled', /\d/.test((await pick1('current_a')).text), (await pick1('current_a')).text);
 
-  // reload: the pane keeps its widget choices
-  await wait(2300); await p.reload(); await wait(4000);
+  // reload: the pane keeps its widget choices (once the session, saved every 2 s, holds them)
+  await until(() => Object.keys(localStorage).some(k => /^plotter\.cache\.session\.[^.]+$/.test(k) && /"Evil"/.test(localStorage.getItem(k))), null, 10000);
+  await p.reload(); await wait(4000);
   check('widget choices persist with the layout', await until(() => !!document.querySelector('#stack .gw[data-gw="battery_v"] svg rect[rx="8"]'), null, 15000)); // (once its data is read again)
 });
