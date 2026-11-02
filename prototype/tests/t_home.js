@@ -5,8 +5,9 @@ T.run('home', async ({ p, check, tabs, text, menu, pick, wait }) => {
   await p.dblclick('.fitem[data-file="0415"] .fname'); await wait(2500);
   await wait(2300);
   check('two tabs before relaunch', (await tabs()).length === 2, await tabs());
-  await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('plotter.settings')); s.startPage = true; localStorage.setItem('plotter.settings', JSON.stringify(s)); });
-  await p.reload(); await wait(1500);
+  // (set and reload in one go: a setting the page saves in between would write startPage back)
+  await Promise.all([p.waitForNavigation(), p.evaluate(() => { const s = JSON.parse(localStorage.getItem('plotter.settings')); s.startPage = true; localStorage.setItem('plotter.settings', JSON.stringify(s)); location.reload(); })]);
+  await wait(1500);
   check('start page shows', await p.isVisible('#startPage'));
   check('nothing restored behind it', (await tabs()).length <= 1, await tabs());
   check('saved session offered', /tab/.test(await text('.strow.sess') || ''), await text('.strow.sess'));

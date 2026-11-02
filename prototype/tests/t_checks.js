@@ -141,6 +141,9 @@ T.run('checks', async ({ p, check, wait, until, menu, pick, settingsLS }) => {
   check('its badge is there without running again', /✗|!|✓/.test(await badge('#fileTree [data-file="0418"] .cbadge') || ''));
 
   // reload: sets, attachments and the layout's Checks pane stay
-  await wait(2300); await p.reload(); await wait(3000);
+  // (reload only once settings hold the renamed check, so a slow machine can't race the save)
+  const named = () => (JSON.parse(localStorage.getItem('plotter.settings') || '{}').checkSets || []).some(s => s.checks.some(k => k.name === 'Sixteen satellites'));
+  check('the set is saved', await until(named, null, 10000));
+  await p.reload(); await wait(3000);
   check('sets persist', ((await settingsLS()).checkSets || []).some(s => s.checks.some(k => k.name === 'Sixteen satellites')));
 });
