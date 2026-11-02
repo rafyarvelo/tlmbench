@@ -48,6 +48,8 @@ export const actions = {
   closeTab: (_key: number) => {},
   closeOtherTabs: (_key: number) => {},
   saveSession: () => {},
+  /** The native file picker for these extensions; null when cancelled. */
+  pickFile: async (_ext: string[]): Promise<string | null> => null,
   fit: () => {},
   back: () => {},
   clearCursors: () => {},

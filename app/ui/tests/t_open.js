@@ -28,6 +28,7 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
   await fake((c) => (window.__tlmFake.files[c] = { built: false }), COLD);
   await fake((c) => window.__tlmFake.drop([c]), COLD);
   check('a file being read', await until(() => window.__tlmApp.building() !== null));
+  await wait(400); // the opening views (coarse, then exact) come first
   const asked = await fake(() => window.__tlmFake.precisions.length);
   await fake((c) => window.__tlmFake.build(c, 0.4), COLD);
   check('progress', await until(() => window.__tlmApp.building()?.done === 80000), await app('building'));

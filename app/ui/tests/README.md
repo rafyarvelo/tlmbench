@@ -1,7 +1,8 @@
 # The app's UI tests
 
 The built UI (`app/ui/dist`) in headless Chromium, with `fakecore.js` answering the Tauri commands the UI calls
-(`launch`, `open`, `close`, `view`, `values_at`, `stats`, `list_folder`, the file and folder dialogs and drag and drop) from synthetic
+(`launch`, `open`, `close`, `view`, `values_at`, `stats`, `list_folder`, `live_connect`, `live_state`, `live_stop`, the file
+and folder dialogs and drag and drop) from synthetic
 recordings. Tests check behaviour and state, not pixels; check visual changes with a screenshot.
 
 `just app-test` builds the UI and runs every `t_*` here, three at a time; `just app-test t_view` runs one. Each prints
@@ -13,6 +14,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_wire | the wire format: the fake core encodes the core's golden batch byte for byte, and `wire.ts` decodes it (Node, no browser) |
 | t_tabs | a tab per open file, each keeping its panes, view and cursors; reordering by drag; middle-click, × and the tab menu (close, close others, close all) closing tabs and their files; the tabs after a reload |
 | t_view | panes and the channel list, wheel and box zoom, Fit and Back, hover readouts, cursors and Measure, settings after a reload |
+| t_live | the Connect dialog (a descriptor for sockets, a refused connection), a live tab following now (LIVE, REC time, window presets, no overview), a view you choose holding it, scrubbing back and Jump to live, the Sources panel's stream health, Stop, switching tabs, closing the source with its tab |
 | t_open | Open…, ⌘O and drops, a file still being read (progress, Measure waiting for exact stats), the coarse label, the gap factor dialog |
 | t_explorer | Open folder (folder → file → channel), select-first rows (a click selects and shows Open; double-click or Enter opens), the checkbox plotting in the selected pane, the filter (text, regex, a bad one marked), Expand all / Collapse all, Close all, the folder after a reload |
 | t_playback | the transport: Play back opens it paused, play/pause and Space, the view following at 85% of the window and holding when you choose one, readouts following the playhead, speed, window presets, scrubbing, stopping at the end, the A–B loop, each tab keeping its playhead (paused), close |
@@ -23,7 +25,7 @@ Each test uses `lib.js`: `run(name, async h => { ... }, opts)`. `h.check(label, 
 a test fails on any failed check, any error in the page, or an exception in the script. Helpers: `text`, `visible`,
 `panes`, `paneCount`, `plotAt(pane, fraction)`, `until`, `settingsLS`, `fake(fn, arg)` (runs in the page, where
 `window.__tlmFake` drives the fake core: `pick` and `pickFolder` are what the dialogs return, and `list_folder` lists
-the `files` under a folder). Options: `files` (path → recording spec: `channels`, `units`, `samples`,
+the `files` under a folder; `sources` are live endpoints whose recordings grow with the clock). Options: `files` (path → recording spec: `channels`, `units`, `samples`,
 `rate`, `built: false` for a file still being read, `cold: true` for slow exact views), `launch` (the file opened at
 start; null for none), `settings` (the first-launch settings), `viewport`, `colorScheme`.
 

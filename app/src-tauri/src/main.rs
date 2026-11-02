@@ -14,9 +14,9 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::spawn_blocking;
@@ -26,16 +26,48 @@ use tlmbench_core::gaps::DEFAULT_FACTOR;
 use tlmbench_core::{RecordingInfo, Viewport, wire};
 use tlmbench_store::{Opened as StoreOpened, Precision, Request, Status, Store};
 
-/// Open files, by id. Each window keeps its own view; files are shared.
+/// Open files, by id, and live sources (each a file that grows). Each window keeps its own view; files are shared.
 struct Files {
     store: Store,
     next: AtomicU32,
     open: Mutex<HashMap<u32, Arc<StoreOpened>>>,
+    live: Mutex<HashMap<u32, Arc<LiveEntry>>>,
 }
 
 impl Files {
+    /// The file's recording, or a live source's as of its last refresh.
     fn get(&self, id: u32) -> Result<Arc<StoreOpened>, String> {
-        self.open.lock().unwrap().get(&id).cloned().ok_or_else(|| "that file is not open".into())
+        if let Some(o) = self.open.lock().unwrap().get(&id) {
+            return Ok(o.clone());
+        }
+        let live = self.live.lock().unwrap().get(&id).cloned();
+        live.map(|l| l.follow.read().unwrap().opened()).ok_or_else(|| "that file is not open".into())
+    }
+}
+
+/// A live source: recorded into a session (tlmbench_live) and followed as its file grows (Store::open_live).
+struct LiveEntry {
+    source: Mutex<Option<tlmbench_live::Source>>,
+    /// The source's newest part, followed (a tailed file's rotation starts a new one).
+    follow: RwLock<Arc<tlmbench_store::Live>>,
+    part: AtomicUsize,
+    session: std::path::PathBuf,
+    /// The last health while the source ran (kept once it stops).
+    last: Mutex<tlmbench_live::Health>,
+    closed: AtomicBool,
+}
+
+impl LiveEntry {
+    fn health(&self) -> tlmbench_live::Health {
+        let g = self.source.lock().unwrap();
+        match g.as_ref() {
+            Some(s) => {
+                let h = s.health();
+                *self.last.lock().unwrap() = h.clone();
+                h
+            }
+            None => self.last.lock().unwrap().clone(),
+        }
     }
 }
 
@@ -96,6 +128,129 @@ fn close(file: u32, files: State<'_, Files>) {
     if let Some(o) = files.open.lock().unwrap().remove(&file) {
         o.cancel();
     }
+    if let Some(l) = files.live.lock().unwrap().remove(&file) {
+        l.closed.store(true, Ordering::Release);
+        if let Some(s) = l.source.lock().unwrap().take() {
+            *l.last.lock().unwrap() = s.stop();
+        }
+    }
+}
+
+/// How often a live source's file is read again (new samples folded into its pyramid).
+const LIVE_REFRESH: Duration = Duration::from_millis(50);
+
+/// Connects a live source (`tcp://`, `udp://` or `file://`; sockets need the frames' descriptor, a TOML file) into
+/// a new session in the Recordings folder, and returns it opened like a file once its first samples are recorded.
+#[tauri::command]
+async fn live_connect(endpoint: String, descriptor: Option<String>, files: State<'_, Files>) -> Result<Opened, String> {
+    let store = files.store.clone();
+    let entry = spawn_blocking(move || -> Result<LiveEntry, String> {
+        let endpoint: tlmbench_live::Endpoint = endpoint.parse()?;
+        let desc = match descriptor.filter(|d| !d.is_empty()) {
+            Some(p) => {
+                let text = std::fs::read_to_string(&p).map_err(|e| format!("{p}: {e}"))?;
+                Some(tlmbench_decode_descriptor(&text).map_err(|e| format!("{p}: {e}"))?)
+            }
+            None => None,
+        };
+        let mut session =
+            tlmbench_live::Session::create(&tlmbench_live::recordings_dir()).map_err(|e| e.to_string())?;
+        let source =
+            session.add_source(endpoint.clone(), desc.as_ref(), &Default::default()).map_err(|e| e.to_string())?;
+        // the recording opens once it holds a sample
+        let started = Instant::now();
+        while source.records_written() == 0 {
+            let h = source.health();
+            if let Some(e) = h.error {
+                return Err(e);
+            }
+            if h.ended || started.elapsed() > Duration::from_secs(15) {
+                return Err(format!("no data from {endpoint} yet"));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let files_now = source.files();
+        let live = store.open_live(files_now.last().expect("a record was written")).map_err(|e| e.to_string())?;
+        let _ = session.update(0, &source);
+        Ok(LiveEntry {
+            last: Mutex::new(source.health()),
+            source: Mutex::new(Some(source)),
+            follow: RwLock::new(Arc::new(live)),
+            part: AtomicUsize::new(files_now.len()),
+            session: session.dir().to_owned(),
+            closed: AtomicBool::new(false),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let entry = Arc::new(entry);
+    let id = files.next.fetch_add(1, Ordering::Relaxed) + 1;
+    files.live.lock().unwrap().insert(id, entry.clone());
+    // follows the file as it grows (and a tailed file into its next part), until the tab closes
+    let store = files.store.clone();
+    let follower = entry.clone();
+    std::thread::spawn(move || {
+        while !follower.closed.load(Ordering::Acquire) {
+            let parts = follower.source.lock().unwrap().as_ref().map(|s| s.files());
+            if let Some(parts) = parts
+                && parts.len() > follower.part.load(Ordering::Relaxed)
+                && let Some(Ok(next)) = parts.last().map(|p| store.open_live(p))
+            {
+                *follower.follow.write().unwrap() = Arc::new(next);
+                follower.part.store(parts.len(), Ordering::Relaxed);
+            }
+            let live = follower.follow.read().unwrap().clone();
+            let _ = live.refresh();
+            std::thread::sleep(LIVE_REFRESH);
+        }
+    });
+    let o = entry.follow.read().unwrap().opened();
+    let info = o.recording().info().clone();
+    let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
+    Ok(Opened { id, info, range, status: Status::Built })
+}
+
+fn tlmbench_decode_descriptor(text: &str) -> Result<tlmbench_decode::descriptor::Descriptor, String> {
+    tlmbench_decode::descriptor::Descriptor::parse(text).map_err(|e| e.to_string())
+}
+
+/// A live source now: its recording's extent (as of the last refresh), which part it is in, and its health.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveState {
+    range: Option<(String, String)>,
+    samples: usize,
+    part: usize,
+    info: RecordingInfo,
+    session: String,
+    health: tlmbench_live::Health,
+}
+
+#[tauri::command]
+fn live_state(file: u32, files: State<'_, Files>) -> Result<LiveState, String> {
+    let l = files.live.lock().unwrap().get(&file).cloned().ok_or("that source is not open")?;
+    let o = l.follow.read().unwrap().opened();
+    let info = o.recording().info().clone();
+    Ok(LiveState {
+        range: info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string())),
+        samples: info.samples,
+        part: l.part.load(Ordering::Relaxed),
+        info,
+        session: l.session.display().to_string(),
+        health: l.health(),
+    })
+}
+
+/// Stops reading a live source; its recording stays open (and complete) in its tab.
+#[tauri::command]
+fn live_stop(file: u32, files: State<'_, Files>) -> Result<tlmbench_live::Health, String> {
+    let l = files.live.lock().unwrap().get(&file).cloned().ok_or("that source is not open")?;
+    let h = match l.source.lock().unwrap().take() {
+        Some(s) => s.stop(),
+        None => return Ok(l.last.lock().unwrap().clone()),
+    };
+    *l.last.lock().unwrap() = h.clone();
+    Ok(h)
 }
 
 /// One pane (or the overview) of a view batch.
@@ -331,21 +486,37 @@ fn echo(bytes: u32) -> Response {
 #[serde(rename_all = "camelCase")]
 struct Launch {
     file: Option<String>,
-    /// "1" (Phase 1), "2" (Phase 2), or None.
+    /// "1" (Phase 1), "2" (Phase 2), "3" (Phase 3: `file` is the source's endpoint), or None.
     gate: Option<&'static str>,
-    /// Gate 2: "reopen" (the pyramid is cached) or "first" (a first-ever open).
+    /// Gate 2: "reopen" (the pyramid is cached) or "first" (a first-ever open). Gate 3: the frames' descriptor.
     gate_mode: Option<String>,
+    /// Gate 3: how long to follow the stream, in seconds.
+    gate_seconds: Option<f64>,
 }
 
 #[tauri::command]
 fn launch() -> Launch {
     let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    if let Some(endpoint) = env("TLMBENCH_GATE3") {
+        let seconds = env("TLMBENCH_GATE3_SECONDS").and_then(|s| s.parse().ok());
+        return Launch {
+            file: Some(endpoint),
+            gate: Some("3"),
+            gate_mode: env("TLMBENCH_GATE3_DESCRIPTOR"),
+            gate_seconds: seconds,
+        };
+    }
     if let Some(file) = env("TLMBENCH_GATE2") {
-        return Launch { file: Some(file), gate: Some("2"), gate_mode: env("TLMBENCH_GATE2_MODE") };
+        return Launch { file: Some(file), gate: Some("2"), gate_mode: env("TLMBENCH_GATE2_MODE"), gate_seconds: None };
     }
     match env("TLMBENCH_GATE") {
-        Some(file) => Launch { file: Some(file), gate: Some("1"), gate_mode: None },
-        None => Launch { file: std::env::args().nth(1).filter(|a| !a.starts_with('-')), gate: None, gate_mode: None },
+        Some(file) => Launch { file: Some(file), gate: Some("1"), gate_mode: None, gate_seconds: None },
+        None => Launch {
+            file: std::env::args().nth(1).filter(|a| !a.starts_with('-')),
+            gate: None,
+            gate_mode: None,
+            gate_seconds: None,
+        },
     }
 }
 
@@ -360,7 +531,12 @@ fn gate_report(report: serde_json::Value, app: AppHandle) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(Files { store: Store::new(None), next: AtomicU32::new(0), open: Mutex::default() })
+        .manage(Files {
+            store: Store::new(None),
+            next: AtomicU32::new(0),
+            open: Mutex::default(),
+            live: Mutex::default(),
+        })
         .invoke_handler(tauri::generate_handler![
             open,
             close,
@@ -368,6 +544,9 @@ fn main() {
             values_at,
             stats,
             list_folder,
+            live_connect,
+            live_state,
+            live_stop,
             echo,
             launch,
             gate_report

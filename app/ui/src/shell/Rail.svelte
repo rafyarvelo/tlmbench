@@ -1,6 +1,7 @@
 <!-- The icon rail: a rail icon opens its view in the left sidebar (again hides it); Measure docks on the right. -->
 <script lang="ts">
   import { ICON } from '../icons';
+  import { live } from '../live.svelte';
   import { type LeftPanel, setSetting, settings } from '../settings.svelte';
   import { measureShown, ui } from '../ui.svelte';
 
@@ -21,6 +22,7 @@
   <span class="rlogo" aria-hidden="true">{@html ICON.logo}</span>
   <button class="rb" data-rail="explorer" aria-pressed={settings.leftPanel === 'explorer'} aria-label="Explorer" data-tip="Explorer: the open file and its channels (Ctrl+B)" onclick={() => left('explorer')}>{@html ICON.explorer}</button>
   <button class="rb" data-rail="measure" aria-pressed={shown} aria-label="Measure" data-tip="Measure: values at the cursors and stats between them (Ctrl+Alt+B)" onclick={measure}>{@html ICON.measure}</button>
+  <button class="rb" data-rail="live" aria-pressed={live.connect} aria-label="Live" data-tip="Live: connect a source (TCP, UDP or a growing file)" onclick={() => ((live.connect = !live.connect), (live.error = ''))}>{@html ICON.live}</button>
   <span class="rsp"></span>
   <button class="rb" id="b-settings" data-rail="settings" aria-pressed={settings.leftPanel === 'settings'} aria-label="Settings" data-tip="Settings" onclick={() => left('settings')}>{@html ICON.settings}</button>
 </nav>

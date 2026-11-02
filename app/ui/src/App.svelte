@@ -8,6 +8,9 @@
   import Settings from './shell/Settings.svelte';
   import TopBar from './shell/TopBar.svelte';
   import Transport from './shell/Transport.svelte';
+  import LiveStrip from './shell/LiveStrip.svelte';
+  import Connect from './shell/Connect.svelte';
+  import { live } from './live.svelte';
   import { play } from './play.svelte';
   import { ICON } from './icons';
   import { setSetting, settings } from './settings.svelte';
@@ -26,11 +29,14 @@
 
 <svelte:window onkeydown={key} />
 
+{#if live.connect}<Connect />{/if}
+
 <div class="app" id="app">
   <Rail />
   <div class="col">
     <TopBar />
     {#if play.open}<Transport />{/if}
+    {#if live.on}<LiveStrip />{/if}
     {#if ui.note}
       <div class="wsnote" id="wsNote" role="status">
         <span class="dot"></span><span class="txt">{ui.note}</span>

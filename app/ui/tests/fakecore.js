@@ -142,6 +142,8 @@
     /** What Open folder returns, and folders that exist without recordings. */
     pickFolder: null,
     folders: [],
+    /** Live sources by endpoint: a recording spec, plus `already` (seconds recorded when it connects). */
+    sources: {},
     calls: [],
     /** The precision each `view` asked for. */
     precisions: [],
@@ -189,11 +191,11 @@
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
       const r = o.r;
-      const cold = !!fake.files[r.path].cold;
+      const cold = !!fake.files[r.path]?.cold;
       const coarse = precision === 'coarse' && cold;
       fake.precisions.push(precision);
       // a cold file's exact view reads the file: slow, as in the core
-      if (cold && !coarse) await new Promise((ok) => setTimeout(ok, fake.files[r.path].exactMs ?? 800));
+      if (cold && !coarse) await new Promise((ok) => setTimeout(ok, fake.files[r.path]?.exactMs ?? 800));
       const builtUntil = r.built ? null : r.done ? timeAt(r, r.done - 1) : BigInt(entries[0]?.t0 ?? 0);
       const parts = entries.map((e) => {
         const traces = e.channels
@@ -228,6 +230,35 @@
         const mean = n ? sum / n : null;
         return { channel: ch, count: n, min: n ? min : null, minT: n ? String(timeAt(r, minI)) : null, max: n ? max : null, maxT: n ? String(timeAt(r, maxI)) : null, mean, std: n ? Math.sqrt(Math.max(0, sq / n - mean * mean)) : null };
       });
+    },
+    // a live source: a recording that grows with the clock at its rate, until stopped
+    live_connect({ endpoint, descriptor }) {
+      const spec = fake.sources[endpoint];
+      if (!spec) throw `couldn't connect to ${endpoint}: connection refused`;
+      if (!endpoint.startsWith('file://') && !descriptor) throw `${endpoint} needs a descriptor for its frames`;
+      const r = recording(endpoint, { ...spec, samples: 1 });
+      const t0 = Date.now() - (spec.already ?? 1) * 1000;
+      let stopped = null;
+      const n = () => Math.max(1, Math.floor((((stopped ?? Date.now()) - t0) / 1000) * r.rate));
+      Object.defineProperty(r, 'samples', { get: n });
+      Object.defineProperty(r, 'done', { get: n });
+      const id = nextFile++;
+      const health = () => ({ endpoint, bytes_in: n() * 24, records_in: n(), records_dropped: 0, records_written: n(), sequence_missing: 0, sequence_repeated: 0, malformed_bytes: 0, rows_skipped: 0, rows_back_in_time: 0, files: ['/rec/session-1/source-1.tlm'], ring_bytes: 1 << 26, ring_high_water_bytes: 4096, ended: stopped != null, error: null, seconds: (Date.now() - t0) / 1000 });
+      fake.open.set(id, { r, progress: null, live: { health, stop: () => (stopped ??= Date.now()) } });
+      fake.files[endpoint] = spec;
+      const info = () => ({ path: endpoint, format: 'tlm', samples: n(), time: { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] });
+      fake.open.get(id).info = info;
+      return { id, info: info(), range: [String(timeAt(r, 0)), String(timeAt(r, n() - 1))], status: { state: 'built' } };
+    },
+    live_state({ file }) {
+      const o = fake.open.get(file);
+      if (!o?.live) throw 'that source is not open';
+      return { range: [String(timeAt(o.r, 0)), String(timeAt(o.r, o.r.samples - 1))], samples: o.r.samples, part: 1, info: o.info(), session: '/rec/session-1', health: o.live.health() };
+    },
+    live_stop({ file }) {
+      const o = fake.open.get(file);
+      o.live.stop();
+      return o.live.health();
     },
     'plugin:dialog|open': ({ options }) => (options?.directory ? fake.pickFolder : fake.pick),
     list_folder({ path }) {

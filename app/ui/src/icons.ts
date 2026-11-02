@@ -8,6 +8,7 @@ export const ICON = {
     'fill="none" stroke-linecap="round" stroke-linejoin="round"',
   ),
   explorer: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+  live: s('<circle cx="12" cy="12" r="2.5"/><path d="M7.5 7.5a6.4 6.4 0 000 9M16.5 7.5a6.4 6.4 0 010 9M4.6 4.6a10.5 10.5 0 000 14.8M19.4 4.6a10.5 10.5 0 010 14.8"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
   measure: s('<path d="M8 3v18M16 3v18M8 12h8"/><path d="M10.5 9.5L8 12l2.5 2.5M13.5 9.5L16 12l-2.5 2.5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
   settings: s('<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
   box: s('<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3 3"/>'),

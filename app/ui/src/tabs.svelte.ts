@@ -5,6 +5,8 @@ export interface TabInfo {
   key: number;
   path: string;
   name: string;
+  /** A live source's tab (its file grows); `path` is the source's endpoint. */
+  live?: boolean;
 }
 
 export const tabs = $state({

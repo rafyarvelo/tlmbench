@@ -13,9 +13,10 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
 import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value } from './axes';
-import { runGate, runGate2 } from './gate';
+import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { applyTheme, type Mode, onSetting, saveSettings, setSetting, settings } from './settings.svelte';
+import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import { addPaneBelow, labelled, normalize, note, onStackChange, type Pane, stack } from './stack.svelte';
 import { tabs } from './tabs.svelte';
@@ -236,6 +237,10 @@ function entry(id: number, channels: number[], t0: bigint, t1: bigint, width: nu
   return { id, channels, gapFactors: channels.map(gapFactor), t0: t0.toString(), t1: t1.toString(), widthPx: width };
 }
 
+const LIVE_VIEW_EVERY_MS = 33;
+let lastViewAt = 0;
+let viewTimer = 0;
+
 /** Asks for every pane and, when stale, the overview, in one query under one generation. */
 async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const f = state.file;
@@ -244,6 +249,14 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
     state.pending = true;
     return;
   }
+  // following a live source, views are asked for at most 30 times a second (the design's display rate); frames in
+  // between re-project the last reply
+  const wait = live.on && live.following ? LIVE_VIEW_EVERY_MS - (performance.now() - lastViewAt) : 0;
+  if (wait > 0) {
+    if (!viewTimer) viewTimer = window.setTimeout(() => ((viewTimer = 0), void requestView(precision)), wait);
+    return;
+  }
+  lastViewAt = performance.now();
   state.inflight = true;
   state.pending = false;
   const generation = ++state.generation;
@@ -349,6 +362,9 @@ function setView(t0: bigint, t1: bigint, remember = false): void {
   state.t1 = t0 + span;
   // any view you choose stops following the playhead (it keeps going); Follow brings it back
   if (play.open && play.follow && !playDriving) play.follow = false;
+  // and in a live tab, stops following now; Jump to live comes back
+  if (live.on && live.following && !liveDriving) live.following = false;
+  if (live.on) live.back = Math.max(0, Number(f.last - state.t1) / 1e9);
   updateRange();
   scheduleDraw();
   void requestView();
@@ -787,7 +803,8 @@ function renderOverviewHead(): void {
   const slot = settings.overviewTop ? $('ovTop') : $('ovBottom');
   $('ovTop').replaceChildren();
   $('ovBottom').replaceChildren();
-  if (!state.file) return;
+  // a live tab has no overview: the live strip's scrubber spans the session
+  if (!state.file || live.on) return;
   const wrap = document.createElement('div');
   wrap.className = 'overview';
   wrap.innerHTML = `<div class="ovhead"><span>Overview of pane ${stack.sel + 1}</span><span class="spacer"></span><button class="linkbtn" data-ovtop>${settings.overviewTop ? 'Show at the bottom' : 'Show on top'}</button></div><div class="ovplot"></div>`;
@@ -923,6 +940,8 @@ interface TabData {
   exactMs: number;
   /** Its transport when it was left (restored paused), or null in Analyze. */
   play: null | { t: number; speed: number; win: number; follow: boolean; loop: boolean };
+  /** A live tab: whether it followed now, its window, and its source's last health. */
+  live: null | { following: boolean; win: number; health: Health | null };
 }
 const tabData = new Map<number, TabData>();
 let nextTab = 1;
@@ -946,6 +965,7 @@ function stashTab(): void {
     future: state.future,
     exactMs: state.exactMs,
     play: play.open ? { t: play.t, speed: play.speed, win: play.win, follow: play.follow, loop: play.loop } : null,
+    live: live.on ? { following: live.following, win: live.win, health: live.health } : null,
   });
 }
 
@@ -977,6 +997,7 @@ async function showTab(key: number): Promise<void> {
   stack.sel = d.sel;
   normalize();
   closePlay();
+  Object.assign(live, { on: !!d.live, following: d.live?.following ?? true, win: d.live?.win ?? 30, sources: false, health: d.live?.health ?? null });
   ui.file = nameOf(d.file.info.path);
   ui.path = d.file.info.path;
   ui.measureDismissed = false;
@@ -985,7 +1006,11 @@ async function showTab(key: number): Promise<void> {
   saveSession();
   await tick();
   renderPanes();
+  liveDriving = true;
   setView(d.t0, d.t1);
+  liveDriving = false;
+  if (live.on && live.following) liveActions.jump();
+  if (live.on) void pollLive();
   if (d.play) {
     const end = Number(d.file.last - d.file.first) / 1e9;
     Object.assign(play, { ...d.play, open: true, running: false, end, canLoop: d.A != null && d.B != null });
@@ -1022,6 +1047,7 @@ async function openPath(path: string): Promise<void> {
       future: [],
       exactMs: Infinity,
       play: null,
+      live: null,
     });
     tabs.list.push({ key, path: o.info.path, name: nameOf(o.info.path) });
     ui.note = '';
@@ -1031,6 +1057,132 @@ async function openPath(path: string): Promise<void> {
     note(`Couldn't open ${nameOf(path)}: ${e}`);
   }
 }
+
+// ---------- Live: a tab whose file grows, its view following now ----------
+
+let liveDriving = false;
+/** When the source was last asked how far it has recorded. */
+let livePolledAt = 0;
+let liveRaf = 0;
+
+/** Connects a live source and opens it in a tab of its own, following now. */
+async function openLive(endpoint: string, descriptor: string): Promise<void> {
+  live.connecting = true;
+  live.error = '';
+  try {
+    const o = await invoke<Opened>('live_connect', { endpoint, descriptor: descriptor || null });
+    if (!o.range) throw new Error('no samples yet');
+    const key = nextTab++;
+    const file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
+    tabData.set(key, {
+      file,
+      building: null,
+      panes: defaultPanes(o.info.channels.length),
+      sel: 0,
+      t0: file.last - 30_000_000_000n,
+      t1: file.last + 1n,
+      A: null,
+      B: null,
+      history: [],
+      future: [],
+      exactMs: 0,
+      play: null,
+      live: { following: true, win: 30, health: null },
+    });
+    const name = endpoint.replace(/^file:\/\//, '').split(/[\\/]/).pop() || endpoint;
+    tabs.list.push({ key, path: endpoint, name, live: true });
+    live.connect = false;
+    await showTab(key);
+    void pollLive();
+  } catch (e) {
+    live.error = `Couldn't connect: ${e}`;
+  } finally {
+    live.connecting = false;
+  }
+}
+
+interface LiveState {
+  range: [string, string] | null;
+  samples: number;
+  info: RecordingInfo;
+  health: Health;
+  session: string;
+}
+
+/** Asks the source in front how far it has recorded (the view follows that). */
+async function pollLive(): Promise<void> {
+  const f = state.file;
+  if (!live.on || !f) return;
+  try {
+    const st = await invoke<LiveState>('live_state', { file: f.id });
+    if (state.file !== f || !st.range) return;
+    if (st.info.channels.length !== f.info.channels.length) ui.channels = st.info.channels.map((c) => ({ name: c.name, unit: c.unit }));
+    f.info = st.info;
+    f.first = BigInt(st.range[0]);
+    f.last = BigInt(st.range[1]);
+    livePolledAt = performance.now();
+    live.recorded = Number(f.last - f.first) / 1e9;
+    live.health = st.health;
+    live.session = st.session;
+    if (!live.following) live.back = Math.max(0, Number(f.last - state.t1) / 1e9);
+    if (live.following && !liveRaf) liveRaf = requestAnimationFrame(followLive);
+  } catch {
+    /* the tab closed meanwhile */
+  }
+}
+setInterval(() => void pollLive(), 100);
+
+/** Each frame while following: the view's end at now (the last recorded time, moved on by the time since it was
+ * asked, at most 0.15 s), over the window. */
+function followLive(now: number): void {
+  liveRaf = 0;
+  const f = state.file;
+  if (!live.on || !live.following || !f) return;
+  if (live.health?.ended) return followTo(f.last + 1n);
+  const ahead = BigInt(Math.round(Math.min(150, Math.max(0, now - livePolledAt)) * 1e6));
+  followTo(f.last + 1n + ahead);
+  liveRaf = requestAnimationFrame(followLive);
+}
+
+function followTo(end: bigint): void {
+  liveDriving = true;
+  setView(end - BigInt(Math.round(live.win * 1e9)), end);
+  liveDriving = false;
+  live.back = 0;
+}
+
+Object.assign(liveActions, {
+  connect: (endpoint: string, descriptor: string) => void openLive(endpoint, descriptor),
+  setWindow: (w: number) => {
+    live.win = w;
+    const f = state.file;
+    if (!f) return;
+    if (live.following) return followTo(f.last + 1n);
+    liveDriving = true;
+    setView(state.t1 - BigInt(Math.round(w * 1e9)), state.t1);
+    liveDriving = false;
+  },
+  jump: () => {
+    live.following = true;
+    if (!liveRaf) liveRaf = requestAnimationFrame(followLive);
+  },
+  scrub: (fraction: number) => {
+    const f = state.file;
+    if (!f) return;
+    if (fraction >= 0.999) return liveActions.jump();
+    live.following = false;
+    const end = f.first + BigInt(Math.round(Number(f.last - f.first) * fraction));
+    liveDriving = true;
+    setView(end - BigInt(Math.round(live.win * 1e9)), end);
+    liveDriving = false;
+    live.back = Math.max(0, Number(f.last - end) / 1e9);
+  },
+  stop: async () => {
+    const f = state.file;
+    if (!f) return;
+    live.health = await invoke<Health>('live_stop', { file: f.id });
+  },
+});
 
 /** Closes tab `key` and its file; the next tab comes to the front, or the window empties. */
 async function closeTab(key: number): Promise<void> {
@@ -1043,6 +1195,7 @@ async function closeTab(key: number): Promise<void> {
   tabData.delete(key);
   if (front) {
     tabs.active = -1;
+    live.on = false;
     const next = tabs.list[Math.min(i, tabs.list.length - 1)];
     if (next) await showTab(next.key);
     else emptyWindow();
@@ -1053,7 +1206,8 @@ async function closeTab(key: number): Promise<void> {
 /** The open tabs, to reopen after a restart. */
 function saveSession(): void {
   const active = tabs.list.find((t) => t.key === tabs.active)?.path ?? null;
-  setSetting('session', { files: tabs.list.map((t) => t.path), active });
+  const files = tabs.list.filter((t) => !t.live).map((t) => t.path);
+  setSetting('session', { files, active: active && files.includes(active) ? active : null });
 }
 
 let progressRefresh = 0;
@@ -1447,6 +1601,10 @@ Object.assign(actions, {
   closeTab: (key: number) => void closeTab(key),
   closeOtherTabs: (key: number) => void Promise.all(tabs.list.filter((t) => t.key !== key).map((t) => closeTab(t.key))),
   saveSession,
+  pickFile: async (ext: string[]) => {
+    const p = await openDialog({ multiple: false, filters: [{ name: ext.join(', '), extensions: ext }] });
+    return typeof p === 'string' ? p : null;
+  },
   fit,
   back,
   clearCursors,
@@ -1516,6 +1674,13 @@ export const gateApi = {
   set onPaint(f: ((p: { coarse: boolean; complete: boolean }) => void) | null) {
     state.onPaint = f;
   },
+  connect: (endpoint: string, descriptor: string) => openLive(endpoint, descriptor),
+  liveWindow: (s: number) => liveActions.setWindow(s),
+  liveHealth: () => live.health as LiveHealth | null,
+  stopLive: async () => {
+    const f = state.file;
+    return f ? invoke<LiveHealth>('live_stop', { file: f.id }) : null;
+  },
   /** Resolves when the pyramid is built. */
   built(): Promise<void> {
     return new Promise((done) => {
@@ -1539,8 +1704,9 @@ export const gateApi = {
 };
 
 if (settings.folder) void showFolder(settings.folder);
-const launch = await invoke<{ file: string | null; gate: '1' | '2' | null; gateMode: string | null }>('launch');
-if (launch.gate === '2' && launch.file) await runGate2(gateApi, launch.file, launch.gateMode === 'first' ? 'first' : 'reopen');
+const launch = await invoke<{ file: string | null; gate: '1' | '2' | '3' | null; gateMode: string | null; gateSeconds: number | null }>('launch');
+if (launch.gate === '3' && launch.file) await runGate3(gateApi, launch.file, launch.gateMode ?? '', launch.gateSeconds ?? 60);
+else if (launch.gate === '2' && launch.file) await runGate2(gateApi, launch.file, launch.gateMode === 'first' ? 'first' : 'reopen');
 else if (launch.gate === '1' && launch.file) {
   await openPath(launch.file);
   await runGate(gateApi);

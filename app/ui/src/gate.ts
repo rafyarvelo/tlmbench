@@ -12,6 +12,12 @@
 //   views count: they hide no extreme and are labelled) within 1 s of asking to open. Reported: when the exact
 //   view replaced it, and the same sweep as Phase 1 over every channel (the 20-trace target).
 // - first: nothing is cached. Reported: when axes and build progress showed, and how long the build took.
+//
+// Phase 3, "4M samples/s with no drops", the app's half (`just gate3 app`): a live tab follows a TCP source
+// (`tlmbench-gen --send`) with a 10 s window until the stream ends. Gated here, as the Roadmap's decision words it:
+// at most 1% of frames missed while it follows, nothing dropped by the ring buffer or missing by sequence, the ring
+// at most half full; the longest frame is reported. ci/gate3.py then checks the recording record by record against
+// the sender.
 
 import { invoke } from '@tauri-apps/api/core';
 
@@ -27,6 +33,25 @@ export interface GateApi {
   onQuery: ((q: QueryStats) => void) | null;
   onPaint: ((p: { coarse: boolean; complete: boolean }) => void) | null;
   built(): Promise<void>;
+  /** Phase 3: connects a live source in a tab of its own, following now. */
+  connect(endpoint: string, descriptor: string): Promise<void>;
+  liveWindow(seconds: number): void;
+  /** The live source's health as last polled (null before the first poll). */
+  liveHealth(): LiveHealth | null;
+  stopLive(): Promise<LiveHealth | null>;
+}
+
+export interface LiveHealth {
+  records_written: number;
+  records_dropped: number;
+  sequence_missing: number;
+  sequence_repeated: number;
+  ring_bytes: number;
+  ring_high_water_bytes: number;
+  ended: boolean;
+  error: string | null;
+  files: string[];
+  seconds: number;
 }
 
 const DURATION_MS = 30_000;
@@ -119,6 +144,7 @@ async function sweep(api: GateApi) {
       refresh_hz: Math.round(1000 / period),
       frames: intervals.length,
       missed_frames: missed,
+    longest_frame_periods: Math.round((frameStats.max / period) * 10) / 10,
       frame_interval_ms: frameStats,
       draw_ms: stats(drawMs),
       reduce_zoomed_ms: stats(zoomed.map((q) => q.reduceUs / 1000)),
@@ -226,5 +252,72 @@ export async function runGate2(api: GateApi, path: string, mode: 'reopen' | 'fir
     checks,
     pass: s.valid && Object.values(checks).every(Boolean),
   };
+  await invoke('gate_report', { report });
+}
+
+export async function runGate3(api: GateApi, endpoint: string, descriptor: string, seconds: number): Promise<void> {
+  const report: Record<string, unknown> = { gate: 'Phase 3: 4M samples/s with no drops (app)', endpoint, pass: false };
+  try {
+    await api.connect(endpoint, descriptor);
+    if (!api.file) throw new Error(`couldn't connect to ${endpoint}`);
+  } catch (e) {
+    report.error = String(e);
+    await invoke('gate_report', { report });
+    return;
+  }
+  api.liveWindow(10);
+  const intervals: number[] = [];
+  const queries: QueryStats[] = [];
+  /** Frames over 40 ms, when they came, and the query before each (reported, to see what stalled). */
+  const long: { at_s: number; ms: number; last_query: QueryStats | null }[] = [];
+  api.onQuery = (q) => queries.push(q);
+  let hidden = document.hidden;
+  const onVisibility = () => (hidden ||= document.hidden);
+  document.addEventListener('visibilitychange', onVisibility);
+  // the app's own follow loop draws each frame; this only times them, from a second after the tab opened (as Gate 1
+  // starts after the first paint) until the stream ends
+  await new Promise<void>((done) => {
+    let start = -1;
+    let prev = -1;
+    const frame = (now: number) => {
+      if (start < 0) start = now;
+      if (prev >= 0 && now - start > 1000) {
+        intervals.push(now - prev);
+        if (now - prev > 40) long.push({ at_s: Math.round(now - start) / 1000, ms: Math.round(now - prev), last_query: queries[queries.length - 1] ?? null });
+      }
+      prev = now;
+      if (api.liveHealth()?.ended || now - start > (seconds + 10) * 1000) return done();
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  api.onQuery = null;
+  document.removeEventListener('visibilitychange', onVisibility);
+  const health = await api.stopLive();
+  const frameStats = stats(intervals);
+  const period = frameStats.p50;
+  const missed = intervals.filter((i) => i > 1.5 * period).length;
+  const ok = {
+    missed_frames_le_1pct: missed <= intervals.length / 100,
+    none_dropped: health != null && health.records_dropped === 0,
+    none_missing: health != null && health.sequence_missing === 0 && health.sequence_repeated === 0,
+    ring_le_half: health != null && health.ring_high_water_bytes <= health.ring_bytes / 2,
+    no_error: health != null && health.error == null,
+  };
+  Object.assign(report, {
+    valid: !hidden,
+    refresh_hz: Math.round(1000 / period),
+    frames: intervals.length,
+    missed_frames: missed,
+    frame_interval_ms: frameStats,
+    round_trip_ms: stats(queries.map((q) => q.ms)),
+    reduce_ms: stats(queries.map((q) => q.reduceUs / 1000)),
+    points_per_reply: stats(queries.map((q) => q.points)),
+    long_frames: long,
+    health,
+    recording: health?.files ?? [],
+    checks: ok,
+    pass: !hidden && Object.values(ok).every(Boolean),
+  });
   await invoke('gate_report', { report });
 }
