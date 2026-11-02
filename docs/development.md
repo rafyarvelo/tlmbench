@@ -112,8 +112,7 @@ Pass: the reopen's first paint of the whole view (all 20 channels, coarse counts
 Reported: when the exact view replaced it, the 30 s sweep of Phase 1 over all 20 channels, and for the first-ever open,
 when axes and progress showed and how long the build took.
 
-Last run (MacBook Air M1, 8 GB, 1736 px): pass. First paint 142 ms (coarse), exact 1.9 s; sweep 12 of 1,778 frames
-missed (0.7%), longest 245 ms, 20-trace replies p50 1.6 ms in the core. First-ever open: axes and progress in 84 ms,
-build 20 s. That run's disk was nearly full, which slowed writes to 74 MB/s (the disk reads the file cold at
-1.06 GB/s, 9.5 s); the build is to be measured again with space free.
-
+Last run (MacBook Air M1, 8 GB, 59 Hz, 1736 px): pass. First paint 77 ms (coarse), exact 1.3 s; the 20-channel sweep
+missed 14 of 1,800 frames (0.8%), longest interval 31 ms, zoomed 20-trace replies p95 15.7 ms in the core. First-ever
+open: axes and progress in 57 ms, build 12.5 s (798 MB/s; the disk reads the file cold in 9.5 s). Leave 20 GB free:
+on a nearly full disk writes slow to 74 MB/s and the build takes 20 s.

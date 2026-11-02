@@ -37,9 +37,8 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
 - The LRU chunk store (Proposed in the design) isn't built: builds gather each block's channels into reused buffers
   and views read pyramid files and raw edges through mmap. Zoomed views of the 20-channel file reduce in about 1 ms a
   trace, so it has had no measured need yet.
-- A cold build of the 10 GB file took 15-20 s on a nearly full disk (writes at 74 MB/s); rerun `just gate2` with
-  space free to report the build at disk speed. Writing pyramid levels into holes of a sparse file was the slow part;
-  F_PREALLOCATE moved the cost rather than removing it there.
+- A cold build of the 10 GB file takes 12.5 s against the disk's 9.5 s read: the pyramid's writes (into a sparse
+  file's holes) aren't overlapped with reading yet. A writer thread would close most of the gap.
 - Hover, cursors and Measure in the app have no automated test yet; the prototype's suite covers the behaviour, and
   the app's end-to-end tests come with the port.
 
