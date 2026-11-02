@@ -38,6 +38,21 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
   build took 9.9 s in its last run (12.5 s before), against 9.5 s to read the file cold.
 
 
+## Phase 3: what's next
+
+In order, picking up where the work stopped (Nov 2, 2026; Gate 3's core half passes, `just gate3 core`):
+
+1. Tail a growing file as a source (Accepted in the design's Live streaming decisions): `file:///path/run.csv` and a
+   growing .tlm, in `crates/live`, through the same import profile or descriptor; half-written lines held back,
+   truncation or replacement restarts with a gap, the file only read. `tlmbench-gen --append` (uneven chunks, lines
+   cut mid-way, one truncation) plus `--verify`; Rust tests for each edge case (split lines and CRLF, rotation, no
+   header yet, times going back); `just gate3 core` reports the rate a CSV tail sustains (not gated).
+2. The store opens a recording that grows: pyramids that grow, views of it through the same view batches.
+3. The rest of the UI port, each step with app tests and a screenshot, keeping `just gate` and `just gate2` passing:
+   the pane stack and its menus, the Explorer, tabs and the time modes.
+4. Follow mode, the live strip and the transport in the ported UI; then `just gate3 app` (a live tab following the
+   stream, Gate 1's frame rule) and Phase 3 marked done on the roadmap.
+
 ## Phase 3 loose ends
 
 - A UDP source reads one datagram per call, which costs 42% of a core at 4 × 1 MHz in 8 KB datagrams (TCP: 2.6%).
