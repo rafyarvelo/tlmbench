@@ -28,9 +28,9 @@ learns about a file lives in its own cache, so a read-only network share works a
 
 | | |
 | --- | --- |
-| Reopen a 10 GB, 20-channel recording, cache cold in memory | whole view drawn in **77 ms**, exact in 1.3 s |
-| Pan and zoom over 20 traces of 125M samples each | 60 fps, 0.8% of frames missed, longest frame 31 ms |
-| First-ever open of that file | axes and progress in 57 ms, summaries built in 12.5 s (disk read: 9.5 s) |
+| Reopen a 10 GB, 20-channel recording, cache cold in memory | whole view drawn in **70 ms**, exact in 1.3 s |
+| Pan and zoom over 20 traces of 125M samples each | 60 fps, 1 of 1,800 frames missed; zoomed views of all 20 in 4.4 ms (p95) |
+| First-ever open of that file | axes and progress in 62 ms, summaries built in 9.9 s (disk read: 9.5 s) |
 | Whole-file view of 100M samples, warm | 0.31 ms in the core (21 ms without the pyramid) |
 | CSV ingest | 2.4 GB in 3 s (about 800 MB/s), reopened in 0.01 s |
 
@@ -40,7 +40,8 @@ These are the project's own gates: `just gate` (Phase 1) and `just gate2` (Phase
 
 - **The app** (Tauri, WebGL2): a channel list, a stack of panes on one time axis, an overview strip with a
   draggable window, Box zoom, Pan and Cursors modes with Back and Fit, values at the pointer, cursors A and B with a
-  Measure panel (values, Δt, Δy, and exact min, max, mean and standard deviation between them). Files being
+  Measure panel (values, Δt, Δy, and exact min, max, mean and standard deviation between them), and a gap factor
+  per channel (right-click a channel). Files being
   summarized fill in left to right, with the unread part hatched.
 - **Formats:** CSV (delimiter, units and time column detected; converted once to a column cache) and fixed-width
   binary records described by a TOML descriptor, including the self-describing `.tlm` reference format.
@@ -76,7 +77,7 @@ no build step and data synthesized in the page. It is the spec the app's UI is p
 app/            the desktop app: Tauri shell (src-tauri) and the TypeScript + WebGL2 UI (ui)
 crates/core     time base, M4, the pyramid (build, exact queries, stats), gap index, wire format
 crates/decode   CSV column cache, format descriptors, the .tlm reference format (fuzzed)
-crates/store    the cache: pyramid files, resumable builds, eviction, coarse and exact views
+crates/store    the cache: pyramid files, resumable builds, eviction, the chunk cache, view batches
 cli/            the tlmbench command line
 tools/          gen (deterministic synthetic recordings), icons, winid (screenshots)
 prototype/      the UI prototype and its Playwright suite
