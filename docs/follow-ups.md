@@ -26,6 +26,12 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
 ## Phase 1 loose ends
 
 - The CI image doesn't include the app UI's npm packages; the Linux job installs them on each run.
-- Whole-file views read every raw sample: 21 ms warm, 657 ms cold for 100M. The Phase 2 pyramid fixes both.
-- M4's inner loop isn't vectorized (about 600M samples/s per core); worth doing alongside the pyramid.
+
+## Phase 2 loose ends
+
+- An exact whole view of a cold 10 GB, 20-channel file takes 1.7-2.3 s (the coarse view draws in 0.22 s). Most of it
+  is level 4 at every pixel edge; storing each pixel edge's straddling extremes differently, or a finer
+  coarse-to-exact handoff (only the pixels whose edges matter), could cut it.
+- Column-time recordings binary-search the time column for every pixel edge; a cold file faults on each search. The
+  design's chunk index (first time of every 64k samples, kept in the cache) would bound that to one page.
 
