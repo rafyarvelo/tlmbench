@@ -1,4 +1,6 @@
+<!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TelemetryBench Prototype</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,7 +38,10 @@
   --warn: #A35F00; --good: #18875A; --danger: #C8283A; --cursor: #141A22;
   color-scheme: light;
 }
-html, body { height: 100%; }
+/* the same base the artifact host's page wrapper sets, so the file looks identical opened on its own */
+html, body { height: 100%; margin: 0; }
+[hidden]:not([hidden=until-found i]) { display: none !important; }
+img { max-width: 100%; }
 body { background: var(--bg); color: var(--fg); font: 13px/1.45 var(--font-ui); }
 * { box-sizing: border-box; }
 button, select, input { font: inherit; color: inherit; }

@@ -24,8 +24,6 @@ async function open(opts = {}) {
     const u = r.request().url();
     if (u.includes('uplot')) return r.fulfill({ body: fs.readFileSync(path.join(DIR, 'stub.js'), 'utf8'), contentType: 'text/javascript' });
     if (u.includes('table-core')) return r.fulfill({ body: fs.readFileSync(path.join(DIR, 'tsstub.mjs'), 'utf8'), contentType: 'text/javascript' });
-    // a phone needs the viewport meta the published page gets from its wrapper
-    if (opts.phone && u.endsWith('plotter.html')) return r.fulfill({ body: '<meta name="viewport" content="width=device-width, initial-scale=1">' + fs.readFileSync(PAGE, 'utf8'), contentType: 'text/html' });
     if (u.startsWith('file:') || u.startsWith('data:')) return r.continue();
     return r.abort();
   });
