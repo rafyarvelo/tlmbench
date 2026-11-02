@@ -15,6 +15,13 @@ missing or repeated, and the ring never more than half full. A run where the sen
 over 0.1 s is invalid, not failed. Each recording is deleted once checked. Prints a JSON report; exits 0 on a pass.
 
     python3 ci/gate3.py --bin target/release [--seconds 60] [--only tcp]
+
+With --app, the app's half instead: for each shape, the release app (tlmbench-app) connects to the TCP sender in a
+live tab that follows it with a 10 s window until the stream ends. It passes with at most 1% of frames missed (the
+longest is reported), nothing dropped or missing, the ring at most half full, and the recording identical to what
+was sent. Keep the window visible: a hidden one makes the run invalid.
+
+    python3 ci/gate3.py --bin target/release --app [--seconds 60]
 """
 
 import argparse
@@ -146,12 +153,74 @@ def run_csv(bins, channels, rate, seconds, work):
     }
 
 
+def run_app(bins, channels, rate, seconds, work):
+    gen, app = os.path.join(bins, "tlmbench-gen"), os.path.join(bins, "tlmbench-app")
+    port = free_port(socket.SOCK_STREAM)
+    endpoint = f"tcp://127.0.0.1:{port}"
+    desc = os.path.join(work, "sender.toml")
+    subprocess.run([gen, "--channels", str(channels), "--rate", str(rate), "--descriptor-out", desc], check=True)
+    sender = subprocess.Popen([gen, "--send", endpoint, "--channels", str(channels), "--rate", str(rate), "--seconds", str(seconds)],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    time.sleep(0.3)
+    env = dict(os.environ, TLMBENCH_GATE3=endpoint, TLMBENCH_GATE3_DESCRIPTOR=desc, TLMBENCH_GATE3_SECONDS=str(seconds),
+               TLMBENCH_RECORDINGS=work)
+    cmd = (["caffeinate", "-d"] if sys.platform == "darwin" else []) + [app]
+    out = subprocess.run(cmd, env=env, capture_output=True, text=True).stdout
+    sent = json.loads(sender.communicate()[0] or "{}")
+    try:
+        report = json.loads(out[out.index("{"):])
+    except ValueError:
+        report = {"pass": False, "error": "no report from the app", "output": out[-2000:]}
+    files = report.get("recording") or []
+    verified = {"ok": False}
+    if files:
+        v = subprocess.run([gen, "--verify", files[0], "--expect", str(sent.get("sent", -1))], capture_output=True, text=True)
+        verified = json.loads(v.stdout) if v.stdout.strip() else {"ok": False}
+        shutil.rmtree(os.path.dirname(files[0]), ignore_errors=True)
+    valid = report.get("valid", False) and sent.get("kept_pace", False)
+    h = report.get("health") or {}
+    return {
+        "channels": channels,
+        "rate_hz": rate,
+        "sent": sent.get("sent"),
+        "recorded": h.get("records_written"),
+        "verified": verified,
+        "valid": valid,
+        "frames": report.get("frames"),
+        "missed_frames": report.get("missed_frames"),
+        "longest_frame_periods": report.get("longest_frame_periods"),
+        "frame_interval_ms": report.get("frame_interval_ms"),
+        "round_trip_ms": report.get("round_trip_ms"),
+        "reduce_ms": report.get("reduce_ms"),
+        "long_frames": report.get("long_frames"),
+        "checks": report.get("checks"),
+        "error": report.get("error") or h.get("error"),
+        "pass": valid and report.get("pass", False) and verified.get("ok") is True,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bin", default="target/release", help="folder with tlmbench and tlmbench-gen")
     ap.add_argument("--seconds", type=float, default=60.0)
     ap.add_argument("--only", choices=["tcp", "udp", "csv"])
+    ap.add_argument("--app", action="store_true", help="the app's half: a live tab following the TCP sender")
+    ap.add_argument("--shape", type=int, choices=[4, 32], help="only the shape with this many channels")
     a = ap.parse_args()
+    if a.app:
+        runs = []
+        with tempfile.TemporaryDirectory(prefix="tlmbench-gate3-app-") as work:
+            for channels, rate in [x for x in SHAPES if a.shape in (None, x[0])]:
+                print(f"gate3 app: tcp {channels} channels at {rate:,} Hz for {a.seconds:g} s, followed in a live tab…", file=sys.stderr)
+                r = run_app(a.bin, channels, rate, a.seconds, work)
+                print(f"  {'pass' if r['pass'] else 'FAIL' if r['valid'] else 'invalid'}: {r['missed_frames']} of {r['frames']} frames missed, "
+                      f"{r['recorded']} of {r['sent']} records", file=sys.stderr)
+                runs.append(r)
+        valid = all(r["valid"] for r in runs)
+        report = {"gate": "Phase 3: 4M samples/s with no drops (app)", "seconds": a.seconds, "valid": valid,
+                  "pass": valid and all(r["pass"] for r in runs), "runs": runs}
+        print(json.dumps(report, indent=2))
+        sys.exit(0 if report["pass"] else 1)
     runs = []
     with tempfile.TemporaryDirectory(prefix="tlmbench-gate3-") as work:
         for transport in [t for t in ("tcp", "udp") if a.only in (None, t)]:

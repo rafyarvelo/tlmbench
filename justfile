@@ -161,13 +161,17 @@ gate2 file=(data / "gate2/gate2-10G.tlm") keep="":
     exit $status
 
 # Gate 3 (4M samples/s, no drops): `core` streams 4 × 1 MHz and 32 × 125 kHz to the CLI's recorder for 60 s each
-# (TCP gated, UDP reported) and checks every record; `app` (a live tab following the stream) comes with the live UI
+# (TCP gated, UDP and CSV tails reported) and checks every record; `app` streams the same to the release app, whose
+# live tab follows each run (at most 1% of frames missed; keep the window visible), and checks the recording
 gate3 target="core" seconds="60":
     #!/usr/bin/env bash
     set -euo pipefail
-    [ "{{target}}" = core ] || { echo "gate3 {{target}}: only core exists yet (the app's live tab comes later)" >&2; exit 2; }
     cargo build -q --release -p tlmbench -p tlmbench-gen
-    python3 ci/gate3.py --bin target/release --seconds {{seconds}}
+    case "{{target}}" in
+      core) python3 ci/gate3.py --bin target/release --seconds {{seconds}} ;;
+      app) (cd app/src-tauri && cargo tauri build --no-bundle) && python3 ci/gate3.py --bin target/release --app --seconds {{seconds}} ;;
+      *) echo "gate3 {{target}}: core or app" >&2; exit 2 ;;
+    esac
 
 # Everything the Linux CI job runs (inside the CI image)
 ci-linux: lint test bench-smoke proto-test app-test ro-test fuzz-smoke app-build
