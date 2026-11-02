@@ -32,8 +32,10 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
 - An exact whole view of a cold 10 GB, 20-channel file takes 1.7-2.3 s (the coarse view draws in 0.22 s). Most of it
   is level 4 at every pixel edge; storing each pixel edge's straddling extremes differently, or a finer
   coarse-to-exact handoff (only the pixels whose edges matter), could cut it.
-- A cold build of the 10 GB file took 12.5 s against the disk's 9.5 s read (9.9 s in the latest Gate 2 run, with 30 GB free): the pyramid's writes (into a sparse
-  file's holes) aren't overlapped with reading yet. A writer thread would close most of the gap.
+- A writer thread for pyramid builds was tried and left out: writes take about 0.6 s of a 5–6 s cold build of the
+  10 GB file (the CLI, M1, `ci/evict.py` before each run), and overlapping them with the reads gave 5.4–7.5 s
+  against 5.7–6.6 s without, within run-to-run noise: reads and writes share the one SSD. Gate 2's first-ever
+  build took 9.9 s in its last run (12.5 s before), against 9.5 s to read the file cold.
 - Hover, cursors and Measure in the app have no automated test yet; the prototype's suite covers the behaviour, and
   the app's end-to-end tests come with the port.
 
