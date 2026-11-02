@@ -133,6 +133,28 @@ gate file=(data / "gate/gate-100M.tlm"):
     # caffeinate keeps the display awake: a sleeping display pauses animation frames and invalidates the run
     TLMBENCH_GATE="{{file}}" {{ if os() == "macos" { "caffeinate -d" } else { "" } }} target/release/tlmbench-app
 
+# Builds the pyramid with the CLI into a fresh cache, evicts the file and the cache from memory and times a reopen in
+# the release app (gated: first paint < 1 s; then a 30 s sweep of all 20 channels), then clears the cache and times
+# a first-ever open (axes and progress, and the build; reported). Keep the window visible. keep=1 keeps the file.
+# The Phase 2 gate over the 10 GB recording (`just gen-gate2` first; the file is deleted afterwards)
+gate2 file=(data / "gate2/gate2-10G.tlm") keep="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -f "{{file}}" ] || { echo "no {{file}}: run just gen-gate2 first" >&2; exit 1; }
+    (cd app/src-tauri && cargo tauri build --no-bundle)
+    cargo build -q --release -p tlmbench
+    cache="$(mktemp -d)"; trap 'rm -rf "$cache"' EXIT
+    export TLMBENCH_CACHE="$cache"
+    target/release/tlmbench cache build "{{file}}"
+    python3 ci/evict.py "{{file}}" "$cache"
+    status=0
+    TLMBENCH_GATE2="{{file}}" TLMBENCH_GATE2_MODE=reopen {{ if os() == "macos" { "caffeinate -d" } else { "" } }} target/release/tlmbench-app || status=$?
+    target/release/tlmbench cache clear > /dev/null
+    python3 ci/evict.py "{{file}}"
+    TLMBENCH_GATE2="{{file}}" TLMBENCH_GATE2_MODE=first {{ if os() == "macos" { "caffeinate -d" } else { "" } }} target/release/tlmbench-app || true
+    [ -n "{{keep}}" ] || { rm -f "{{file}}"; echo "removed {{file}} (just gen-gate2 rebuilds it)"; }
+    exit $status
+
 # Everything the Linux CI job runs (inside the CI image)
 ci-linux: lint test bench-smoke proto-test ro-test fuzz-smoke app-build
 
