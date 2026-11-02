@@ -97,6 +97,22 @@ app-dev *args:
 app-build:
     cd app/src-tauri && cargo tauri build --debug --no-bundle
 
+# Regenerate the app icons from icons/icon.svg (Mac: sips and iconutil): icon.png 1024 px, icon.ico, icon.icns
+app-icons:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d="$PWD/app/src-tauri/icons"; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+    (cd prototype/tests && node ../../tools/icons/render.mjs "$d/icon.svg" "$d/icon.png" 1024)
+    set="$tmp/icon.iconset"; mkdir "$set"
+    for n in 16 32 128 256 512; do
+      sips -z $n $n "$d/icon.png" --out "$set/icon_${n}x${n}.png" > /dev/null
+      sips -z $((n * 2)) $((n * 2)) "$d/icon.png" --out "$set/icon_${n}x${n}@2x.png" > /dev/null
+    done
+    iconutil -c icns "$set" -o "$d/icon.icns"
+    for n in 24 48 64; do sips -z $n $n "$d/icon.png" --out "$tmp/$n.png" > /dev/null; done
+    python3 tools/icons/ico.py "$d/icon.ico" "$set/icon_16x16.png" "$tmp/24.png" "$set/icon_32x32.png" \
+      "$tmp/48.png" "$tmp/64.png" "$set/icon_256x256.png"
+
 # Screenshot the release app's window (Mac; needs Screen Recording for the editor): opens a file, waits, captures
 app-shot file=(data / "gate/gate-100M.tlm") out="target/app-shot.png" wait="3":
     #!/usr/bin/env bash
