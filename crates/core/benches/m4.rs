@@ -99,7 +99,7 @@ fn bench_pyramid(c: &mut Criterion) {
         let vp = Viewport { t0, t1, width_px: 2000 };
         g.throughput(Throughput::Elements((times.lower_bound(t1) - times.lower_bound(t0)) as u64));
         g.bench_with_input(BenchmarkId::new(format!("{view}/m4"), 2000), &vp, |b, &vp| {
-            b.iter(|| black_box(pyramid::m4(&times, &values, &pyr, vp)))
+            b.iter(|| black_box(pyramid::m4(&times, &values, &pyr, vp, &[])))
         });
     }
     g.finish();

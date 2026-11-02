@@ -73,8 +73,41 @@ const PARALLEL_MIN_SAMPLES: usize = 1 << 18;
 
 /// Reduces one channel for a viewport. `values[i]` is the sample at `times.at(i)`; times must not decrease.
 pub fn m4<T: Times + ?Sized, S: Samples + ?Sized>(times: &T, values: &S, vp: Viewport) -> Trace {
+    m4_breaking(times, values, vp, &[])
+}
+
+/// [`m4`], with the line broken before each sample in `breaks` (sorted sample indexes, from the gap index).
+pub fn m4_breaking<T: Times + ?Sized, S: Samples + ?Sized>(
+    times: &T,
+    values: &S,
+    vp: Viewport,
+    breaks: &[usize],
+) -> Trace {
     let (kind, emits) = reduce(times, values, vp);
-    to_trace(times, values, kind, emits, vp)
+    to_trace(times, values, kind, &break_lines(emits, breaks, times), vp)
+}
+
+/// Inserts a gap between two emitted samples when a break falls after the first and at or before the second.
+pub(crate) fn break_lines<T: Times + ?Sized>(emits: Vec<Emit>, breaks: &[usize], times: &T) -> Vec<Emit> {
+    if breaks.is_empty() {
+        return emits;
+    }
+    let mut out = Vec::with_capacity(emits.len() + 8);
+    let mut prev: Option<usize> = None;
+    for e in emits {
+        if let (Emit::Sample(q), Some(p)) = (e, prev) {
+            let k = breaks.partition_point(|&b| b <= p);
+            if breaks.get(k).is_some_and(|&b| b <= q) && !matches!(out.last(), Some(Emit::Gap(_))) {
+                out.push(Emit::Gap(times.at(q - 1)));
+            }
+        }
+        prev = match e {
+            Emit::Sample(i) => Some(i),
+            Emit::Gap(_) => prev,
+        };
+        out.push(e);
+    }
+    out
 }
 
 /// Looks up the times and values of what a reduction emitted.
@@ -82,12 +115,12 @@ pub(crate) fn to_trace<T: Times + ?Sized, S: Samples + ?Sized>(
     times: &T,
     values: &S,
     kind: TraceKind,
-    emits: Vec<Emit>,
+    emits: &[Emit],
     vp: Viewport,
 ) -> Trace {
     let mut t = Vec::with_capacity(emits.len());
     let mut y = Vec::with_capacity(emits.len());
-    for e in emits {
+    for &e in emits {
         match e {
             Emit::Sample(i) => {
                 t.push(times.at(i));
@@ -423,6 +456,21 @@ mod tests {
         let tr = m4(&times, &values, Viewport { t0: 205, t1: 255, width_px: 1000 });
         assert_eq!(tr.kind, TraceKind::Raw);
         assert_eq!(tr.t, vec![200, 210, 220, 230, 240, 250, 260]);
+    }
+
+    #[test]
+    fn indexed_jumps_break_the_line_in_raw_and_m4_views() {
+        // 10 ns steps with a 35 ns jump before sample 50: not an empty bucket in either view, but a gap at N = 2
+        let times: Vec<Timestamp> = (0..100).map(|i| i * 10 + if i >= 50 { 25 } else { 0 }).collect();
+        let values: Vec<f32> = (0..100).map(|i| (i % 7) as f32).collect();
+        let breaks = crate::gaps::GapIndex::build(&times).breaks(2.0);
+        assert_eq!(breaks, vec![50]);
+        for width_px in [1000, 4] {
+            let tr = m4_breaking(&times, &values, Viewport { t0: 0, t1: 1100, width_px }, &breaks);
+            let gap = tr.y.iter().position(|y| y.is_nan()).expect("a gap");
+            assert!(tr.t[gap - 1] <= times[49] && tr.t[gap + 1] >= times[50], "width {width_px}: {:?}", tr.t);
+            assert_eq!(tr.y.iter().filter(|y| y.is_nan()).count(), 1);
+        }
     }
 
     #[test]

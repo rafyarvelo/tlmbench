@@ -12,7 +12,7 @@
 use bytemuck::{Pod, Zeroable};
 use rayon::prelude::*;
 
-use crate::m4::{Emit, min_max, push_bucket, reduce_bucket, reduce_with, to_trace};
+use crate::m4::{Emit, break_lines, min_max, push_bucket, reduce_bucket, reduce_with, to_trace};
 use crate::{Samples, Times, Trace, TraceKind, Value, Viewport};
 
 /// The finest stored level: one summary per 4^4 = 256 samples.
@@ -215,11 +215,18 @@ impl<'a> Pyramid<'a> {
 /// and raw edges of such a bucket costs about as much.
 pub const MIN_BUCKET_SAMPLES: usize = 1024;
 
-/// One channel reduced for a viewport from its pyramid: point for point the same as [`crate::m4`] over the raw
-/// samples, reading raw samples only at bucket edges where the summaries can't decide.
-pub fn m4<T: Times + ?Sized, S: Samples + ?Sized>(times: &T, values: &S, pyr: &Pyramid, vp: Viewport) -> Trace {
+/// One channel reduced for a viewport from its pyramid: point for point the same as [`crate::m4_breaking`] over
+/// the raw samples, reading raw samples only at bucket edges where the summaries can't decide. The line breaks
+/// before each sample in `breaks` (sorted, from the gap index).
+pub fn m4<T: Times + ?Sized, S: Samples + ?Sized>(
+    times: &T,
+    values: &S,
+    pyr: &Pyramid,
+    vp: Viewport,
+    breaks: &[usize],
+) -> Trace {
     let (kind, emits) = reduce(times, values, pyr, vp, MIN_BUCKET_SAMPLES);
-    to_trace(times, values, kind, emits, vp)
+    to_trace(times, values, kind, &break_lines(emits, breaks, times), vp)
 }
 
 pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
