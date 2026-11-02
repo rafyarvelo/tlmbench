@@ -4,6 +4,8 @@
 pub trait Value: Copy + PartialOrd + Send + Sync + 'static {
     fn is_nan(self) -> bool;
     fn to_f32(self) -> f32;
+    /// Exact for every type except 64-bit integers past 2^53.
+    fn to_f64(self) -> f64;
 }
 
 macro_rules! int_value {
@@ -16,6 +18,10 @@ macro_rules! int_value {
             #[inline]
             fn to_f32(self) -> f32 {
                 self as f32
+            }
+            #[inline]
+            fn to_f64(self) -> f64 {
+                self as f64
             }
         }
     )*};
@@ -32,6 +38,10 @@ impl Value for f32 {
     fn to_f32(self) -> f32 {
         self
     }
+    #[inline]
+    fn to_f64(self) -> f64 {
+        self as f64
+    }
 }
 
 impl Value for f64 {
@@ -42,6 +52,10 @@ impl Value for f64 {
     #[inline]
     fn to_f32(self) -> f32 {
         self as f32
+    }
+    #[inline]
+    fn to_f64(self) -> f64 {
+        self
     }
 }
 

@@ -1,10 +1,9 @@
-//! TelemetryBench core: the time base, sample values, and M4 downsampling straight from raw samples.
-//!
-//! Phase 1 reduces raw data on every viewport query; the pyramid (precomputed summaries) arrives in Phase 2
-//! behind the same [`m4`] entry point.
+//! TelemetryBench core: the time base, sample values, M4 downsampling, and the min/max pyramid that answers views
+//! of any span from a few thousand summaries. Pure algorithms: files and caches live in `tlmbench-store`.
 
 pub mod datetime;
 pub mod m4;
+pub mod pyramid;
 pub mod recording;
 pub mod time;
 pub mod value;

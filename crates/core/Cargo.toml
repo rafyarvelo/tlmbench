@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+bytemuck = { workspace = true, features = ["derive"] }
 rayon.workspace = true
 serde.workspace = true
 
