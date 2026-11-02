@@ -78,7 +78,8 @@ Moving tabs: drag a tab out of the tab bar to make a new window, drag it onto an
   - Modified All settings are app-wide and apply to every window at once. The exception is which sidebars are shown and their widths, which are per window, since that's layout rather than a setting.
   - Rejected A few view settings (theme, sidebar, time format) can be set per window.
 - **App identifier.** The reverse-domain bundle ID the OS knows the app by (settings and cache folders, file associations, permissions, signing, updates). It can't change after the first public build without the OS treating the app as new.
-  - Proposed `dev.tlmbench.desktop`, the placeholder in the Phase 1 build; replace it with a domain the project owns.
+  - Accepted `io.github.rafyarvelo.tlmbench`, after the project's GitHub account.
+  - Rejected `dev.tlmbench.desktop` was the placeholder in the Phase 1 build.
 
 ## Data ingestion
 
@@ -129,28 +130,31 @@ Index channels sit in their own linked group, since they can't share an axis wit
 - Accepted v1 formats are CSV (first-class), Parquet, and one custom binary format we define as the reference for the descriptor schema.
 - Accepted The reference binary format is `.tlm`: fixed-width records after a header that embeds the file's own descriptor, so a file opens with no extra config and every open goes through the descriptor parser. The header is the magic `TLMBENCH`, a version, the header length (a multiple of 64 bytes) and the descriptor length, then the descriptor as TOML. Records follow back to back; a trailing partial record is ignored. Other fixed-width files take a separate descriptor.
 - Accepted The Phase 1 descriptor covers fixed-width records: schema version, byte order, header and record size, time from a rate, an integer field (ns, µs, ms or s) or the sample index, and per field a name, type (i8 to u64, f32, f64), byte offset, unit, scale and value offset. Bitfields, packet framing and plugin fields come later as new keys.
-- Proposed CSV schema detection: comma, semicolon or tab, whichever the header row has most of. A unit after a space in brackets or parentheses (`Speed [m/s]`, `Temp (°C)`) becomes the channel's unit, while `accel[0]` stays a name; repeated names get `  (2) `. The time column is the first one named like a time (`time`, `t`, `timestamp`, `date`, `time_s`, `t_ms`, …) with at least 90% of its sampled values parsing, else the first column of ISO dates, else row numbers. A column with any non-numeric value in the first 10,000 rows is text and left out. Rows whose time doesn't parse are skipped and counted.
-- Proposed Time that goes backwards is an error naming the row or record, until the index can flag it as the design intends.
+- Accepted CSV schema detection: comma, semicolon or tab, whichever the header row has most of. A unit after a space in brackets or parentheses (`Speed [m/s]`, `Temp (°C)`) becomes the channel's unit, while `accel[0]` stays a name; repeated names get `  (2) `. The time column is the first one named like a time (`time`, `t`, `timestamp`, `date`, `time_s`, `t_ms`, …) with at least 90% of its sampled values parsing, else the first column of ISO dates, else row numbers. A column with any non-numeric value in the first 10,000 rows is text and left out. Rows whose time doesn't parse are skipped and counted.
+- Accepted Time that goes backwards is an error naming the row or record, until the index can flag it as the design intends.
 
 ## Storage and indexing
 
 Data is stored once as raw columns plus a precomputed min/max pyramid, so any zoom level is answered by reading at most a few thousand summary entries.
 
-**Raw columns.** Each channel is a sequence of fixed-size chunks (64k samples): a timestamp column and a value column, typed (`f32`, `f64`, `i16`, …). For fixed-width binary the original file is the store, read through mmap. CSV and compressed formats are converted once into a cache file (Arrow IPC or a simple custom columnar layout) in the app cache dir (Tauri's app\_cache\_dir), never beside the source, keyed by file hash + mtime, so the second open is instant. Settings shows the cache path and total size with Open folder and Clear cache buttons; a size cap (default 20 GB) evicts the least recently opened files first, and a deleted cache is simply rebuilt on the next open.
+**Raw columns.** Each channel is a sequence of fixed-size chunks (64k samples): a timestamp column and a value column, typed (`f32`, `f64`, `i16`, …). For fixed-width binary the original file is the store, read through mmap. CSV and compressed formats are converted once into a cache file (Arrow IPC or a simple custom columnar layout) in the app cache dir (Tauri's app\_cache\_dir), never beside the source, keyed by file hash + mtime, so the second open is instant. Settings shows the cache path and total size with Open folder and Clear cache buttons; a size cap (default 20 GB, and eviction also starts when free disk drops below 10 GB) evicts the least recently opened files first, and a deleted cache is simply rebuilt on the next open.
 
-**Pyramid.** For each channel, level 0 is the raw data; level k holds one summary per 4^k raw samples (bucket factor 4 to 16 is tunable). Each summary stores `t_first`, `t_last`, `min` and `max` (each with its sample index), `first`, `last`, `sum`, `sum of squares` and `count`: enough for M4 rendering and for exact min, max, mean and standard deviation over any range, with ragged edges read from raw samples. Total overhead is about 1/3 of the raw size at factor 4, and far less at 16.
+**Pyramid.** For each channel, level 0 is the raw data; level k holds one summary per 4^k raw samples (bucket factor 4 to 16 is tunable). Each summary stores `t_first`, `t_last`, `min` and `max` (each with its sample index), `first`, `last`, `sum`, `sum of squares` and `count`: enough for M4 rendering and for exact min, max, mean and standard deviation over any range, with ragged edges read from raw samples. Levels finer than 256 samples per summary (k < 4) aren't stored: a summary is about 88 bytes, so they would cost several times the raw data, and views that fine are reduced straight from raw samples. The stored levels add about 11% to raw f32 data.
 
 **Lookup.** A chunk index maps time ranges to chunk numbers via binary search on each chunk's first/last timestamp. For a viewport \[t0, t1\] at width W pixels, pick the coarsest level whose bucket count in range is still ≥ 2W, read just those buckets, then refine to exact pixel buckets.
 
-**Memory.** Hot chunks live in an LRU cache with a byte budget (default 25% of RAM); everything else stays on disk via mmap and the OS page cache. Gaps (time jumps larger than N × the median sample interval) are recorded in the index so lines break instead of drawing across dropouts.
+**Memory.** Hot chunks live in an LRU cache with a byte budget (default 25% of RAM); everything else stays on disk via mmap and the OS page cache. Gaps (time jumps larger than N × the median sample interval; N is 4 by default and set per channel) are recorded in the index so lines break instead of drawing across dropouts.
 
 ### Decisions
 
 - Accepted Hard requirement: full capability from the app cache alone, so a read-only folder works. Source folders stay untouched; caches and sessions live only in the app cache dir. Only actions you start write to a folder: Share writes `.tlmbench/` at the folder root, Export to HTML writes where you choose.
 - Accepted The CSV cache is a simple custom columnar layout, not Arrow IPC: one plain little-endian file per column (`t.i64` for times, `c<k>.f64` per numeric column) plus `manifest.json`, memory-mapped on reopen. It is written to a temporary folder and renamed into place, so a failed or interrupted build leaves nothing. Arrow stays an export format.
-- Proposed The cache key is a fingerprint, not a whole-file hash: size, modification time, and a BLAKE3 hash of the first and last MiB plus 63 blocks spread through the file. A whole-file hash would cost about a second on every open of a multi-GB file; reopening a 2.4 GB CSV takes 0.01 s.
-- Proposed One cache root for the CLI and the app: `--cache`, else `$TLMBENCH_CACHE`, else the OS cache folder's `tlmbench` (`~/Library/Caches/tlmbench` on macOS), rather than Tauri's per-app cache folder, so a file cached by one is instant in the other.
-- Proposed CSV is read with positioned reads, each worker reading its own 8 MB chunk, not through one memory map: parallel page faults on one mapping serialize on macOS. Unquoted data takes a fast path (lines split with memchr); a quote found anywhere restarts the file with the general CSV reader, since a quoted field can hold a newline. On a MacBook Air M1 a 2.4 GB, 100M-row CSV ingests in 3.0 s (about 800 MB/s) with 430 MB peak memory.
+- Accepted The cache key is a fingerprint, not a whole-file hash: size, modification time, and a BLAKE3 hash of the first and last MiB plus 63 blocks spread through the file. A whole-file hash would cost about a second on every open of a multi-GB file; reopening a 2.4 GB CSV takes 0.01 s.
+- Accepted One cache root for the CLI and the app: `--cache`, else `$TLMBENCH_CACHE`, else the OS cache folder's `tlmbench` (`~/Library/Caches/tlmbench` on macOS), rather than Tauri's per-app cache folder, so a file cached by one is instant in the other.
+- Accepted CSV is read with positioned reads, each worker reading its own 8 MB chunk, not through one memory map: parallel page faults on one mapping serialize on macOS. Unquoted data takes a fast path (lines split with memchr); a quote found anywhere restarts the file with the general CSV reader, since a quoted field can hold a newline. On a MacBook Air M1 a 2.4 GB, 100M-row CSV ingests in 3.0 s (about 800 MB/s) with 430 MB peak memory.
+- Accepted The pyramid stores levels from 256 samples per summary (k = 4 on the 4^k grid), ×4 above that, about 11% of raw f32 data. Storing every level from 4 samples would cost about 4.7× the raw data, since a summary is about 88 bytes.
+- Accepted Gaps are time jumps over 4 × the median sample interval by default; the factor is a per-channel setting.
+- Accepted The cache evicts the least recently opened files when it passes its cap (default 20 GB) or when free disk drops below 10 GB, whichever comes first.
 
 ## Downsampling
 
@@ -179,9 +183,9 @@ Use min/max-per-pixel (M4) as the default renderer: it is exact for line charts,
 
 ### Decisions
 
-- Proposed Raw samples are sent when the view holds at most 4W samples, not W: that is no more points than M4 would send, and raw is the exact picture. Every trace also includes the nearest sample beyond each edge of the view, so the line runs to the edges while panning.
-- Proposed Bucket width is a whole number of nanoseconds (the span divided by W, at least 1 ns), so the global grid `floor(t / bucket_width)` is exact integer arithmetic. Ties for min or max go to the earliest sample.
-- Proposed Gaps in Phase 1: a bucket with no samples, or only NaN, breaks the line (one gap for a run of empty buckets). Time jumps between samples in a raw view don't break it yet; that comes with the gap index in the pyramid phase.
+- Accepted Raw samples are sent when the view holds at most 4W samples, not W: that is no more points than M4 would send, and raw is the exact picture. Every trace also includes the nearest sample beyond each edge of the view, so the line runs to the edges while panning.
+- Accepted Bucket width is a whole number of nanoseconds (the span divided by W, at least 1 ns), so the global grid `floor(t / bucket_width)` is exact integer arithmetic. Ties for min or max go to the earliest sample.
+- Accepted Gaps in Phase 1: a bucket with no samples, or only NaN, breaks the line (one gap for a run of empty buckets). Time jumps between samples in a raw view don't break it yet; that comes with the gap index in the pyramid phase.
 
 ## Rendering
 
@@ -206,9 +210,9 @@ Rust sends each trace as a compact binary buffer of at most \~4W points, and Web
 ### Decisions
 
 - Accepted The viewport reply format, defined once in the core for IPC now and the daemon's socket later: a 32-byte header (magic `TLMV`, version, generation, trace count, `origin_ns` as i64, `x_scale_ns` as f64), then per trace a 24-byte header (channel, n, kind raw or M4, `y_min`, `y_max`) and `f32 x[n]`, `f32 y[n]`, all 8-byte aligned so the UI takes `Float32Array` views with no copy. A sample's time is `origin_ns + x × x_scale_ns`, with the origin at the view's start and the scale one bucket, so x runs over about 0 to W and f32 stays exact at any zoom. `y_min`/`y_max` cover the samples inside the view, for autoscale; NaN in y is a gap. Times in requests are decimal strings, since a JSON number can't hold i64 nanoseconds.
-- Proposed Each trace header also carries `reduce_us`, the core's own time to reduce it: WebKit rounds the page's clocks to 1 ms, too coarse to time a sub-millisecond query.
+- Accepted Each trace header also carries `reduce_us`, the core's own time to reduce it: WebKit rounds the page's clocks to 1 ms, too coarse to time a sub-millisecond query.
 - Accepted The app's UI is TypeScript and Vite with no framework while it is one pane; the framework is chosen when the prototype's UI is ported.
-- Proposed Views over 256k samples are reduced on several threads (rayon), so a 1M-sample view takes about 0.5 ms on an M1 instead of 1.7 ms.
+- Accepted Views over 256k samples are reduced on several threads (rayon), so a 1M-sample view takes about 0.5 ms on an M1 instead of 1.7 ms.
 
 ### Loading what's on screen
 
@@ -996,8 +1000,9 @@ The command-line tool ships in v1 with the app. It is built on the same core fro
 
 ### Decisions
 
-- Proposed How the Phase 1 gate is judged (`just gate`): a scripted 30 s sweep in the release app (zoom from the whole file to 1 s and back, pans), one view per frame. It passes when at most 1% of frames miss a vsync (an interval over 1.5 refresh periods) and none exceeds 3 periods, and when the core reduces views of up to 1M samples in p95 under 5 ms, timed in Rust. Missed vsyncs replace a 16.7 ms p95 because WebKit rounds the page's clocks to 1 ms. Whole-file views are reported, not gated. A run in which the window was hidden counts as invalid, not as a fail.
+- Accepted How the Phase 1 gate is judged (`just gate`): a scripted 30 s sweep in the release app (zoom from the whole file to 1 s and back, pans), one view per frame. It passes when at most 1% of frames miss a vsync (an interval over 1.5 refresh periods) and none exceeds 3 periods, and when the core reduces views of up to 1M samples in p95 under 5 ms, timed in Rust. Missed vsyncs replace a 16.7 ms p95 because WebKit rounds the page's clocks to 1 ms. Whole-file views are reported, not gated. A run in which the window was hidden counts as invalid, not as a fail.
 - Accepted The Phase 1 gate uses one 100M-sample trace; the 20-trace target is reported later, once the pyramid exists.
+- Accepted How Gate 2 (10 GB first paint under 1 s) is judged, since reading 10 GB takes at least 3 s on the development Mac: reopening a 10 GB recording with its pyramid cached, after the OS file cache is flushed (`purge`), draws the whole view in under 1 s; a first-ever open shows axes and build progress in under 1 s and builds the pyramid at disk speed (reported, not gated). The recording is a 10 GB `.tlm` of 20 channels × 125M f32 samples, which also reports the 20-trace target. It is generated on the internal disk for the run and deleted afterwards.
 
 ## Risks
 
