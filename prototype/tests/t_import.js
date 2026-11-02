@@ -4,6 +4,7 @@ const T = require('./lib');
 T.run('import', async ({ p, check, tabs, panes, text, drop, csv, wait }) => {
   await drop([csv('AAPL.csv')]);
   check('import dialog', /Open AAPL\.csv/.test(await text('#liveDlg header')));
+  check('columns all in the default category list flat (no lone Data header)', await p.evaluate(() => !document.querySelector('#liveDlg .impcat') && document.querySelectorAll('#liveDlg .impcol').length >= 5));
   check('date column and daily rate detected', /daily/.test(await text('#liveDlg')), (await text('#liveDlg')).slice(0, 200));
   check('No time disables Time unit', await p.evaluate(() => { const r = document.querySelector('input[name="imprate"][value="samples"]'); r.click(); return true; }) && await p.evaluate(() => { const s = document.querySelector('[data-imp="unit"]'); return !s || s.disabled; }));
   await p.evaluate(() => document.querySelector('input[name="imprate"][value="recorded"]').click()); await wait(200);
@@ -11,6 +12,7 @@ T.run('import', async ({ p, check, tabs, panes, text, drop, csv, wait }) => {
   await p.click('#liveDlg [data-go]'); await wait(2000);
   check('opens in its own tab', (await tabs()).some(t => /^AAPL\.csv\*/.test(t)), await tabs());
   check('as one table (chosen in the dialog)', /rows in view/.test(await text('#stack .tstat') || ''));
+  check('...and Explorer lists its channels flat too', await p.evaluate(() => { const g = [...document.querySelectorAll('#fileTree .ghead .gnm')].map(e => e.textContent); return !g.includes('Data') && !!document.querySelector('#fileTree .chan[data-ch*="Close"]'); }));
 
   // the same header again: the profile comes back; the same file replaces
   await drop([csv('AAPL.csv'), csv('MSFT.csv')]);

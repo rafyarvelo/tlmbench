@@ -5759,7 +5759,8 @@ function renderTree() {
     list.sort((a, b) => arrayParts(a.name) && arrayParts(b.name) ? natCmp(a.name, b.name) : 0); // accel[2] before accel[10]
     const nOn = all.filter(c => on.has(c.id)).length;
     const gl0 = g.includes('|') ? g.split('|')[1] : g;
-    const flat = settings.groupChannels === false || gl0 === '';
+    // a file whose channels all fell into the default category lists them flat: one "Data" header adds nothing
+    const flat = settings.groupChannels === false || gl0 === '' || (gkeys.length === 1 && gl0 === 'Data');
     const open = flat || treeOpen(g, nOn > 0);
     const arr = all.every(c => { const a = arrayParts(c.name); return a && a.base === gl0; }) ? all.map(c => arrayParts(c.name).idx[0]) : null;
     const gl = arr && all.length > 1 ? `${gl0}[${Math.min(...arr)}..${Math.max(...arr)}]` : gl0;
@@ -9132,10 +9133,10 @@ function renderImport(keepScroll) {
     </div>`;
   };
   let listHtml;
-  if (st.group === 'none') listHtml = vis.map(row).join('');
+  const byCat = new Map(); if (st.group !== 'none') { vis.forEach(c => { const k = colCat(st, c, cc) || 'Data'; if (!byCat.has(k)) byCat.set(k, []); byCat.get(k).push(c); }); (job.newCats || []).forEach(k => { if (!byCat.has(k)) byCat.set(k, []); }); }
+  // every column in the default category: a flat list, as with no categories (+ New category still starts one)
+  if (st.group === 'none' || (byCat.size === 1 && byCat.has('Data'))) listHtml = vis.map(row).join('');
   else {
-    const byCat = new Map(); vis.forEach(c => { const k = colCat(st, c, cc) || 'Data'; if (!byCat.has(k)) byCat.set(k, []); byCat.get(k).push(c); });
-    (job.newCats || []).forEach(k => { if (!byCat.has(k)) byCat.set(k, []); });
     listHtml = [...byCat.entries()].map(([k, list]) => `<div class="impcat" data-cat="${esc(k)}"><button class="impcath" data-fold="${esc(k)}" aria-expanded="${!job.closed.has(k)}">${ICON.chev}<span>${esc(k)}</span><small>${list.length}</small></button><button class="linkbtn" data-rencat="${esc(k)}">Rename</button></div>`
       + (job.closed.has(k) ? '' : list.map(row).join('') || '<div class="impempty">Empty: select columns and use Move to</div>')).join('');
   }
