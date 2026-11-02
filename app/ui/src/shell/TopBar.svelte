@@ -2,6 +2,7 @@
 <script lang="ts">
   import { ICON } from '../icons';
   import { type Mode, setSetting, settings } from '../settings.svelte';
+  import { play, playActions } from '../play.svelte';
   import { moveTab, tabs } from '../tabs.svelte';
   import { actions, ui } from '../ui.svelte';
 
@@ -114,6 +115,7 @@
   {/if}
   <button class="tb" id="b-back" aria-label="Back" disabled={!ui.canBack} data-tip="Previous view (⌥←)" onclick={actions.back}>{@html ICON.back}</button>
   <button class="tb" id="b-fit" aria-label="Fit" disabled={!ui.file} data-tip="Show the whole recording (F)" onclick={actions.fit}>{@html ICON.fit}</button>
+  <button class="tb" id="b-play" aria-label="Play back" aria-pressed={play.open} disabled={!ui.file} data-tip="Play back: a playhead moves through the file and the view follows it (Space plays and pauses)" onclick={() => (play.open ? playActions.close() : playActions.open())}>{@html ICON.play}</button>
   <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.more}</button>
   {#if tabMenu}
     <div class="menu tabmenu" role="menu" style="left: {tabMenu.x}px; top: {tabMenu.y}px">

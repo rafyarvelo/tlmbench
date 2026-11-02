@@ -7,6 +7,8 @@
   import Rail from './shell/Rail.svelte';
   import Settings from './shell/Settings.svelte';
   import TopBar from './shell/TopBar.svelte';
+  import Transport from './shell/Transport.svelte';
+  import { play } from './play.svelte';
   import { ICON } from './icons';
   import { setSetting, settings } from './settings.svelte';
   import { measureShown, ui } from './ui.svelte';
@@ -28,6 +30,7 @@
   <Rail />
   <div class="col">
     <TopBar />
+    {#if play.open}<Transport />{/if}
     {#if ui.note}
       <div class="wsnote" id="wsNote" role="status">
         <span class="dot"></span><span class="txt">{ui.note}</span>

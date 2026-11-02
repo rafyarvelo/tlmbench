@@ -16,6 +16,7 @@ import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value 
 import { runGate, runGate2 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { applyTheme, type Mode, onSetting, saveSettings, setSetting, settings } from './settings.svelte';
+import { play, playActions, SPEEDS } from './play.svelte';
 import { addPaneBelow, labelled, normalize, note, onStackChange, type Pane, stack } from './stack.svelte';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
@@ -346,9 +347,141 @@ function setView(t0: bigint, t1: bigint, remember = false): void {
   }
   state.t0 = t0;
   state.t1 = t0 + span;
+  // any view you choose stops following the playhead (it keeps going); Follow brings it back
+  if (play.open && play.follow && !playDriving) play.follow = false;
   updateRange();
   scheduleDraw();
   void requestView();
+}
+
+// ---------- Play: a playhead moves through the file and the view follows it ----------
+
+let playDriving = false;
+let playRaf = 0;
+let playLast = 0;
+/** The playhead as a time, and a time as seconds from the file's first sample. */
+const playNs = () => (state.file ? state.file.first + BigInt(Math.round(play.t * 1e9)) : 0n);
+const secsOf = (t: bigint) => (state.file ? Number(t - state.file.first) / 1e9 : 0);
+
+/** Opens the transport: the playhead at cursor A, or near the end of the view, at a speed that plays the file in
+ * about 3 minutes, with the window the view has (or a 20th of the file). */
+function openPlay(): void {
+  const f = state.file;
+  if (!f || play.open) return;
+  const end = Number(f.last - f.first) / 1e9;
+  const span = Number(state.t1 - state.t0) / 1e9;
+  Object.assign(play, {
+    open: true,
+    running: false,
+    end,
+    t: Math.max(0, Math.min(end, state.A != null ? secsOf(state.A) : secsOf(state.t0) + span * 0.85)),
+    speed: Math.max(1, SPEEDS.find((s) => end / s <= 180) ?? SPEEDS[SPEEDS.length - 1]),
+    win: Math.max(4e-6, span < end * 0.9 ? span : end / 20),
+    follow: true,
+    loop: false,
+    canLoop: state.A != null && state.B != null,
+  });
+  followPlayhead();
+}
+
+function closePlay(): void {
+  Object.assign(play, { open: false, running: false });
+  cancelAnimationFrame(playRaf);
+  playRaf = 0;
+  scheduleDraw();
+}
+
+/** The A–B span when looping, in seconds. */
+function loopSpan(): [number, number] | null {
+  if (!play.loop || state.A == null || state.B == null || state.A === state.B) return null;
+  const [a, b] = [secsOf(state.A), secsOf(state.B)];
+  return [Math.min(a, b), Math.max(a, b)];
+}
+
+function togglePlay(): void {
+  if (!play.open) openPlay();
+  if (!play.open) return;
+  play.running = !play.running;
+  const lp = loopSpan();
+  if (play.running && lp && (play.t < lp[0] || play.t >= lp[1])) play.t = lp[0];
+  if (play.running && play.t >= play.end - 1e-9) play.t = 0;
+  if (play.running) {
+    play.follow = true;
+    playLast = performance.now();
+    if (!playRaf) playRaf = requestAnimationFrame(playFrame);
+    followPlayhead();
+  }
+}
+
+/** The view, following: the playhead at 85% of the window, so a little of what comes shows. */
+function followPlayhead(): void {
+  const f = state.file;
+  if (!f || !play.open || !play.follow) return;
+  let t1 = play.t + play.win * 0.15;
+  let t0 = t1 - play.win;
+  if (t0 < 0) [t0, t1] = [0, t1 - t0];
+  if (t1 > play.end) [t0, t1] = [Math.max(0, t0 - (t1 - play.end)), play.end];
+  playDriving = true;
+  setView(f.first + BigInt(Math.round(t0 * 1e9)), f.first + BigInt(Math.round(t1 * 1e9)) + 1n);
+  playDriving = false;
+}
+
+function playFrame(now: number): void {
+  playRaf = 0;
+  if (!play.open || !play.running) return;
+  const dt = Math.min(0.25, (now - playLast) / 1000);
+  playLast = now;
+  const before = play.t;
+  let t = play.t + dt * play.speed;
+  const lp = loopSpan();
+  if (lp && before < lp[1] && t >= lp[1]) t = lp[0];
+  else if (t >= play.end) [t, play.running] = [play.end, false];
+  play.t = t;
+  followPlayhead();
+  // readouts follow the playhead unless the pointer is on a chart
+  if (state.hoverT == null) void requestHover(playNs());
+  scheduleDraw();
+  if (play.running) playRaf = requestAnimationFrame(playFrame);
+}
+
+function seekPlay(t: number): void {
+  play.t = Math.max(0, Math.min(play.end, t));
+  play.follow = true;
+  followPlayhead();
+  if (state.hoverT == null) void requestHover(playNs());
+  scheduleDraw();
+}
+
+Object.assign(playActions, {
+  open: openPlay,
+  toggle: togglePlay,
+  seek: seekPlay,
+  setWindow: (w: number) => {
+    play.win = Math.min(w, play.end || w);
+    play.follow = true;
+    followPlayhead();
+  },
+  follow: () => {
+    play.follow = true;
+    followPlayhead();
+  },
+  close: closePlay,
+});
+
+/** The playhead across a plot. */
+function drawPlayhead(ctx: CanvasRenderingContext2D, r: Rect, tk: Record<string, string>, t0 = state.t0, t1 = state.t1): void {
+  if (!play.open || !state.file) return;
+  const t = playNs();
+  if (t < t0 || t > t1) return;
+  const x = Math.round(r.x + (Number(t - t0) / Number(t1 - t0)) * r.w) + 0.5;
+  ctx.save();
+  ctx.strokeStyle = tk['--accent'];
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, r.y);
+  ctx.lineTo(x, r.y + r.h);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** Glides to a view over about 0.3 s on its centre and log(span), so a 2× and a 200× zoom look even. */
@@ -459,6 +592,7 @@ function draw(): void {
     }
     drawBuilding(ctx, r, i === 0);
     drawCursors(ctx, r, tk);
+    drawPlayhead(ctx, r, tk);
     drawHover(ctx, r, chans, { yMin, yMax }, tk);
     if (state.box?.pane === i) {
       const [a, b] = [Math.min(state.box.x0, state.box.x1), Math.max(state.box.x0, state.box.x1)];
@@ -605,6 +739,7 @@ function drawOverview(ctx: CanvasRenderingContext2D, tk: Record<string, string>)
     }
   }
   drawBuilding(ctx, r, false, t0, t1);
+  drawPlayhead(ctx, r, tk, t0, t1);
   // the window on the current view
   const xa = Math.max(r.x, r.x + (Number(state.t0 - t0) / span) * r.w);
   const xb = Math.min(r.x + r.w, r.x + (Number(state.t1 - t0) / span) * r.w);
@@ -706,6 +841,8 @@ async function refreshMeasure(): Promise<void> {
   const seq = ++measureSeq;
   ui.anyCursor = state.A != null || state.B != null;
   ui.cursors = state.A != null && state.B != null;
+  play.canLoop = ui.cursors;
+  if (!ui.cursors) play.loop = false;
   if (!f || state.A == null || state.B == null) {
     measureEl.innerHTML = `<h2>Measure</h2><p class="mnote">${f ? 'Place cursors A and B to measure between them: press C, then click a chart twice. A and B also place them at the pointer.' : 'Open a recording to measure it.'}</p>`;
     return;
@@ -784,6 +921,8 @@ interface TabData {
   history: [bigint, bigint][];
   future: [bigint, bigint][];
   exactMs: number;
+  /** Its transport when it was left (restored paused), or null in Analyze. */
+  play: null | { t: number; speed: number; win: number; follow: boolean; loop: boolean };
 }
 const tabData = new Map<number, TabData>();
 let nextTab = 1;
@@ -806,6 +945,7 @@ function stashTab(): void {
     history: state.history,
     future: state.future,
     exactMs: state.exactMs,
+    play: play.open ? { t: play.t, speed: play.speed, win: play.win, follow: play.follow, loop: play.loop } : null,
   });
 }
 
@@ -836,6 +976,7 @@ async function showTab(key: number): Promise<void> {
   stack.panes = copyPanes(d.panes);
   stack.sel = d.sel;
   normalize();
+  closePlay();
   ui.file = nameOf(d.file.info.path);
   ui.path = d.file.info.path;
   ui.measureDismissed = false;
@@ -845,6 +986,10 @@ async function showTab(key: number): Promise<void> {
   await tick();
   renderPanes();
   setView(d.t0, d.t1);
+  if (d.play) {
+    const end = Number(d.file.last - d.file.first) / 1e9;
+    Object.assign(play, { ...d.play, open: true, running: false, end, canLoop: d.A != null && d.B != null });
+  }
   void refreshMeasure();
 }
 
@@ -876,6 +1021,7 @@ async function openPath(path: string): Promise<void> {
       history: [],
       future: [],
       exactMs: Infinity,
+      play: null,
     });
     tabs.list.push({ key, path: o.info.path, name: nameOf(o.info.path) });
     ui.note = '';
@@ -966,6 +1112,7 @@ async function closeAll(): Promise<void> {
 
 /** No tab: the window as at launch. */
 function emptyWindow(): void {
+  closePlay();
   freeLayers();
   Object.assign(state, { file: null, building: null, A: null, B: null, history: [], future: [] });
   stack.panes = [];
@@ -1271,6 +1418,11 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'Escape' && closePopup()) return;
+  if (e.key === ' ' && state.file && !(e.target as HTMLElement).closest('input, select, textarea, button')) {
+    e.preventDefault();
+    togglePlay();
+    return;
+  }
   if (popup) return;
   if (e.metaKey || e.ctrlKey) return;
   if (e.altKey && e.key === 'ArrowLeft') return back();
@@ -1325,6 +1477,21 @@ applyTips();
 applyTheme();
 updateRange();
 void refreshMeasure();
+
+/** What the UI tests drive in Play (seconds from the file's first sample). */
+(window as unknown as { __tlmPlay: unknown }).__tlmPlay = {
+  state: () => ({ ...play }),
+  seek: (t: number) => seekPlay(t),
+  speed: (s: number) => (play.speed = s),
+  cursors: (a: number | null, b: number | null) => {
+    const f = state.file;
+    if (!f) return;
+    state.A = a == null ? null : f.first + BigInt(Math.round(a * 1e9));
+    state.B = b == null ? null : f.first + BigInt(Math.round(b * 1e9));
+    scheduleDraw();
+    void refreshMeasure();
+  },
+};
 
 /** What the gate scripts drive. */
 export const gateApi = {
