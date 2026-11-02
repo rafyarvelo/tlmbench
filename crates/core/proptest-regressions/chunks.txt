@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f6f6c4c3129d39a8a50197630e7b01e29de199d9e71d6b1602fa2fe59cea2785 # chunked_samples_reduce_exactly_like_raw: n = 36981, nan_every = 741, held_mask = 20 (Linux CI, Nov 2, 2026)
+cc 6183bca620b50c574e8381ef51f009564d293da474bf9a3d806f1ceaabbea3da # shrinks to n = 7784, nan_every = 5003, held_mask = 2, a = 0.2845022542866604, span = 0.5444573567302361, width_px = 1

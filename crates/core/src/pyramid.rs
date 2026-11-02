@@ -92,7 +92,8 @@ impl Summary {
                 for c in chunks {
                     (0..4).for_each(|k| acc(k, c[k]));
                 }
-                rest.iter().for_each(|&v| acc(0, v));
+                // sample i goes to sum i % 4 either way, so a chunked read adds in the same order, bit for bit
+                rest.iter().enumerate().for_each(|(k, &v)| acc(k, v));
             }
             None => values.range(start, end).enumerate().for_each(|(i, v)| acc(i % 4, v)),
         }
