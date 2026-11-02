@@ -13,4 +13,4 @@ pub mod wire;
 pub use m4::{Trace, TraceKind, Viewport, m4, m4_breaking};
 pub use recording::{ChannelInfo, ChannelOp, Channels, Recording, RecordingInfo, TimeSource, TimesOp};
 pub use time::{RateTimes, Times, Timestamp};
-pub use value::{Samples, Value};
+pub use value::{Samples, Shifted, Value};

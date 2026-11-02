@@ -1,7 +1,7 @@
 //! A file's bytes: memory-mapped, or owned (empty files, and data built in memory for tests and fuzzing).
 
 use std::fs::File;
-use std::io::Read;
+use std::io::{self, Read};
 use std::ops::Deref;
 use std::path::Path;
 
@@ -54,4 +54,27 @@ pub(crate) fn read_head(path: &Path, n: usize) -> Result<Vec<u8>> {
     let mut buf = Vec::with_capacity(n);
     File::open(path).and_then(|f| f.take(n as u64).read_to_end(&mut buf)).map_err(io_err(path))?;
     Ok(buf)
+}
+
+/// Reads exactly `buf.len()` bytes at `at`.
+#[cfg(unix)]
+pub(crate) fn read_exact_at(file: &File, buf: &mut [u8], at: u64) -> io::Result<()> {
+    std::os::unix::fs::FileExt::read_exact_at(file, buf, at)
+}
+
+#[cfg(windows)]
+pub(crate) fn read_exact_at(file: &File, mut buf: &mut [u8], mut at: u64) -> io::Result<()> {
+    use std::os::windows::fs::FileExt;
+    while !buf.is_empty() {
+        match file.seek_read(buf, at) {
+            Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+            Ok(n) => {
+                buf = &mut buf[n..];
+                at += n as u64;
+            }
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }

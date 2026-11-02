@@ -279,8 +279,7 @@ pub(crate) fn build(op: &Opened, progress: &mut dyn FnMut(u64, u64)) -> Result<b
             return Ok(false);
         }
         let (s, e) = (b * block, ((b + 1) * block).min(n));
-        for c in 0..channels {
-            let mut level = rec.summarize(c, s, e);
+        for (c, mut level) in rec.summarize_all(s, e).into_iter().enumerate() {
             for j in 0..per_block {
                 if j > 0 {
                     level = coarser(&level);

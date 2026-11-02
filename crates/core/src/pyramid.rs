@@ -68,8 +68,8 @@ impl Summary {
             return s;
         };
         let v0 = values.get(start + off);
-        let (mn, mx) = match values.as_slice() {
-            Some(sl) => min_max(&sl[start + off..end], v0),
+        let (mn, mx) = match values.slice(start + off, end) {
+            Some(sl) => min_max(sl, v0),
             None => values
                 .range(start + off, end)
                 .fold((v0, v0), |(mn, mx), v| (if v < mn { v } else { mn }, if v > mx { v } else { mx })),
@@ -86,9 +86,9 @@ impl Summary {
                 n += 1;
             }
         };
-        match values.as_slice() {
+        match values.slice(start, end) {
             Some(sl) => {
-                let (chunks, rest) = sl[start..end].as_chunks::<4>();
+                let (chunks, rest) = sl.as_chunks::<4>();
                 for c in chunks {
                     (0..4).for_each(|k| acc(k, c[k]));
                 }

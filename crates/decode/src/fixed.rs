@@ -2,11 +2,15 @@
 //! and nothing is copied or cached.
 
 use std::marker::PhantomData;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::thread::JoinHandle;
 
-use tlmbench_core::{ChannelInfo, ChannelOp, Channels, RateTimes, RecordingInfo, TimeSource, Times, TimesOp};
+use rayon::prelude::*;
+use tlmbench_core::pyramid::{self, Summary};
+use tlmbench_core::{ChannelInfo, ChannelOp, Channels, RateTimes, RecordingInfo, Shifted, TimeSource, Times, TimesOp};
 
-use crate::bytes::{self, Bytes};
+use crate::bytes::{self, Bytes, read_exact_at};
 use crate::descriptor::{DType, Descriptor, Endian, TimeSpec};
 use crate::error::{Error, Result, format_err, io_err};
 use crate::reference;
@@ -21,6 +25,16 @@ pub struct FixedWidth {
     /// Index into `desc.fields` of each channel.
     channels: Vec<usize>,
     info: RecordingInfo,
+    /// The next block's records being read in the background while a build summarizes this one.
+    read_ahead: Mutex<Option<ReadAhead>>,
+}
+
+/// Records `start..` read on another thread.
+#[derive(Debug)]
+struct ReadAhead {
+    start: usize,
+    end: usize,
+    bytes: JoinHandle<Option<Vec<u8>>>,
 }
 
 impl FixedWidth {
@@ -63,6 +77,7 @@ impl FixedWidth {
             header_len,
             records,
             channels,
+            read_ahead: Mutex::new(None),
             info: RecordingInfo {
                 path: path.to_owned(),
                 format: format.to_owned(),
@@ -213,6 +228,82 @@ impl Channels for FixedWidth {
         }
     }
 
+    /// One positioned read of the block's records (parallel page faults on one map serialize on macOS), then each
+    /// channel gathered into a buffer of its own and summarized on the slice path. The next block is read ahead
+    /// meanwhile.
+    fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>> {
+        let stride = self.desc.record_size as usize;
+        let read = move |path: PathBuf, header: usize, a: usize, b: usize| {
+            let mut buf = vec![0u8; (b - a) * stride];
+            let f = std::fs::File::open(path).ok()?;
+            read_exact_at(&f, &mut buf, (header + a * stride) as u64).ok().map(|()| buf)
+        };
+        let mut ahead = self.read_ahead.lock().unwrap();
+        let buf = match ahead.take() {
+            Some(r) if (r.start, r.end) == (start, end) => r.bytes.join().ok().flatten(),
+            _ if matches!(self.bytes, Bytes::Mapped(_)) => read(self.info.path.clone(), self.header_len, start, end),
+            _ => None,
+        }
+        .unwrap_or_else(|| self.records_bytes()[start * stride..end * stride].to_vec());
+        // read the next block of the same size while this one is summarized
+        let (next, next_end) = (end, (end + (end - start)).min(self.records));
+        if matches!(self.bytes, Bytes::Mapped(_)) && next < next_end {
+            let (path, header) = (self.info.path.clone(), self.header_len);
+            let bytes = std::thread::spawn(move || read(path, header, next, next_end));
+            *ahead = Some(ReadAhead { start: next, end: next_end, bytes });
+        }
+        drop(ahead);
+
+        struct Op<'a> {
+            me: &'a FixedWidth,
+            buf: &'a [u8],
+            start: usize,
+        }
+        impl TimesOp for Op<'_> {
+            type Out = Vec<Vec<Summary>>;
+            fn run<T: Times + ?Sized>(self, times: &T) -> Vec<Vec<Summary>> {
+                fn one<V: Pod, T: Times + ?Sized>(
+                    op: &Op,
+                    times: &T,
+                    field: &crate::descriptor::Field,
+                ) -> Vec<Summary> {
+                    let (stride, offset) = (op.me.desc.record_size as usize, field.offset as usize);
+                    let big = op.me.desc.endian == Endian::Big;
+                    let data: Vec<V> = op
+                        .buf
+                        .chunks_exact(stride)
+                        .map(|r| {
+                            let b = &r[offset..offset + V::SIZE];
+                            if big { V::from_be(b) } else { V::from_le(b) }
+                        })
+                        .collect();
+                    let n = data.len();
+                    pyramid::summarize(times, &Shifted { offset: op.start, data: &data }, op.start, op.start + n)
+                }
+                self.me
+                    .channels
+                    .par_iter()
+                    .map(|&fi| {
+                        let field = &self.me.desc.fields[fi];
+                        match field.dtype {
+                            DType::I8 => one::<i8, T>(&self, times, field),
+                            DType::I16 => one::<i16, T>(&self, times, field),
+                            DType::I32 => one::<i32, T>(&self, times, field),
+                            DType::I64 => one::<i64, T>(&self, times, field),
+                            DType::U8 => one::<u8, T>(&self, times, field),
+                            DType::U16 => one::<u16, T>(&self, times, field),
+                            DType::U32 => one::<u32, T>(&self, times, field),
+                            DType::U64 => one::<u64, T>(&self, times, field),
+                            DType::F32 => one::<f32, T>(&self, times, field),
+                            DType::F64 => one::<f64, T>(&self, times, field),
+                        }
+                    })
+                    .collect()
+            }
+        }
+        self.dispatch_times(Op { me: self, buf: &buf, start })
+    }
+
     fn transform(&self, channel: usize) -> (f64, f64) {
         let f = &self.desc.fields[self.channels[channel]];
         (f.scale, f.value_offset)
@@ -327,6 +418,50 @@ mod tests {
         assert_eq!(f.value_at(1, 4_242), raw(4_242) as f64 * -0.5 + 10.0);
         let mean = shown.iter().sum::<f64>() / shown.len() as f64;
         assert!((st.mean - mean).abs() < 1e-9);
+    }
+
+    /// Reading a block once for every channel gives the same summaries as summarizing each channel in place.
+    #[test]
+    fn block_summaries_match_per_channel_ones() {
+        let desc = Descriptor {
+            schema: 1,
+            name: None,
+            endian: Endian::Big,
+            header_size: 0,
+            record_size: 15,
+            time: TimeSpec::Field { field: "t".into(), unit: TimeUnit::Us, t0_ns: 5 },
+            fields: vec![
+                field("t", DType::U32, 0),
+                field("x", DType::F64, 4),
+                field("k", DType::I16, 12),
+                field("f", DType::U8, 14),
+            ],
+        };
+        let n = 70_000u32;
+        let mut data = Vec::new();
+        reference::write_header(&mut data, &desc).unwrap();
+        for i in 0..n {
+            data.extend((i * 3 + i / 1000).to_be_bytes());
+            data.extend(if i % 777 == 0 { f64::NAN } else { (i as f64 * 0.01).cos() }.to_be_bytes());
+            data.extend(((i * 31 % 2000) as i16 - 1000).to_be_bytes());
+            data.push((i % 251) as u8);
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mixed.tlm");
+        std::fs::write(&path, &data).unwrap();
+        let f = FixedWidth::open_reference(&path).unwrap();
+        for (a, b) in [(0usize, 70_000usize), (256 * 7, 256 * 100), (65_536, 70_000)] {
+            let all = Channels::summarize_all(&f, a, b);
+            assert_eq!(all.len(), 3);
+            for (c, got) in all.iter().enumerate() {
+                let want = f.summarize(c, a, b);
+                let same = |x: &Summary, y: &Summary| bytemuck::bytes_of(x) == bytemuck::bytes_of(y);
+                assert!(
+                    got.len() == want.len() && got.iter().zip(&want).all(|(x, y)| same(x, y)),
+                    "channel {c}, {a}..{b}"
+                );
+            }
+        }
     }
 
     #[test]

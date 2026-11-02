@@ -12,7 +12,7 @@
 //! memory map serialize on macOS (about 330 MB/s on an M1 for a 2.4 GB CSV); separate reads run at disk speed.
 
 use std::fs::{self, File};
-use std::io::{self, BufWriter, Write};
+use std::io::{BufWriter, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -21,7 +21,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tlmbench_core::{ChannelInfo, ChannelOp, Channels, RateTimes, RecordingInfo, TimeSource, TimesOp};
 
-use crate::bytes::{self, Bytes};
+use crate::bytes::{self, Bytes, read_exact_at};
 use crate::csv::{self, TimeColumn};
 use crate::error::{Result, format_err, io_err};
 
@@ -109,28 +109,6 @@ impl Source {
         }
         Ok(out)
     }
-}
-
-#[cfg(unix)]
-fn read_exact_at(file: &File, buf: &mut [u8], at: u64) -> io::Result<()> {
-    std::os::unix::fs::FileExt::read_exact_at(file, buf, at)
-}
-
-#[cfg(windows)]
-fn read_exact_at(file: &File, mut buf: &mut [u8], mut at: u64) -> io::Result<()> {
-    use std::os::windows::fs::FileExt;
-    while !buf.is_empty() {
-        match file.seek_read(buf, at) {
-            Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
-            Ok(n) => {
-                buf = &mut buf[n..];
-                at += n as u64;
-            }
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
-            Err(e) => return Err(e),
-        }
-    }
-    Ok(())
 }
 
 #[derive(Debug, Serialize, Deserialize)]

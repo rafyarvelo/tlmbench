@@ -77,6 +77,11 @@ pub trait Samples: Sync {
         None
     }
 
+    /// Samples `start..end` as one slice, when they are stored that way.
+    fn slice(&self, start: usize, end: usize) -> Option<&[Self::Item]> {
+        self.as_slice().map(|s| &s[start..end])
+    }
+
     /// Samples `start..end`, in order.
     fn range(
         &self,
@@ -126,5 +131,35 @@ impl<V: Value> Samples for Vec<V> {
     #[inline]
     fn range(&self, start: usize, end: usize) -> impl DoubleEndedIterator<Item = V> + ExactSizeIterator + Clone {
         self[start..end].iter().copied()
+    }
+}
+
+/// Samples `offset..offset + data.len()` of a channel held in a buffer (a block read from a file); only those
+/// indexes may be asked for.
+#[derive(Clone, Copy, Debug)]
+pub struct Shifted<'a, V> {
+    pub offset: usize,
+    pub data: &'a [V],
+}
+
+impl<V: Value> Samples for Shifted<'_, V> {
+    type Item = V;
+
+    fn len(&self) -> usize {
+        self.offset + self.data.len()
+    }
+
+    #[inline]
+    fn get(&self, i: usize) -> V {
+        self.data[i - self.offset]
+    }
+
+    fn slice(&self, start: usize, end: usize) -> Option<&[V]> {
+        Some(&self.data[start - self.offset..end - self.offset])
+    }
+
+    #[inline]
+    fn range(&self, start: usize, end: usize) -> impl DoubleEndedIterator<Item = V> + ExactSizeIterator + Clone {
+        self.data[start - self.offset..end - self.offset].iter().copied()
     }
 }

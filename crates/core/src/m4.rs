@@ -228,9 +228,8 @@ pub(crate) fn reduce_bucket<S: Samples + ?Sized>(
 
     // Comparisons with NaN are false, so starting from a real value skips NaNs.
     let v0 = values.get(start + first);
-    let (imin, imax) = match values.as_slice() {
-        Some(s) => {
-            let body = &s[start + first..start + last + 1];
+    let (imin, imax) = match values.slice(start + first, start + last + 1) {
+        Some(body) => {
             let (mn, mx) = min_max(body, v0);
             (
                 first + body.iter().position(|&v| v == mn).unwrap_or(0),

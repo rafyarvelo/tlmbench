@@ -74,6 +74,19 @@ pub trait Channels: Send + Sync + Debug {
 
     /// Bytes that identify how the source is decoded (format and descriptor), for cache keys.
     fn layout_id(&self) -> Vec<u8>;
+
+    /// Level-4 summaries of samples `start..end` of every channel (`start` a multiple of 256). A decoder whose
+    /// channels are interleaved overrides this to read the block once for all of them.
+    fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>> {
+        struct Op(usize, usize);
+        impl ChannelOp for Op {
+            type Out = Vec<Summary>;
+            fn run<T: Times + ?Sized, S: Samples + ?Sized>(self, times: &T, values: &S) -> Vec<Summary> {
+                pyramid::summarize(times, values, self.0, self.1)
+            }
+        }
+        (0..self.describe().channels.len()).map(|c| self.dispatch(c, Op(start, end))).collect()
+    }
 }
 
 /// A recording opened for reading. Every channel shares the recording's sample times. Values returned are
@@ -92,6 +105,9 @@ pub trait Recording: Send + Sync + Debug {
 
     /// Level-4 summaries of the stored values of samples `start..end` (see [`pyramid::summarize`]).
     fn summarize(&self, channel: usize, start: usize, end: usize) -> Vec<Summary>;
+
+    /// [`Recording::summarize`] for every channel at once (see [`Channels::summarize_all`]).
+    fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>>;
 
     /// Exact statistics of samples `a..b` (shown values).
     fn stats(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize) -> Stats;
@@ -150,6 +166,10 @@ impl<C: Channels> Recording for C {
             }
         }
         self.dispatch(channel, Op(start, end))
+    }
+
+    fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>> {
+        Channels::summarize_all(self, start, end)
     }
 
     fn stats(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize) -> Stats {
