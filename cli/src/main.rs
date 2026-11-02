@@ -63,18 +63,19 @@ enum Command {
     },
     /// Record a live source into a new session folder until it ends (or --seconds pass); prints its stream health
     Record {
-        /// tcp://host:port (connects to it) or udp://host:port (listens on it)
+        /// tcp://host:port (connects to it), udp://host:port (listens on it), or file:///path (follows a growing CSV
+        /// or .tlm from its start; only read)
         endpoint: tlmbench_live::Endpoint,
-        /// The frames' format descriptor (TOML)
+        /// The frames' format descriptor (TOML); sockets need one, files bring their own
         #[arg(long)]
-        descriptor: PathBuf,
+        descriptor: Option<PathBuf>,
         /// Where the session folder goes (default: $TLMBENCH_RECORDINGS, else the app's Recordings folder)
         #[arg(long)]
         out: Option<PathBuf>,
         /// Stop after this many seconds
         #[arg(long)]
         seconds: Option<f64>,
-        /// UDP: stop once no datagram has come for this many seconds
+        /// UDP: stop once no datagram has come for this many seconds; a file: once it hasn't grown for that long
         #[arg(long)]
         idle_end: Option<f64>,
         /// The ring buffer's size in MB (default: about 10 s of the descriptor's rate)
@@ -179,7 +180,7 @@ fn main() -> ExitCode {
         Command::Cache { action, common } => cache(action, &common),
         Command::Query { what, common } => query(what, &common),
         Command::Record { endpoint, descriptor, out, seconds, idle_end, ring_mb, json } => {
-            record(endpoint, &descriptor, out, seconds, idle_end, ring_mb, json)
+            record(endpoint, descriptor.as_deref(), out, seconds, idle_end, ring_mb, json)
         }
     };
     match result {
@@ -468,7 +469,7 @@ fn group(n: usize) -> String {
 
 fn record(
     endpoint: tlmbench_live::Endpoint,
-    descriptor: &std::path::Path,
+    descriptor: Option<&std::path::Path>,
     out: Option<PathBuf>,
     seconds: Option<f64>,
     idle_end: Option<f64>,
@@ -476,9 +477,16 @@ fn record(
     json: bool,
 ) -> Result<(), Fail> {
     use std::time::{Duration, Instant};
-    let text = std::fs::read_to_string(descriptor).map_err(|e| Fail(3, format!("{}: {e}", descriptor.display())))?;
-    let desc = tlmbench_decode::descriptor::Descriptor::parse(&text)
-        .map_err(|e| Fail(3, format!("{}: {e}", descriptor.display())))?;
+    let desc = match descriptor {
+        Some(p) => {
+            let text = std::fs::read_to_string(p).map_err(|e| Fail(3, format!("{}: {e}", p.display())))?;
+            Some(
+                tlmbench_decode::descriptor::Descriptor::parse(&text)
+                    .map_err(|e| Fail(3, format!("{}: {e}", p.display())))?,
+            )
+        }
+        None => None,
+    };
     let root = out.unwrap_or_else(tlmbench_live::recordings_dir);
     let mut session = tlmbench_live::Session::create(&root).map_err(|e| Fail(2, format!("{}: {e}", root.display())))?;
     let opts = tlmbench_live::Options {
@@ -486,8 +494,7 @@ fn record(
         idle_end: idle_end.map(Duration::from_secs_f64),
         ..Default::default()
     };
-    let source = session.add_source(endpoint, &desc, &opts).map_err(|e| Fail(2, e.to_string()))?;
-    let file = source.path().to_owned();
+    let source = session.add_source(endpoint, desc.as_ref(), &opts).map_err(|e| Fail(3, e.to_string()))?;
     let (started, live) = (Instant::now(), std::io::stderr().is_terminal() && !json);
     let mut last = Instant::now();
     while !source.health().ended && seconds.is_none_or(|s| started.elapsed().as_secs_f64() < s) {
@@ -501,15 +508,19 @@ fn record(
             );
         }
     }
+    let _ = session.update(0, &source);
     let h = source.stop();
+    let _ = session.update_files(0, &h.files);
     if live {
         eprintln!();
     }
     if json {
-        let v = serde_json::json!({ "session": session.dir(), "file": file, "health": h });
+        let v = serde_json::json!({ "session": session.dir(), "file": h.files.first(), "health": h });
         println!("{v}");
     } else {
-        println!("{}", file.display());
+        for f in &h.files {
+            println!("{}", f.display());
+        }
         println!(
             "{} records in {:.1} s · {} dropped · {} missing, {} repeated by sequence · ring high water {:.0}%",
             h.records_written,

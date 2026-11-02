@@ -4071,9 +4071,11 @@ name = "tlmbench-live"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "memchr",
  "rtrb",
  "serde",
  "serde_json",
+ "socket2",
  "tempfile",
  "tlmbench-core",
  "tlmbench-decode",

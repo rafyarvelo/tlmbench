@@ -1,17 +1,25 @@
-//! Live sources (design: Live streaming). A source reads frames from a socket and records them as they arrive.
+//! Live sources (design: Live streaming). A source reads frames from a socket, or follows a growing file, and records
+//! them as they arrive.
 //!
 //! Each source runs two threads:
 //!
-//! - **ingest** reads the socket, cuts whole records (frames) by the descriptor's record size, and pushes them into
-//!   a single-producer ring buffer sized for about 10 s at the source's rate. It never blocks: records that don't fit
-//!   are dropped and counted.
+//! - **ingest** reads the socket or file, cuts whole records (frames) by the descriptor's record size (or turns CSV
+//!   rows into records, see [`tail`]), and pushes them into a single-producer ring buffer sized for about 10 s at the
+//!   source's rate. It never blocks: records that don't fit are dropped and counted.
 //! - **writer** drains the ring and appends the records to the source's `.tlm` file (the reference format, with the
 //!   descriptor in its header), checks the descriptor's sequence field for lost or repeated frames, and publishes how
 //!   many records are on disk. Readers of the growing file see that many.
 //!
+//! A source's recording comes in parts: one file, unless a tailed file is truncated or replaced (log rotation), when
+//! the source continues in `source-N-2.tlm` and so on, its times as written. The ingest thread queues each part's
+//! descriptor in order with the records, so the writer starts each file at the right record.
+//!
 //! A live session is a folder, `session-<start>/`, with a `source-N.tlm` per source and a `session.json`. Sessions go
 //! to the app's data folder (see [`recordings_dir`]), never next to the data: they are kept, not cache.
 
+pub mod tail;
+
+use std::collections::VecDeque;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Write};
@@ -35,6 +43,8 @@ pub enum Endpoint {
     Tcp(String),
     /// Listen for datagrams on `host:port`.
     Udp(String),
+    /// Follow a growing file (CSV, or .tlm): what it holds so far, then each row or record appended.
+    File(PathBuf),
 }
 
 impl FromStr for Endpoint {
@@ -44,7 +54,8 @@ impl FromStr for Endpoint {
         match s.split_once("://") {
             Some(("tcp", a)) if !a.is_empty() => Ok(Endpoint::Tcp(a.to_owned())),
             Some(("udp", a)) if !a.is_empty() => Ok(Endpoint::Udp(a.to_owned())),
-            _ => Err(format!("{s:?}: expected tcp://host:port or udp://host:port")),
+            Some(("file", p)) if !p.is_empty() => Ok(Endpoint::File(PathBuf::from(p))),
+            _ => Err(format!("{s:?}: expected tcp://host:port, udp://host:port or file:///path")),
         }
     }
 }
@@ -54,6 +65,7 @@ impl fmt::Display for Endpoint {
         match self {
             Endpoint::Tcp(a) => write!(f, "tcp://{a}"),
             Endpoint::Udp(a) => write!(f, "udp://{a}"),
+            Endpoint::File(p) => write!(f, "file://{}", p.display()),
         }
     }
 }
@@ -64,7 +76,8 @@ pub struct Options {
     pub ring_bytes: Option<usize>,
     /// How long a TCP source keeps trying to connect.
     pub connect_timeout: Duration,
-    /// A UDP source ends after this long without a datagram, once one has arrived (None: only when stopped).
+    /// A UDP source ends after this long without a datagram, once one has arrived, and a file source after this
+    /// long without growing (None: only when stopped).
     pub idle_end: Option<Duration>,
 }
 
@@ -90,6 +103,11 @@ pub struct Health {
     pub sequence_repeated: u64,
     /// Bytes of datagrams that weren't whole records.
     pub malformed_bytes: u64,
+    /// File sources: rows whose time didn't parse, and rows earlier than the row before (both left out).
+    pub rows_skipped: u64,
+    pub rows_back_in_time: u64,
+    /// The source's recording, part by part (more than one after a tailed file was rotated).
+    pub files: Vec<PathBuf>,
     pub ring_bytes: u64,
     /// The most the ring buffer has held.
     pub ring_high_water_bytes: u64,
@@ -108,6 +126,8 @@ struct Counters {
     seq_missing: AtomicU64,
     seq_repeated: AtomicU64,
     malformed: AtomicU64,
+    rows_skipped: AtomicU64,
+    rows_back: AtomicU64,
     ring_high: AtomicU64,
     ended: AtomicBool,
     error: Mutex<Option<String>>,
@@ -119,13 +139,27 @@ impl Counters {
     }
 }
 
-/// A running source: frames from `endpoint` recorded to `path`.
+/// A part of a source's recording: its file starts once `at` records have been pushed into the ring.
+#[derive(Debug)]
+struct Part {
+    at: u64,
+    descriptor: Descriptor,
+}
+
+/// What the ingest and writer threads share besides the ring.
+#[derive(Debug, Default)]
+struct Parts {
+    queue: Mutex<VecDeque<Part>>,
+    files: Mutex<Vec<PathBuf>>,
+}
+
+/// A running source: frames from `endpoint` recorded to `<base>.tlm` (and `<base>-2.tlm`… after a rotation).
 #[derive(Debug)]
 pub struct Source {
     endpoint: Endpoint,
-    path: PathBuf,
     ring_bytes: usize,
     counters: Arc<Counters>,
+    parts: Arc<Parts>,
     stop: Arc<AtomicBool>,
     started: Instant,
     ingest: Option<JoinHandle<()>>,
@@ -133,25 +167,44 @@ pub struct Source {
 }
 
 impl Source {
-    /// Creates `path` (it must not exist), writes its header and starts reading `endpoint`.
-    pub fn start(endpoint: Endpoint, descriptor: &Descriptor, path: &Path, opts: &Options) -> io::Result<Source> {
-        descriptor.validate().map_err(|e| io::Error::new(ErrorKind::InvalidInput, e.to_string()))?;
-        let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-        reference::write_header(&mut file, descriptor)?;
-        let rs = descriptor.record_size as usize;
-        let ring_bytes = opts.ring_bytes.unwrap_or_else(|| default_ring(descriptor)).max(rs) / rs * rs;
+    /// Starts reading `endpoint` into `<base>.tlm` (which must not exist). Sockets need the frames' `descriptor`; a
+    /// file source takes its layout from the file (a .tlm's header, or a CSV's header and first rows).
+    pub fn start(
+        endpoint: Endpoint,
+        descriptor: Option<&Descriptor>,
+        base: &Path,
+        opts: &Options,
+    ) -> io::Result<Source> {
+        let invalid = |m: String| io::Error::new(ErrorKind::InvalidInput, m);
+        let first = match (&endpoint, descriptor) {
+            (Endpoint::File(_), _) => None,
+            (_, Some(d)) => {
+                d.validate().map_err(|e| invalid(e.to_string()))?;
+                Some(d.clone())
+            }
+            (_, None) => return Err(invalid(format!("{endpoint} needs a descriptor for its frames"))),
+        };
+        let ring_bytes = opts.ring_bytes.unwrap_or_else(|| first.as_ref().map_or(64 << 20, default_ring));
         let (producer, consumer) = rtrb::RingBuffer::<u8>::new(ring_bytes);
         let counters = Arc::new(Counters::default());
+        let parts = Arc::new(Parts::default());
         let stop = Arc::new(AtomicBool::new(false));
-        let seq = SeqCheck::new(descriptor);
+        // a socket's single part is known now: its file exists from the start
+        let mut writer_state = Writer::new(base, consumer, parts.clone());
+        if let Some(d) = &first {
+            writer_state.open(d)?;
+        }
 
         let ingest = {
-            let (endpoint, counters, stop, opts) = (endpoint.clone(), counters.clone(), stop.clone(), opts.clone());
+            let (endpoint, counters, parts, stop, opts) =
+                (endpoint.clone(), counters.clone(), parts.clone(), stop.clone(), opts.clone());
             thread::Builder::new().name(format!("ingest {endpoint}")).spawn(move || {
-                let mut ring = Ring { producer, rs, cap: ring_bytes, counters: &counters };
+                let rs = first.as_ref().map_or(1, |d| d.record_size as usize);
+                let mut ring = Ring { producer, rs, cap: ring_bytes, pushed: 0, counters: &counters, parts: &parts };
                 if let Err(e) = match &endpoint {
                     Endpoint::Tcp(a) => ingest_tcp(a, &mut ring, &stop, &opts),
                     Endpoint::Udp(a) => ingest_udp(a, &mut ring, &stop, &opts),
+                    Endpoint::File(p) => tail::follow(p, &mut ring, &stop, &opts),
                 } {
                     counters.fail(e);
                 }
@@ -160,17 +213,17 @@ impl Source {
         };
         let writer = {
             let counters = counters.clone();
-            thread::Builder::new().name(format!("record {}", path.display())).spawn(move || {
-                if let Err(e) = write_records(consumer, file, rs, seq, &counters) {
+            thread::Builder::new().name(format!("record {}", base.display())).spawn(move || {
+                if let Err(e) = writer_state.run(&counters) {
                     counters.fail(e);
                 }
             })?
         };
         Ok(Source {
             endpoint,
-            path: path.to_owned(),
             ring_bytes,
             counters,
+            parts,
             stop,
             started: Instant::now(),
             ingest: Some(ingest),
@@ -178,11 +231,12 @@ impl Source {
         })
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
+    /// The recording's files so far, part by part.
+    pub fn files(&self) -> Vec<PathBuf> {
+        self.parts.files.lock().unwrap().clone()
     }
 
-    /// Records on disk so far: a reader of the file sees at least this many.
+    /// Records on disk so far, in all parts: readers of the files see at least this many.
     pub fn records_written(&self) -> u64 {
         self.counters.written.load(Ordering::Acquire)
     }
@@ -199,6 +253,9 @@ impl Source {
             sequence_missing: get(&c.seq_missing),
             sequence_repeated: get(&c.seq_repeated),
             malformed_bytes: get(&c.malformed),
+            rows_skipped: get(&c.rows_skipped),
+            rows_back_in_time: get(&c.rows_back),
+            files: self.files(),
             ring_bytes: self.ring_bytes as u64,
             ring_high_water_bytes: get(&c.ring_high),
             ended: c.ended.load(Ordering::Acquire),
@@ -250,7 +307,10 @@ struct Ring<'a> {
     producer: rtrb::Producer<u8>,
     rs: usize,
     cap: usize,
+    /// Records pushed so far (dropped ones aren't).
+    pushed: u64,
     counters: &'a Counters,
+    parts: &'a Parts,
 }
 
 impl Ring<'_> {
@@ -265,10 +325,17 @@ impl Ring<'_> {
             b.copy_from_slice(&bytes[a.len()..fit * self.rs]);
             chunk.commit_all();
         }
+        self.pushed += fit as u64;
         let c = self.counters;
         c.records_in.fetch_add(n as u64, Ordering::Relaxed);
         c.dropped.fetch_add((n - fit) as u64, Ordering::Relaxed);
         c.ring_high.fetch_max((self.cap - self.producer.slots()) as u64, Ordering::Relaxed);
+    }
+
+    /// Starts the recording's next part: records pushed from now on go to a new file laid out by `d`.
+    fn part(&mut self, d: Descriptor) {
+        self.rs = d.record_size as usize;
+        self.parts.queue.lock().unwrap().push_back(Part { at: self.pushed, descriptor: d });
     }
 }
 
@@ -320,7 +387,18 @@ fn ingest_tcp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) ->
 }
 
 fn ingest_udp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) -> io::Result<()> {
-    let socket = UdpSocket::bind(resolve(addr)?)?;
+    // a large receive buffer rides out the moments the thread isn't reading (the default, 768 KB on macOS, holds
+    // about 30 ms at 24 MB/s); the OS may cap it
+    let at = resolve(addr)?;
+    let sock =
+        socket2::Socket::new(socket2::Domain::for_address(at), socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?;
+    for bytes in [8 << 20, 4 << 20, 2 << 20] {
+        if sock.set_recv_buffer_size(bytes).is_ok() {
+            break;
+        }
+    }
+    sock.bind(&at.into())?;
+    let socket: UdpSocket = sock.into();
     socket.set_read_timeout(Some(POLL))?;
     let mut buf = vec![0u8; 65_536];
     let mut last: Option<Instant> = None;
@@ -346,48 +424,95 @@ fn ingest_udp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) ->
     Ok(())
 }
 
-/// Drains the ring into the file until the ingest thread has ended and the ring is empty.
-fn write_records(
-    mut consumer: rtrb::Consumer<u8>,
-    mut file: File,
+/// The writer thread: drains the ring into the current part's file, starting each part's file at its record.
+struct Writer {
+    base: PathBuf,
+    consumer: rtrb::Consumer<u8>,
+    parts: Arc<Parts>,
+    file: Option<File>,
     rs: usize,
-    mut seq: Option<SeqCheck>,
-    counters: &Counters,
-) -> io::Result<()> {
-    let mut straddle = Vec::with_capacity(rs);
-    loop {
-        let ended = counters.ended.load(Ordering::Acquire);
-        let take = consumer.slots() / rs * rs;
-        if take == 0 {
-            if ended {
-                break;
-            }
-            thread::sleep(Duration::from_millis(1));
-            continue;
-        }
-        let chunk = consumer.read_chunk(take).expect("available: checked against slots");
-        let (a, b) = chunk.as_slices();
-        file.write_all(a)?;
-        file.write_all(b)?;
-        if let Some(s) = &mut seq {
-            // a record may straddle the ring's end
-            let head = a.len() / rs * rs;
-            a[..head].chunks_exact(rs).for_each(|r| s.next(r, counters));
-            let mut rest = b;
-            if head < a.len() {
-                let need = rs - (a.len() - head);
-                straddle.clear();
-                straddle.extend_from_slice(&a[head..]);
-                straddle.extend_from_slice(&b[..need]);
-                s.next(&straddle, counters);
-                rest = &b[need..];
-            }
-            rest.chunks_exact(rs).for_each(|r| s.next(r, counters));
-        }
-        chunk.commit_all();
-        counters.written.fetch_add((take / rs) as u64, Ordering::Release);
+    seq: Option<SeqCheck>,
+    /// Records taken from the ring so far.
+    taken: u64,
+}
+
+impl Writer {
+    fn new(base: &Path, consumer: rtrb::Consumer<u8>, parts: Arc<Parts>) -> Writer {
+        Writer { base: base.to_owned(), consumer, parts, file: None, rs: 1, seq: None, taken: 0 }
     }
-    file.sync_data()
+
+    /// Creates the next part's file (`<base>.tlm`, then `<base>-2.tlm`…) and writes its header.
+    fn open(&mut self, d: &Descriptor) -> io::Result<()> {
+        if let Some(f) = self.file.take() {
+            f.sync_data()?;
+        }
+        let mut files = self.parts.files.lock().unwrap();
+        let name = self.base.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let name = match files.len() {
+            0 => format!("{name}.{}", reference::EXTENSION),
+            n => format!("{name}-{}.{}", n + 1, reference::EXTENSION),
+        };
+        let path = self.base.with_file_name(name);
+        let mut file = OpenOptions::new().write(true).create_new(true).open(&path)?;
+        reference::write_header(&mut file, d)?;
+        files.push(path);
+        (self.file, self.rs, self.seq) = (Some(file), d.record_size as usize, SeqCheck::new(d));
+        Ok(())
+    }
+
+    /// Runs until the ingest thread has ended and every record and part is written.
+    fn run(&mut self, counters: &Counters) -> io::Result<()> {
+        let mut straddle = Vec::new();
+        loop {
+            let ended = counters.ended.load(Ordering::Acquire);
+            // the next part starts here: open its file first
+            let next = self.parts.queue.lock().unwrap().front().map(|p| p.at);
+            if next == Some(self.taken) {
+                let p = self.parts.queue.lock().unwrap().pop_front().expect("just seen");
+                self.open(&p.descriptor)?;
+                continue;
+            }
+            let mut take = self.consumer.slots() / self.rs * self.rs;
+            if let Some(at) = next {
+                take = take.min((at - self.taken) as usize * self.rs);
+            }
+            if take == 0 {
+                if ended && next.is_none() && self.consumer.slots() < self.rs {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(1));
+                continue;
+            }
+            let rs = self.rs;
+            let file = self.file.as_mut().expect("records come after their part");
+            let chunk = self.consumer.read_chunk(take).expect("available: checked against slots");
+            let (a, b) = chunk.as_slices();
+            file.write_all(a)?;
+            file.write_all(b)?;
+            if let Some(s) = &mut self.seq {
+                // a record may straddle the ring's end
+                let head = a.len() / rs * rs;
+                a[..head].chunks_exact(rs).for_each(|r| s.next(r, counters));
+                let mut rest = b;
+                if head < a.len() {
+                    let need = rs - (a.len() - head);
+                    straddle.clear();
+                    straddle.extend_from_slice(&a[head..]);
+                    straddle.extend_from_slice(&b[..need]);
+                    s.next(&straddle, counters);
+                    rest = &b[need..];
+                }
+                rest.chunks_exact(rs).for_each(|r| s.next(r, counters));
+            }
+            chunk.commit_all();
+            self.taken += (take / rs) as u64;
+            counters.written.fetch_add((take / rs) as u64, Ordering::Release);
+        }
+        match self.file.take() {
+            Some(f) => f.sync_data(),
+            None => Ok(()),
+        }
+    }
 }
 
 /// Follows a sequence field: each record should count up by one (wrapping at the field's width).
@@ -453,7 +578,8 @@ pub struct Session {
 
 #[derive(Clone, Debug, Serialize)]
 struct SourceEntry {
-    file: String,
+    /// The recording's files, part by part (`source-N.tlm`, then `source-N-2.tlm`… after a rotation).
+    files: Vec<String>,
     endpoint: String,
     descriptor: Option<String>,
 }
@@ -482,13 +608,31 @@ impl Session {
         &self.dir
     }
 
-    /// Starts recording `endpoint` into the session as its next `source-N.tlm`.
-    pub fn add_source(&mut self, endpoint: Endpoint, descriptor: &Descriptor, opts: &Options) -> io::Result<Source> {
-        let file = format!("source-{}.{}", self.sources.len() + 1, reference::EXTENSION);
-        let source = Source::start(endpoint.clone(), descriptor, &self.dir.join(&file), opts)?;
-        self.sources.push(SourceEntry { file, endpoint: endpoint.to_string(), descriptor: descriptor.name.clone() });
-        self.save()?;
+    /// Starts recording `endpoint` into the session as its next `source-N` (see [`Source::start`]).
+    pub fn add_source(
+        &mut self,
+        endpoint: Endpoint,
+        descriptor: Option<&Descriptor>,
+        opts: &Options,
+    ) -> io::Result<Source> {
+        let base = self.dir.join(format!("source-{}", self.sources.len() + 1));
+        let source = Source::start(endpoint.clone(), descriptor, &base, opts)?;
+        let name = descriptor.and_then(|d| d.name.clone());
+        self.sources.push(SourceEntry { files: Vec::new(), endpoint: endpoint.to_string(), descriptor: name });
+        self.update(self.sources.len() - 1, &source)?;
         Ok(source)
+    }
+
+    /// Notes source `index`'s files in `session.json` (call it when a part starts, or when the source stops).
+    pub fn update(&mut self, index: usize, source: &Source) -> io::Result<()> {
+        self.update_files(index, &source.files())
+    }
+
+    /// [`Session::update`] from the files a stopped source's [`Health`] lists.
+    pub fn update_files(&mut self, index: usize, files: &[PathBuf]) -> io::Result<()> {
+        let names = files.iter().filter_map(|f| f.file_name()).map(|n| n.to_string_lossy().into_owned());
+        self.sources[index].files = names.collect();
+        self.save()
     }
 
     fn save(&self) -> io::Result<()> {
@@ -500,15 +644,13 @@ impl Session {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::net::TcpListener;
-
+mod tests_support {
     use tlmbench_decode::descriptor::{Field, SCHEMA};
 
     use super::*;
 
     /// seq (u32) and one f32 channel, 1 kHz.
-    fn desc() -> Descriptor {
+    pub(crate) fn desc() -> Descriptor {
         let field = |name: &str, dtype, offset| Field {
             name: name.into(),
             dtype,
@@ -528,6 +670,15 @@ mod tests {
             fields: vec![field("seq", DType::U32, 0), field("v", DType::F32, 4)],
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::TcpListener;
+
+    use super::*;
+
+    use crate::tests_support::desc;
 
     fn records(seqs: impl IntoIterator<Item = u32>) -> Vec<u8> {
         seqs.into_iter().flat_map(|s| [s.to_le_bytes(), (s as f32 * 0.5).to_le_bytes()].concat()).collect()
@@ -555,9 +706,9 @@ mod tests {
         });
         let dir = tempfile::tempdir().unwrap();
         let mut session = Session::create(dir.path()).unwrap();
-        let src = session.add_source(Endpoint::Tcp(addr.to_string()), &desc(), &Options::default()).unwrap();
-        let path = src.path().to_owned();
+        let src = session.add_source(Endpoint::Tcp(addr.to_string()), Some(&desc()), &Options::default()).unwrap();
         let h = src.wait();
+        let path = h.files[0].clone();
         sender.join().unwrap();
         assert_eq!((h.records_in, h.records_written, h.records_dropped), (100_000, 100_000, 0), "{h:?}");
         assert_eq!((h.sequence_missing, h.sequence_repeated, h.malformed_bytes, h.error.as_deref()), (0, 0, 0, None));
@@ -565,7 +716,7 @@ mod tests {
         assert_eq!(body(&path), sent);
         let json: serde_json::Value =
             serde_json::from_slice(&std::fs::read(session.dir().join("session.json")).unwrap()).unwrap();
-        assert_eq!(json["sources"][0]["file"], "source-1.tlm");
+        assert_eq!(json["sources"][0]["files"][0], "source-1.tlm");
         assert!(session.dir().file_name().unwrap().to_str().unwrap().starts_with("session-20"));
     }
 
@@ -576,7 +727,7 @@ mod tests {
         let addr = probe.local_addr().unwrap();
         drop(probe);
         let opts = Options { idle_end: Some(Duration::from_millis(300)), ..Options::default() };
-        let src = Source::start(Endpoint::Udp(addr.to_string()), &desc(), &dir.path().join("u.tlm"), &opts).unwrap();
+        let src = Source::start(Endpoint::Udp(addr.to_string()), Some(&desc()), &dir.path().join("u"), &opts).unwrap();
         thread::sleep(Duration::from_millis(100));
         let out = UdpSocket::bind("127.0.0.1:0").unwrap();
         // 0..10, then 15..20 (5 lost), then 17 again, plus 3 stray bytes
@@ -593,9 +744,9 @@ mod tests {
 
     #[test]
     fn a_full_ring_drops_whole_records() {
-        let counters = Counters::default();
+        let (counters, parts) = (Counters::default(), Parts::default());
         let (producer, mut consumer) = rtrb::RingBuffer::<u8>::new(8 * 10);
-        let mut ring = Ring { producer, rs: 8, cap: 80, counters: &counters };
+        let mut ring = Ring { producer, rs: 8, cap: 80, pushed: 0, counters: &counters, parts: &parts };
         ring.push(&records(0..6));
         ring.push(&records(6..12)); // 4 fit, 2 dropped
         assert_eq!(counters.records_in.load(Ordering::Relaxed), 12);
@@ -622,6 +773,8 @@ mod tests {
     fn endpoints_parse() {
         assert_eq!("tcp://127.0.0.1:9000".parse(), Ok(Endpoint::Tcp("127.0.0.1:9000".into())));
         assert_eq!("udp://0.0.0.0:5000".parse::<Endpoint>().unwrap().to_string(), "udp://0.0.0.0:5000");
+        assert_eq!("file:///data/run.csv".parse(), Ok(Endpoint::File("/data/run.csv".into())));
         assert!("serial:///dev/tty".parse::<Endpoint>().is_err());
+        assert!(Source::start(Endpoint::Tcp("127.0.0.1:1".into()), None, Path::new("x"), &Options::default()).is_err());
     }
 }

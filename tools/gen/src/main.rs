@@ -55,10 +55,17 @@ struct Args {
     /// How long --send streams
     #[arg(long, default_value_t = 60.0)]
     seconds: f64,
+    /// Append CSV rows to this file at --rate rows a second for --seconds, in uneven chunks (lines cut mid-way), as
+    /// a growing log; with --rotate-at, it is truncated once after that many seconds and starts again
+    #[arg(long, conflicts_with = "send")]
+    append: Option<PathBuf>,
+    #[arg(long, requires = "append")]
+    rotate_at: Option<f64>,
     /// Write the descriptor of --send's records here (a receiver's --descriptor)
     #[arg(long)]
     descriptor_out: Option<PathBuf>,
-    /// Check a recording of --send holds every record in order, bit for bit (with --expect: that many)
+    /// Check a recording of --send (or of an --append file, tailed) holds every record in order, bit for bit (with
+    /// --expect: that many; for a tailed file, --rate as when appending)
     #[arg(long)]
     verify: Option<PathBuf>,
     #[arg(long, requires = "verify")]
@@ -193,7 +200,7 @@ fn write_tlm(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
 }
 
 /// `-12.3456` with four decimals, without going through `format!` (100M rows).
-fn push_fixed4(buf: &mut Vec<u8>, v: f32) {
+pub(crate) fn push_fixed4(buf: &mut Vec<u8>, v: f32) {
     let scaled = (v as f64 * 1e4).round() as i64;
     if scaled < 0 {
         buf.push(b'-');
@@ -283,7 +290,7 @@ fn write_csv(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
 fn main() -> io::Result<()> {
     let mut a = Args::parse();
     if let Some(path) = &a.verify {
-        let ok = stream::verify(path, a.seed, a.expect)?;
+        let ok = stream::verify(path, a.seed, a.rate, a.expect)?;
         std::process::exit(if ok { 0 } else { 1 });
     }
     if let Some(path) = &a.descriptor_out {
@@ -291,6 +298,9 @@ fn main() -> io::Result<()> {
     }
     if let Some(to) = &a.send {
         return stream::send(to, a.channels, a.rate, a.seconds, a.seed);
+    }
+    if let Some(path) = &a.append {
+        return stream::append(path, a.channels, a.rate, a.seconds, a.seed, a.rotate_at);
     }
     if a.descriptor_out.is_some() {
         return Ok(());
