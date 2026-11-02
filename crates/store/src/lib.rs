@@ -29,7 +29,7 @@ pub use error::{Error, Result};
 use rayon::prelude::*;
 use serde::Serialize;
 use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Pyramid, Stats};
-use tlmbench_core::{Recording, Timestamp, Trace, Viewport};
+use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
 use tlmbench_decode::OpenOptions;
 
 use crate::pyr::Loaded;
@@ -314,10 +314,20 @@ impl Opened {
                 if warm && let Some(l) = l {
                     l.warm(channel, lo, hi.min(l.done));
                 }
-                let pyr = l.and_then(|l| l.pyramid(channel));
+                let mut pyr = l.and_then(|l| l.pyramid(channel));
+                // while building, a large unread part of the view stays empty (hatched) rather than read raw
+                // alongside the build; a view zoomed into it is read raw
+                let unread = l.filter(|l| !l.complete).map_or(0, |l| hi.saturating_sub(lo.max(l.done)));
+                let skip_unread = unread > UNREAD_RAW_MAX;
+                if let Some(p) = &mut pyr {
+                    p.raw_past = !skip_unread;
+                }
                 let coarse = precision == Precision::Coarse && coarse_pays && pyr.is_some();
                 let trace = match &pyr {
                     Some(p) if coarse => self.rec.view_coarse(channel, vp, p, &breaks),
+                    None if skip_unread => {
+                        Trace { kind: TraceKind::Raw, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] }
+                    }
                     _ => self.rec.view(channel, vp, pyr.as_ref(), &breaks),
                 };
                 View { channel, trace, from_pyramid: pyr.is_some(), coarse, built_until }
@@ -424,6 +434,9 @@ fn dir_size(dir: &Path) -> u64 {
         })
         .unwrap_or(0)
 }
+
+/// The most unread samples a view of a file being built reads raw: past this the unread part stays empty.
+const UNREAD_RAW_MAX: usize = 1 << 22;
 
 /// How long a process waits between looks at another process's build.
 const FOLLOW_EVERY: Duration = Duration::from_millis(200);
