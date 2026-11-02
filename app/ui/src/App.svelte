@@ -1,45 +1,169 @@
-<!-- The window: top bar, the channel list, the pane stack with its overview, and Measure. app.ts drives it. -->
-<header class="bar">
-  <button id="open" class="btn" data-tip="Open a CSV or .tlm file (⌘O)">Open…</button>
-  <span id="file" class="file"></span>
-  <span id="range" class="range num"></span>
-  <div class="seg" role="group" aria-label="Mouse mode">
-    <button class="ibtn" data-mode="box" data-tip="Box zoom (B)" aria-label="Box zoom">
-      <svg viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="11" height="9" rx="1" stroke-dasharray="2 1.5" /></svg>
-    </button>
-    <button class="ibtn" data-mode="pan" data-tip="Pan (P)" aria-label="Pan">
-      <svg viewBox="0 0 16 16"><path d="M8 1.5v13M1.5 8h13M8 1.5 6 3.5M8 1.5l2 2M8 14.5l-2-2M8 14.5l2-2M1.5 8l2-2M1.5 8l2 2M14.5 8l-2-2M14.5 8l-2 2" /></svg>
-    </button>
-    <button class="ibtn" data-mode="cursor" data-tip="Cursors (C)" aria-label="Cursors">
-      <svg viewBox="0 0 16 16"><path d="M5 2v12M11 2v12" stroke-dasharray="2 1.5" /><path d="M3.5 2h3M9.5 2h3" /></svg>
-    </button>
-  </div>
-  <button id="fit" class="ibtn" data-tip="Fit (F)" aria-label="Fit">
-    <svg viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
-  </button>
-  <button id="back" class="ibtn" data-tip="Back (⌥←)" aria-label="Back">
-    <svg viewBox="0 0 16 16"><path d="M6.5 4 2.5 8l4 4M3 8h7.5a3 3 0 0 1 0 6H9" /></svg>
-  </button>
-  <span class="spacer"></span>
-  <span id="pointer" class="pointer num"></span>
-  <span id="status" class="status num"></span>
-</header>
-<div class="body">
-  <aside id="side" class="side" hidden>
-    <div class="side-head">Channels</div>
-    <div id="chans" class="chans"></div>
-  </aside>
-  <main id="center" class="center">
-    <div id="ovTop" class="ovslot"></div>
-    <div id="stack" class="stack"></div>
-    <button id="addPane" class="addpane" hidden>+ Add pane</button>
-    <div id="ovBottom" class="ovslot"></div>
-    <canvas id="gl" class="layer"></canvas>
-    <canvas id="overlay" class="layer"></canvas>
-    <div id="empty" class="empty">
-      <p class="empty-title">Open a recording</p>
-      <p class="empty-sub">Drop a CSV or .tlm file here, or choose Open…</p>
+<!-- The window: the icon rail, the top bar, the left sidebar (Explorer or Settings), the pane stack with its
+     overview, Measure on the right, and the status bar (a setting). app.ts drives the stack, the channel list and
+     Measure's contents; it finds them by id, so they stay in the page (hidden, not removed). -->
+<script lang="ts">
+  import Rail from './shell/Rail.svelte';
+  import Settings from './shell/Settings.svelte';
+  import TopBar from './shell/TopBar.svelte';
+  import { ICON } from './icons';
+  import { setSetting, settings } from './settings.svelte';
+  import { actions, measureShown, ui } from './ui.svelte';
+
+  const shown = $derived(measureShown(settings.measureOpen, settings.measureAuto));
+
+  // Ctrl+B: the left sidebar; Ctrl+Alt+B: Measure
+  function key(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'b' || e.shiftKey) return;
+    e.preventDefault();
+    if (e.altKey) (document.querySelector('[data-rail="measure"]') as HTMLButtonElement | null)?.click();
+    else setSetting('leftPanel', settings.leftPanel ? '' : 'explorer');
+  }
+</script>
+
+<svelte:window onkeydown={key} />
+
+<div class="app" id="app">
+  <Rail />
+  <div class="col">
+    <TopBar />
+    {#if ui.note}
+      <div class="wsnote" id="wsNote" role="status">
+        <span class="dot"></span><span class="txt">{ui.note}</span>
+        <button class="ibtn" aria-label="Dismiss" onclick={() => (ui.note = '')}>{@html ICON.close}</button>
+      </div>
+    {/if}
+    <div class="work">
+      <aside id="side" class="side" hidden={!settings.leftPanel}>
+        <div class="explorer" hidden={settings.leftPanel !== 'explorer'}>
+          <div class="phd">
+            <span>Explorer</span><span class="spacer"></span>
+            <button class="ibtn" id="exOpen" aria-label="Open recording" data-tip="Open a CSV or .tlm file (⌘O)" onclick={actions.open}>{@html ICON.open}</button>
+          </div>
+          {#if ui.file}
+            <div class="exfile" data-tip={ui.path}>{@html ICON.file}<span class="nm">{ui.file}</span></div>
+          {:else}
+            <p class="exnone">No recording open. Drop a CSV or .tlm file on the window, or <button class="linkbtn" onclick={actions.open}>open one</button>.</p>
+          {/if}
+          <div id="chans" class="chans"></div>
+        </div>
+        {#if settings.leftPanel === 'settings'}<Settings />{/if}
+      </aside>
+      <main id="center" class="center" data-mode={settings.mode}>
+        <div id="ovTop" class="ovslot"></div>
+        <div id="stack" class="stack"></div>
+        <button id="addPane" class="addpane" hidden>+ Add pane</button>
+        <div id="ovBottom" class="ovslot"></div>
+        <canvas id="gl" class="layer"></canvas>
+        <canvas id="overlay" class="layer"></canvas>
+        <div id="empty" class="empty">
+          <p class="empty-title">Open a recording</p>
+          <p class="empty-sub">Drop a CSV or .tlm file here, or press ⌘O</p>
+        </div>
+      </main>
+      <aside id="measure" class="measure" hidden={!shown}></aside>
     </div>
-  </main>
-  <aside id="measure" class="measure" hidden></aside>
+    {#if settings.showPerf}
+      <footer class="statusbar" id="statusBar"><span id="status" class="num">{ui.perf}</span></footer>
+    {/if}
+  </div>
 </div>
+
+<style>
+  .app {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    height: 100vh;
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .work {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .side {
+    display: flex;
+    flex-direction: column;
+    width: 260px;
+    flex: none;
+    overflow: auto;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .side[hidden] {
+    display: none;
+  }
+  .explorer {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .exfile {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 6px 4px;
+    padding: 0 8px;
+    min-height: 30px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    font-weight: 500;
+  }
+  .exfile :global(svg) {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--fg-muted);
+  }
+  .exfile .nm {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .exnone {
+    margin: 4px 14px;
+    color: var(--fg-muted);
+    font-size: 12px;
+  }
+  .exnone .linkbtn {
+    padding: 0;
+    color: var(--accent);
+    font-size: 12px;
+  }
+  .wsnote {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 6px 0 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 12px;
+  }
+  .wsnote .dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--warn);
+  }
+  .wsnote .txt {
+    flex: 1;
+    min-width: 0;
+  }
+  .statusbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 24px;
+    padding: 0 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--fg-muted);
+    font-size: 11.5px;
+  }
+</style>

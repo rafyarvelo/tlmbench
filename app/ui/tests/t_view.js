@@ -4,10 +4,10 @@ import { run } from './lib.js';
 
 run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until, wait }) => {
   const app = (f, a) => p.evaluate(([f, a]) => window.__tlmApp[f](a), [f, a]);
-  check('opens the launch file', (await text('#file')) === 'flight.tlm', await text('#file'));
+  check('opens the launch file', (await text('#wsTabs .wstab')) === 'flight.tlm', await text('#wsTabs'));
   check('six channels in three panes', (await paneCount()) === 3 && /accel_x.*accel_y/.test((await panes())[0]), await panes());
   check('every pane drawn', await until(() => window.__tlmApp.drawn().every((d) => d && d.length === 2)), await app('drawn'));
-  check('range shows the whole file', /→/.test(await text('#range')) && /3:20|200/.test(await text('#range')), await text('#range'));
+  check('range shows the whole file', /→/.test(await text('#rangeTxt')) && /03:20/.test(await text('#spanTxt')), [await text('#rangeTxt'), await text('#spanTxt')]);
   check('overview of pane 1', /Overview of pane 1/.test(await text('.ovhead')), await text('.ovhead'));
 
   // the channel list follows the selected pane; a click adds a channel to it
@@ -42,11 +42,11 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   await wait(500);
   const boxed = await app('view');
   check('box zoom narrows the view', span(boxed) < span(z) / 2n, [boxed, z]);
-  check('Back is enabled', !(await p.isDisabled('#back')));
-  await p.click('#back');
+  check('Back is enabled', !(await p.isDisabled('#b-back')));
+  await p.click('#b-back');
   await wait(100);
   check('Back returns', span(await app('view')) === span(z), await app('view'));
-  await p.click('#fit');
+  await p.click('#b-fit');
   await wait(500);
   check('Fit shows the whole file', span(await app('view')) === span(full), await app('view'));
 
@@ -54,7 +54,7 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   const h = await plotAt(1, 0.4);
   await p.mouse.move(h.x, h.y);
   check('hover reads every plotted channel', await until(() => [...document.querySelectorAll('#stack [data-val]')].every((e) => e.textContent.trim() !== '')), await text('#stack'));
-  check('pointer time in the bar', /^pointer /.test(await text('#pointer')), await text('#pointer'));
+  check('pointer time in the bar', /\d/.test(await text('#hoverTxt')), await text('#hoverTxt'));
   await p.mouse.move(5, 5);
   check('hover clears on leave', await until(() => window.__tlmApp.hoverT() === null));
 
@@ -64,7 +64,7 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   const ca = await plotAt(0, 0.3);
   const cb = await plotAt(0, 0.6);
   await p.mouse.click(ca.x, ca.y);
-  check('one cursor keeps Measure closed', (await app('cursors')).A && !(await p.isVisible('#measure')));
+  check('one cursor keeps Measure closed', (await app('cursors')).A && !(await p.isVisible('#measure')) && (await p.isVisible('#b-clear')));
   await p.mouse.click(cb.x, cb.y);
   check('both cursors open Measure', await until(() => !document.getElementById('measure').hidden), await app('cursors'));
   check('Measure shows Δt and 1/Δt', await until(() => /Δt.*1\/Δt/.test(document.getElementById('measure').innerText.replace(/\s+/g, ' '))), await text('#measure'));

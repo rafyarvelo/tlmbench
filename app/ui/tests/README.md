@@ -13,6 +13,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_wire | the wire format: the fake core encodes the core's golden batch byte for byte, and `wire.ts` decodes it (Node, no browser) |
 | t_view | panes and the channel list, wheel and box zoom, Fit and Back, hover readouts, cursors and Measure, settings after a reload |
 | t_open | Open…, ⌘O and drops, a file still being read (progress, Measure waiting for exact stats), the coarse label, the gap factor dialog |
+| t_shell | the rail and left sidebar (Ctrl+B), Settings (Basic/All, search, ⓘ, apply and save, Reset to defaults), mouse modes, the ⋯ menu, the status bar, Measure docking by hand and by itself, the note when a file can't be opened |
 
 Each test uses `lib.js`: `run(name, async h => { ... }, opts)`. `h.check(label, condition, got)` records a result;
 a test fails on any failed check, any error in the page, or an exception in the script. Helpers: `text`, `visible`,

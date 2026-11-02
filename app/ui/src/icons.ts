@@ -1,0 +1,23 @@
+// Icons from the prototype (prototype/plotter.html), as SVG markup for {@html}.
+
+const s = (body: string, extra = 'fill="none" stroke="currentColor" stroke-width="2"') => `<svg viewBox="0 0 24 24" ${extra} aria-hidden="true">${body}</svg>`;
+
+export const ICON = {
+  logo: s(
+    '<path d="M4 3v17h17" stroke="var(--fg-muted)" stroke-width="1.75"/><path d="M7 14.5c1.1-4 2.2-6 3.3-6s2 6 3.3 6 2.1-4.5 3.3-4.5 1.6 1.4 2.4 2.4" stroke="var(--accent)" stroke-width="2"/>',
+    'fill="none" stroke-linecap="round" stroke-linejoin="round"',
+  ),
+  explorer: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+  measure: s('<path d="M8 3v18M16 3v18M8 12h8"/><path d="M10.5 9.5L8 12l2.5 2.5M13.5 9.5L16 12l-2.5 2.5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
+  settings: s('<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
+  box: s('<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3 3"/>'),
+  pan: s('<path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4"/>'),
+  cursor: s('<path d="M8 3v18M16 3v18"/>'),
+  clear: s('<path d="M8 3v8M16 3v8M8 21v-2M16 21v-2"/><path d="M9 12l6 6M15 12l-6 6"/>'),
+  back: s('<path d="M9 14L4 9l5-5M4 9h11a5 5 0 010 10h-3"/>'),
+  fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+  more: s('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>', 'fill="currentColor"'),
+  file: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'),
+  close: s('<path d="M6 6l12 12M18 6L6 18"/>', 'fill="none" stroke="currentColor" stroke-width="2.4"'),
+  open: s('<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+};

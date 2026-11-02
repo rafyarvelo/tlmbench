@@ -12,24 +12,24 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
 
   // Open… asks the dialog; ⌘O too
   await fake((a) => (window.__tlmFake.pick = a), A);
-  await p.click('#open');
-  check('Open… opens the picked file', await until(() => document.getElementById('file').textContent === 'flight.tlm'));
+  await p.click('#exOpen');
+  check('Open… opens the picked file', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'flight.tlm'));
   check('empty state hidden', !(await visible('#empty')) && (await paneCount()) === 3);
   await fake((b) => (window.__tlmFake.pick = b), B);
   await p.keyboard.press('ControlOrMeta+o');
-  check('⌘O opens another, closing the first', await until(() => document.getElementById('file').textContent === 'bench run.csv'));
-  check('the first file was closed', (await fake(() => window.__tlmFake.open.size)) === 1);
+  check('⌘O opens another, closing the first', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'bench run.csv'));
+  check('the first file was closed', await until(() => window.__tlmFake.open.size === 1));
 
   // a drop opens the first dropped file
   await fake((a) => window.__tlmFake.drop([a]), A);
-  check('a dropped file opens', await until(() => document.getElementById('file').textContent === 'flight.tlm'));
+  check('a dropped file opens', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'flight.tlm'));
 
   // a file being read: hatched, Measure waits for exact stats, then fills in
   await fake((c) => (window.__tlmFake.files[c] = { built: false }), COLD);
   await fake((c) => window.__tlmFake.drop([c]), COLD);
   check('a file being read', await until(() => window.__tlmApp.building() !== null));
   await fake((c) => window.__tlmFake.build(c, 0.4), COLD);
-  check('progress in the status', await until(() => /Reading 40%/.test(document.getElementById('status').textContent)), await text('#status'));
+  check('progress', await until(() => window.__tlmApp.building()?.done === 80000), await app('building'));
   check('the read part is drawn', await until(() => window.__tlmApp.drawn().some((d) => d && d.length)));
   await p.keyboard.press('c');
   for (const fx of [0.1, 0.3]) {

@@ -14,6 +14,8 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value } from './axes';
 import { runGate, runGate2 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
+import { applyTheme, type Mode, onSetting, saveSettings, setSetting, settings } from './settings.svelte';
+import { actions, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 
 interface ChannelInfo {
@@ -86,44 +88,12 @@ interface Layer {
   traces: Map<number, { gl: GlTrace; yMin: number; yMax: number; coarse: boolean; points: number }>;
 }
 
-type Mode = 'box' | 'pan' | 'cursor';
-
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const center = $<HTMLDivElement>('center');
 const stackEl = $<HTMLDivElement>('stack');
 const overlay = $<HTMLCanvasElement>('overlay');
-const statusEl = $<HTMLSpanElement>('status');
-const pointerEl = $<HTMLSpanElement>('pointer');
 const measureEl = $<HTMLElement>('measure');
 const renderer = new Renderer($<HTMLCanvasElement>('gl'));
-
-// ---------- settings (saved) ----------
-
-interface Settings {
-  mode: Mode;
-  overviewTop: boolean;
-  /** Channel numbers of each pane, by file path. */
-  layouts: Record<string, number[][]>;
-  /** Gap factors set by hand, by file path and channel number (the rest use the default). */
-  gapFactors: Record<string, Record<number, number>>;
-}
-
-const SETTINGS_KEY = 'tlmbench.settings';
-const settings: Settings = (() => {
-  const base: Settings = { mode: 'box', overviewTop: false, layouts: {}, gapFactors: {} };
-  try {
-    return { ...base, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
-  } catch {
-    return base;
-  }
-})();
-function saveSettings(): void {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    /* private mode: settings last this session */
-  }
-}
 
 // ---------- state ----------
 
@@ -300,7 +270,7 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
       });
       const points = traces.reduce((a, t) => a + t.x.length, 0);
       const kind = traces.some((t) => t.kind === 'm4') ? 'M4' : 'raw';
-      statusEl.textContent = `${points.toLocaleString()} points · ${kind}${coarse ? ' · coarse' : ''} · ${ms.toFixed(0)} ms`;
+      ui.perf = `${points.toLocaleString()} points · ${kind}${coarse ? ' · coarse' : ''} · ${ms.toFixed(0)} ms`;
       state.onQuery?.({ ms, reduceUs: traces[0]?.reduceUs ?? 0, points, bytes: batch.bytes, samplesInView: inView, coarse, traces: traces.length });
       followUp = coarse && !state.pending;
     }
@@ -308,7 +278,7 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
     scheduleDraw();
   } catch (e) {
     if (withOv) state.ovStale = true;
-    statusEl.textContent = String(e);
+    ui.note = `Couldn't draw the view: ${e}`;
   } finally {
     state.inflight = false;
     if (state.pending) void requestView();
@@ -422,8 +392,9 @@ function forward(): void {
 
 function updateRange(): void {
   const span = Number(state.t1 - state.t0);
-  $('range').textContent = state.file ? `${readoutTime(state.t0, span)} → ${readoutTime(state.t1, span)} · ${duration(span)}` : '';
-  ($('back') as HTMLButtonElement).disabled = !state.history.length;
+  ui.range = state.file ? `${readoutTime(state.t0, span)} → ${readoutTime(state.t1, span)}` : '';
+  ui.span = state.file ? `${duration(span)} visible` : '';
+  ui.canBack = state.history.length > 0;
 }
 
 // ---------- drawing ----------
@@ -661,8 +632,8 @@ function renderPanes(): void {
 function renderChannels(): void {
   const f = state.file;
   const host = $('chans');
-  $('side').hidden = !f;
   $('addPane').hidden = !f;
+  if (!f) host.replaceChildren();
   if (!f) return;
   const inSel = new Set(state.panes[state.sel] ?? []);
   host.innerHTML = f.info.channels
@@ -689,13 +660,12 @@ function updateChips(): void {
     const s = state.hover.get(Number(el.dataset.val));
     el.textContent = s ? value(s.v) : '';
   });
-  pointerEl.textContent =
-    state.hoverT != null ? `pointer ${readoutTime(state.hoverT, Number(state.t1 - state.t0))}` : '';
+  ui.pointer = state.hoverT != null ? readoutTime(state.hoverT, Number(state.t1 - state.t0)) : '';
 }
 
 function saveLayout(): void {
   if (!state.file) return;
-  settings.layouts[state.file.info.path] = state.panes;
+  settings.layouts[state.file.info.path] = state.panes.map((p) => [...p]);
   saveSettings();
 }
 
@@ -728,14 +698,12 @@ let measureSeq = 0;
 async function refreshMeasure(): Promise<void> {
   const f = state.file;
   const seq = ++measureSeq;
+  ui.anyCursor = state.A != null || state.B != null;
+  ui.cursors = state.A != null && state.B != null;
   if (!f || state.A == null || state.B == null) {
-    measureEl.hidden = true;
-    scheduleResize();
+    measureEl.innerHTML = `<h2>Measure</h2><p class="mnote">${f ? 'Place cursors A and B to measure between them: press C, then click a chart twice. A and B also place them at the pointer.' : 'Open a recording to measure it.'}</p>`;
     return;
   }
-  const wasHidden = measureEl.hidden;
-  measureEl.hidden = false;
-  if (wasHidden) scheduleResize();
   const [a, b] = state.A <= state.B ? [state.A, state.B] : [state.B, state.A];
   const chans = plotted();
   const [va, vb, st] = await Promise.all([
@@ -796,18 +764,22 @@ function scheduleResize(): void {
 // ---------- opening ----------
 
 async function openPath(path: string): Promise<void> {
-  statusEl.textContent = 'Opening…';
+  ui.note = '';
   try {
-    if (state.file) await invoke('close', { file: state.file.id });
     const progress = new Channel<Progress>();
     progress.onmessage = onProgress;
     const o = await invoke<Opened>('open', { path, progress });
-    if (!o.range) throw new Error('This file has no samples');
+    if (!o.range) {
+      void invoke('close', { file: o.id });
+      throw new Error('it has no samples');
+    }
+    // the file open so far stays until the new one is open
+    if (state.file) void invoke('close', { file: state.file.id });
     state.file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
     state.building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
     const saved = settings.layouts[o.info.path];
     const n = o.info.channels.length;
-    state.panes = saved?.every((p) => p.every((ch) => ch < n)) ? saved : defaultPanes(n);
+    state.panes = saved?.every((p) => p.every((ch) => ch < n)) ? saved.map((p) => [...p]) : defaultPanes(n);
     state.sel = 0;
     state.layers.forEach((l) => l?.traces.forEach((t) => renderer.free(t.gl)));
     state.ov?.traces.forEach((t) => renderer.free(t.gl));
@@ -818,14 +790,15 @@ async function openPath(path: string): Promise<void> {
     state.history = [];
     state.future = [];
     state.exactMs = Infinity;
-    measureEl.hidden = true;
-    $('file').textContent = path.split(/[\\/]/).pop() ?? path;
-    $('file').dataset.tip = path;
+    ui.file = path.split(/[\\/]/).pop() ?? path;
+    ui.path = path;
+    ui.measureDismissed = false;
     $('empty').hidden = true;
     renderPanes();
     setView(state.file.first, state.file.last + 1n);
+    void refreshMeasure();
   } catch (e) {
-    statusEl.textContent = String(e);
+    ui.note = `Couldn't open ${path.split(/[\\/]/).pop()}: ${e}`;
   }
 }
 
@@ -833,12 +806,12 @@ let progressRefresh = 0;
 function onProgress(p: Progress): void {
   if (!state.file) return;
   if (p.error) {
-    statusEl.textContent = `Couldn't build the summaries: ${p.error}`;
+    ui.note = `Couldn't read ${ui.file} to the end: ${p.error}`;
     return;
   }
   const done = p.done >= p.total;
   state.building = done ? null : { done: p.done, total: p.total, until: p.builtUntil != null ? BigInt(p.builtUntil) : null };
-  if (!done) statusEl.textContent = `Reading ${Math.floor((100 * p.done) / Math.max(1, p.total))}%`;
+  if (!done) ui.perf = `Reading ${Math.floor((100 * p.done) / Math.max(1, p.total))}%`;
   // new summaries: fill in the panes (at most four times a second)
   const now = performance.now();
   if (done || now - progressRefresh > 250) {
@@ -857,12 +830,7 @@ async function chooseFile(): Promise<void> {
 
 // ---------- interaction ----------
 
-function setMode(m: Mode): void {
-  settings.mode = m;
-  saveSettings();
-  center.dataset.mode = m;
-  document.querySelectorAll<HTMLElement>('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
-}
+const setMode = (m: Mode) => setSetting('mode', m);
 
 /** The pane and plot rectangle under a pointer event, if any. */
 function paneAt(e: { clientX: number; clientY: number }): { i: number; r: Rect; x: number } | null {
@@ -982,7 +950,7 @@ const endDrag = () => {
 stackEl.addEventListener('pointerup', endDrag);
 stackEl.addEventListener('pointercancel', endDrag);
 stackEl.addEventListener('dblclick', (e) => {
-  if ((e.target as HTMLElement).closest('.plot')) fit();
+  if (settings.dblFit && (e.target as HTMLElement).closest('.plot')) fit();
 });
 
 stackEl.addEventListener(
@@ -1000,7 +968,8 @@ stackEl.addEventListener(
       setView(state.t0 + shift, state.t1 + shift);
       return;
     }
-    const factor = Math.exp(Math.max(-200, Math.min(200, dy)) * (e.ctrlKey ? 0.01 : 0.0015));
+    const speed = { slow: 0.5, normal: 1, fast: 2 }[settings.zoomSpeed];
+    const factor = Math.exp(Math.max(-200, Math.min(200, dy)) * (e.ctrlKey ? 0.01 : 0.0015) * speed);
     const frac = Math.min(1, Math.max(0, (hit.x - hit.r.x) / hit.r.w));
     const anchor = frac * span;
     const t0 = state.t0 + BigInt(Math.round(anchor - anchor * factor));
@@ -1014,10 +983,7 @@ center.addEventListener('pointerdown', (e) => {
   const f = state.file;
   const target = e.target as HTMLElement;
   if (target.closest('[data-ovtop]')) {
-    settings.overviewTop = !settings.overviewTop;
-    saveSettings();
-    renderOverviewHead();
-    scheduleResize();
+    setSetting('overviewTop', !settings.overviewTop);
     return;
   }
   if (!f || !target.closest('.ovplot') || e.button !== 0) return;
@@ -1159,6 +1125,7 @@ document.addEventListener('pointerdown', (e) => {
 
 function clearCursors(): void {
   state.A = state.B = null;
+  ui.measureDismissed = false;
   scheduleDraw();
   void refreshMeasure();
 }
@@ -1186,10 +1153,17 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f') fit();
 });
 
-document.querySelectorAll<HTMLElement>('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode as Mode)));
-$('open').addEventListener('click', () => void chooseFile());
-$('fit').addEventListener('click', fit);
-$('back').addEventListener('click', back);
+Object.assign(actions, { open: () => void chooseFile(), fit, back, clearCursors });
+onSetting((key) => {
+  if (key === 'theme') {
+    applyTheme();
+    tokenCache = null;
+    renderPanes();
+  } else if (key === 'overviewTop') {
+    renderOverviewHead();
+    scheduleResize();
+  }
+});
 new ResizeObserver(scheduleResize).observe(center);
 
 void getCurrentWebview().onDragDropEvent((e) => {
@@ -1203,8 +1177,9 @@ function applyTips(): void {
   for (const el of document.querySelectorAll<HTMLElement>('[data-tip]')) el.title = el.dataset.tip ?? '';
 }
 applyTips();
-setMode(settings.mode);
+applyTheme();
 updateRange();
+void refreshMeasure();
 
 /** What the gate scripts drive. */
 export const gateApi = {

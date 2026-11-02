@@ -28,7 +28,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme='dark']) {
     --bg: #eef1f5;
     --surface: #f7f9fb;
     --plot-bg: #ffffff;
@@ -54,6 +54,31 @@
   }
 }
 
+:root[data-theme='light'] {
+  --bg: #eef1f5;
+  --surface: #f7f9fb;
+  --plot-bg: #ffffff;
+  --raised: #ffffff;
+  --border: #d3dae3;
+  --grid: #e7ebf0;
+  --fg: #141a22;
+  --fg-muted: #56616f;
+  --accent: #0a6fae;
+  --accent-soft: #e2eef7;
+  --accent-line: #a9cbe3;
+  --trace-1: #0a78ba;
+  --trace-2: #b36a00;
+  --trace-3: #6d47d1;
+  --trace-4: #18875a;
+  --trace-5: #c2501f;
+  --trace-6: #b4337f;
+  --trace-7: #138a86;
+  --trace-8: #7c7f10;
+  --warn: #a35f00;
+  --cursor: #141a22;
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -69,8 +94,6 @@ body {
 }
 
 body {
-  display: flex;
-  flex-direction: column;
   background: var(--bg);
   color: var(--fg);
   font: 13px/1.45 var(--font-ui);
@@ -82,15 +105,16 @@ body {
   font-family: var(--font-data);
 }
 
-/* top bar */
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+.num {
+  font-family: var(--font-data);
+}
+
+.muted {
+  color: var(--fg-muted);
+}
+
+.spacer {
+  flex: 1;
 }
 
 .btn {
@@ -102,6 +126,30 @@ body {
   color: var(--fg);
   font: inherit;
   font-size: 12px;
+}
+
+.tbtn {
+  min-height: 28px;
+  white-space: nowrap;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.tbtn:hover {
+  border-color: var(--accent-line);
+}
+
+.sel {
+  min-height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--fg);
 }
 
 .btn:hover,
@@ -124,72 +172,29 @@ body {
 .ibtn svg {
   width: 16px;
   height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.ibtn.on {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-  color: var(--accent);
 }
 
 .ibtn:disabled {
   opacity: 0.4;
 }
 
-.seg {
+/* a sidebar panel's title row */
+.phd {
   display: flex;
-  gap: 2px;
-  margin-left: 8px;
-}
-
-.file {
-  font-size: 12px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.range,
-.pointer,
-.status {
-  font-size: 11.5px;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 8px 0 14px;
   color: var(--fg-muted);
-  white-space: nowrap;
-}
-
-.spacer {
-  flex: 1;
-}
-
-/* body: channels · plot stack and overview · Measure */
-.body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.side {
-  display: flex;
-  flex-direction: column;
-  width: 240px;
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.side-head {
-  padding: 12px 14px 6px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--fg-muted);
 }
+
+/* the plot stack and overview, and Measure */
+
+
 
 .chans {
   flex: 1;
