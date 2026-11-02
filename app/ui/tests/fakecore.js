@@ -4,7 +4,7 @@
 //
 // Loaded before the page (an init script), it installs window.__TAURI_INTERNALS__ the way Tauri's mockIPC does.
 // Tests drive it through window.__tlmFake: `files` (path → recording), `launch` (a file opened at start), `pick`
-// (what Open… returns; a file spec's `cold` makes exact views slow and coarse ones labelled), `drop(paths)`, `build(path, fraction)` (build progress), `calls` (commands seen).
+// (what Open… returns; a file spec's `cold` makes exact views slow, `exactMs` of them, 800 by default), `drop(paths)`, `build(path, fraction)` (build progress), `calls` (commands seen).
 // In Node, require() it for the encoder alone (globalThis.__tlmFakeCore).
 (() => {
   'use strict';
@@ -140,6 +140,8 @@
     launch: null,
     pick: null,
     calls: [],
+    /** The precision each `view` asked for. */
+    precisions: [],
     open: new Map(),
     recording,
     /** Moves `path`'s pyramid build to `fraction` (1 finishes it), sending progress like the core. */
@@ -186,8 +188,9 @@
       const r = o.r;
       const cold = !!fake.files[r.path].cold;
       const coarse = precision === 'coarse' && cold;
+      fake.precisions.push(precision);
       // a cold file's exact view reads the file: slow, as in the core
-      if (cold && !coarse) await new Promise((ok) => setTimeout(ok, 300));
+      if (cold && !coarse) await new Promise((ok) => setTimeout(ok, fake.files[r.path].exactMs ?? 800));
       const builtUntil = r.built ? null : r.done ? timeAt(r, r.done - 1) : BigInt(entries[0]?.t0 ?? 0);
       const parts = entries.map((e) => {
         const traces = e.channels

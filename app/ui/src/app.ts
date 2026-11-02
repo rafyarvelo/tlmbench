@@ -87,6 +87,8 @@ export interface QueryStats {
 interface Layer {
   originNs: bigint;
   xScaleNs: number;
+  /** Samples after this time weren't summarized when it was drawn (null: all were). */
+  builtUntil: bigint | null;
   traces: Map<number, { gl: GlTrace; yMin: number; yMax: number; coarse: boolean; points: number }>;
 }
 
@@ -118,6 +120,10 @@ const state = {
   exactMs: Infinity,
   /** Build progress; null when built. */
   building: null as null | { done: number; total: number; until: bigint | null },
+  /** Where the hatching starts on screen: it glides toward what the panes have drawn rather than jumping. */
+  hatchFrom: null as bigint | null,
+  /** When each pane's view became coarse: the label shows only if it stays coarse a moment. */
+  coarseSince: [] as (number | null)[],
   hoverT: null as bigint | null,
   hover: new Map<number, { t: bigint; v: number | null }>(),
   A: null as bigint | null,
@@ -207,7 +213,7 @@ const xAt = (r: Rect, t: bigint) => r.x + (Number(t - state.t0) / Number(state.t
 // ---------- queries ----------
 
 function upload(layer: Layer | null, reply: Reply): Layer {
-  const next: Layer = { originNs: reply.originNs, xScaleNs: reply.xScaleNs, traces: new Map() };
+  const next: Layer = { originNs: reply.originNs, xScaleNs: reply.xScaleNs, builtUntil: reply.builtUntil, traces: new Map() };
   for (const t of reply.traces) {
     const old = layer?.traces.get(t.channel);
     layer?.traces.delete(t.channel);
@@ -461,19 +467,50 @@ function draw(): void {
       ctx.strokeRect(Math.round(a) + 0.5, r.y + 0.5, Math.round(b - a), r.h - 1);
     }
   });
-  const coarsePanes = panes().map((chans, i) => chans.some((ch) => state.layers[i]?.traces.get(ch)?.coarse));
+  // "coarse" shows only when a coarse view stays up (a cold first paint), not when the exact one follows at once
+  const now = performance.now();
+  const coarsePanes = panes().map((chans, i) => {
+    const coarse = chans.some((ch) => state.layers[i]?.traces.get(ch)?.coarse);
+    state.coarseSince[i] = coarse ? (state.coarseSince[i] ?? now) : null;
+    const since = state.coarseSince[i];
+    if (since != null && now - since < COARSE_LABEL_AFTER_MS) setTimeout(scheduleDraw, COARSE_LABEL_AFTER_MS - (now - since) + 5);
+    return since != null && now - since >= COARSE_LABEL_AFTER_MS;
+  });
   if (coarsePanes.join() !== stack.coarse.join()) stack.coarse = coarsePanes;
+  glideHatch();
   drawOverview(ctx, tk);
   state.onPaint?.({ coarse, complete });
 }
 
 const paneY: { yMin: number; yMax: number }[] = [];
 
+/** A coarse view replaced sooner than this isn't labelled. */
+const COARSE_LABEL_AFTER_MS = 300;
+
+/** Moves the hatching's start a step toward what the panes have drawn (their replies' built-until), each frame. */
+function glideHatch(): void {
+  if (!state.building) {
+    state.hatchFrom = null;
+    return;
+  }
+  const drawn = state.layers.map((l) => l?.builtUntil).filter((t): t is bigint => t != null);
+  const target = drawn.length ? drawn.reduce((a, b) => (b < a ? b : a)) : null;
+  if (target == null) return;
+  const from = state.hatchFrom ?? target;
+  if (from >= target) {
+    state.hatchFrom = target;
+    return;
+  }
+  const step = (target - from) / 5n;
+  state.hatchFrom = step > 0n ? from + step : target;
+  scheduleDraw();
+}
+
 /** Hatches the part of the view not summarized yet. */
 function drawBuilding(ctx: CanvasRenderingContext2D, r: Rect, label: boolean, t0 = state.t0, t1 = state.t1): void {
   const b = state.building;
   if (!b) return;
-  const until = b.until ?? t0;
+  const until = state.hatchFrom ?? b.until ?? t0;
   if (until >= t1) return;
   const x0 = Math.max(r.x, r.x + (Number(until - t0) / Number(t1 - t0)) * r.w);
   const tk = tokens();
@@ -765,6 +802,8 @@ async function openPath(path: string): Promise<void> {
     state.layers.forEach((l) => l?.traces.forEach((t) => renderer.free(t.gl)));
     state.ov?.traces.forEach((t) => renderer.free(t.gl));
     state.layers = [];
+    state.coarseSince = [];
+    state.hatchFrom = null;
     state.ov = null;
     state.ovStale = true;
     state.A = state.B = null;
@@ -799,8 +838,9 @@ function onProgress(p: Progress): void {
   const now = performance.now();
   if (done || now - progressRefresh > 250) {
     progressRefresh = now;
-    state.exactMs = Infinity;
-    overviewChanged();
+    // what was just read is in memory: exact views of it come quickly, with no coarse one first
+    state.ovStale = true;
+    void requestView('exact');
     if (done && state.A != null && state.B != null) void refreshMeasure();
   }
   scheduleDraw();
