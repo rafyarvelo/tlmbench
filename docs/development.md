@@ -62,7 +62,8 @@ instead of quietly succeeding.
   the check there. Use the same mount for manual runs of the desktop app.
 - CI mounts the folder read-only (`-v …:/data/ro:ro`) and passes `--require-ro`.
 
-Each roadmap phase adds its CLI and core calls to `ro_commands`.
+`ro_commands` runs `ci/ro_cli.sh`: every CLI command that reads recordings (`info`, `cache build`, `query view`,
+`values`, `stats`, `cache list`, `clear`) over each CSV in the folder. Each roadmap phase adds its commands there.
 
 ## CI (GitHub Actions)
 

@@ -3999,6 +3999,7 @@ dependencies = [
  "tempfile",
  "tlmbench-core",
  "tlmbench-decode",
+ "tlmbench-store",
 ]
 
 [[package]]

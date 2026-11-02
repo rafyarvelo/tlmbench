@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 tlmbench-core.workspace = true
 tlmbench-decode.workspace = true
+tlmbench-store.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -9,8 +9,8 @@ python := env("TLMBENCH_VENV", ".venv") / "bin/python"
 # The data folder `ro-test` proves untouched, and whether it must be read-only (CI mounts it read-only)
 ro_dir := env("TLMBENCH_RO_DIR", "prototype/tests/fold")
 ro_required := env("TLMBENCH_RO_REQUIRED", "")
-# Commands run against that folder (its cache goes to a temp folder); each roadmap phase adds what it brings
-ro_commands := "--cmd 'c=$(mktemp -d); find \"" + ro_dir + "\" -name \"*.csv\" -exec target/debug/tlmbench info --cache \"$c\" {} +; r=$?; rm -rf \"$c\"; exit $r'"
+# Commands run against that folder (ci/ro_cli.sh; its cache goes to a temp folder); each phase adds what it brings
+ro_commands := "--cmd 'ci/ro_cli.sh \"" + ro_dir + "\"'"
 # Generated recordings (never in the repo; see docs/follow-ups.md for the large sets)
 data := env("TLMBENCH_DATA", home_directory() / "tlmbench-data")
 
