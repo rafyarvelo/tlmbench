@@ -25,7 +25,7 @@ run('panes', async ({ p, check, text, visible, paneCount, until, settingsLS, wai
   const [a, b] = [await rect(0), await rect(1)];
   check('side by side', Math.abs(a.y - b.y) < 2 && b.x > a.x + a.w, [a, b]);
   check('the new pane is selected and empty', (await app('sel')) === 1 && /Tick channels/.test(await text('#stack [data-pane="1"] .phead')));
-  await p.click('#chans .chan[data-ch="4"]');
+  await p.click('#chans .chan[data-ch="4"] .box');
   check('a channel goes to the selected pane', JSON.stringify((await app('panes'))[1]) === '[4]', await app('panes'));
   check('every pane draws', await until(() => window.__tlmApp.drawn().filter((d, i) => window.__tlmApp.panes()[i].length).every((d) => d && d.length)));
 

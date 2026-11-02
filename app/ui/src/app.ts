@@ -16,8 +16,8 @@ import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value 
 import { runGate, runGate2 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { applyTheme, type Mode, onSetting, saveSettings, setSetting, settings } from './settings.svelte';
-import { addPaneBelow, labelled, normalize, note, onStackChange, type Pane, stack, toggleChannel } from './stack.svelte';
-import { actions, ui } from './ui.svelte';
+import { addPaneBelow, labelled, normalize, note, onStackChange, type Pane, stack } from './stack.svelte';
+import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 
 interface ChannelInfo {
@@ -644,18 +644,7 @@ function renderPanes(): void {
 }
 
 function renderChannels(): void {
-  const f = state.file;
-  const host = $('chans');
-  $('addPane').hidden = !f;
-  if (!f) host.replaceChildren();
-  if (!f) return;
-  const inSel = new Set(panes()[stack.sel] ?? []);
-  host.innerHTML = f.info.channels
-    .map(
-      (c, ch) =>
-        `<div class="chan${inSel.has(ch) ? ' on' : ''}" data-ch="${ch}" style="--c:${colorOf(ch)}"><span class="box"></span><span class="nm">${esc(c.name)}</span>${c.unit ? `<span class="unit">${esc(c.unit)}</span>` : ''}</div>`,
-    )
-    .join('');
+  $('addPane').hidden = !state.file;
 }
 
 function renderOverviewHead(): void {
@@ -846,6 +835,44 @@ function onProgress(p: Progress): void {
   scheduleDraw();
 }
 
+/** Explorer's Open folder: the native picker, then the folder's recordings listed (it is only read). */
+async function chooseFolder(): Promise<void> {
+  const path = await openDialog({ directory: true, multiple: false });
+  if (typeof path === 'string') await showFolder(path);
+}
+
+async function showFolder(path: string): Promise<void> {
+  try {
+    ui.folder = await invoke<FolderEntry>('list_folder', { path });
+    if (settings.folder !== path) {
+      setSetting('folder', path);
+      setSetting('exExpanded', ui.folder.children.filter((c) => c.dir).map((c) => c.path));
+    }
+  } catch (e) {
+    ui.folder = null;
+    setSetting('folder', '');
+    note(`Couldn't list ${path}: ${e}`);
+  }
+}
+
+/** Closes the open file: the panes empty, the folder stays listed. */
+function closeFile(): void {
+  const f = state.file;
+  if (!f) return;
+  void invoke('close', { file: f.id });
+  state.layers.forEach((l) => l?.traces.forEach((t) => renderer.free(t.gl)));
+  state.ov?.traces.forEach((t) => renderer.free(t.gl));
+  Object.assign(state, { file: null, layers: [], ov: null, building: null, A: null, B: null, hoverT: null, history: [], future: [] });
+  state.hover.clear();
+  stack.panes = [];
+  stack.values = {};
+  Object.assign(ui, { file: '', path: '', channels: [], range: '', span: '', pointer: '', canBack: false, cursors: false, anyCursor: false, perf: '' });
+  $('empty').hidden = false;
+  renderPanes();
+  renderOverviewHead();
+  void refreshMeasure();
+}
+
 async function chooseFile(): Promise<void> {
   const path = await openDialog({ multiple: false, filters: [{ name: 'Recordings', extensions: ['csv', 'tsv', 'tlm'] }] });
   if (typeof path === 'string') await openPath(path);
@@ -1028,12 +1055,6 @@ center.addEventListener('pointerup', () => {
   if (drag?.type === 'overview') drag = null;
 });
 
-$('chans').addEventListener('click', (e) => {
-  const row = (e.target as HTMLElement).closest<HTMLElement>('[data-ch]');
-  if (!row || !state.file) return;
-  toggleChannel(Number(row.dataset.ch));
-});
-
 $('addPane').addEventListener('click', () => addPaneBelow(stack.panes.length - 1));
 onStackChange(() => void layoutChanged());
 
@@ -1126,7 +1147,7 @@ function onChannelContext(e: MouseEvent): void {
   e.preventDefault();
   channelMenu(Number(hit.dataset.ch), e.clientX, e.clientY);
 }
-$('chans').addEventListener('contextmenu', onChannelContext);
+$('side').addEventListener('contextmenu', onChannelContext);
 stackEl.addEventListener('contextmenu', onChannelContext);
 document.addEventListener('pointerdown', (e) => {
   if (popup && !(e.target as HTMLElement).closest('.menu, .dlg')) closePopup();
@@ -1162,7 +1183,15 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f') fit();
 });
 
-Object.assign(actions, { open: () => void chooseFile(), fit, back, clearCursors });
+Object.assign(actions, {
+  open: () => void chooseFile(),
+  openFolder: () => void chooseFolder(),
+  openPath: (p: string) => void (p !== state.file?.info.path && openPath(p)),
+  closeFile,
+  fit,
+  back,
+  clearCursors,
+});
 onSetting((key) => {
   if (key === 'theme') {
     applyTheme();
@@ -1235,6 +1264,7 @@ export const gateApi = {
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
 };
 
+if (settings.folder) void showFolder(settings.folder);
 const launch = await invoke<{ file: string | null; gate: '1' | '2' | null; gateMode: string | null }>('launch');
 if (launch.gate === '2' && launch.file) await runGate2(gateApi, launch.file, launch.gateMode === 'first' ? 'first' : 'reopen');
 else {

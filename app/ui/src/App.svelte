@@ -2,13 +2,14 @@
      overview, Measure on the right, and the status bar (a setting). app.ts drives the stack, the channel list and
      Measure's contents; it finds them by id, so they stay in the page (hidden, not removed). -->
 <script lang="ts">
+  import Explorer from './shell/Explorer.svelte';
   import PaneStack from './shell/PaneStack.svelte';
   import Rail from './shell/Rail.svelte';
   import Settings from './shell/Settings.svelte';
   import TopBar from './shell/TopBar.svelte';
   import { ICON } from './icons';
   import { setSetting, settings } from './settings.svelte';
-  import { actions, measureShown, ui } from './ui.svelte';
+  import { measureShown, ui } from './ui.svelte';
 
   const shown = $derived(measureShown(settings.measureOpen, settings.measureAuto));
 
@@ -46,18 +47,7 @@
     {/if}
     <div class="work">
       <aside id="side" class="side" hidden={!settings.leftPanel}>
-        <div class="explorer" hidden={settings.leftPanel !== 'explorer'}>
-          <div class="phd">
-            <span>Explorer</span><span class="spacer"></span>
-            <button class="ibtn" id="exOpen" aria-label="Open recording" data-tip="Open a CSV or .tlm file (⌘O)" onclick={actions.open}>{@html ICON.open}</button>
-          </div>
-          {#if ui.file}
-            <div class="exfile" data-tip={ui.path}>{@html ICON.file}<span class="nm">{ui.file}</span></div>
-          {:else}
-            <p class="exnone">No recording open. Drop a CSV or .tlm file on the window, or <button class="linkbtn" onclick={actions.open}>open one</button>.</p>
-          {/if}
-          <div id="chans" class="chans"></div>
-        </div>
+        <div hidden={settings.leftPanel !== 'explorer'}><Explorer /></div>
         {#if settings.leftPanel === 'settings'}<Settings />{/if}
       </aside>
       <main id="center" class="center" data-mode={settings.mode}>
@@ -108,43 +98,6 @@
   }
   .side[hidden] {
     display: none;
-  }
-  .explorer {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  .exfile {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0 6px 4px;
-    padding: 0 8px;
-    min-height: 30px;
-    border-radius: 8px;
-    background: var(--accent-soft);
-    font-weight: 500;
-  }
-  .exfile :global(svg) {
-    flex: none;
-    width: 14px;
-    height: 14px;
-    color: var(--fg-muted);
-  }
-  .exfile .nm {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .exnone {
-    margin: 4px 14px;
-    color: var(--fg-muted);
-    font-size: 12px;
-  }
-  .exnone .linkbtn {
-    padding: 0;
-    color: var(--accent);
-    font-size: 12px;
   }
   .wsnote {
     display: flex;

@@ -268,6 +268,59 @@ async fn stats(
     .map_err(|e| e.to_string())
 }
 
+/// A file or folder in a listed folder.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderEntry {
+    path: String,
+    name: String,
+    dir: bool,
+    bytes: u64,
+    /// Folders: what they hold, recordings and the folders that lead to some.
+    children: Vec<FolderEntry>,
+}
+
+/// The recordings (CSV, TSV, TXT and .tlm files) under `path`, in their folders, sorted by name; folders without
+/// any, and hidden ones, are left out. Only reads the folder (Explorer's Open folder).
+#[tauri::command]
+async fn list_folder(path: String) -> Result<FolderEntry, String> {
+    fn walk(p: &Path, depth: u32) -> Option<FolderEntry> {
+        let name = p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned());
+        let meta = std::fs::metadata(p).ok()?;
+        if !meta.is_dir() {
+            let ext = p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+            return matches!(ext.as_deref(), Some("csv" | "tsv" | "txt" | "tlm")).then(|| FolderEntry {
+                path: p.display().to_string(),
+                name,
+                dir: false,
+                bytes: meta.len(),
+                children: Vec::new(),
+            });
+        }
+        let mut children: Vec<FolderEntry> = if depth < 8 {
+            std::fs::read_dir(p)
+                .ok()?
+                .flatten()
+                .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+                .filter_map(|e| walk(&e.path(), depth + 1))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        children.sort_by(|a, b| b.dir.cmp(&a.dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+        (depth == 0 || !children.is_empty()).then(|| FolderEntry {
+            path: p.display().to_string(),
+            name,
+            dir: true,
+            bytes: 0,
+            children,
+        })
+    }
+    spawn_blocking(move || walk(Path::new(&path), 0).ok_or_else(|| format!("{path} isn't a folder that can be read")))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// `bytes` zero bytes: the IPC transfer cost alone, for the gate report.
 #[tauri::command]
 fn echo(bytes: u32) -> Response {
@@ -308,7 +361,17 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Files { store: Store::new(None), next: AtomicU32::new(0), open: Mutex::default() })
-        .invoke_handler(tauri::generate_handler![open, close, view, values_at, stats, echo, launch, gate_report])
+        .invoke_handler(tauri::generate_handler![
+            open,
+            close,
+            view,
+            values_at,
+            stats,
+            list_folder,
+            echo,
+            launch,
+            gate_report
+        ])
         .run(tauri::generate_context!())
         .expect("TelemetryBench failed to start");
 }

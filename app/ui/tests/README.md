@@ -1,7 +1,7 @@
 # The app's UI tests
 
 The built UI (`app/ui/dist`) in headless Chromium, with `fakecore.js` answering the Tauri commands the UI calls
-(`launch`, `open`, `close`, `view`, `values_at`, `stats`, the file dialog and drag and drop) from synthetic
+(`launch`, `open`, `close`, `view`, `values_at`, `stats`, `list_folder`, the file and folder dialogs and drag and drop) from synthetic
 recordings. Tests check behaviour and state, not pixels; check visual changes with a screenshot.
 
 `just app-test` builds the UI and runs every `t_*` here, three at a time; `just app-test t_view` runs one. Each prints
@@ -13,13 +13,15 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_wire | the wire format: the fake core encodes the core's golden batch byte for byte, and `wire.ts` decodes it (Node, no browser) |
 | t_view | panes and the channel list, wheel and box zoom, Fit and Back, hover readouts, cursors and Measure, settings after a reload |
 | t_open | Open…, ⌘O and drops, a file still being read (progress, Measure waiting for exact stats), the coarse label, the gap factor dialog |
+| t_explorer | Open folder (folder → file → channel), select-first rows (a click selects and shows Open; double-click or Enter opens), the checkbox plotting in the selected pane, the filter (text, regex, a bad one marked), Expand all / Collapse all, Close all, the folder after a reload |
 | t_panes | the pane ⋯ menu and right-click: close (pane, others, below) with Undo, duplicate, split right into columns and down within one, add below; dragging a pane's number; time labels under each column; the layout after a reload |
 | t_shell | the rail and left sidebar (Ctrl+B), Settings (Basic/All, search, ⓘ, apply and save, Reset to defaults), mouse modes, the ⋯ menu, the status bar, Measure docking by hand and by itself, the note when a file can't be opened |
 
 Each test uses `lib.js`: `run(name, async h => { ... }, opts)`. `h.check(label, condition, got)` records a result;
 a test fails on any failed check, any error in the page, or an exception in the script. Helpers: `text`, `visible`,
 `panes`, `paneCount`, `plotAt(pane, fraction)`, `until`, `settingsLS`, `fake(fn, arg)` (runs in the page, where
-`window.__tlmFake` drives the fake core). Options: `files` (path → recording spec: `channels`, `units`, `samples`,
+`window.__tlmFake` drives the fake core: `pick` and `pickFolder` are what the dialogs return, and `list_folder` lists
+the `files` under a folder). Options: `files` (path → recording spec: `channels`, `units`, `samples`,
 `rate`, `built: false` for a file still being read, `cold: true` for slow exact views), `launch` (the file opened at
 start; null for none), `settings` (the first-launch settings), `viewport`, `colorScheme`.
 

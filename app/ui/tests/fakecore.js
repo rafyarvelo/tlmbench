@@ -139,6 +139,9 @@
     files: {},
     launch: null,
     pick: null,
+    /** What Open folder returns, and folders that exist without recordings. */
+    pickFolder: null,
+    folders: [],
     calls: [],
     /** The precision each `view` asked for. */
     precisions: [],
@@ -226,7 +229,32 @@
         return { channel: ch, count: n, min: n ? min : null, minT: n ? String(timeAt(r, minI)) : null, max: n ? max : null, maxT: n ? String(timeAt(r, maxI)) : null, mean, std: n ? Math.sqrt(Math.max(0, sq / n - mean * mean)) : null };
       });
     },
-    'plugin:dialog|open': () => fake.pick,
+    'plugin:dialog|open': ({ options }) => (options?.directory ? fake.pickFolder : fake.pick),
+    list_folder({ path }) {
+      // a folder's tree from the paths of `fake.files` under it (the core lists the disk)
+      const files = Object.keys(fake.files).filter((p) => p.startsWith(path.replace(/\/$/, '') + '/'));
+      if (!files.length && !fake.folders.includes(path)) throw `${path} isn't a folder that can be read`;
+      const root = { path, name: path.split('/').pop(), dir: true, bytes: 0, children: [] };
+      for (const f of files.sort()) {
+        let node = root;
+        const parts = f.slice(path.length + 1).split('/');
+        parts.forEach((part, k) => {
+          const p = node.path + '/' + part;
+          let child = node.children.find((c) => c.path === p);
+          if (!child) {
+            child = { path: p, name: part, dir: k < parts.length - 1, bytes: k < parts.length - 1 ? 0 : 1234567, children: [] };
+            node.children.push(child);
+          }
+          node = child;
+        });
+      }
+      const sort = (n) => {
+        n.children.sort((a, b) => b.dir - a.dir || a.name.localeCompare(b.name));
+        n.children.forEach(sort);
+      };
+      sort(root);
+      return root;
+    },
     'plugin:event|listen'({ event, handler }) {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event).push(handler);

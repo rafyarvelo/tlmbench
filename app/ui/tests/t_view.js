@@ -14,10 +14,10 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   const sel = await plotAt(2, 0.9);
   await p.mouse.click(sel.x, sel.y);
   check('selecting a pane', (await app('sel')) === 2 && /Overview of pane 3/.test(await text('.ovhead')), await app('sel'));
-  check('its channels are ticked', (await p.$$eval('#chans .chan.on', (e) => e.map((x) => x.textContent))).join() === 'motor_rpmrpm,motor_rpm_targetrpm');
-  await p.click('#chans .chan[data-ch="0"]');
+  check('its channels are ticked', (await p.$$eval('#chans .chan.on .nm', (e) => e.map((x) => x.textContent))).join() === 'motor_rpm,motor_rpm_target', await p.$$eval('#chans .chan.on .nm', (e) => e.map((x) => x.textContent)));
+  await p.click('#chans .chan[data-ch="0"] .box');
   check('a channel added to the pane', JSON.stringify((await app('panes'))[2]) === '[4,5,0]', await app('panes'));
-  await p.click('#chans .chan[data-ch="0"]');
+  await p.click('#chans .chan[data-ch="0"] .box');
   await p.click('#addPane');
   check('+ Add pane', (await paneCount()) === 4 && (await app('sel')) === 3, await paneCount());
   await p.hover('#stack [data-pane="3"] .phead');

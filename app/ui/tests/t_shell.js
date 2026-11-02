@@ -9,7 +9,7 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
 
   // rail: Explorer is open; its icon (or Ctrl+B) hides and shows the sidebar
   check('Explorer open at first', (await visible('#chans')) && (await p.getAttribute('[data-rail="explorer"]', 'aria-pressed')) === 'true');
-  check('the open file in Explorer', (await text('.exfile')) === 'flight.tlm', await text('.exfile'));
+  check('the open file in Explorer', (await text('#explorer .row.file.open .nm')) === 'flight.tlm', await text('#explorer'));
   const w0 = await p.evaluate(() => document.getElementById('center').clientWidth);
   await p.click('[data-rail="explorer"]');
   check('Explorer icon hides the sidebar', !(await visible('#side')) && (await p.evaluate(() => document.getElementById('center').clientWidth)) > w0);

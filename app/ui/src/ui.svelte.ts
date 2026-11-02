@@ -1,8 +1,19 @@
 // What the shell shows about the app's state: app.ts writes it, the components render it.
 
+/** A listed folder or recording (the app's `list_folder`). */
+export interface FolderEntry {
+  path: string;
+  name: string;
+  dir: boolean;
+  bytes: number;
+  children: FolderEntry[];
+}
+
 export const ui = $state({
   /** The open file's name and path ('' when none). */
   file: '',
+  /** The folder Explorer lists (null: none open). */
+  folder: null as FolderEntry | null,
   /** Its channels' names and units. */
   channels: [] as { name: string; unit: string | null }[],
   path: '',
@@ -30,6 +41,9 @@ export const measureShown = (open: boolean, auto: boolean) => open || (auto && u
 /** What the shell's controls do: app.ts fills these in. */
 export const actions = {
   open: () => {},
+  openFolder: () => {},
+  openPath: (_path: string) => {},
+  closeFile: () => {},
   fit: () => {},
   back: () => {},
   clearCursors: () => {},

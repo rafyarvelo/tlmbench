@@ -197,51 +197,12 @@ input.sel {
 
 
 
-.chans {
-  flex: 1;
-  overflow: auto;
-  padding: 0 6px 12px;
-}
 
-.chan {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 8px;
-  border-radius: 8px;
-  font-size: 12px;
-  cursor: default;
-}
 
-.chan:hover {
-  background: var(--raised);
-}
 
-.chan .box {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid var(--fg-muted);
-  border-radius: 4px;
-}
 
-.chan.on .box {
-  border-color: var(--c);
-  background: var(--c);
-}
 
-.chan .nm {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.chan .unit {
-  margin-left: auto;
-  font: 11px var(--font-data);
-  color: var(--fg-muted);
-}
 
 .center {
   position: relative;

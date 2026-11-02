@@ -22,6 +22,9 @@ export interface Settings {
   showPerf: boolean;
   /** Settings shows every setting, not just the everyday ones. */
   settingsAll: boolean;
+  /** The folder Explorer lists, and its folders (and open files) shown expanded. */
+  folder: string;
+  exExpanded: string[];
   /** Each file's panes (their channel numbers and where they sit), by file path. */
   layouts: Record<string, Pane[]>;
   /** Gap factors set by hand, by file path and channel number (the rest use the default). */
@@ -39,6 +42,8 @@ export const DEFAULTS: Settings = {
   measureAuto: true,
   showPerf: false,
   settingsAll: false,
+  folder: '',
+  exExpanded: [],
   layouts: {},
   gapFactors: {},
 };
@@ -77,7 +82,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['layouts', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll'];
+const KEEP: (keyof Settings)[] = ['layouts', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
