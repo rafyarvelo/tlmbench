@@ -1,12 +1,14 @@
 //! M4 straight from raw samples: the Phase 1 viewport query. Design target: under 5 ms per trace.
 //!
 //! One fixed-rate channel of 100M f32 samples (the Phase 1 gate size, 400 MB), viewed whole, at 10% and at 0.1%,
-//! on all threads and on one. Plus 10M samples with a timestamp column (binary searches instead of arithmetic).
+//! on all threads and on one. Plus 10M samples with a timestamp column (binary searches instead of arithmetic),
+//! and the Phase 2 pyramid: building it, and the same views answered from it.
 //! `TLMBENCH_BENCH_SAMPLES` overrides the size.
 
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use tlmbench_core::pyramid::{self, Pyramid};
 use tlmbench_core::{RateTimes, Times, Timestamp, Viewport, m4};
 
 fn samples(default: usize) -> usize {
@@ -81,5 +83,27 @@ fn bench_column(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_rate, bench_column);
+fn bench_pyramid(c: &mut Criterion) {
+    let n = samples(100_000_000);
+    let values = signal(n);
+    let times = RateTimes::from_rate(1_700_000_000_000_000_000, 10_000.0, n);
+    let mut g = c.benchmark_group(format!("pyramid_{}M", n / 1_000_000));
+    g.sample_size(10);
+    g.throughput(Throughput::Elements(n as u64));
+    g.bench_function("build", |b| {
+        b.iter(|| black_box(pyramid::build_levels(pyramid::summarize(&times, &values, 0, n))))
+    });
+    let levels = pyramid::build_levels(pyramid::summarize(&times, &values, 0, n));
+    let pyr = Pyramid::new(n, levels.iter().map(Vec::as_slice).collect());
+    for (view, t0, t1) in views(&times) {
+        let vp = Viewport { t0, t1, width_px: 2000 };
+        g.throughput(Throughput::Elements((times.lower_bound(t1) - times.lower_bound(t0)) as u64));
+        g.bench_with_input(BenchmarkId::new(format!("{view}/m4"), 2000), &vp, |b, &vp| {
+            b.iter(|| black_box(pyramid::m4(&times, &values, &pyr, vp)))
+        });
+    }
+    g.finish();
+}
+
+criterion_group!(benches, bench_rate, bench_column, bench_pyramid);
 criterion_main!(benches);

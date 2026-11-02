@@ -74,6 +74,17 @@ const PARALLEL_MIN_SAMPLES: usize = 1 << 18;
 /// Reduces one channel for a viewport. `values[i]` is the sample at `times.at(i)`; times must not decrease.
 pub fn m4<T: Times + ?Sized, S: Samples + ?Sized>(times: &T, values: &S, vp: Viewport) -> Trace {
     let (kind, emits) = reduce(times, values, vp);
+    to_trace(times, values, kind, emits, vp)
+}
+
+/// Looks up the times and values of what a reduction emitted.
+pub(crate) fn to_trace<T: Times + ?Sized, S: Samples + ?Sized>(
+    times: &T,
+    values: &S,
+    kind: TraceKind,
+    emits: Vec<Emit>,
+    vp: Viewport,
+) -> Trace {
     let mut t = Vec::with_capacity(emits.len());
     let mut y = Vec::with_capacity(emits.len());
     for e in emits {
@@ -97,6 +108,16 @@ pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
     vp: Viewport,
 ) -> (TraceKind, Vec<Emit>) {
     assert_eq!(times.len(), values.len(), "times and values differ in length");
+    reduce_with(times, vp, |start, end, bucket_t, out| reduce_bucket(values, start, end, bucket_t, out))
+}
+
+/// The shape of every reduction: raw samples for sparse views, otherwise `bucket(start, end, bucket_t, out)` for
+/// each bucket on the global grid (on several threads for large views), plus the sample beyond each edge.
+pub(crate) fn reduce_with<T: Times + ?Sized>(
+    times: &T,
+    vp: Viewport,
+    bucket: impl Fn(usize, usize, Timestamp, &mut Vec<Emit>) + Sync,
+) -> (TraceKind, Vec<Emit>) {
     let n = times.len();
     if n == 0 || vp.t1 <= vp.t0 || vp.width_px == 0 {
         return (TraceKind::Raw, Vec::new());
@@ -124,7 +145,7 @@ pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
         let mut start = bucket_start(from);
         for b in from..to {
             let end = bucket_start(b + 1);
-            reduce_bucket(values, start, end, b * bw, &mut out);
+            bucket(start, end, b * bw, &mut out);
             start = end;
         }
         out
@@ -158,13 +179,16 @@ pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
 /// Appends the first, min, max and last samples of `values[start..end]` in index order (each once), or a gap
 /// if the bucket has no non-NaN samples. Ties go to the earliest sample.
 #[inline]
-fn reduce_bucket<S: Samples + ?Sized>(values: &S, start: usize, end: usize, bucket_t: Timestamp, out: &mut Vec<Emit>) {
+pub(crate) fn reduce_bucket<S: Samples + ?Sized>(
+    values: &S,
+    start: usize,
+    end: usize,
+    bucket_t: Timestamp,
+    out: &mut Vec<Emit>,
+) {
     let mut bucket = values.range(start, end);
     let Some(first) = bucket.clone().position(|v| !v.is_nan()) else {
-        if !matches!(out.last(), Some(Emit::Gap(_))) {
-            out.push(Emit::Gap(bucket_t));
-        }
-        return;
+        return push_bucket(out, None, bucket_t);
     };
     let last = bucket.rposition(|v| !v.is_nan()).unwrap_or(first);
     let mut body = values.range(start + first, start + last + 1);
@@ -187,10 +211,22 @@ fn reduce_bucket<S: Samples + ?Sized>(values: &S, start: usize, end: usize, buck
         }
     };
 
-    let mut idx = [first, imin.min(imax), imin.max(imax), last];
-    idx.iter_mut().for_each(|i| *i += start);
+    let idx = [first, imin, imax, last].map(|i| i + start);
+    push_bucket(out, Some(idx), bucket_t);
+}
+
+/// Appends a bucket's picks `[first, imin, imax, last]` (sample indexes) in index order, each once, or a gap when
+/// the bucket has no real samples (one gap for a run of them).
+#[inline]
+pub(crate) fn push_bucket(out: &mut Vec<Emit>, picks: Option<[usize; 4]>, bucket_t: Timestamp) {
+    let Some([first, imin, imax, last]) = picks else {
+        if !matches!(out.last(), Some(Emit::Gap(_))) {
+            out.push(Emit::Gap(bucket_t));
+        }
+        return;
+    };
     let mut prev = usize::MAX;
-    for i in idx {
+    for i in [first, imin.min(imax), imin.max(imax), last] {
         if i != prev {
             out.push(Emit::Sample(i));
             prev = i;
