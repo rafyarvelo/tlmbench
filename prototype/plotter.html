@@ -7740,7 +7740,7 @@ function renderLiveSources(lv) {
     const sp = card.querySelector('[data-sspeed]'); if (sp) sp.onchange = () => setSourceSpeed(lv, s, +sp.value);
     card.querySelector('[data-spause]').onclick = () => {
       if (s.state === 'stopped' || s.state === 'finished') restartSource(lv, s); else setSourceState(lv, s, s.state === 'paused' ? 'streaming' : 'paused');
-      renderLiveSources(lv); updateLiveChrome(lv); renderTabs();
+      renderLiveSources(lv); updateLiveChrome(lv); updateLiveStats(lv); renderTabs();
     };
     card.querySelector('[data-sstop]').onclick = () => {
       if (s.state === 'stopped' || s.state === 'finished') { removeSource(lv, s); return; }

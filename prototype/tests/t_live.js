@@ -62,7 +62,8 @@ T.run('live', async ({ p, check, tabs, paneCount, text, expandTree, wait }) => {
   await p.evaluate(() => document.querySelector('.lvpop [data-spause]').click()); await wait(800);
   check('pause shows PAUSED', /PAUSED/.test(await text('#lvBadge')));
   const rp = await rng(), recP = await text('#lvRec'); await wait(1300);
-  check('pausing a replay stops time: the charts hold still', (await rng()) === rp && (await text('#lvRec')) === recP, [rp, await rng()]);
+  const rp2 = await rng(), recP2 = await text('#lvRec');
+  check('pausing a replay stops time: the charts hold still', rp2 === rp && recP2 === recP, [rp, rp2, recP, recP2]);
   check('the badge says why', await p.evaluate(() => /replay stops in time/.test(document.getElementById('lvBadge').dataset.tip)));
   await p.evaluate(() => document.querySelector('.lvpop [data-spause]').click()); await wait(1300);
   check('resuming moves on from where it paused', (await rng()) !== rp);
