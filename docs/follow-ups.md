@@ -36,6 +36,9 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
   10 GB file (the CLI, M1, `ci/evict.py` before each run), and overlapping them with the reads gave 5.4–7.5 s
   against 5.7–6.6 s without, within run-to-run noise: reads and writes share the one SSD. Gate 2's first-ever
   build took 9.9 s in its last run (12.5 s before), against 9.5 s to read the file cold.
-- Hover, cursors and Measure in the app have no automated test yet; the prototype's suite covers the behaviour, and
-  the app's end-to-end tests come with the port.
 
+
+## Phase 3 loose ends
+
+- A UDP source reads one datagram per call, which costs 42% of a core at 4 × 1 MHz in 8 KB datagrams (TCP: 2.6%).
+  Reading several per call (`recvmmsg` on Linux) or a larger socket buffer would cut it; it is reported, not gated.
