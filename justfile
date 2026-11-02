@@ -147,6 +147,10 @@ gen *args:
 gen-gate:
     cargo run -q --release -p tlmbench-gen -- --samples 100M --channels 1 --out "{{data}}/gate" --name gate-100M
 
+# The Gate 2 recording: a 10 GB .tlm of 20 channels × 125M f32 samples (delete it after the run; see `just gate2`)
+gen-gate2:
+    cargo run -q --release -p tlmbench-gen -- --size 10G --channels 20 --format tlm --out "{{data}}/gate2" --name gate2-10G
+
 # Remove Rust build output (it grows to 10+ GB over time)
 clean:
     cargo clean

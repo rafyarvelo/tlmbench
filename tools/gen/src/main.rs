@@ -21,6 +21,10 @@ struct Args {
     /// Samples per channel: a number, or with a K, M or G suffix (100M)
     #[arg(long, value_parser = parse_count, default_value = "1M")]
     samples: u64,
+    /// Size of the .tlm instead of --samples: samples per channel are this over 4 bytes × channels (10G, 20 channels:
+    /// 125M samples each)
+    #[arg(long, value_parser = parse_count, conflicts_with = "samples")]
+    size: Option<u64>,
     #[arg(long, default_value_t = 1)]
     channels: usize,
     /// Sample rate in Hz
@@ -257,7 +261,10 @@ fn write_csv(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    let a = Args::parse();
+    let mut a = Args::parse();
+    if let Some(size) = a.size {
+        a.samples = size / (4 * a.channels.max(1) as u64);
+    }
     if a.channels == 0 || a.rate == 0 {
         eprintln!("tlmbench-gen: --channels and --rate must be at least 1");
         std::process::exit(2);
