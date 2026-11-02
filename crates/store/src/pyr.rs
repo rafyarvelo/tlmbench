@@ -87,6 +87,9 @@ pub(crate) struct Loaded {
     pub done: usize,
     pub complete: bool,
     pub gaps: GapIndex,
+    /// A recording that grows (see `live`): each channel's levels in files of their own, level 4 first, used up to
+    /// `lens`. Empty for a recording's cache entry, whose levels share one file.
+    pub growing: Vec<Vec<Mmap>>,
 }
 
 impl Loaded {
@@ -94,6 +97,14 @@ impl Loaded {
     pub fn pyramid(&self, channel: usize) -> Option<Pyramid<'_>> {
         if self.done == 0 {
             return None;
+        }
+        if let Some(maps) = self.growing.get(channel) {
+            let levels =
+                maps.iter().zip(&self.lens).map(|(m, &n)| &bytemuck::cast_slice::<u8, Summary>(m)[..n]).collect();
+            // the samples past the summaries (the newest) are read raw
+            let mut p = Pyramid::new(self.done, levels);
+            p.raw_past = true;
+            return Some(p);
         }
         let all: &[Summary] = bytemuck::cast_slice(&self.maps[channel]);
         let levels = (0..self.usable).map(|j| &all[self.offsets[j]..self.offsets[j] + self.lens[j]]).collect();
@@ -104,6 +115,9 @@ impl Loaded {
     /// much of a cold file touches nearly every page of level 4 (its pixel edges), and page faults one by one are
     /// several times slower than reading the range through.
     pub fn warm(&self, channel: usize, a: usize, b: usize) {
+        if !self.growing.is_empty() {
+            return; // written moments ago: in memory
+        }
         let w = span(MIN_LEVEL);
         let (s0, s1) = (a / w, b.div_ceil(w).min(self.lens[0]));
         let Ok(f) = File::open(&self.paths[channel]) else { return };
@@ -120,6 +134,9 @@ impl Loaded {
 
     /// Whether most of channel `channel`'s level 4 for samples `a..b` is out of memory (None: can't tell).
     pub fn cold(&self, channel: usize, a: usize, b: usize) -> Option<bool> {
+        if !self.growing.is_empty() {
+            return None;
+        }
         let w = span(MIN_LEVEL);
         let (s0, s1) = (a / w, b.div_ceil(w).min(self.lens[0]));
         if s0 >= s1 {
@@ -190,7 +207,25 @@ impl Loaded {
             done: m.samples,
             complete: true,
             gaps: GapIndex { median_ns: m.median_ns, jumps },
+            growing: Vec::new(),
         }))
+    }
+
+    /// A growing recording's pyramid: `maps[channel][level]` holds at least `lens[level]` summaries, and `done`
+    /// samples are summarized (the rest are read raw). Complete in the sense that every sample can be answered.
+    pub fn growing(maps: Vec<Vec<Mmap>>, lens: Vec<usize>, done: usize, gaps: GapIndex) -> Loaded {
+        let usable = lens.len();
+        Loaded {
+            maps: Vec::new(),
+            paths: Vec::new(),
+            offsets: Vec::new(),
+            lens,
+            usable,
+            done,
+            complete: true,
+            gaps,
+            growing: maps,
+        }
     }
 
     /// A build under way in `dir` (this process's or another's), at its last recorded progress.
@@ -201,7 +236,17 @@ impl Loaded {
         let usable = lens.len().min((BLOCK_LEVEL - MIN_LEVEL) as usize + 1);
         let done = (p.blocks_done * span(BLOCK_LEVEL)).min(p.samples);
         let paths = Self::paths(dir, p.channels);
-        Ok(Loaded { maps, paths, lens, offsets, usable, done, complete: false, gaps: GapIndex::default() })
+        Ok(Loaded {
+            maps,
+            paths,
+            lens,
+            offsets,
+            usable,
+            done,
+            complete: false,
+            gaps: GapIndex::default(),
+            growing: Vec::new(),
+        })
     }
 }
 

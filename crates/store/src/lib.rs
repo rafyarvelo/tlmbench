@@ -22,6 +22,7 @@
 
 mod chunks;
 mod error;
+mod live;
 mod pyr;
 pub mod sys;
 
@@ -33,6 +34,7 @@ use std::time::{Duration, SystemTime};
 
 pub use chunks::ChunkCache;
 pub use error::{Error, Result};
+pub use live::Live;
 use rayon::prelude::*;
 use serde::Serialize;
 use tlmbench_core::chunks::{CHUNK_SAMPLES, Held, chunk_of};
@@ -107,6 +109,7 @@ impl Store {
         }
         Ok(Opened {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            live: false,
             filling: Mutex::new(()),
             rec,
             store: self.clone(),
@@ -230,6 +233,8 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 #[derive(Debug)]
 pub struct Opened {
     id: u64,
+    /// A snapshot of a [`Live`] recording: it shares its chunks with the next snapshots.
+    live: bool,
     /// One decode at a time, so two queries don't decode the same chunks.
     filling: Mutex<()>,
     rec: Box<dyn Recording>,
@@ -589,7 +594,9 @@ impl Opened {
 impl Drop for Opened {
     fn drop(&mut self) {
         self.cancel();
-        self.store.chunks.forget(self.id);
+        if !self.live {
+            self.store.chunks.forget(self.id);
+        }
     }
 }
 

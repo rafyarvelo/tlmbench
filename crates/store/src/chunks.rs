@@ -121,6 +121,15 @@ impl ChunkCache {
         }
     }
 
+    /// Drops recording `id`'s chunks from chunk `k` on (a recording that grew: they were decoded while filling).
+    pub(crate) fn forget_from(&self, id: u64, k: usize) {
+        let mut s = self.state.lock().unwrap();
+        let keys: Vec<Key> = s.chunks.keys().filter(|key| key.0 == id && key.2 >= k).copied().collect();
+        for key in keys {
+            s.remove(&key);
+        }
+    }
+
     /// Drops every chunk not in use (benchmarks start cold with it).
     pub fn clear(&self) {
         let mut s = self.state.lock().unwrap();
