@@ -7,6 +7,9 @@ T.run('checksel', async ({ p, check, wait, until, menu, pick, paneCount }) => {
   const selN = () => p.evaluate(() => document.querySelectorAll('#checksBody .crow.sel').length);
   const tip = await row().getAttribute('data-tip');
   check('the tooltip says what it expects, when, and which channels', /Expect motor_rpm < 7500/.test(tip) && /when flight_mode == 'Mission'/.test(tip) && /channels: motor_rpm, flight_mode/.test(tip), tip);
+  await row().hover(); await wait(1000);
+  const shown = await p.evaluate(() => { const t = document.getElementById('tip'); return t.hidden ? '' : t.textContent; });
+  check('hovering the row shows that tooltip in full', /Expect motor_rpm < 7500/.test(shown) && /channels: motor_rpm, flight_mode/.test(shown), shown);
   await row().click({ position: { x: 40, y: 8 } }); await wait(300);
   check('click selects it', (await selN()) === 1);
   await row().click({ position: { x: 40, y: 8 } }); await wait(200);

@@ -33,6 +33,8 @@ T.run('checks', async ({ p, check, wait, until, menu, pick, settingsLS }) => {
   check('clicking a failing check goes to its first violation', r1 !== r0, [r0, r1]);
   await p.evaluate(() => [...document.querySelectorAll('#checksBody .crow')].find(r => /RPM below 7500/.test(r.textContent)).querySelector('[data-cnext]').click()); await wait(1200);
   check('▼ steps to the next one', (await range()) !== r1);
+  await p.evaluate(() => [...document.querySelectorAll('#checksBody .crow')].find(r => /RPM below 7500/.test(r.textContent)).querySelector('[data-cprev]').click()); await wait(1200);
+  check('▲ steps back to the one before', (await range()) === r1, [r1, await range()]);
 
   // the editor: lists, expressions with autocomplete, value names, preview
   await p.evaluate(() => document.querySelector('#checksBody [data-cedit="cs_flight"]').click()); await wait(400);

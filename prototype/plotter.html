@@ -6182,6 +6182,7 @@ function bindTips() {
     if (m === 'off') return false;
     if (m === 'full') return true;
     if (el.disabled || el.getAttribute('aria-disabled') === 'true') return true;
+    if (el.hasAttribute('data-tip-rich')) return true; // a row whose tip says what its text can't (a check's expression)
     if (el.scrollWidth > el.clientWidth + 1 && !iconOnly(el)) return true; // a cut-off name shows in full
     if (!iconOnly(el)) return false;
     return ((settings.tipUses || {})[tipKey(el)] || 0) < 3;
@@ -6196,7 +6197,7 @@ function bindTips() {
     if (!el.isConnected) return;
     if (!allowed(el)) return;
     warmUntil = performance.now() + 1500;
-    tip.textContent = el.scrollWidth > el.clientWidth + 1 && !iconOnly(el) ? el.dataset.tip : shortText(el.dataset.tip);
+    tip.textContent = (el.scrollWidth > el.clientWidth + 1 && !iconOnly(el)) || el.hasAttribute('data-tip-rich') ? el.dataset.tip : shortText(el.dataset.tip);
     tip.hidden = false;
     const r = el.getBoundingClientRect(), tr = tip.getBoundingClientRect();
     const x = Math.max(8, Math.min(window.innerWidth - tr.width - 8, r.left + r.width / 2 - tr.width / 2));
@@ -10942,8 +10943,9 @@ function jumpViolation(fl, x, dir) {
   const off = fileOff(fl) || 0, mid = (state.t0 + state.t1) / 2 - off;
   let i;
   if (dir == null) i = 0;
-  else if (dir > 0) { i = x.runs.findIndex(([a]) => a > mid + 1e-6); if (i < 0) i = 0; }
-  else { i = -1; x.runs.forEach(([a], j) => { if (a < mid - 1e-6) i = j; }); if (i < 0) i = x.runs.length - 1; }
+  // compare run centres: a jump centres the view on the run, so its start is always before the view's middle
+  else if (dir > 0) { i = x.runs.findIndex(([a, b]) => (a + b) / 2 > mid + 1e-6); if (i < 0) i = 0; }
+  else { i = -1; x.runs.forEach(([a, b], j) => { if ((a + b) / 2 < mid - 1e-6) i = j; }); if (i < 0) i = x.runs.length - 1; }
   const [a, b] = x.runs[i], pad = Math.max(4, (b - a) * 1.5);
   glideView(a + off - pad, b + off + pad);
   return i;
@@ -10971,7 +10973,7 @@ function summaryHtml(opts = {}) {
         const gk = s.id + '|' + g.name, open = !closedGroups.has(gk) && (opts.pane || g.v === 'fail' || g.v === 'warn' || openGroups.has(gk));
         h += `<div class="cgrp${g.info ? ' info' : ''}"><button class="cgh" data-cg="${esc(s.id + '|' + g.name)}" aria-expanded="${open}">${ICON.chev}<span class="cv v-${g.v}">${vIcon(g.v)}</span><span class="nm">${esc(g.name)}${g.info ? ' <small>info only</small>' : ''}</span><span class="muted">${groupSummary(g)}</span></button>`;
         if (open) h += ks.map(k => { const x = r.res[k.id] || { v: 'na' }; const sel = checkSel.key === `${fl.key}|${s.id}|${k.id}`;
-          return `<div class="crow v-${x.v}${sel ? ' sel' : ''}" data-ck="${esc(k.id)}" data-cs="${esc(s.id)}" data-cf="${fl.key}" tabindex="0" role="button" aria-pressed="${sel}" data-tip="${esc(checkTip(k, x, fl))}"><span class="cv v-${x.v}">${vIcon(x.v)}</span><span class="nm">${esc(k.name)}</span><span class="cd">${esc(checkDetail(x))}</span><button class="ib cchan" data-cchan aria-haspopup="menu" aria-label="Channels of ${esc(k.name)}" data-tip="Open its channels: in a new pane or the selected one">${CHAN_ICON}</button>${x.runs && x.runs.length ? `<span class="cstep"><button class="ib" data-cprev aria-label="Previous violation">▲</button><button class="ib" data-cnext aria-label="Next violation">▼</button></span>` : ''}</div>`; }).join('');
+          return `<div class="crow v-${x.v}${sel ? ' sel' : ''}" data-ck="${esc(k.id)}" data-cs="${esc(s.id)}" data-cf="${fl.key}" tabindex="0" role="button" aria-pressed="${sel}" data-tip-rich data-tip="${esc(checkTip(k, x, fl))}"><span class="cv v-${x.v}">${vIcon(x.v)}</span><span class="nm">${esc(k.name)}</span><span class="cd">${esc(checkDetail(x))}</span><button class="ib cchan" data-cchan aria-haspopup="menu" aria-label="Channels of ${esc(k.name)}" data-tip="Open its channels: in a new pane or the selected one">${CHAN_ICON}</button>${x.runs && x.runs.length ? `<span class="cstep"><button class="ib" data-cprev aria-label="Previous violation">▲</button><button class="ib" data-cnext aria-label="Next violation">▼</button></span>` : ''}</div>`; }).join('');
         h += '</div>';
       });
       h += '</div>';
