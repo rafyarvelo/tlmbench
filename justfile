@@ -21,13 +21,19 @@ default:
 setup *steps:
     ci/setup.sh {{steps}}
 
-# rustfmt and clippy (warnings are errors)
-lint:
+# The app's web UI, built once (the app crate embeds it, so clippy and tests need it)
+[private]
+ui:
+    [ -d app/ui/dist ] || (cd app/ui && npm run build)
+
+# rustfmt, clippy (warnings are errors) and the UI's type check
+lint: ui
     if [ -f Cargo.toml ]; then cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings; \
     else echo "lint: no Cargo workspace yet, skipping"; fi
+    cd app/ui && npm run -s typecheck
 
 # Rust unit, property and doc tests, then the Python binding tests
-test:
+test: ui
     if [ -f Cargo.toml ]; then cargo nextest run --workspace --no-tests=pass && cargo test --workspace --doc; \
     else echo "test: no Cargo workspace yet, skipping Rust tests"; fi
     if [ -d python ]; then VIRTUAL_ENV="$(dirname "$(dirname "{{python}}")")" "{{python}}" -m maturin develop -m python/Cargo.toml \
@@ -38,7 +44,7 @@ bench *args:
     if [ -f Cargo.toml ]; then cargo bench --workspace {{args}}; else echo "bench: no Cargo workspace yet, skipping"; fi
 
 # Run every benchmark once, untimed, so CI knows they still build and run
-bench-smoke:
+bench-smoke: ui
     if [ -f Cargo.toml ]; then cargo test --workspace --benches; else echo "bench-smoke: no Cargo workspace yet, skipping"; fi
 
 # Check the prototype's script parses
@@ -83,13 +89,19 @@ ro-test-mac:
     trap 'hdiutil detach -quiet "$mnt"; rm -rf "$tmp"' EXIT
     TLMBENCH_RO_DIR="$mnt" TLMBENCH_RO_REQUIRED=1 just ro-test
 
-# Run the desktop app with hot reload (Mac: WKWebView, as shipped)
-app-dev:
-    if [ -d app ]; then cd app && cargo tauri dev; else echo "app-dev: no app/ yet (Phase 1 adds it)"; fi
+# Run the desktop app with hot reload (Mac: WKWebView, as shipped); extra args go to the app (a file to open)
+app-dev *args:
+    cd app/src-tauri && cargo tauri dev -- -- {{args}}
 
 # Build the desktop app without bundling (CI builds it against WebKitGTK, WKWebView and WebView2)
 app-build:
-    if [ -d app ]; then cd app && cargo tauri build --debug --no-bundle; else echo "app-build: no app/ yet, skipping"; fi
+    cd app/src-tauri && cargo tauri build --debug --no-bundle
+
+# The Phase 1 gate: a 30 s scripted sweep in the release app over the gate recording (`just gen-gate` first)
+gate file=(data / "gate/gate-100M.tlm"):
+    cd app/src-tauri && cargo tauri build --no-bundle
+    # caffeinate keeps the display awake: a sleeping display pauses animation frames and invalidates the run
+    TLMBENCH_GATE="{{file}}" {{ if os() == "macos" { "caffeinate -d" } else { "" } }} target/release/tlmbench-app
 
 # Everything the Linux CI job runs (inside the CI image)
 ci-linux: lint test bench-smoke proto-test ro-test fuzz-smoke app-build

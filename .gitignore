@@ -18,3 +18,7 @@ examples/recordings/*
 !examples/recordings/.tlmbench/
 .DS_Store
 *.tlm
+
+# app build output (Tauri regenerates gen/ on each build)
+app/ui/dist/
+app/src-tauri/gen/

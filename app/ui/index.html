@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TelemetryBench</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <button id="open" class="btn" data-tip="Open a CSV or .tlm file (⌘O)">Open…</button>
+      <span id="file" class="file"></span>
+      <select id="channel" class="select" hidden aria-label="Channel"></select>
+      <span class="spacer"></span>
+      <span id="status" class="status"></span>
+    </header>
+    <main id="pane" class="pane">
+      <canvas id="gl"></canvas>
+      <canvas id="axes"></canvas>
+      <div id="empty" class="empty">
+        <p class="empty-title">Open a recording</p>
+        <p class="empty-sub">Drop a CSV or .tlm file here, or choose Open…</p>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs the pinned toolchain. Used by `just setup` on the Mac and by ci/Dockerfile, so both get the same versions.
-# Usage: ci/setup.sh [rust] [cargo-tools] [wasm] [playwright] [python]   (no arguments: all of them)
+# Usage: ci/setup.sh [rust] [cargo-tools] [wasm] [playwright] [python] [app]   (no arguments: all of them)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; . ci/versions.env; set +a
@@ -57,11 +57,16 @@ python() {
   "$VENV/bin/pip" install -q -r requirements-dev.txt
 }
 
-steps=("$@"); [[ ${#steps[@]} -gt 0 ]] || steps=(rust cargo-tools wasm playwright python)
+# the desktop app's web UI packages
+app() {
+  (cd app/ui && npm ci --no-audit --no-fund)
+}
+
+steps=("$@"); [[ ${#steps[@]} -gt 0 ]] || steps=(rust cargo-tools wasm playwright python app)
 for s in "${steps[@]}"; do
   echo "== $s"
   case $s in
-    rust) rust ;; cargo-tools) cargo_tools ;; wasm) wasm ;; playwright) playwright ;; python) python ;;
+    rust) rust ;; cargo-tools) cargo_tools ;; wasm) wasm ;; playwright) playwright ;; python) python ;; app) app ;;
     *) echo "unknown step: $s" >&2; exit 2 ;;
   esac
 done

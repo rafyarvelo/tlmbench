@@ -1,0 +1,26 @@
+[package]
+name = "tlmbench-app"
+description = "TelemetryBench desktop app: the Tauri shell around the core, with the web UI in ../ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tlmbench-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+tlmbench-core.workspace = true
+tlmbench-decode.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2.12.5", features = [] }
+tauri-plugin-dialog = "2.8.4"
+
+[lints]
+workspace = true

@@ -85,7 +85,7 @@ jobs:
             -v "$PWD/prototype/tests/fold:/data/ro:ro" \
             -e TLMBENCH_RO_DIR=/data/ro -e TLMBENCH_RO_REQUIRED=1 \
             "${{ needs.image.outputs.ref }}" \
-            bash -c "(cd prototype/tests && npm ci --no-audit --no-fund) && just ci-linux"
+            bash -c "(cd prototype/tests && npm ci --no-audit --no-fund) && (cd app/ui && npm ci --no-audit --no-fund) && just ci-linux"
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -109,6 +109,13 @@ jobs:
       - name: Pinned versions
         run: grep -E '^[A-Z_]+=' ci/versions.env >> "$GITHUB_ENV"
       - run: rustup toolchain install
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: app/ui
       - uses: taiki-e/install-action@v2
         with:
           tool: just@${{ env.JUST_VERSION }},cargo-nextest@${{ env.NEXTEST_VERSION }},tauri-cli@${{ env.TAURI_CLI_VERSION }}
