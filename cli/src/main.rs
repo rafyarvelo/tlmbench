@@ -63,10 +63,10 @@ enum Command {
     },
     /// Record a live source into a new session folder until it ends (or --seconds pass); prints its stream health
     Record {
-        /// tcp://host:port (connects to it), udp://host:port (listens on it), or file:///path (follows a growing CSV
-        /// or .tlm from its start; only read)
+        /// tcp://host:port (connects to it), udp://host:port (listens on it), serial://port?baud=rate (a serial port,
+        /// 115200 baud when not given), or file:///path (follows a growing CSV or .tlm from its start; only read)
         endpoint: tlmbench_live::Endpoint,
-        /// The frames' format descriptor (TOML); sockets need one, files bring their own
+        /// The frames' format descriptor (TOML); sockets and serial ports need one, files bring their own
         #[arg(long)]
         descriptor: Option<PathBuf>,
         /// Where the session folder goes (default: $TLMBENCH_RECORDINGS, else the app's Recordings folder)

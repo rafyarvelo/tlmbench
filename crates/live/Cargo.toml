@@ -16,9 +16,13 @@ rtrb.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 socket2.workspace = true
+serialport.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+libc = "0.2.191"
 
 [lints]
 workspace = true

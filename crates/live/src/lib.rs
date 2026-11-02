@@ -45,6 +45,8 @@ pub enum Endpoint {
     Udp(String),
     /// Follow a growing file (CSV, or .tlm): what it holds so far, then each row or record appended.
     File(PathBuf),
+    /// Read a serial port (`/dev/tty.usbserial…`, `COM3`) at a baud rate.
+    Serial { port: String, baud: u32 },
 }
 
 impl FromStr for Endpoint {
@@ -55,7 +57,18 @@ impl FromStr for Endpoint {
             Some(("tcp", a)) if !a.is_empty() => Ok(Endpoint::Tcp(a.to_owned())),
             Some(("udp", a)) if !a.is_empty() => Ok(Endpoint::Udp(a.to_owned())),
             Some(("file", p)) if !p.is_empty() => Ok(Endpoint::File(PathBuf::from(p))),
-            _ => Err(format!("{s:?}: expected tcp://host:port, udp://host:port or file:///path")),
+            Some(("serial", rest)) if !rest.is_empty() => {
+                let (port, query) = rest.split_once('?').unwrap_or((rest, ""));
+                let baud = match query.strip_prefix("baud=") {
+                    Some(b) => b.parse().map_err(|_| format!("{s:?}: baud={b} isn't a number"))?,
+                    None if query.is_empty() => DEFAULT_BAUD,
+                    None => return Err(format!("{s:?}: expected ?baud=<rate>")),
+                };
+                Ok(Endpoint::Serial { port: port.to_owned(), baud })
+            }
+            _ => Err(format!(
+                "{s:?}: expected tcp://host:port, udp://host:port, serial://port?baud=<rate> or file:///path"
+            )),
         }
     }
 }
@@ -66,6 +79,7 @@ impl fmt::Display for Endpoint {
             Endpoint::Tcp(a) => write!(f, "tcp://{a}"),
             Endpoint::Udp(a) => write!(f, "udp://{a}"),
             Endpoint::File(p) => write!(f, "file://{}", p.display()),
+            Endpoint::Serial { port, baud } => write!(f, "serial://{port}?baud={baud}"),
         }
     }
 }
@@ -205,6 +219,7 @@ impl Source {
                     Endpoint::Tcp(a) => ingest_tcp(a, &mut ring, &stop, &opts),
                     Endpoint::Udp(a) => ingest_udp(a, &mut ring, &stop, &opts),
                     Endpoint::File(p) => tail::follow(p, &mut ring, &stop, &opts),
+                    Endpoint::Serial { port, baud } => ingest_serial(port, *baud, &mut ring, &stop),
                 } {
                     counters.fail(e);
                 }
@@ -360,6 +375,11 @@ fn ingest_tcp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) ->
     };
     stream.set_read_timeout(Some(POLL))?;
     stream.set_nodelay(true)?;
+    read_stream(&mut stream, ring, stop)
+}
+
+/// Reads a byte stream (a TCP connection, a serial port) into whole records until it ends or the source stops.
+fn read_stream(stream: &mut dyn Read, ring: &mut Ring, stop: &AtomicBool) -> io::Result<()> {
     let mut buf = vec![0u8; (1 << 20).max(4 * ring.rs)];
     let mut have = 0;
     while !stop.load(Ordering::Acquire) {
@@ -384,6 +404,17 @@ fn ingest_tcp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) ->
     }
     ring.counters.malformed.fetch_add(have as u64, Ordering::Relaxed);
     Ok(())
+}
+
+/// A serial port's baud rate when the endpoint names none.
+pub const DEFAULT_BAUD: u32 = 115_200;
+
+fn ingest_serial(port: &str, baud: u32, ring: &mut Ring, stop: &AtomicBool) -> io::Result<()> {
+    let mut serial = serialport::new(port, baud)
+        .timeout(POLL)
+        .open()
+        .map_err(|e| io::Error::other(format!("couldn't open {port}: {e}")))?;
+    read_stream(&mut *serial, ring, stop)
 }
 
 fn ingest_udp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) -> io::Result<()> {
@@ -742,6 +773,69 @@ mod tests {
         );
     }
 
+    /// A pseudo-terminal stands in for a serial device: what the far end writes is recorded exactly. (Linux only:
+    /// on macOS the serial library sets every baud rate with an ioctl that pseudo-terminals refuse.)
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_serial_port_is_recorded() {
+        use std::os::fd::FromRawFd;
+        let (mut master, mut slave) = (0, 0);
+        // SAFETY: openpty fills the two descriptors; the name buffer is unused (null)
+        let r = unsafe {
+            libc::openpty(
+                &mut master,
+                &mut slave,
+                std::ptr::null_mut(),
+                std::ptr::null_mut() as _,
+                std::ptr::null_mut() as _,
+            )
+        };
+        assert_eq!(r, 0, "openpty");
+        // SAFETY: slave is an open descriptor from openpty
+        let name = unsafe { std::ffi::CStr::from_ptr(libc::ttyname(slave)) }.to_string_lossy().into_owned();
+        let dir = tempfile::tempdir().unwrap();
+        let ep: Endpoint = format!("serial://{name}?baud=115200").parse().unwrap();
+        let src = Source::start(ep, Some(&desc()), &dir.path().join("s"), &Options::default()).unwrap();
+        thread::sleep(Duration::from_millis(300)); // the port is open and raw before anything is sent
+        assert!(src.health().error.is_none(), "{:?}", src.health().error);
+        // SAFETY: master is an open descriptor from openpty, owned by this File from here on
+        let mut far = unsafe { File::from_raw_fd(master) };
+        let sent = records(0..20_000);
+        let data = sent.clone();
+        // the pty's buffer is small: the far end writes on a thread of its own while the source reads
+        let writer = thread::spawn(move || {
+            for part in data.chunks(777) {
+                far.write_all(part).unwrap();
+            }
+            far
+        });
+        let start = Instant::now();
+        while src.records_written() < 20_000 && start.elapsed() < Duration::from_secs(10) {
+            thread::sleep(Duration::from_millis(20));
+        }
+        let h = src.stop();
+        drop(writer.join().unwrap());
+        // SAFETY: slave is still open here, and nothing else closes it
+        unsafe { libc::close(slave) };
+        assert_eq!(
+            (h.records_written, h.sequence_missing, h.records_dropped, &h.error),
+            (20_000, 0, 0, &None),
+            "{h:?}"
+        );
+        assert_eq!(body(&h.files[0]), sent);
+    }
+
+    #[test]
+    fn a_missing_serial_port_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let ep: Endpoint = "serial:///dev/tlmbench-no-such-port".parse().unwrap();
+        let h = Source::start(ep, Some(&desc()), &dir.path().join("s"), &Options::default()).unwrap().wait();
+        assert!(
+            h.ended && h.error.as_deref().is_some_and(|e| e.contains("couldn't open /dev/tlmbench-no-such-port")),
+            "{h:?}"
+        );
+    }
+
     #[test]
     fn a_full_ring_drops_whole_records() {
         let (counters, parts) = (Counters::default(), Parts::default());
@@ -774,7 +868,16 @@ mod tests {
         assert_eq!("tcp://127.0.0.1:9000".parse(), Ok(Endpoint::Tcp("127.0.0.1:9000".into())));
         assert_eq!("udp://0.0.0.0:5000".parse::<Endpoint>().unwrap().to_string(), "udp://0.0.0.0:5000");
         assert_eq!("file:///data/run.csv".parse(), Ok(Endpoint::File("/data/run.csv".into())));
-        assert!("serial:///dev/tty".parse::<Endpoint>().is_err());
+        assert_eq!(
+            "serial:///dev/ttyUSB0".parse(),
+            Ok(Endpoint::Serial { port: "/dev/ttyUSB0".into(), baud: DEFAULT_BAUD })
+        );
+        let com: Endpoint = "serial://COM3?baud=921600".parse().unwrap();
+        assert_eq!(
+            (com.to_string(), "serial://COM3?bod=1".parse::<Endpoint>().is_err()),
+            ("serial://COM3?baud=921600".into(), true)
+        );
+        assert!("bluetooth://dev".parse::<Endpoint>().is_err());
         assert!(Source::start(Endpoint::Tcp("127.0.0.1:1".into()), None, Path::new("x"), &Options::default()).is_err());
     }
 }

@@ -12,6 +12,13 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   await p.click('[data-rail="live"]');
   check('Live opens the Connect dialog', await p.isVisible('#liveDlg'));
   check('TCP needs a descriptor', await p.isDisabled('#lvConnect'));
+  await p.click('#liveDlg [data-kind="serial"]');
+  await p.fill('#lvPort', '/dev/tty.usbserial-1');
+  await p.fill('#lvDesc', '/data/frames.toml');
+  await p.selectOption('#lvBaud', '921600');
+  await p.click('#lvConnect');
+  check('a serial port, with its baud rate', await until(() => /serial:\/\/\/dev\/tty\.usbserial-1\?baud=921600/.test(document.getElementById('lvErr')?.textContent ?? '')), await text('#lvErr'));
+  await p.click('#liveDlg [data-kind="tcp"]');
   await p.fill('#lvAddr', '127.0.0.1:9999');
   await p.fill('#lvDesc', '/data/frames.toml');
   await p.click('#lvConnect');

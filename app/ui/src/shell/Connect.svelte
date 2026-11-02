@@ -1,15 +1,19 @@
-<!-- Connect a live source: TCP (the app connects to the device), UDP (it listens) or a growing file (followed from
-     its start), with the frames' descriptor for sockets. It opens a live tab, recording into the Recordings folder. -->
+<!-- Connect a live source: a serial port, TCP (the app connects to the device), UDP (it listens) or a growing file
+     (followed from its start), with the frames' descriptor for the first three. It opens a live tab, recording into the Recordings folder. -->
 <script lang="ts">
   import { live, liveActions } from '../live.svelte';
   import { actions } from '../ui.svelte';
 
-  let kind = $state<'tcp' | 'udp' | 'file'>('tcp');
+  let kind = $state<'serial' | 'tcp' | 'udp' | 'file'>('tcp');
+  let port = $state('');
+  let baud = $state('115200');
   let address = $state('127.0.0.1:9000');
   let path = $state('');
   let descriptor = $state('');
-  const endpoint = $derived(kind === 'file' ? `file://${path}` : `${kind}://${address}`);
-  const ready = $derived(kind === 'file' ? !!path.trim() : !!address.trim() && !!descriptor.trim());
+  const endpoint = $derived(
+    kind === 'file' ? `file://${path}` : kind === 'serial' ? `serial://${port}?baud=${baud}` : `${kind}://${address}`,
+  );
+  const ready = $derived(kind === 'file' ? !!path.trim() : !!descriptor.trim() && !!(kind === 'serial' ? port : address).trim());
 
   async function choose(which: 'path' | 'descriptor') {
     const p = await actions.pickFile(which === 'descriptor' ? ['toml'] : ['csv', 'tsv', 'txt', 'tlm']);
@@ -33,13 +37,19 @@
   <header><b>Connect a live source</b></header>
   <div class="dbody">
     <div class="kinds" role="radiogroup" aria-label="Source">
-      {#each [['tcp', 'TCP'], ['udp', 'UDP'], ['file', 'Growing file']] as [k, label] (k)}
+      {#each [['serial', 'Serial'], ['tcp', 'TCP'], ['udp', 'UDP'], ['file', 'Growing file']] as [k, label] (k)}
         <button role="radio" aria-checked={kind === k} data-kind={k} onclick={() => (kind = k as typeof kind)}>{label}</button>
       {/each}
     </div>
     {#if kind === 'file'}
       <label class="f"><span>File</span><span class="row"><input class="sel" id="lvPath" bind:value={path} placeholder="/path/to/log.csv" spellcheck="false" /><button class="tbtn" onclick={() => choose('path')}>Choose…</button></span></label>
       <p class="dnote">Recorded from its start, then followed as it grows. The file is only read.</p>
+    {:else if kind === 'serial'}
+      <label class="f"><span>Port</span><input class="sel" id="lvPort" bind:value={port} placeholder="/dev/tty.usbserial-1 or COM3" spellcheck="false" /></label>
+      <label class="f"><span>Baud rate</span><select class="sel" id="lvBaud" bind:value={baud}>
+          {#each ['9600', '19200', '38400', '57600', '115200', '230400', '460800', '921600'] as b (b)}<option value={b}>{b}</option>{/each}
+        </select></label>
+      <label class="f"><span>Descriptor</span><span class="row"><input class="sel" id="lvDesc" bind:value={descriptor} placeholder="frames.toml" spellcheck="false" /><button class="tbtn" onclick={() => choose('descriptor')}>Choose…</button></span></label>
     {:else}
       <label class="f"><span>{kind === 'tcp' ? 'Connect to' : 'Listen on'}</span><input class="sel" id="lvAddr" bind:value={address} placeholder="host:port" spellcheck="false" /></label>
       <label class="f"><span>Descriptor</span><span class="row"><input class="sel" id="lvDesc" bind:value={descriptor} placeholder="frames.toml" spellcheck="false" /><button class="tbtn" onclick={() => choose('descriptor')}>Choose…</button></span></label>
@@ -71,7 +81,7 @@
   }
   .kinds {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 2px;
     margin: 6px 0 10px;
     padding: 2px;

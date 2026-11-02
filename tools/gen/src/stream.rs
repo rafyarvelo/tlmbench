@@ -62,7 +62,9 @@ pub fn send(to: &Endpoint, channels: usize, rate: u64, seconds: f64, seed: u64) 
     let max = match to {
         Endpoint::Tcp(_) => 65_536,
         Endpoint::Udp(_) => 8192,
-        Endpoint::File(_) => return Err(io::Error::other("--send takes tcp:// or udp://; --append writes a file")),
+        Endpoint::File(_) | Endpoint::Serial { .. } => {
+            return Err(io::Error::other("--send takes tcp:// or udp://; --append writes a file"));
+        }
     } / rs;
     let per_write = ((rate / 1000) as usize).clamp(1, max.max(1));
     enum Out {
@@ -78,7 +80,7 @@ pub fn send(to: &Endpoint, channels: usize, rate: u64, seconds: f64, seed: u64) 
             Out::Tcp(s)
         }
         Endpoint::Udp(a) => Out::Udp(UdpSocket::bind("0.0.0.0:0")?, a.clone()),
-        Endpoint::File(_) => unreachable!("refused above"),
+        Endpoint::File(_) | Endpoint::Serial { .. } => unreachable!("refused above"),
     };
     let mut buf = Vec::with_capacity(per_write * rs);
     let (started, mut sent, mut behind_max) = (Instant::now(), 0u64, 0f64);
