@@ -170,6 +170,9 @@ pub trait Recording: Send + Sync + Debug {
     /// The gap index of the sample times (empty for fixed-rate times).
     fn gap_index(&self) -> GapIndex;
 
+    /// Extends `gaps` over the samples from `from` on (see [`GapIndex::extend`]): a recording that grew.
+    fn extend_gap_index(&self, gaps: &mut GapIndex, from: usize);
+
     /// See [`Channels::layout_id`].
     fn layout_id(&self) -> Vec<u8>;
 }
@@ -316,6 +319,19 @@ impl<C: Channels> Recording for C {
         match Channels::describe(self).time {
             TimeSource::Rate { .. } | TimeSource::Index => GapIndex::default(),
             TimeSource::Column { .. } => self.dispatch_times(Op),
+        }
+    }
+
+    fn extend_gap_index(&self, gaps: &mut GapIndex, from: usize) {
+        struct Op<'a>(&'a mut GapIndex, usize);
+        impl TimesOp for Op<'_> {
+            type Out = ();
+            fn run<T: Times + ?Sized>(self, times: &T) {
+                self.0.extend(times, self.1)
+            }
+        }
+        if let TimeSource::Column { .. } = Channels::describe(self).time {
+            self.dispatch_times(Op(gaps, from));
         }
     }
 

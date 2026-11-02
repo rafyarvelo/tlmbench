@@ -17,6 +17,8 @@ pub const MIN_FACTOR: f64 = 2.0;
 pub const DEFAULT_FACTOR: f64 = 4.0;
 /// The median is taken over at most this many intervals, spread evenly through the file.
 const MEDIAN_SAMPLE: usize = 1 << 20;
+/// A growing recording keeps its median once it had this many samples to take it from.
+const MEDIAN_MIN: usize = 1024;
 
 /// A jump in time: sample `index` comes `dt_ns` after sample `index - 1`.
 #[repr(C)]
@@ -70,6 +72,22 @@ impl GapIndex {
         Self { median_ns: median, jumps }
     }
 
+    /// Adds the jumps among the samples from `from` on, for a recording that grew (`from` is its length before).
+    /// The median stays the one taken from what was indexed already, unless that had too few intervals to take
+    /// one from: then the index is built again.
+    pub fn extend<T: Times + ?Sized>(&mut self, times: &T, from: usize) {
+        let n = times.len();
+        if from < MEDIAN_MIN || self.median_ns == 0 {
+            *self = Self::build(times);
+            return;
+        }
+        let threshold = (self.median_ns as f64 * MIN_FACTOR) as i64;
+        self.jumps.extend((from..n).filter_map(|i| {
+            let d = times.at(i) - times.at(i - 1);
+            (d > threshold).then_some(Jump { index: i as u64, dt_ns: d })
+        }));
+    }
+
     /// Indexes of the samples that start after a gap, for gap factor `factor` (at least [`MIN_FACTOR`]), in order.
     pub fn breaks(&self, factor: f64) -> Vec<usize> {
         let limit = self.median_ns as f64 * factor.max(MIN_FACTOR);
@@ -81,6 +99,19 @@ impl GapIndex {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn extends_over_new_samples() {
+        let times: Vec<i64> =
+            (0..5000).map(|i| i * 10 + if i >= 3000 { 500 } else { 0 } + if i >= 4500 { 70 } else { 0 }).collect();
+        let mut g = GapIndex::build(&times[..2000]);
+        g.extend(&times[..4000], 2000);
+        g.extend(&times, 4000);
+        assert_eq!((g.median_ns, g.breaks(4.0)), (10, vec![3000, 4500]));
+        let mut small = GapIndex::build(&times[..10]);
+        small.extend(&times, 10);
+        assert_eq!(small, GapIndex::build(&times));
+    }
 
     proptest! {
         #[test]

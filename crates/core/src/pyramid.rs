@@ -265,7 +265,8 @@ pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
 }
 
 /// Exact statistics of samples `a..b` (not empty) as one [`Summary`]: whole summaries for the middle, raw
-/// samples for the ragged edges (at most 255 on each side).
+/// samples for the ragged edges (at most 255 on each side), and for samples past the pyramid when it allows them
+/// ([`Pyramid::raw_past`]).
 pub fn summary_of_range<T: Times + ?Sized, S: Samples + ?Sized>(
     times: &T,
     values: &S,
@@ -273,12 +274,14 @@ pub fn summary_of_range<T: Times + ?Sized, S: Samples + ?Sized>(
     a: usize,
     b: usize,
 ) -> Summary {
-    assert!(a < b && b <= pyr.len, "an empty or out-of-range span");
+    assert!(a < b && (b <= pyr.len || pyr.raw_past), "an empty or out-of-range span");
+    // past the summarized part (a recording still growing), samples are read raw
+    let end = b.min(pyr.len);
     let la = if a.is_multiple_of(span(MIN_LEVEL)) { a } else { next_boundary(a).min(b) };
     let mut acc = (a < la).then(|| Summary::of(times, values, a, la));
     let mut i = la;
-    while i < b {
-        let Some(k) = pyr.fits_from(i, b, u32::MAX) else { break };
+    while i < end {
+        let Some(k) = pyr.fits_from(i, end, u32::MAX) else { break };
         let s = pyr.at(k, i);
         acc = Some(acc.map_or(*s, |x| x.merge(s)));
         i = (i + span(k)).min(pyr.len);
