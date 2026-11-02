@@ -38,23 +38,15 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
   build took 9.9 s in its last run (12.5 s before), against 9.5 s to read the file cold.
 
 
-## Phase 3: what's next
+## Phase 3 (done Nov 2, 2026): what was left for later
 
-In order, picking up where the work stopped (Nov 2, 2026; Gate 3's core half passes, `just gate3 core`):
-
-1. ~~Tail a growing file~~ (done: `file://` sources, `tlmbench-gen --append`, reported in `just gate3 core`).
-2. ~~The store opens a recording that grows~~ (done: `Store::open_live`, a growing pyramid, tests/live.rs).
-3. The rest of the UI port. Done: Svelte, the app UI tests with a fake core, the shell (rail, top bar, Settings,
-   Measure docking, status bar), the pane stack (rows of columns, ⋯ menu, Undo, drag), Explorer (Open folder, tree,
-   filter, select-first rows), tabs (one per file, session restore). Left: the time modes and the transport (Play:
-   play/pause, Space, scrubber, speed, window presets, Follow, playhead on charts and overview, A–B loop, each tab's
-   playhead kept), from the prototype's `t_playback`; the pane view switch and "Axis and scale…" come when the app
-   has tables and axis settings.
-4. Follow mode, the live strip and the transport in the ported UI: Tauri commands over `tlmbench_live` (connect a
-   source into a session in the Recordings folder, its health, stop) with views of the growing file through
-   `Store::open_live` (refresh about every 50 ms); a live tab is a file tab whose file grows (design: Live
-   streaming). Then `just gate3 app` (a live tab following the stream, Gate 1's frame rule) and Phase 3 marked done
-   on the roadmap (the living doc's roadmap widget and text, re-exported).
+- Play's "Stop at" events waits for events in the app (Phase 5's rules and events).
+- The pane view switch (chart, table, both, values) and "Axis and scale…" wait for tables and axis settings (Phase 4).
+- Live views are whole views at 30 Hz: the design's incremental path (the core sends only the buckets that changed,
+  the UI appends them with bufferSubData) would cut the core's work and the replies' size.
+- A live session holds one source in the app; "+ Add source" (several sources on one time axis, named `·2`) and
+  the session scrubber's faint overview trace are still to come, as is saving a connection to the start page.
+- A recorded session isn't listed on a start page yet (the app has none); its files open like any recording.
 
 ## Phase 3 loose ends
 

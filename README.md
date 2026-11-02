@@ -33,16 +33,22 @@ learns about a file lives in its own cache, so a read-only network share works a
 | First-ever open of that file | axes and progress in 62 ms, summaries built in 9.9 s (disk read: 9.5 s) |
 | Whole-file view of 100M samples, warm | 0.31 ms in the core (21 ms without the pyramid) |
 | CSV ingest | 2.4 GB in 3 s (about 800 MB/s), reopened in 0.01 s |
+| Live: 4M samples/s over TCP (4 × 1 MHz, 32 × 125 kHz), 60 s each | every record recorded, none dropped; 3.7–6.5% of a core |
+| A live tab following that stream (10 s window) | 0 and 3 of 3,540 frames missed, views in under 20 ms (p95) |
 
-These are the project's own gates: `just gate` (Phase 1) and `just gate2` (Phase 2) reproduce them.
+These are the project's own gates: `just gate` (Phase 1), `just gate2` (Phase 2) and `just gate3 core` / `just gate3
+app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in the latest runs.)
 
 ## What works today
 
-- **The app** (Tauri, WebGL2): a channel list, a stack of panes on one time axis, an overview strip with a
-  draggable window, Box zoom, Pan and Cursors modes with Back and Fit, values at the pointer, cursors A and B with a
-  Measure panel (values, Δt, Δy, and exact min, max, mean and standard deviation between them), and a gap factor
-  per channel (right-click a channel). Files being
-  summarized fill in left to right, with the unread part hatched.
+- **The app** (Tauri, Svelte, WebGL2), with the prototype's UI: an icon rail, Explorer (open a folder; folder → file
+  → channel), a tab per open file (restored at launch), a stack of panes in rows and columns (split, duplicate, close
+  with Undo, drag), an overview strip, Box zoom, Pan and Cursors with Back and Fit, values at the pointer, cursors A
+  and B with Measure (values, Δt, Δy, exact min, max, mean and standard deviation), a gap factor per channel, Settings,
+  and Play (a playhead the view follows, speed, window, A–B loop). Files being summarized fill in left to right.
+- **Live:** connect a serial port, TCP, UDP or a growing CSV or `.tlm` file; a live tab follows now (window presets,
+  scrub back, Jump to live) and shows the stream's health, while the session records to the app's Recordings folder
+  (never beside the data) and reopens like any file.
 - **Formats:** CSV (delimiter, units and time column detected; converted once to a column cache) and fixed-width
   binary records described by a TOML descriptor, including the self-describing `.tlm` reference format.
 - **The CLI:**
@@ -53,6 +59,8 @@ These are the project's own gates: `just gate` (Phase 1) and `just gate2` (Phase
   tlmbench query view flight.tlm -c volts --width 1500 --from 250 --until 460
   tlmbench query values flight.tlm --at 7.5        # each channel's sample nearest a time
   tlmbench query stats flight.tlm -c amps          # exact stats over a span
+  tlmbench record tcp://10.0.0.2:9000 --descriptor frames.toml   # record a live source into a session
+  tlmbench record file:///logs/run.csv             # follow a growing CSV (only read)
   ```
 
 - **Read-only by design,** tested in CI against a read-only mount: nothing is written beside the data.
@@ -65,7 +73,8 @@ v1 is the whole design in [`docs/design.md`](docs/design.md), built in five gate
 | --- | --- | --- |
 | 1. Core loop | ✓ done | 100M points at 60 fps |
 | 2. Scale | ✓ gate passes | 10 GB first paint under 1 s |
-| 3–4 | live sources, format tooling, tables, XY, the full UI from the prototype | |
+| 3. Live | ✓ gate passes | 4M samples/s with no drops |
+| 4. Formats + polish | the TOML descriptor UI, compressed packets, data export, workspace files, tables, XY | formats complete |
 | 5. Workbench | multiple windows, widgets, rules and checks with reports, derived channels, shared `.tlmbench/` config, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
 
 The whole UI already exists as a working prototype: [`prototype/plotter.html`](prototype/plotter.html), one file with

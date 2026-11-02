@@ -35,7 +35,7 @@ About 9–10 GB at first: toolchains ~3–4 GB, `target/` ~5 GB (it grows; `just
 | `just gen …`, `just gen-gate` | write synthetic recordings (sine + noise + spikes + gaps) to `$TLMBENCH_DATA` (default `~/tlmbench-data`) |
 | `just gate [file]` | the Phase 1 gate in the release app (below) |
 | `just gen-gate2`, `just gate2 [file] [keep]` | write the 10 GB Gate 2 recording; run the Phase 2 gate over it (below) |
-| `just gate3 [core] [seconds]` | the Phase 3 gate: 4M samples/s streamed to the recorder and checked (below) |
+| `just gate3 [core\|app] [seconds]` | the Phase 3 gate: 4M samples/s streamed to the recorder, or to a live tab in the app, and checked (below) |
 | `just ci-linux`, `just ci-native` | everything a CI job runs |
 
 Recipes for code that doesn't exist yet (no Cargo workspace, no `app/`, no `python/`) say so and skip.
@@ -136,7 +136,10 @@ Pass (TCP runs): every record recorded and identical, none dropped by the ring b
 repeated, and the ring never more than half full. A run where the sender fell more than 0.1 s behind its schedule is
 invalid, not failed. Reported: UDP runs (localhost UDP can lose datagrams in the kernel, which shows as missing
 sequence numbers) and CSV tails (whether the tail kept up, rows identical, and the rows a truncation took before they
-were read). `just gate3 app` (a live tab following the stream, with Gate 1's frame rule) comes with the live UI.
+were read). `just gate3 app` runs the same TCP shapes into the release app (keep its window visible): a live tab follows each
+stream with a 10 s window until it ends. Pass: at most 1% of frames missed while following, nothing dropped or
+missing, the ring at most half full, and the recording identical to what was sent (checked after); the longest
+frame is reported. Last run: 0 of 3,539 and 3 of 3,541 frames missed (longest 24 and 36 ms), every record kept.
 
 Last run (MacBook Air M1, 8 GB, Nov 2, 2026): pass. Every TCP and UDP run recorded all its records bit for bit, none
 dropped or missing, the ring buffer at most 0.7% of its 229 MB; the recorder took 3.7% of a core for TCP 4 × 1 MHz
