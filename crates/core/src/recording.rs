@@ -8,7 +8,7 @@ use serde::Serialize;
 use crate::chunks::{Chunk, Held};
 use crate::gaps::GapIndex;
 use crate::pyramid::{self, Pyramid, Stats, Summary};
-use crate::{Samples, Times, Timestamp, Trace, Value, Viewport};
+use crate::{Samples, TimeIndex, Times, Timestamp, Trace, Value, Viewport};
 
 /// Where a recording's sample times come from.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -84,6 +84,10 @@ pub trait Channels: Send + Sync + Debug {
         channels.iter().map(|_| Vec::new()).collect()
     }
 
+    /// Gives a time column its chunk index (see [`TimeIndex`]): searches for a time then read one chunk of it.
+    /// Decoders without a time column ignore it.
+    fn set_time_index(&self, _index: TimeIndex) {}
+
     /// Runs `op` over the sample times.
     fn dispatch_times<O: TimesOp>(&self, op: O) -> O::Out;
 
@@ -148,6 +152,12 @@ pub trait Recording: Send + Sync + Debug {
 
     /// See [`Channels::chunked`].
     fn chunked(&self, channel: usize) -> bool;
+
+    /// See [`Channels::set_time_index`].
+    fn set_time_index(&self, index: TimeIndex);
+
+    /// The chunk index of the sample times (see [`TimeIndex`]); empty for fixed-rate times.
+    fn time_index(&self) -> TimeIndex;
 
     /// See [`Channels::decode_chunks`].
     fn decode_chunks(&self, channels: &[usize], chunks: std::ops::Range<usize>) -> Vec<Vec<Chunk>>;
@@ -253,6 +263,24 @@ impl<C: Channels> Recording for C {
 
     fn decode_chunks(&self, channels: &[usize], chunks: std::ops::Range<usize>) -> Vec<Vec<Chunk>> {
         Channels::decode_chunks(self, channels, chunks)
+    }
+
+    fn set_time_index(&self, index: TimeIndex) {
+        Channels::set_time_index(self, index)
+    }
+
+    fn time_index(&self) -> TimeIndex {
+        struct Op;
+        impl TimesOp for Op {
+            type Out = TimeIndex;
+            fn run<T: Times + ?Sized>(self, times: &T) -> TimeIndex {
+                TimeIndex::build(times)
+            }
+        }
+        match Channels::describe(self).time {
+            TimeSource::Rate { .. } | TimeSource::Index => TimeIndex::default(),
+            TimeSource::Column { .. } => self.dispatch_times(Op),
+        }
     }
 
     fn time_at(&self, i: usize) -> Timestamp {

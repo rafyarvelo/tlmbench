@@ -19,7 +19,10 @@ use std::time::UNIX_EPOCH;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use tlmbench_core::{ChannelInfo, ChannelOp, Channels, RateTimes, RecordingInfo, TimeSource, TimesOp};
+use tlmbench_core::chunks::CHUNK_SAMPLES;
+use tlmbench_core::{
+    ChannelInfo, ChannelOp, Channels, Indexed, RateTimes, RecordingInfo, TimeIndex, TimeSource, TimesOp,
+};
 
 use crate::bytes::{self, Bytes, read_exact_at};
 use crate::csv::{self, TimeColumn};
@@ -141,6 +144,8 @@ pub struct CsvRecording {
     columns: Vec<Bytes>,
     /// Rows left out because their time didn't parse.
     pub skipped_rows: usize,
+    /// The chunk index of the time column, once the store has it.
+    time_index: std::sync::OnceLock<TimeIndex>,
 }
 
 /// Opens a CSV through the cache under `root`, building the cache entry first if needed.
@@ -355,7 +360,7 @@ fn load(path: &Path, dir: &Path, m: Manifest) -> Result<CsvRecording> {
             .collect(),
         skipped: m.skipped_columns,
     };
-    Ok(CsvRecording { info, rows: m.rows, t, columns, skipped_rows: m.skipped_rows })
+    Ok(CsvRecording { info, rows: m.rows, t, columns, skipped_rows: m.skipped_rows, time_index: Default::default() })
 }
 
 impl Channels for CsvRecording {
@@ -365,16 +370,24 @@ impl Channels for CsvRecording {
 
     fn dispatch<O: ChannelOp>(&self, channel: usize, op: O) -> O::Out {
         let values: &[f64] = bytemuck::cast_slice(&self.columns[channel]);
-        match &self.t {
-            Some(t) => op.run(bytemuck::cast_slice::<u8, i64>(t), values),
-            None => op.run(&RateTimes::from_rate(0, 1.0, self.rows), values),
+        match (&self.t, self.time_index.get()) {
+            (Some(t), Some(index)) => op.run(&Indexed { times: bytemuck::cast_slice::<u8, i64>(t), index }, values),
+            (Some(t), None) => op.run(bytemuck::cast_slice::<u8, i64>(t), values),
+            (None, _) => op.run(&RateTimes::from_rate(0, 1.0, self.rows), values),
         }
     }
 
     fn dispatch_times<O: TimesOp>(&self, op: O) -> O::Out {
-        match &self.t {
-            Some(t) => op.run(bytemuck::cast_slice::<u8, i64>(t)),
-            None => op.run(&RateTimes::from_rate(0, 1.0, self.rows)),
+        match (&self.t, self.time_index.get()) {
+            (Some(t), Some(index)) => op.run(&Indexed { times: bytemuck::cast_slice::<u8, i64>(t), index }),
+            (Some(t), None) => op.run(bytemuck::cast_slice::<u8, i64>(t)),
+            (None, _) => op.run(&RateTimes::from_rate(0, 1.0, self.rows)),
+        }
+    }
+
+    fn set_time_index(&self, index: TimeIndex) {
+        if self.t.is_some() && index.0.len() == self.rows.div_ceil(CHUNK_SAMPLES) {
+            let _ = self.time_index.set(index);
         }
     }
 

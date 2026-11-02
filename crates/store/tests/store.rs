@@ -184,7 +184,7 @@ fn an_interrupted_build_resumes_where_it_stopped() {
         .unwrap();
     assert_eq!(starts, Some(2 << 20), "resumed after two blocks");
     assert_eq!(second.status(), Status::Built);
-    let dir = |root: &Path| root.join("pyr/v1").join(second.key());
+    let dir = |root: &Path| root.join("pyr/v2").join(second.key());
     for f in ["c0.pyr", "c1.pyr", "gaps.bin"] {
         assert_eq!(fs::read(dir(c1.path()).join(f)).unwrap(), fs::read(dir(c2.path()).join(f)).unwrap(), "{f}");
     }
@@ -297,8 +297,15 @@ fn gap_factors_apply_per_channel() {
     }
     w.flush().unwrap();
     drop(w);
-    let o = Store::new(Some(cache.path())).open(&path, None).unwrap();
+    let store = Store::new(Some(cache.path()));
+    let o = store.open(&path, None).unwrap();
     o.build(&mut |_, _| {}).unwrap();
+    // the time column's chunk index is kept with the pyramid, and searches through it find the same samples
+    let index = fs::read(cache.path().join("pyr/v2").join(o.key()).join("times.bin")).unwrap();
+    assert_eq!(index.len(), 8);
+    drop(o);
+    let o = store.open(&path, None).unwrap();
+    assert_eq!(o.status(), Status::Built);
     let vp = Viewport { t0: 0, t1: t * 1000 + 1, width_px: 100 };
     let gaps = |f: f64| o.view(0, vp, f, Precision::Exact).trace.y.iter().filter(|y| y.is_nan()).count();
     assert_eq!((gaps(2.0), gaps(4.0), gaps(8.0)), (2, 1, 0));
@@ -316,7 +323,7 @@ fn eviction_keeps_what_is_in_use() {
     let mut store = Store::new(Some(cache.path()));
     let opened = store.open(&path, None).unwrap();
     opened.build(&mut |_, _| {}).unwrap();
-    // a stale entry from an older recording
+    // a stale entry from an older recording, in an older layout
     let stale = cache.path().join("pyr/v1/0123456789abcdef0123456789abcdef");
     fs::create_dir_all(&stale).unwrap();
     fs::write(stale.join("c0.pyr"), vec![0u8; 4096]).unwrap();
@@ -324,7 +331,7 @@ fn eviction_keeps_what_is_in_use() {
     store.limits = Limits { cap: 1, min_free: 0 };
     let removed = store.evict().unwrap();
     assert_eq!(removed, vec![stale]);
-    assert!(cache.path().join("pyr/v1").join(opened.key()).is_dir(), "in use: kept");
+    assert!(cache.path().join("pyr/v2").join(opened.key()).is_dir(), "in use: kept");
     drop(opened);
     let removed = store.evict().unwrap();
     assert_eq!(removed.len(), 1, "no longer in use: evicted");

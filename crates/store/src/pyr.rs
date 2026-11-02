@@ -7,14 +7,15 @@ use std::sync::atomic::Ordering;
 
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
-use tlmbench_core::Recording;
+use tlmbench_core::chunks::CHUNK_SAMPLES;
 use tlmbench_core::gaps::{GapIndex, Jump};
 use tlmbench_core::pyramid::{MIN_LEVEL, Pyramid, Summary, coarser, level_lengths, span};
+use tlmbench_core::{Recording, TimeIndex, TimeSource};
 
 use crate::{Error, FOLLOW_EVERY, Opened, Result};
 
 /// The layout version: the folder under `pyr/`. A layout change bumps it, and old folders age out of the cache.
-pub(crate) const VERSION: &str = "v1";
+pub(crate) const VERSION: &str = "v2";
 const FORMAT: u32 = 1;
 /// A build works in blocks of 4^10 samples: levels 4 to 10 of a block are written as soon as it is read.
 const BLOCK_LEVEL: u32 = 10;
@@ -39,6 +40,8 @@ struct Manifest {
     levels: Vec<usize>,
     median_ns: i64,
     jumps: usize,
+    /// Entries in `times.bin`: the time of every 64k-th sample (none for fixed-rate times).
+    time_chunks: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -166,6 +169,17 @@ impl Loaded {
         }
         let jumps: Vec<Jump> =
             bytes.as_chunks::<{ size_of::<Jump>() }>().0.iter().map(|b| bytemuck::pod_read_unaligned(b)).collect();
+        let tp = dir.join("times.bin");
+        let times = if m.time_chunks == 0 {
+            TimeIndex::default()
+        } else {
+            let bytes = fs::read(&tp).map_err(Error::io(&tp))?;
+            if bytes.len() != m.time_chunks * 8 || m.time_chunks != info.samples.div_ceil(CHUNK_SAMPLES) {
+                return Err(Error::Damaged { path: tp, why: "wrong size".into() });
+            }
+            TimeIndex(bytes.as_chunks::<8>().0.iter().map(|b| i64::from_le_bytes(*b)).collect())
+        };
+        rec.set_time_index(times);
         let usable = lens.len();
         Ok(Some(Loaded {
             maps,
@@ -331,11 +345,22 @@ pub(crate) fn build(op: &Opened, progress: &mut dyn FnMut(u64, u64)) -> Result<b
     set(Loaded::open_building(&building, rec, &p0)?);
     progress((start * block).min(n) as u64, n as u64);
 
+    // the time of every 64k-th sample, read from each block while its pages are in memory (and, on a resumed
+    // build, the blocks done before)
+    let column = matches!(rec.info().time, TimeSource::Column { .. });
+    let mut time_chunks: Vec<i64> = if column {
+        (0..(start * block).min(n)).step_by(CHUNK_SAMPLES).map(|i| rec.time_at(i)).collect()
+    } else {
+        Vec::new()
+    };
     for b in start..n.div_ceil(block) {
         if op.cancel.load(Ordering::Relaxed) {
             return Ok(false);
         }
         let (s, e) = (b * block, ((b + 1) * block).min(n));
+        if column {
+            time_chunks.extend((s..e).step_by(CHUNK_SAMPLES).map(|i| rec.time_at(i)));
+        }
         for (c, mut level) in rec.summarize_all(s, e).into_iter().enumerate() {
             for j in 0..per_block {
                 if j > 0 {
@@ -372,6 +397,11 @@ pub(crate) fn build(op: &Opened, progress: &mut dyn FnMut(u64, u64)) -> Result<b
     let gaps = rec.gap_index();
     let gp = building.join("gaps.bin");
     fs::write(&gp, bytemuck::cast_slice::<Jump, u8>(&gaps.jumps)).map_err(Error::io(&gp))?;
+    let tp = building.join("times.bin");
+    if column {
+        let bytes: Vec<u8> = time_chunks.iter().flat_map(|t| t.to_le_bytes()).collect();
+        fs::write(&tp, bytes).map_err(Error::io(&tp))?;
+    }
     write_json(
         &building.join("manifest.json"),
         &Manifest {
@@ -382,6 +412,7 @@ pub(crate) fn build(op: &Opened, progress: &mut dyn FnMut(u64, u64)) -> Result<b
             levels: lens,
             median_ns: gaps.median_ns,
             jumps: gaps.jumps.len(),
+            time_chunks: time_chunks.len(),
         },
     )?;
     let _ = fs::remove_file(&progress_path);

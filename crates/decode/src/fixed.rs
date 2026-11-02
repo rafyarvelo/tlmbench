@@ -3,13 +3,15 @@
 
 use std::marker::PhantomData;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::thread::JoinHandle;
 
 use rayon::prelude::*;
 use tlmbench_core::chunks::{CHUNK_SAMPLES, Chunk, Chunked, Held};
 use tlmbench_core::pyramid::{self, Summary};
-use tlmbench_core::{ChannelInfo, ChannelOp, Channels, RateTimes, RecordingInfo, Shifted, TimeSource, Times, TimesOp};
+use tlmbench_core::{
+    ChannelInfo, ChannelOp, Channels, Indexed, RateTimes, RecordingInfo, Shifted, TimeIndex, TimeSource, Times, TimesOp,
+};
 
 use crate::bytes::{self, Bytes, read_exact_at};
 use crate::descriptor::{DType, Descriptor, Endian, Field, TimeSpec};
@@ -32,6 +34,8 @@ pub struct FixedWidth {
     /// and page faults on macOS come one at a time.
     spare_reads: Mutex<Vec<Vec<u8>>>,
     spare_columns: Mutex<Vec<Vec<u64>>>,
+    /// The chunk index of a time field, once the store has it.
+    time_index: OnceLock<TimeIndex>,
 }
 
 /// Records `start..` read on another thread.
@@ -86,6 +90,7 @@ impl FixedWidth {
             read_ahead: Mutex::new(None),
             spare_reads: Mutex::default(),
             spare_columns: Mutex::default(),
+            time_index: OnceLock::new(),
             info: RecordingInfo {
                 path: path.to_owned(),
                 format: format.to_owned(),
@@ -306,7 +311,7 @@ impl Channels for FixedWidth {
             TimeSpec::Index => op.run(&RateTimes::from_rate(0, 1.0, self.records)),
             TimeSpec::Field { field, unit, t0_ns } => {
                 let tf = self.desc.fields.iter().find(|x| &x.name == field).expect("validated");
-                op.run(&FieldTimes {
+                let times = FieldTimes {
                     records: self.records_bytes(),
                     offset: tf.offset as usize,
                     stride: self.desc.record_size as usize,
@@ -314,8 +319,18 @@ impl Channels for FixedWidth {
                     dtype: tf.dtype,
                     scale_ns: unit.ns(),
                     t0_ns: *t0_ns,
-                })
+                };
+                match self.time_index.get() {
+                    Some(index) => op.run(&Indexed { times: &times, index }),
+                    None => op.run(&times),
+                }
             }
+        }
+    }
+
+    fn set_time_index(&self, index: TimeIndex) {
+        if matches!(self.desc.time, TimeSpec::Field { .. }) && index.0.len() == self.records.div_ceil(CHUNK_SAMPLES) {
+            let _ = self.time_index.set(index);
         }
     }
 

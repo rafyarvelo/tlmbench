@@ -2,8 +2,9 @@
 //! beside the data. The CLI and the app share one root (`--cache`, else `$TLMBENCH_CACHE`, else the OS cache dir).
 //!
 //! Each recording gets a min/max pyramid ([`tlmbench_core::pyramid`]) and a gap index, built once in the
-//! background and kept in `pyr/v1/<key>/`: `manifest.json`, one `c<k>.pyr` per channel (its stored levels back to
-//! back, level 4 first, as 88-byte summaries) and `gaps.bin`. The key hashes the source's fingerprint with how it is
+//! background and kept in `pyr/v2/<key>/`: `manifest.json`, one `c<k>.pyr` per channel (its stored levels back to
+//! back, level 4 first, as 88-byte summaries), `gaps.bin` and, for a time column, `times.bin` (the time of every 64k-th
+//! sample, so a search for a time reads one chunk of the column). The key hashes the source's fingerprint with how it is
 //! decoded, so a changed file or descriptor never reads stale summaries.
 //!
 //! A build reads the file once, in order, in blocks of 4^10 samples, writing each block's levels 4–10 in place in
@@ -122,7 +123,10 @@ impl Store {
     /// Every cache entry, most recently opened first.
     pub fn entries(&self) -> Result<Vec<Entry>> {
         let mut out = Vec::new();
-        for (kind, dir) in [("csv", self.root.join("csv")), ("pyramid", self.root.join("pyr").join(pyr::VERSION))] {
+        // pyramids of every layout version: older ones are no longer read, and age out like any entry
+        let versions = fs::read_dir(self.root.join("pyr")).into_iter().flatten().flatten().map(|e| e.path());
+        let dirs = std::iter::once(("csv", self.root.join("csv"))).chain(versions.map(|d| ("pyramid", d)));
+        for (kind, dir) in dirs {
             let Ok(rd) = fs::read_dir(&dir) else { continue };
             for e in rd.flatten() {
                 let path = e.path();
@@ -232,7 +236,7 @@ pub struct Opened {
     store: Store,
     fingerprint: String,
     key: String,
-    /// `pyr/v1`
+    /// `pyr/v2`
     dir: PathBuf,
     loaded: RwLock<Option<Loaded>>,
     cancel: AtomicBool,

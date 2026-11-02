@@ -96,6 +96,53 @@ impl Times for RateTimes {
     }
 }
 
+/// The time of every [`CHUNK_SAMPLES`](crate::chunks::CHUNK_SAMPLES)-th sample of a time column: narrows a search for
+/// a time to one chunk, so a search of a cold file touches a few pages near the answer instead of pages spread
+/// across the whole file.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TimeIndex(pub Vec<Timestamp>);
+
+impl TimeIndex {
+    pub fn build<T: Times + ?Sized>(times: &T) -> Self {
+        Self((0..times.len()).step_by(crate::chunks::CHUNK_SAMPLES).map(|i| times.at(i)).collect())
+    }
+}
+
+/// Times searched through a [`TimeIndex`] of them.
+#[derive(Debug)]
+pub struct Indexed<'a, T: ?Sized> {
+    pub times: &'a T,
+    pub index: &'a TimeIndex,
+}
+
+impl<T: Times + ?Sized> Times for Indexed<'_, T> {
+    fn len(&self) -> usize {
+        self.times.len()
+    }
+
+    #[inline]
+    fn at(&self, i: usize) -> Timestamp {
+        self.times.at(i)
+    }
+
+    fn lower_bound(&self, t: Timestamp) -> usize {
+        // chunk k starts at or after `t`: the answer is in chunk k - 1, or is chunk k's first sample
+        let k = self.index.0.partition_point(|&x| x < t);
+        let Some(prev) = k.checked_sub(1) else { return 0 };
+        let c = crate::chunks::CHUNK_SAMPLES;
+        let (mut lo, mut hi) = (prev * c, (k * c).min(self.times.len()));
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if self.times.at(mid) < t {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +161,23 @@ mod tests {
             let expect = (0..r.len).find(|&i| r.at(i) >= t).unwrap_or(r.len);
             assert_eq!(r.lower_bound(t), expect, "t = {t}");
         }
+    }
+
+    #[test]
+    fn an_indexed_search_finds_what_a_full_one_does() {
+        let c = crate::chunks::CHUNK_SAMPLES as i64;
+        // repeats across chunk boundaries, and a jump
+        let times: Vec<Timestamp> =
+            (0..3 * c + 77).map(|i| i / 3 * 10 + if i > 2 * c { 1_000_000 } else { 0 }).collect();
+        let index = TimeIndex::build(&times);
+        assert_eq!(index.0.len(), 4);
+        let ix = Indexed { times: &times, index: &index };
+        let probes = times.iter().flat_map(|&t| [t - 1, t, t + 1]).step_by(97).chain([i64::MIN, -5, 0, i64::MAX]);
+        for t in probes {
+            assert_eq!(ix.lower_bound(t), times.lower_bound(t), "t = {t}");
+        }
+        let empty: Vec<Timestamp> = vec![];
+        assert_eq!(Indexed { times: &empty, index: &TimeIndex::build(&empty) }.lower_bound(5), 0);
     }
 
     #[test]
