@@ -172,6 +172,9 @@ pub struct Pyramid<'a> {
     pub len: usize,
     /// `levels[j]` is level `MIN_LEVEL + j`.
     pub levels: Vec<&'a [Summary]>,
+    /// Whether buckets past `len` (not summarized yet) are reduced from raw samples (true), or left empty, for
+    /// views of a file still being built whose unread part is too large to read raw.
+    pub raw_past: bool,
 }
 
 impl<'a> Pyramid<'a> {
@@ -183,7 +186,7 @@ impl<'a> Pyramid<'a> {
         let want = level_lengths(len);
         assert!(levels.len() <= want.len(), "more levels than the samples make");
         assert!(levels.iter().zip(&want).all(|(l, &n)| l.len() >= n), "a level is too short for {len} samples");
-        Self { len, levels }
+        Self { len, levels, raw_past: true }
     }
 
     /// The summary at level `k` (stored) holding sample `i`.
@@ -245,7 +248,9 @@ pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
     assert_eq!(times.len(), values.len(), "times and values differ in length");
     assert!(pyr.len <= values.len(), "the pyramid is of another channel");
     reduce_with(times, vp, |start, end, bucket_t, out| {
-        if end - start < min_bucket || end > pyr.len {
+        if end > pyr.len && !pyr.raw_past {
+            push_bucket(out, None, bucket_t)
+        } else if end - start < min_bucket || end > pyr.len {
             reduce_bucket(values, start, end, bucket_t, out)
         } else {
             let picks = first_real(pyr, values, start, end).map(|first| {
@@ -773,6 +778,23 @@ mod tests {
         let st = Stats::from(Summary::of(&times, &v[..], 0, 4));
         assert_eq!((st.count, st.min, st.max, st.mean), (3, Some((1.0, 0)), Some((5.0, 3)), 3.0));
         assert!((st.std - (8.0f64 / 3.0).sqrt()).abs() < 1e-12);
+    }
+
+    /// A view of a file being built leaves the unread part empty when it is too large to read raw.
+    #[test]
+    fn unread_buckets_stay_empty_when_raw_past_is_off() {
+        let n = 1 << 16;
+        let v: Vec<f32> = (0..n).map(|i| (i % 97) as f32).collect();
+        let times = crate::RateTimes::from_rate(0, 1000.0, n);
+        let levels = owned(&times, &v);
+        let mut pyr = Pyramid::new(n / 4, levels.iter().take(2).map(Vec::as_slice).collect());
+        pyr.raw_past = false;
+        let vp = Viewport { t0: 0, t1: times.at(n - 1) + 1, width_px: 16 };
+        let (_, emits) = reduce(&times, &v, &pyr, vp, 1);
+        let read: Vec<usize> =
+            emits.iter().filter_map(|e| if let Emit::Sample(i) = e { Some(*i) } else { None }).collect();
+        assert!(read.iter().all(|&i| i < n / 4), "a raw sample past the built part was read");
+        assert!(emits.iter().any(|e| matches!(e, Emit::Gap(_))), "the unread part is a gap");
     }
 
     #[test]

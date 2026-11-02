@@ -4,11 +4,15 @@
 //! Little-endian, every array 8-byte aligned so `Float32Array` views need no copy:
 //!
 //! ```text
-//! header (32 B):    magic "TLMV" · u16 version · u16 flags · u32 generation · u32 trace count
-//!                   · i64 origin_ns · f64 x_scale_ns
-//! per trace (24 B): u32 channel · u32 n · u32 kind (0 raw, 1 M4) · u32 reduce_us · f32 y_min · f32 y_max
+//! header (40 B):    magic "TLMV" · u16 version · u16 flags · u32 generation · u32 trace count
+//!                   · i64 origin_ns · f64 x_scale_ns · i64 built_until_ns
+//! per trace (24 B): u32 channel · u32 n · u32 kind · u32 reduce_us · f32 y_min · f32 y_max
 //!                   · f32 x[n] · f32 y[n]   (8n bytes, so every trace stays 8-byte aligned)
 //! ```
+//!
+//! Header flags: bit 0, the pyramid is still being built and only samples up to `built_until_ns` are summarized
+//! (the UI hatches the rest). Trace kind bits: bit 0 M4 (else raw samples), bit 1 coarse (drawn from whole
+//! summaries, replaced by an exact reply), bit 2 answered from the pyramid.
 //!
 //! A sample's time is `origin_ns + x * x_scale_ns`. With the origin at the viewport's start and the scale at one
 //! bucket, x runs over about `0..width_px`, where `f32` is exact enough at any zoom; `f32` can't hold nanoseconds
@@ -19,8 +23,8 @@
 use crate::{Timestamp, Trace, TraceKind, Viewport};
 
 pub const MAGIC: &[u8; 4] = b"TLMV";
-pub const VERSION: u16 = 1;
-pub const HEADER_BYTES: usize = 32;
+pub const VERSION: u16 = 2;
+pub const HEADER_BYTES: usize = 40;
 pub const TRACE_HEADER_BYTES: usize = 24;
 
 /// One channel's trace in a reply.
@@ -28,6 +32,8 @@ pub const TRACE_HEADER_BYTES: usize = 24;
 pub struct WireTrace {
     pub channel: u32,
     pub kind: TraceKind,
+    pub coarse: bool,
+    pub from_pyramid: bool,
     pub reduce_us: u32,
     pub y_min: f32,
     pub y_max: f32,
@@ -40,6 +46,8 @@ pub struct Reply {
     pub generation: u32,
     pub origin_ns: Timestamp,
     pub x_scale_ns: f64,
+    /// Samples after this time aren't summarized yet (None: the pyramid is built, or not started).
+    pub built_until: Option<Timestamp>,
     pub traces: Vec<WireTrace>,
 }
 
@@ -50,22 +58,25 @@ pub struct Out<'a> {
     pub trace: &'a Trace,
     /// Time the core spent reducing it, in microseconds.
     pub reduce_us: u32,
+    pub coarse: bool,
+    pub from_pyramid: bool,
 }
 
-/// Encodes traces reduced for `vp`.
-pub fn encode(generation: u32, vp: Viewport, traces: &[Out]) -> Vec<u8> {
+/// Encodes traces reduced for `vp`. `built_until`: see [`Reply::built_until`].
+pub fn encode(generation: u32, vp: Viewport, built_until: Option<Timestamp>, traces: &[Out]) -> Vec<u8> {
     let origin = vp.t0;
     let scale = vp.bucket_ns() as f64;
     let size = HEADER_BYTES + traces.iter().map(|o| TRACE_HEADER_BYTES + 8 * o.trace.len()).sum::<usize>();
     let mut out = Vec::with_capacity(size);
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&VERSION.to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&u16::from(built_until.is_some()).to_le_bytes());
     out.extend_from_slice(&generation.to_le_bytes());
     out.extend_from_slice(&(traces.len() as u32).to_le_bytes());
     out.extend_from_slice(&origin.to_le_bytes());
     out.extend_from_slice(&scale.to_le_bytes());
-    for &Out { channel, trace: t, reduce_us } in traces {
+    out.extend_from_slice(&built_until.unwrap_or(i64::MAX).to_le_bytes());
+    for &Out { channel, trace: t, reduce_us, coarse, from_pyramid } in traces {
         let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
         for (&ts, &y) in t.t.iter().zip(&t.y) {
             if !y.is_nan() && (vp.t0..vp.t1).contains(&ts) {
@@ -78,7 +89,8 @@ pub fn encode(generation: u32, vp: Viewport, traces: &[Out]) -> Vec<u8> {
         }
         out.extend_from_slice(&channel.to_le_bytes());
         out.extend_from_slice(&(t.len() as u32).to_le_bytes());
-        out.extend_from_slice(&u32::from(t.kind == TraceKind::M4).to_le_bytes());
+        let kind = u32::from(t.kind == TraceKind::M4) | u32::from(coarse) << 1 | u32::from(from_pyramid) << 2;
+        out.extend_from_slice(&kind.to_le_bytes());
         out.extend_from_slice(&reduce_us.to_le_bytes());
         out.extend_from_slice(&lo.to_le_bytes());
         out.extend_from_slice(&hi.to_le_bytes());
@@ -104,6 +116,8 @@ pub fn decode(b: &[u8]) -> Option<Reply> {
     let count = u32_at(12)? as usize;
     let origin_ns = i64::from_le_bytes(b.get(16..24)?.try_into().ok()?);
     let x_scale_ns = f64::from_le_bytes(b.get(24..32)?.try_into().ok()?);
+    let building = u16::from_le_bytes(b.get(6..8)?.try_into().ok()?) & 1 == 1;
+    let until = i64::from_le_bytes(b.get(32..40)?.try_into().ok()?);
     let mut traces = Vec::with_capacity(count.min(1024));
     let mut o = HEADER_BYTES;
     for _ in 0..count {
@@ -111,7 +125,9 @@ pub fn decode(b: &[u8]) -> Option<Reply> {
         let floats = |at: usize| (0..n).map(|i| f32_at(at + 4 * i)).collect::<Option<Vec<f32>>>();
         traces.push(WireTrace {
             channel: u32_at(o)?,
-            kind: if u32_at(o + 8)? == 1 { TraceKind::M4 } else { TraceKind::Raw },
+            kind: if u32_at(o + 8)? & 1 == 1 { TraceKind::M4 } else { TraceKind::Raw },
+            coarse: u32_at(o + 8)? & 2 != 0,
+            from_pyramid: u32_at(o + 8)? & 4 != 0,
             reduce_us: u32_at(o + 12)?,
             y_min: f32_at(o + 16)?,
             y_max: f32_at(o + 20)?,
@@ -120,7 +136,8 @@ pub fn decode(b: &[u8]) -> Option<Reply> {
         });
         o += TRACE_HEADER_BYTES + 8 * n;
     }
-    (o == b.len()).then_some(Reply { generation, origin_ns, x_scale_ns, traces })
+    let built_until = building.then_some(until);
+    (o == b.len()).then_some(Reply { generation, origin_ns, x_scale_ns, built_until, traces })
 }
 
 #[cfg(test)]
@@ -137,11 +154,16 @@ mod tests {
         let a = m4(&times, &values, vp);
         let raw_vp = Viewport { t0: times.at(10), t1: times.at(30), width_px: 777 };
         let b = m4(&times, &values, raw_vp);
-        let outs = [Out { channel: 3, trace: &a, reduce_us: 1234 }, Out { channel: 9, trace: &b, reduce_us: 5 }];
-        let bytes = encode(42, vp, &outs);
+        let outs = [
+            Out { channel: 3, trace: &a, reduce_us: 1234, coarse: true, from_pyramid: true },
+            Out { channel: 9, trace: &b, reduce_us: 5, coarse: false, from_pyramid: false },
+        ];
+        let bytes = encode(42, vp, Some(vp.t0 + 99), &outs);
         assert_eq!(bytes.len() % 8, 0);
         let r = decode(&bytes).unwrap();
         assert_eq!((r.generation, r.origin_ns, r.x_scale_ns), (42, vp.t0, vp.bucket_ns() as f64));
+        assert_eq!(r.built_until, Some(vp.t0 + 99));
+        assert!(r.traces[0].coarse && r.traces[0].from_pyramid && !r.traces[1].coarse && !r.traces[1].from_pyramid);
         assert_eq!(r.traces.len(), 2);
         let w = &r.traces[0];
         assert_eq!((w.channel, w.kind, w.reduce_us, w.x.len()), (3, TraceKind::M4, 1234, a.len()));
@@ -158,9 +180,9 @@ mod tests {
 
     #[test]
     fn rejects_truncated_or_foreign_bytes() {
-        let bytes = encode(1, Viewport { t0: 0, t1: 10, width_px: 10 }, &[]);
-        assert!(decode(&bytes).is_some());
-        assert!(decode(&bytes[..31]).is_none());
+        let bytes = encode(1, Viewport { t0: 0, t1: 10, width_px: 10 }, None, &[]);
+        assert_eq!(decode(&bytes).map(|r| r.built_until), Some(None));
+        assert!(decode(&bytes[..39]).is_none());
         assert!(decode(b"NOPE").is_none());
     }
 }
