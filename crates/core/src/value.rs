@@ -58,6 +58,11 @@ pub trait Samples: Sync {
     /// Sample `i` (`i < len()`).
     fn get(&self, i: usize) -> Self::Item;
 
+    /// The samples as one slice, when they are stored that way (enables the vectorized paths).
+    fn as_slice(&self) -> Option<&[Self::Item]> {
+        None
+    }
+
     /// Samples `start..end`, in order.
     fn range(
         &self,
@@ -78,6 +83,10 @@ impl<V: Value> Samples for [V] {
         self[i]
     }
 
+    fn as_slice(&self) -> Option<&[V]> {
+        Some(self)
+    }
+
     #[inline]
     fn range(&self, start: usize, end: usize) -> impl DoubleEndedIterator<Item = V> + ExactSizeIterator + Clone {
         self[start..end].iter().copied()
@@ -94,6 +103,10 @@ impl<V: Value> Samples for Vec<V> {
     #[inline]
     fn get(&self, i: usize) -> V {
         self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[V]> {
+        Some(self)
     }
 
     #[inline]

@@ -171,10 +171,21 @@ fn reduce_bucket<S: Samples + ?Sized>(values: &S, start: usize, end: usize, buck
 
     // Comparisons with NaN are false, so starting from a real value skips NaNs.
     let v0 = values.get(start + first);
-    let (mn, mx) =
-        body.clone().fold((v0, v0), |(mn, mx), v| (if v < mn { v } else { mn }, if v > mx { v } else { mx }));
-    let imin = first + body.clone().position(|v| v == mn).unwrap_or(0);
-    let imax = first + body.position(|v| v == mx).unwrap_or(0);
+    let (imin, imax) = match values.as_slice() {
+        Some(s) => {
+            let body = &s[start + first..start + last + 1];
+            let (mn, mx) = min_max(body, v0);
+            (
+                first + body.iter().position(|&v| v == mn).unwrap_or(0),
+                first + body.iter().position(|&v| v == mx).unwrap_or(0),
+            )
+        }
+        None => {
+            let (mn, mx) =
+                body.clone().fold((v0, v0), |(mn, mx), v| (if v < mn { v } else { mn }, if v > mx { v } else { mx }));
+            (first + body.clone().position(|v| v == mn).unwrap_or(0), first + body.position(|v| v == mx).unwrap_or(0))
+        }
+    };
 
     let mut idx = [first, imin.min(imax), imin.max(imax), last];
     idx.iter_mut().for_each(|i| *i += start);
@@ -185,6 +196,30 @@ fn reduce_bucket<S: Samples + ?Sized>(values: &S, start: usize, end: usize, buck
             prev = i;
         }
     }
+}
+
+/// Min and max of `s`, skipping NaN, starting from the real value `v0`. Sixteen independent lanes of compare and
+/// select, which the compiler turns into SIMD; a single running min/max can't vectorize.
+#[inline]
+pub(crate) fn min_max<V: Value>(s: &[V], v0: V) -> (V, V) {
+    const LANES: usize = 16;
+    let (mut mn, mut mx) = ([v0; LANES], [v0; LANES]);
+    let (chunks, rest) = s.as_chunks::<LANES>();
+    for c in chunks {
+        for j in 0..LANES {
+            let v = c[j];
+            mn[j] = if v < mn[j] { v } else { mn[j] };
+            mx[j] = if v > mx[j] { v } else { mx[j] };
+        }
+    }
+    let (mut lo, mut hi) = (v0, v0);
+    for v in mn.into_iter().chain(rest.iter().copied()) {
+        lo = if v < lo { v } else { lo };
+    }
+    for v in mx.into_iter().chain(rest.iter().copied()) {
+        hi = if v > hi { v } else { hi };
+    }
+    (lo, hi)
 }
 
 #[cfg(test)]
@@ -292,6 +327,20 @@ mod tests {
             let times = RateTimes::from_rate(t0, rate as f64, values.len());
             let vp = Viewport { t0: vp.t0 * scale, t1: vp.t1 * scale, width_px: vp.width_px };
             prop_assert_eq!(reduce(&times, &values, vp), reference(&times, &values, vp));
+        }
+
+        #[test]
+        fn min_max_matches_a_scalar_fold(
+            v in proptest::collection::vec(prop_oneof![6 => -50f32..50.0, 1 => Just(f32::NAN)], 1..200),
+            w in proptest::collection::vec(any::<i16>(), 1..200),
+        ) {
+            if let Some(&v0) = v.iter().find(|x| !x.is_nan()) {
+                let lo = v.iter().copied().filter(|x| !x.is_nan()).fold(f32::INFINITY, f32::min);
+                let hi = v.iter().copied().filter(|x| !x.is_nan()).fold(f32::NEG_INFINITY, f32::max);
+                prop_assert_eq!(min_max(&v, v0), (lo, hi));
+            }
+            let (lo, hi) = (*w.iter().min().unwrap(), *w.iter().max().unwrap());
+            prop_assert_eq!(min_max(&w, w[0]), (lo, hi));
         }
 
         /// The pixel-exactness argument: every bucket's min and max survive the reduction.
