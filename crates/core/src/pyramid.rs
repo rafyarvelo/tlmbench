@@ -245,6 +245,61 @@ pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
     })
 }
 
+/// Exact statistics of samples `a..b` (not empty) as one [`Summary`]: whole summaries for the middle, raw
+/// samples for the ragged edges (at most 255 on each side).
+pub fn summary_of_range<T: Times + ?Sized, S: Samples + ?Sized>(
+    times: &T,
+    values: &S,
+    pyr: &Pyramid,
+    a: usize,
+    b: usize,
+) -> Summary {
+    assert!(a < b && b <= pyr.len, "an empty or out-of-range span");
+    let la = if a.is_multiple_of(span(MIN_LEVEL)) { a } else { next_boundary(a).min(b) };
+    let mut acc = (a < la).then(|| Summary::of(times, values, a, la));
+    let mut i = la;
+    while i < b {
+        let Some(k) = pyr.fits_from(i, b, u32::MAX) else { break };
+        let s = pyr.at(k, i);
+        acc = Some(acc.map_or(*s, |x| x.merge(s)));
+        i = (i + span(k)).min(pyr.len);
+    }
+    if i < b {
+        let edge = Summary::of(times, values, i, b);
+        acc = Some(acc.map_or(edge, |x| x.merge(&edge)));
+    }
+    acc.expect("the span is not empty")
+}
+
+/// What Measure shows for a span: from [`summary_of_range`], with mean and standard deviation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Stats {
+    /// Samples that aren't NaN.
+    pub count: u64,
+    /// The smallest and largest values with their sample indexes (earliest on ties); None when `count` is 0.
+    pub min: Option<(f64, usize)>,
+    pub max: Option<(f64, usize)>,
+    pub mean: f64,
+    /// Population standard deviation, from the sums: its relative error grows with (mean / std)^2, about 1e-8 for
+    /// a signal whose mean is 10,000 times its spread.
+    pub std: f64,
+}
+
+impl From<Summary> for Stats {
+    fn from(s: Summary) -> Self {
+        let n = s.count as f64;
+        let mean = if s.count > 0 { s.sum / n } else { f64::NAN };
+        let real = s.count > 0;
+        Stats {
+            count: s.count,
+            min: real.then_some((s.min, s.min_idx as usize)),
+            max: real.then_some((s.max, s.max_idx as usize)),
+            mean,
+            std: if real { (s.sum_sq / n - mean * mean).max(0.0).sqrt() } else { f64::NAN },
+        }
+    }
+}
+
 /// The next multiple of 256 after `i`.
 fn next_boundary(i: usize) -> usize {
     (i / span(MIN_LEVEL) + 1) * span(MIN_LEVEL)
@@ -571,6 +626,31 @@ mod tests {
             let want_max = (a..b).find(|&i| v[i] == mx).unwrap();
             assert_eq!((imin, imax), (want_min, want_max), "range {a}..{b}");
         }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(400))]
+
+        /// Stats of any span equal brute force over its samples.
+        #[test]
+        fn range_summaries_match_brute_force(v in values(), a in 0.0f64..1.0, b in 0.0f64..1.0) {
+            let n = v.len();
+            let (a, b) = ((a.min(b) * n as f64) as usize, ((a.max(b) * n as f64) as usize + 1).min(n));
+            let times = crate::RateTimes::from_rate(0, 1000.0, n);
+            let levels = owned(&times, &v);
+            let got = summary_of_range(&times, &v, &view(&levels, n), a, b);
+            let want = brute(&times, &v, a, b);
+            prop_assert!(same(&got, &want), "{}..{}: {:?} vs {:?}", a, b, got, want);
+        }
+    }
+
+    #[test]
+    fn stats_from_sums() {
+        let v = [1.0f32, f32::NAN, 3.0, 5.0];
+        let times = crate::RateTimes::from_rate(0, 1.0, 4);
+        let st = Stats::from(Summary::of(&times, &v[..], 0, 4));
+        assert_eq!((st.count, st.min, st.max, st.mean), (3, Some((1.0, 0)), Some((5.0, 3)), 3.0));
+        assert!((st.std - (8.0f64 / 3.0).sqrt()).abs() < 1e-12);
     }
 
     #[test]
