@@ -1,0 +1,166 @@
+//! The binary reply to a viewport query: traces as `f32` arrays the UI views in place (no parsing), the same over
+//! Tauri IPC today and over the daemon's socket and WebSocket later.
+//!
+//! Little-endian, every array 8-byte aligned so `Float32Array` views need no copy:
+//!
+//! ```text
+//! header (32 B):    magic "TLMV" · u16 version · u16 flags · u32 generation · u32 trace count
+//!                   · i64 origin_ns · f64 x_scale_ns
+//! per trace (24 B): u32 channel · u32 n · u32 kind (0 raw, 1 M4) · u32 reduce_us · f32 y_min · f32 y_max
+//!                   · f32 x[n] · f32 y[n]   (8n bytes, so every trace stays 8-byte aligned)
+//! ```
+//!
+//! A sample's time is `origin_ns + x * x_scale_ns`. With the origin at the viewport's start and the scale at one
+//! bucket, x runs over about `0..width_px`, where `f32` is exact enough at any zoom; `f32` can't hold nanoseconds
+//! since the epoch. `y_min`/`y_max` cover the samples inside the viewport (NaN when there are none), for autoscale.
+//! A NaN in `y` is a gap. `reduce_us` is how long the core took to reduce the trace (the UI's clocks are too coarse to
+//! time it).
+
+use crate::{Timestamp, Trace, TraceKind, Viewport};
+
+pub const MAGIC: &[u8; 4] = b"TLMV";
+pub const VERSION: u16 = 1;
+pub const HEADER_BYTES: usize = 32;
+pub const TRACE_HEADER_BYTES: usize = 24;
+
+/// One channel's trace in a reply.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WireTrace {
+    pub channel: u32,
+    pub kind: TraceKind,
+    pub reduce_us: u32,
+    pub y_min: f32,
+    pub y_max: f32,
+    pub x: Vec<f32>,
+    pub y: Vec<f32>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Reply {
+    pub generation: u32,
+    pub origin_ns: Timestamp,
+    pub x_scale_ns: f64,
+    pub traces: Vec<WireTrace>,
+}
+
+/// One channel's trace to encode.
+#[derive(Clone, Copy, Debug)]
+pub struct Out<'a> {
+    pub channel: u32,
+    pub trace: &'a Trace,
+    /// Time the core spent reducing it, in microseconds.
+    pub reduce_us: u32,
+}
+
+/// Encodes traces reduced for `vp`.
+pub fn encode(generation: u32, vp: Viewport, traces: &[Out]) -> Vec<u8> {
+    let origin = vp.t0;
+    let scale = vp.bucket_ns() as f64;
+    let size = HEADER_BYTES + traces.iter().map(|o| TRACE_HEADER_BYTES + 8 * o.trace.len()).sum::<usize>();
+    let mut out = Vec::with_capacity(size);
+    out.extend_from_slice(MAGIC);
+    out.extend_from_slice(&VERSION.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&generation.to_le_bytes());
+    out.extend_from_slice(&(traces.len() as u32).to_le_bytes());
+    out.extend_from_slice(&origin.to_le_bytes());
+    out.extend_from_slice(&scale.to_le_bytes());
+    for &Out { channel, trace: t, reduce_us } in traces {
+        let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+        for (&ts, &y) in t.t.iter().zip(&t.y) {
+            if !y.is_nan() && (vp.t0..vp.t1).contains(&ts) {
+                lo = lo.min(y);
+                hi = hi.max(y);
+            }
+        }
+        if lo > hi {
+            (lo, hi) = (f32::NAN, f32::NAN);
+        }
+        out.extend_from_slice(&channel.to_le_bytes());
+        out.extend_from_slice(&(t.len() as u32).to_le_bytes());
+        out.extend_from_slice(&u32::from(t.kind == TraceKind::M4).to_le_bytes());
+        out.extend_from_slice(&reduce_us.to_le_bytes());
+        out.extend_from_slice(&lo.to_le_bytes());
+        out.extend_from_slice(&hi.to_le_bytes());
+        for &ts in &t.t {
+            out.extend_from_slice(&(((ts as i128 - origin as i128) as f64 / scale) as f32).to_le_bytes());
+        }
+        for &y in &t.y {
+            out.extend_from_slice(&y.to_le_bytes());
+        }
+    }
+    debug_assert_eq!(out.len(), size);
+    out
+}
+
+/// Decodes a reply (tests, and Rust clients of the daemon later).
+pub fn decode(b: &[u8]) -> Option<Reply> {
+    let u32_at = |o: usize| Some(u32::from_le_bytes(b.get(o..o + 4)?.try_into().ok()?));
+    let f32_at = |o: usize| Some(f32::from_le_bytes(b.get(o..o + 4)?.try_into().ok()?));
+    if b.get(..4)? != MAGIC || u16::from_le_bytes(b.get(4..6)?.try_into().ok()?) != VERSION {
+        return None;
+    }
+    let generation = u32_at(8)?;
+    let count = u32_at(12)? as usize;
+    let origin_ns = i64::from_le_bytes(b.get(16..24)?.try_into().ok()?);
+    let x_scale_ns = f64::from_le_bytes(b.get(24..32)?.try_into().ok()?);
+    let mut traces = Vec::with_capacity(count.min(1024));
+    let mut o = HEADER_BYTES;
+    for _ in 0..count {
+        let n = u32_at(o + 4)? as usize;
+        let floats = |at: usize| (0..n).map(|i| f32_at(at + 4 * i)).collect::<Option<Vec<f32>>>();
+        traces.push(WireTrace {
+            channel: u32_at(o)?,
+            kind: if u32_at(o + 8)? == 1 { TraceKind::M4 } else { TraceKind::Raw },
+            reduce_us: u32_at(o + 12)?,
+            y_min: f32_at(o + 16)?,
+            y_max: f32_at(o + 20)?,
+            x: floats(o + TRACE_HEADER_BYTES)?,
+            y: floats(o + TRACE_HEADER_BYTES + 4 * n)?,
+        });
+        o += TRACE_HEADER_BYTES + 8 * n;
+    }
+    (o == b.len()).then_some(Reply { generation, origin_ns, x_scale_ns, traces })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{RateTimes, Times, m4};
+
+    #[test]
+    fn round_trip() {
+        let n = 100_001;
+        let times = RateTimes::from_rate(1_767_225_600_000_000_000, 10_000.0, n);
+        let values: Vec<f32> = (0..n).map(|i| if i == 500 { f32::NAN } else { (i as f32 * 0.01).sin() }).collect();
+        let vp = Viewport { t0: times.at(10), t1: times.at(90_000), width_px: 777 };
+        let a = m4(&times, &values, vp);
+        let raw_vp = Viewport { t0: times.at(10), t1: times.at(30), width_px: 777 };
+        let b = m4(&times, &values, raw_vp);
+        let outs = [Out { channel: 3, trace: &a, reduce_us: 1234 }, Out { channel: 9, trace: &b, reduce_us: 5 }];
+        let bytes = encode(42, vp, &outs);
+        assert_eq!(bytes.len() % 8, 0);
+        let r = decode(&bytes).unwrap();
+        assert_eq!((r.generation, r.origin_ns, r.x_scale_ns), (42, vp.t0, vp.bucket_ns() as f64));
+        assert_eq!(r.traces.len(), 2);
+        let w = &r.traces[0];
+        assert_eq!((w.channel, w.kind, w.reduce_us, w.x.len()), (3, TraceKind::M4, 1234, a.len()));
+        // times come back to within a bucket's millionth
+        for (x, &t) in w.x.iter().zip(&a.t) {
+            let back = r.origin_ns as f64 + *x as f64 * r.x_scale_ns;
+            assert!((back - t as f64).abs() <= r.x_scale_ns * 1e-3, "{back} vs {t}");
+        }
+        assert!(w.y.iter().zip(&a.y).all(|(p, q)| p == q || (p.is_nan() && q.is_nan())));
+        assert!(w.y_min >= -1.0 && w.y_max <= 1.0 && w.y_min < w.y_max);
+        assert_eq!(r.traces[1].kind, TraceKind::Raw);
+        assert_eq!(r.traces[1].y, b.y);
+    }
+
+    #[test]
+    fn rejects_truncated_or_foreign_bytes() {
+        let bytes = encode(1, Viewport { t0: 0, t1: 10, width_px: 10 }, &[]);
+        assert!(decode(&bytes).is_some());
+        assert!(decode(&bytes[..31]).is_none());
+        assert!(decode(b"NOPE").is_none());
+    }
+}

@@ -69,7 +69,7 @@ pub(crate) enum Emit {
 }
 
 /// Views with more samples than this are reduced on several threads.
-const PARALLEL_MIN_SAMPLES: usize = 1 << 21;
+const PARALLEL_MIN_SAMPLES: usize = 1 << 18;
 
 /// Reduces one channel for a viewport. `values[i]` is the sample at `times.at(i)`; times must not decrease.
 pub fn m4<T: Times + ?Sized, S: Samples + ?Sized>(times: &T, values: &S, vp: Viewport) -> Trace {

@@ -8,6 +8,7 @@ pub mod m4;
 pub mod recording;
 pub mod time;
 pub mod value;
+pub mod wire;
 
 pub use m4::{Trace, TraceKind, Viewport, m4};
 pub use recording::{ChannelInfo, Recording, RecordingInfo, TimeSource};
