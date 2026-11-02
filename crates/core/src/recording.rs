@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+use crate::chunks::{Chunk, Held};
 use crate::gaps::GapIndex;
 use crate::pyramid::{self, Pyramid, Stats, Summary};
 use crate::{Samples, Times, Timestamp, Trace, Value, Viewport};
@@ -64,6 +65,25 @@ pub trait Channels: Send + Sync + Debug {
     /// Runs `op` over channel `channel`'s stored values (before scale and offset).
     fn dispatch<O: ChannelOp>(&self, channel: usize, op: O) -> O::Out;
 
+    /// [`Channels::dispatch`], reading values through the chunks in `held` where a decoder stores the channel other
+    /// than as a contiguous array (see [`Channels::chunked`]).
+    fn dispatch_held<O: ChannelOp>(&self, channel: usize, _held: &Held, op: O) -> O::Out {
+        self.dispatch(channel, op)
+    }
+
+    /// Whether channel `channel` is stored other than as a contiguous native array (interleaved, big-endian or
+    /// misaligned), so queries read it faster from decoded chunks.
+    fn chunked(&self, _channel: usize) -> bool {
+        false
+    }
+
+    /// Chunks `chunks` of each of `channels` (chunked ones), decoded: `out[i][j]` is chunk `chunks.start + j` of
+    /// `channels[i]`. A decoder reads each block of records once for every channel.
+    fn decode_chunks(&self, channels: &[usize], chunks: std::ops::Range<usize>) -> Vec<Vec<Chunk>> {
+        assert!(channels.is_empty() || chunks.is_empty(), "this decoder has no chunked channels");
+        channels.iter().map(|_| Vec::new()).collect()
+    }
+
     /// Runs `op` over the sample times.
     fn dispatch_times<O: TimesOp>(&self, op: O) -> O::Out;
 
@@ -100,16 +120,16 @@ pub trait Recording: Send + Sync + Debug {
 
     /// Channel `channel` reduced for `vp` from its raw samples.
     fn trace(&self, channel: usize, vp: Viewport) -> Trace {
-        self.view(channel, vp, None, &[])
+        self.view(channel, vp, None, &[], &Held::default())
     }
 
     /// Channel `channel` reduced for `vp`, from its pyramid when given (the same result, faster), with the line
-    /// broken before each sample in `breaks`.
-    fn view(&self, channel: usize, vp: Viewport, pyr: Option<&Pyramid>, breaks: &[usize]) -> Trace;
+    /// broken before each sample in `breaks`. Raw samples are read through `held` where it holds them.
+    fn view(&self, channel: usize, vp: Viewport, pyr: Option<&Pyramid>, breaks: &[usize], held: &Held) -> Trace;
 
     /// A coarse view from the pyramid alone (see [`pyramid::m4_coarse`]): drawn first, then replaced by
     /// [`Recording::view`].
-    fn view_coarse(&self, channel: usize, vp: Viewport, pyr: &Pyramid, breaks: &[usize]) -> Trace;
+    fn view_coarse(&self, channel: usize, vp: Viewport, pyr: &Pyramid, breaks: &[usize], held: &Held) -> Trace;
 
     /// Level-4 summaries of the stored values of samples `start..end` (see [`pyramid::summarize`]).
     fn summarize(&self, channel: usize, start: usize, end: usize) -> Vec<Summary>;
@@ -120,11 +140,17 @@ pub trait Recording: Send + Sync + Debug {
     /// [`Recording::summarize`] for every channel at once (see [`Channels::summarize_all`]).
     fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>>;
 
-    /// Exact statistics of samples `a..b` (shown values).
-    fn stats(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize) -> Stats;
+    /// Exact statistics of samples `a..b` (shown values), with raw edges read through `held`.
+    fn stats(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize, held: &Held) -> Stats;
 
-    /// Shown value of sample `i`.
-    fn value_at(&self, channel: usize, i: usize) -> f64;
+    /// Shown value of sample `i`, read through `held`.
+    fn value_at(&self, channel: usize, i: usize, held: &Held) -> f64;
+
+    /// See [`Channels::chunked`].
+    fn chunked(&self, channel: usize) -> bool;
+
+    /// See [`Channels::decode_chunks`].
+    fn decode_chunks(&self, channels: &[usize], chunks: std::ops::Range<usize>) -> Vec<Vec<Chunk>>;
 
     fn time_at(&self, i: usize) -> Timestamp;
 
@@ -143,7 +169,7 @@ impl<C: Channels> Recording for C {
         Channels::describe(self)
     }
 
-    fn view(&self, channel: usize, vp: Viewport, pyr: Option<&Pyramid>, breaks: &[usize]) -> Trace {
+    fn view(&self, channel: usize, vp: Viewport, pyr: Option<&Pyramid>, breaks: &[usize], held: &Held) -> Trace {
         struct Op<'a> {
             vp: Viewport,
             pyr: Option<&'a Pyramid<'a>>,
@@ -158,11 +184,11 @@ impl<C: Channels> Recording for C {
                 }
             }
         }
-        let trace = self.dispatch(channel, Op { vp, pyr, breaks });
+        let trace = self.dispatch_held(channel, held, Op { vp, pyr, breaks });
         transformed(trace, self.transform(channel))
     }
 
-    fn view_coarse(&self, channel: usize, vp: Viewport, pyr: &Pyramid, breaks: &[usize]) -> Trace {
+    fn view_coarse(&self, channel: usize, vp: Viewport, pyr: &Pyramid, breaks: &[usize], held: &Held) -> Trace {
         struct Op<'a> {
             vp: Viewport,
             pyr: &'a Pyramid<'a>,
@@ -174,7 +200,7 @@ impl<C: Channels> Recording for C {
                 pyramid::m4_coarse(times, values, self.pyr, self.vp, self.breaks)
             }
         }
-        let trace = self.dispatch(channel, Op { vp, pyr, breaks });
+        let trace = self.dispatch_held(channel, held, Op { vp, pyr, breaks });
         transformed(trace, self.transform(channel))
     }
 
@@ -197,7 +223,7 @@ impl<C: Channels> Recording for C {
         Channels::prefetch(self, ranges)
     }
 
-    fn stats(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize) -> Stats {
+    fn stats(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize, held: &Held) -> Stats {
         struct Op<'a>(&'a Pyramid<'a>, usize, usize);
         impl ChannelOp for Op<'_> {
             type Out = Summary;
@@ -206,10 +232,10 @@ impl<C: Channels> Recording for C {
             }
         }
         let (scale, offset) = self.transform(channel);
-        Stats::from(self.dispatch(channel, Op(pyr, a, b))).transformed(scale, offset)
+        Stats::from(self.dispatch_held(channel, held, Op(pyr, a, b))).transformed(scale, offset)
     }
 
-    fn value_at(&self, channel: usize, i: usize) -> f64 {
+    fn value_at(&self, channel: usize, i: usize, held: &Held) -> f64 {
         struct Op(usize);
         impl ChannelOp for Op {
             type Out = f64;
@@ -218,7 +244,15 @@ impl<C: Channels> Recording for C {
             }
         }
         let (scale, offset) = self.transform(channel);
-        self.dispatch(channel, Op(i)) * scale + offset
+        self.dispatch_held(channel, held, Op(i)) * scale + offset
+    }
+
+    fn chunked(&self, channel: usize) -> bool {
+        Channels::chunked(self, channel)
+    }
+
+    fn decode_chunks(&self, channels: &[usize], chunks: std::ops::Range<usize>) -> Vec<Vec<Chunk>> {
+        Channels::decode_chunks(self, channels, chunks)
     }
 
     fn time_at(&self, i: usize) -> Timestamp {

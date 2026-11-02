@@ -116,3 +116,18 @@ Last run (MacBook Air M1, 8 GB, 59 Hz, 1736 px): pass. First paint 77 ms (coarse
 missed 14 of 1,800 frames (0.8%), longest interval 31 ms, zoomed 20-trace replies p95 15.7 ms in the core. First-ever
 open: axes and progress in 57 ms, build 12.5 s (798 MB/s; the disk reads the file cold in 9.5 s). Leave 20 GB free:
 on a nearly full disk writes slow to 74 MB/s and the build takes 20 s.
+
+## Zoomed views and the chunk cache
+
+`cargo bench -p tlmbench-store --bench chunks` times 1M-sample views (1736 px, a raw reduction) of all 20 channels of
+an interleaved f32 `.tlm` (4M samples a channel, written to a temp folder): read in place (no chunk cache, as before
+the cache), decoding their chunks, and with the chunks decoded. Disk-cold numbers come from the same views of a 2 GB
+file (`just gen --size 2G --channels 20 --format tlm`) with its pages dropped by `ci/evict.py` before each view.
+
+Last run (MacBook Air M1, 8 GB):
+
+| 1M samples × 20 channels | File in the page cache | File pages evicted |
+| --- | --- | --- |
+| Read in place (before) | 20.1 ms | 82–88 ms |
+| Decoding the chunks | 10.5 ms | 44–52 ms |
+| Chunks decoded | 3.5 ms | — |

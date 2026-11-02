@@ -25,7 +25,12 @@ libc = "0.2.191"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_SystemInformation"] }
 
 [dev-dependencies]
+criterion.workspace = true
 tempfile.workspace = true
+
+[[bench]]
+name = "chunks"
+harness = false
 
 [lints]
 workspace = true

@@ -36,6 +36,35 @@ impl Bytes {
     }
 }
 
+/// The share (0 to 1) of up to 64 pages spread over `bytes` (part of a memory map) that are in memory; None where
+/// the OS can't say.
+#[cfg(unix)]
+pub fn resident_share(bytes: &[u8]) -> Option<f64> {
+    // SAFETY: sysconf has no preconditions.
+    let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.max(4096) as usize;
+    let base = bytes.as_ptr() as usize / page * page;
+    let pages = (bytes.as_ptr() as usize + bytes.len()).div_ceil(page).saturating_sub(base / page);
+    if pages == 0 {
+        return Some(1.0);
+    }
+    let (picks, mut resident) = (pages.min(64), 0);
+    for k in 0..picks {
+        let addr = base + k * pages / picks * page;
+        let mut v = 0 as libc::c_char;
+        // SAFETY: `addr` is a page inside the mapping `bytes` belongs to; mincore writes one byte for one page.
+        if unsafe { libc::mincore(addr as *mut libc::c_void, page, (&raw mut v).cast()) } != 0 {
+            return None;
+        }
+        resident += (v & 1) as usize;
+    }
+    Some(resident as f64 / picks as f64)
+}
+
+#[cfg(windows)]
+pub fn resident_share(_: &[u8]) -> Option<f64> {
+    None
+}
+
 /// Maps a file read-only. Mapping is page-aligned, so typed views of it are aligned too.
 pub(crate) fn map(path: &Path) -> Result<Bytes> {
     let file = File::open(path).map_err(io_err(path))?;

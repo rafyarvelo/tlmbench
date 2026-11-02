@@ -14,20 +14,27 @@
 //!
 //! The cache is capped: when it passes 20 GB, or free disk drops below 10 GB, the least recently opened entries go
 //! first. Entries in use by any process are kept.
+//!
+//! Channels not stored as contiguous arrays (fields of interleaved records, big-endian ones) are read through
+//! decoded chunks kept in memory ([`ChunkCache`], 25% of RAM): raw reductions fill the chunks they read for every
+//! channel of the request at once; views from the pyramid use the chunks already there and read the rest in place.
 
+mod chunks;
 mod error;
 mod pyr;
 pub mod sys;
 
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime};
 
+pub use chunks::ChunkCache;
 pub use error::{Error, Result};
 use rayon::prelude::*;
 use serde::Serialize;
+use tlmbench_core::chunks::{CHUNK_SAMPLES, Held, chunk_of};
 use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Pyramid, Stats};
 use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
 use tlmbench_decode::OpenOptions;
@@ -49,21 +56,36 @@ impl Default for Limits {
     }
 }
 
-/// The cache root and what lives in it.
+/// The cache root and what lives in it, and the chunks in memory (shared by every recording opened through it).
 #[derive(Clone, Debug)]
 pub struct Store {
     root: PathBuf,
     pub limits: Limits,
+    chunks: Arc<ChunkCache>,
 }
 
 impl Store {
     /// The store at `root`, else `$TLMBENCH_CACHE`, else the OS cache dir's `tlmbench`.
     pub fn new(root: Option<&Path>) -> Self {
-        Self { root: tlmbench_decode::cache::cache_root(root), limits: Limits::default() }
+        Self {
+            root: tlmbench_decode::cache::cache_root(root),
+            limits: Limits::default(),
+            chunks: Arc::new(ChunkCache::new(ChunkCache::default_budget())),
+        }
+    }
+
+    /// The same store with a chunk cache of `bytes` (0: channels are always read in place).
+    pub fn with_chunk_budget(mut self, bytes: u64) -> Self {
+        self.chunks = Arc::new(ChunkCache::new(bytes));
+        self
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    pub fn chunk_cache(&self) -> &ChunkCache {
+        &self.chunks
     }
 
     /// Opens a recording (CSV builds its column cache first). Its pyramid is loaded if built, but not built:
@@ -82,6 +104,8 @@ impl Store {
             touch_opened(&dir.join(&key));
         }
         Ok(Opened {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            filling: Mutex::new(()),
             rec,
             store: self.clone(),
             fingerprint,
@@ -194,9 +218,15 @@ pub enum Status {
     Built,
 }
 
+/// Numbers opened recordings, for chunk cache keys.
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
 /// A recording opened through the store.
 #[derive(Debug)]
 pub struct Opened {
+    id: u64,
+    /// One decode at a time, so two queries don't decode the same chunks.
+    filling: Mutex<()>,
     rec: Box<dyn Recording>,
     store: Store,
     fingerprint: String,
@@ -308,9 +338,20 @@ impl Opened {
                 .collect();
             self.rec.prefetch(&edges);
         }
+        // raw reductions read every sample in view: decode the chunks for all channels at once; views from the
+        // pyramid read a few samples at each pixel edge, through the chunks already decoded or else in place
+        let n = self.rec.info().samples;
+        let (a, b) = (lo.saturating_sub(MIN_BUCKET_SAMPLES), (hi + MIN_BUCKET_SAMPLES).min(n));
+        let ks: Vec<usize> = if a < b { (chunk_of(a)..=chunk_of(b - 1)).collect() } else { Vec::new() };
+        let held = match coarse_pays {
+            false => self.hold(channels, &ks, true),
+            true if ks.len() <= LOOKUP_CHUNKS_MAX => self.hold(channels, &ks, false),
+            true => channels.iter().map(|_| Held::default()).collect(),
+        };
         channels
             .par_iter()
-            .map(|&channel| {
+            .zip(&held)
+            .map(|(&channel, held)| {
                 if warm && let Some(l) = l {
                     l.warm(channel, lo, hi.min(l.done));
                 }
@@ -324,30 +365,41 @@ impl Opened {
                 }
                 let coarse = precision == Precision::Coarse && coarse_pays && pyr.is_some();
                 let trace = match &pyr {
-                    Some(p) if coarse => self.rec.view_coarse(channel, vp, p, &breaks),
+                    Some(p) if coarse => self.rec.view_coarse(channel, vp, p, &breaks, held),
                     None if skip_unread => {
                         Trace { kind: TraceKind::Raw, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] }
                     }
-                    _ => self.rec.view(channel, vp, pyr.as_ref(), &breaks),
+                    _ => self.rec.view(channel, vp, pyr.as_ref(), &breaks, held),
                 };
                 View { channel, trace, from_pyramid: pyr.is_some(), coarse, built_until }
             })
             .collect()
     }
 
-    /// Exact statistics of the samples in `[t0, t1)`; None until the pyramid is built (exact answers wait for it).
-    pub fn stats(&self, channel: usize, t0: Timestamp, t1: Timestamp) -> Option<Stats> {
+    /// Exact statistics of each channel's samples in `[t0, t1)`; None until the pyramid is built (exact answers wait
+    /// for it).
+    pub fn stats(&self, channels: &[usize], t0: Timestamp, t1: Timestamp) -> Option<Vec<Stats>> {
         let g = self.loaded.read().unwrap();
         let l = g.as_ref().filter(|l| l.complete)?;
         let (a, b) = (self.rec.lower_bound(t0), self.rec.lower_bound(t1));
         if a >= b {
-            return Some(Stats { count: 0, min: None, max: None, mean: f64::NAN, std: f64::NAN });
+            return Some(
+                channels
+                    .iter()
+                    .map(|_| Stats { count: 0, min: None, max: None, mean: f64::NAN, std: f64::NAN })
+                    .collect(),
+            );
         }
-        Some(self.rec.stats(channel, &l.pyramid(channel)?, a, b))
+        // the ragged edges are read raw
+        let mut ks = vec![chunk_of(a), chunk_of(b - 1)];
+        ks.dedup();
+        let held = self.hold(channels, &ks, true);
+        channels.iter().zip(&held).map(|(&c, held)| Some(self.rec.stats(c, &l.pyramid(c)?, a, b, held))).collect()
     }
 
-    /// The sample nearest `t` (the earlier one on ties), as (index, time, shown value).
-    pub fn nearest(&self, channel: usize, t: Timestamp) -> Option<(usize, Timestamp, f64)> {
+    /// Each channel's sample nearest `t` (the earlier one on ties), as (index, time, shown value). Channels share
+    /// their times, so it is the same sample for all of them.
+    pub fn values_at(&self, channels: &[usize], t: Timestamp) -> Option<(usize, Timestamp, Vec<f64>)> {
         let n = self.rec.info().samples;
         if n == 0 {
             return None;
@@ -365,7 +417,61 @@ impl Opened {
             (None, Some(b)) => b,
             (None, None) => return None,
         };
-        Some((pick, self.rec.time_at(pick), self.rec.value_at(channel, pick)))
+        let held = self.hold(channels, &[chunk_of(pick)], true);
+        let values = channels.iter().zip(&held).map(|(&c, held)| self.rec.value_at(c, pick, held)).collect();
+        Some((pick, self.rec.time_at(pick), values))
+    }
+
+    /// The sample nearest `t` (see [`Opened::values_at`]), as (index, time, shown value).
+    pub fn nearest(&self, channel: usize, t: Timestamp) -> Option<(usize, Timestamp, f64)> {
+        self.values_at(&[channel], t).map(|(i, t, v)| (i, t, v[0]))
+    }
+
+    /// Chunks `ks` (sorted) of each of `channels`, held for a query; empty for channels the decoder stores
+    /// contiguously. Missing chunks are decoded when `fill` (each block of records read once for every channel
+    /// missing it) unless they wouldn't fit the cache's budget; otherwise they are read in place.
+    fn hold(&self, channels: &[usize], ks: &[usize], fill: bool) -> Vec<Held> {
+        let mut out: Vec<Held> = channels.iter().map(|_| Held::default()).collect();
+        let (Some(&first), Some(&last)) = (ks.first(), ks.last()) else { return out };
+        let chunked: Vec<usize> = (0..channels.len()).filter(|&i| self.rec.chunked(channels[i])).collect();
+        if chunked.is_empty() {
+            return out;
+        }
+        let cache = &self.store.chunks;
+        let bytes: u64 = chunked
+            .iter()
+            .map(|&i| self.rec.info().channels[channels[i]].dtype[1..].parse::<u64>().map_or(8, |b| b / 8))
+            .sum::<u64>()
+            * (ks.len() * CHUNK_SAMPLES) as u64;
+        let fill = fill && bytes <= cache.budget() / 2;
+        let _one = fill.then(|| self.filling.lock().unwrap());
+        for &i in &chunked {
+            out[i] = Held { first, chunks: vec![None; last - first + 1] };
+            for &k in ks {
+                out[i].chunks[k - first] = cache.get((self.id, channels[i], k));
+            }
+        }
+        if !fill {
+            return out;
+        }
+        // runs of chunks some channel is missing, and the channels missing any of each run
+        let missing: Vec<usize> =
+            ks.iter().copied().filter(|&k| chunked.iter().any(|&i| out[i].chunks[k - first].is_none())).collect();
+        for run in missing.chunk_by(|a, b| b == &(a + 1)) {
+            let (r0, r1) = (run[0], run[run.len() - 1] + 1);
+            let want: Vec<usize> =
+                chunked.iter().copied().filter(|&i| (r0..r1).any(|k| out[i].chunks[k - first].is_none())).collect();
+            let chans: Vec<usize> = want.iter().map(|&i| channels[i]).collect();
+            for (&i, decoded) in want.iter().zip(self.rec.decode_chunks(&chans, r0..r1)) {
+                for (k, chunk) in (r0..r1).zip(decoded) {
+                    let slot = &mut out[i].chunks[k - first];
+                    if slot.is_none() {
+                        *slot = Some(cache.insert((self.id, channels[i], k), chunk));
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// Indexes of the samples that start after a gap, for `gap_factor` (empty until the gap index is built).
@@ -388,6 +494,7 @@ impl Opened {
 impl Drop for Opened {
     fn drop(&mut self) {
         self.cancel();
+        self.store.chunks.forget(self.id);
     }
 }
 
@@ -434,6 +541,10 @@ fn dir_size(dir: &Path) -> u64 {
         })
         .unwrap_or(0)
 }
+
+/// A view from the pyramid looks for decoded chunks only when it spans at most this many (beyond, few of its edge
+/// samples would be in them).
+const LOOKUP_CHUNKS_MAX: usize = 256;
 
 /// The most unread samples a view of a file being built reads raw: past this the unread part stays empty.
 const UNREAD_RAW_MAX: usize = 1 << 22;

@@ -19,6 +19,7 @@ mod strided;
 
 use std::path::{Path, PathBuf};
 
+pub use bytes::resident_share;
 pub use error::{Error, Result};
 use tlmbench_core::Recording;
 

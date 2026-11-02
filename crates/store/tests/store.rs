@@ -121,7 +121,7 @@ fn builds_reopens_and_answers_like_raw_samples() {
 
     // stats against brute force
     let (a, b) = (123_457usize, 2_765_432usize);
-    let st = opened.stats(1, opened.recording().time_at(a), opened.recording().time_at(b)).unwrap();
+    let st = opened.stats(&[1], opened.recording().time_at(a), opened.recording().time_at(b)).unwrap().remove(0);
     let real: Vec<f64> = (a..b).map(|i| value(1, i)).filter(|v| !v.is_nan()).map(f64::from).collect();
     assert_eq!(st.count, real.len() as u64);
     assert_eq!(st.max.unwrap().0, real.iter().copied().fold(f64::MIN, f64::max));
@@ -187,6 +187,47 @@ fn an_interrupted_build_resumes_where_it_stopped() {
     for f in ["c0.pyr", "c1.pyr", "gaps.bin"] {
         assert_eq!(fs::read(dir(c1.path()).join(f)).unwrap(), fs::read(dir(c2.path()).join(f)).unwrap(), "{f}");
     }
+}
+
+/// Zoomed views of an interleaved file read through decoded chunks: the same traces, stats and values as in place,
+/// with the chunk cache within its budget.
+#[test]
+fn chunked_reads_answer_like_reads_in_place() {
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let chunk_bytes = 4 * tlmbench_core::chunks::CHUNK_SAMPLES as u64;
+    let chunked = Store::new(Some(cache.path())).with_chunk_budget(80 * chunk_bytes);
+    let in_place = Store::new(Some(cache.path())).with_chunk_budget(0);
+    let a = chunked.open(&path, None).unwrap();
+    a.build(&mut |_, _| {}).unwrap();
+    let b = in_place.open(&path, None).unwrap();
+    let (first, last) = (a.recording().info().t_first.unwrap(), a.recording().info().t_last.unwrap());
+    for vp in views(first, last) {
+        for p in [Precision::Exact, Precision::Coarse] {
+            for (x, y) in a.views(&[0, 1], vp, 4.0, p).iter().zip(&b.views(&[0, 1], vp, 4.0, p)) {
+                assert!(same(&x.trace, &y.trace), "{vp:?} {p:?}");
+            }
+        }
+        assert!(chunked.chunk_cache().bytes() <= 80 * chunk_bytes);
+    }
+    assert!(!chunked.chunk_cache().is_empty(), "zoomed views decoded chunks");
+    assert!(in_place.chunk_cache().is_empty());
+    // a 1M-sample view: chunks 1 to 16 of each channel, decoded together
+    chunked.chunk_cache().clear();
+    let t = |i: usize| a.recording().time_at(i);
+    a.views(&[0, 1], Viewport { t0: t(70_000), t1: t(1_070_000), width_px: 1736 }, 4.0, Precision::Exact);
+    assert_eq!(chunked.chunk_cache().len(), 2 * 16);
+    let (i, j) = (12_345, 2_999_999);
+    let st = |o: &tlmbench_store::Opened| o.stats(&[0, 1], t(i), t(j)).unwrap();
+    for (x, y) in st(&a).iter().zip(&st(&b)) {
+        assert_eq!((x.count, x.min, x.max), (y.count, y.min, y.max));
+        assert!((x.mean - y.mean).abs() < 1e-9);
+    }
+    let at = t(2_100_000) + 3;
+    assert_eq!(a.values_at(&[0, 1], at), b.values_at(&[0, 1], at));
+    drop(a);
+    assert!(chunked.chunk_cache().is_empty(), "closing forgets its chunks");
 }
 
 #[test]

@@ -460,6 +460,7 @@ dependencies = [
  "csv-core",
  "dirs",
  "lexical-core",
+ "libc",
  "memchr",
  "memmap2",
  "rayon",

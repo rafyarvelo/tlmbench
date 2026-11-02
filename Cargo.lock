@@ -4035,6 +4035,7 @@ dependencies = [
  "csv-core",
  "dirs",
  "lexical-core",
+ "libc",
  "memchr",
  "memmap2",
  "proptest",
@@ -4062,6 +4063,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "bytemuck",
+ "criterion",
  "libc",
  "memmap2",
  "rayon",

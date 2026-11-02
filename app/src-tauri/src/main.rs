@@ -156,11 +156,18 @@ async fn values_at(file: u32, channels: Vec<u32>, t: String, files: State<'_, Fi
     let o = files.get(file)?;
     let t = parse_time(&t)?;
     spawn_blocking(move || {
+        let n = o.recording().info().channels.len();
+        let channels: Vec<u32> = channels.into_iter().filter(|&c| (c as usize) < n).collect();
+        let chans: Vec<usize> = channels.iter().map(|&c| c as usize).collect();
+        let Some((i, ts, values)) = o.values_at(&chans, t) else { return Vec::new() };
         channels
             .iter()
-            .filter_map(|&c| {
-                let (i, ts, v) = o.nearest(c as usize, t)?;
-                Some(Nearest { channel: c, index: i as u64, t: ts.to_string(), value: (!v.is_nan()).then_some(v) })
+            .zip(values)
+            .map(|(&c, v)| Nearest {
+                channel: c,
+                index: i as u64,
+                t: ts.to_string(),
+                value: (!v.is_nan()).then_some(v),
             })
             .collect()
     })
@@ -200,23 +207,29 @@ async fn stats(
     let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
     spawn_blocking(move || {
         let num = |v: f64| (!v.is_nan()).then_some(v);
-        channels
-            .iter()
-            .map(|&c| {
-                let s = o.stats(c as usize, t0, t1)?;
-                let at = |m: Option<(f64, usize)>| m.map(|(_, i)| o.recording().time_at(i).to_string());
-                Some(ChannelStats {
-                    channel: c,
-                    count: s.count,
-                    min: s.min.map(|m| m.0),
-                    min_t: at(s.min),
-                    max: s.max.map(|m| m.0),
-                    max_t: at(s.max),
-                    mean: num(s.mean),
-                    std: num(s.std),
+        let n = o.recording().info().channels.len();
+        let channels: Vec<u32> = channels.into_iter().filter(|&c| (c as usize) < n).collect();
+        let chans: Vec<usize> = channels.iter().map(|&c| c as usize).collect();
+        let all = o.stats(&chans, t0, t1)?;
+        Some(
+            channels
+                .iter()
+                .zip(all)
+                .map(|(&c, s)| {
+                    let at = |m: Option<(f64, usize)>| m.map(|(_, i)| o.recording().time_at(i).to_string());
+                    ChannelStats {
+                        channel: c,
+                        count: s.count,
+                        min: s.min.map(|m| m.0),
+                        min_t: at(s.min),
+                        max: s.max.map(|m| m.0),
+                        max_t: at(s.max),
+                        mean: num(s.mean),
+                        std: num(s.std),
+                    }
                 })
-            })
-            .collect()
+                .collect(),
+        )
     })
     .await
     .map_err(|e| e.to_string())

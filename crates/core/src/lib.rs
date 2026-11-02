@@ -1,6 +1,7 @@
 //! TelemetryBench core: the time base, sample values, M4 downsampling, and the min/max pyramid that answers views
 //! of any span from a few thousand summaries. Pure algorithms: files and caches live in `tlmbench-store`.
 
+pub mod chunks;
 pub mod datetime;
 pub mod gaps;
 pub mod m4;

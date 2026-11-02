@@ -340,9 +340,9 @@ fn query(what: Query, common: &Common) -> Result<(), Fail> {
             let (o, chans) = open(&pick)?;
             let t = time_arg(&o, &at)?;
             w(&mut out, "channel,index,time_ns,value".into())?;
-            for c in chans {
-                let name = &o.recording().info().channels[c].name;
-                if let Some((i, ts, v)) = o.nearest(c, t) {
+            if let Some((i, ts, values)) = o.values_at(&chans, t) {
+                for (c, v) in chans.iter().zip(values) {
+                    let name = &o.recording().info().channels[*c].name;
                     let v = if v.is_nan() { String::new() } else { v.to_string() };
                     w(&mut out, format!("{},{i},{ts},{v}", csv_field(name)))?;
                 }
@@ -356,9 +356,8 @@ fn query(what: Query, common: &Common) -> Result<(), Fail> {
             let (t0, t1) = span_of(&o, &span)?;
             w(&mut out, "channel,count,min,min_time_ns,max,max_time_ns,mean,std".into())?;
             let num = |v: f64| if v.is_nan() { String::new() } else { v.to_string() };
-            for c in chans {
+            for (&c, s) in chans.iter().zip(o.stats(&chans, t0, t1).expect("built above")) {
                 let name = &o.recording().info().channels[c].name;
-                let s = o.stats(c, t0, t1).expect("built above");
                 let at = |m: Option<(f64, usize)>| {
                     m.map_or((String::new(), String::new()), |(v, i)| (num(v), o.recording().time_at(i).to_string()))
                 };
