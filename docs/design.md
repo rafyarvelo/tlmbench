@@ -155,6 +155,12 @@ Data is stored once as raw columns plus a precomputed min/max pyramid, so any zo
 - Accepted The pyramid stores levels from 256 samples per summary (k = 4 on the 4^k grid), ×4 above that, about 11% of raw f32 data. Storing every level from 4 samples would cost about 4.7× the raw data, since a summary is about 88 bytes.
 - Accepted Gaps are time jumps over 4 × the median sample interval by default; the factor is a per-channel setting.
 - Accepted The cache evicts the least recently opened files when it passes its cap (default 20 GB) or when free disk drops below 10 GB, whichever comes first.
+- Proposed Pyramid files: one folder per recording, `pyr/v1/<key>/` under the cache root, holding `manifest.json` and one file per channel with its stored levels back to back (level 4 first). A summary is an 88-byte little-endian record: `t_first`, `t_last` (times of its first and last samples), `min` and `max` as f64 with their sample indexes, `first` and `last` (the values of its first and last samples, NaN included), `sum`, `sum of squares` and the count of non-NaN samples. Summaries are aligned to sample index (summary s of level k holds samples s·4^k to (s+1)·4^k − 1), so finding one needs no search. Values are stored as f64, exact for every type except 64-bit integers past 2^53.
+- Proposed Pyramid versioning and invalidation: the key is a BLAKE3 hash of the source's fingerprint (as for CSV), the decoder and its descriptor, and every setting that changes values (scale and offset now, missing values later). Any of these changing gives a new key, so stale summaries are never read; a layout change bumps `v1`. On open each file's size is checked against the manifest. Old keys are left for the cache cap to evict.
+- Proposed Interrupted builds resume: a build writes into `pyr/v1/<key>.building/` in blocks of 4^10 samples per channel, in file order, and after each block records its high-water mark in a small file replaced by rename. A later open (the app's or the CLI's) continues from the mark; the levels coarser than a block are made from the block summaries at the end, then the folder is renamed into place. A lock file keeps two processes from building the same key; the second follows the first's progress.
+- Proposed The gap index is stored per time base (channels of a recording share their times) in `gaps.bin` beside the pyramid: every jump over 2 × the median interval, as (sample index, length in ns), sorted, with the median in the manifest. The per-channel factor N (default 4, at least 2) filters it at query time, so changing N rebuilds nothing. The median comes from up to 1M intervals sampled evenly across the file. Fixed-rate channels have no gaps and no file.
+- Proposed The LRU chunk store holds decoded chunks only: 64k samples of one channel as a contiguous native array, for data that isn't stored that way (interleaved records like the 20-channel `.tlm`, big-endian, scaled fields). It counts against the 25% of RAM budget; chunks in use are reference-counted and survive eviction until released. Pyramid files and data already contiguous (CSV cache columns, one-channel `.tlm`) are read through mmap and left to the OS page cache, outside the budget. Decoding a block of records fills the chunks of every channel on screen at once.
+- Proposed A new crate, `tlmbench-store`, owns the cache root, fingerprints, pyramid and gap files, background builds and the LRU; `tlmbench-core` keeps the pure algorithms (M4, summaries, merging, stats) with no I/O, and `tlmbench-decode` keeps the decoders. The CLI and the app open recordings through the store.
 
 ## Downsampling
 
@@ -186,6 +192,9 @@ Use min/max-per-pixel (M4) as the default renderer: it is exact for line charts,
 - Accepted Raw samples are sent when the view holds at most 4W samples, not W: that is no more points than M4 would send, and raw is the exact picture. Every trace also includes the nearest sample beyond each edge of the view, so the line runs to the edges while panning.
 - Accepted Bucket width is a whole number of nanoseconds (the span divided by W, at least 1 ns), so the global grid `floor(t / bucket_width)` is exact integer arithmetic. Ties for min or max go to the earliest sample.
 - Accepted Gaps in Phase 1: a bucket with no samples, or only NaN, breaks the line (one gap for a run of empty buckets). Time jumps between samples in a raw view don't break it yet; that comes with the gap index in the pyramid phase.
+- Proposed Views come from the pyramid and stay pixel-exact: a pixel bucket's index range splits into whole summaries of the coarsest level that fits, plus a straddling summary at each edge. A straddler's min or max counts where its sample index falls; only when a straddler's extreme lies on the far side and it could still hold the bucket's extreme on the near side are its raw samples read (at most 255, since level 4 is the finest stored). Each bucket's first and last samples are read raw. The result equals M4 over raw samples point for point, which property tests check. Views of at most about 64 samples per pixel are reduced from raw samples as today.
+- Proposed A summary whose first or last value is NaN but which holds other samples has its raw samples read to find the first or last real one, so NaN handling matches raw M4. This happens only at the edges of NaN runs.
+- Proposed Gaps from the gap index break the line at every zoom: a NaN point goes between the two samples of each indexed jump inside the view, in raw and M4 views alike.
 
 ## Rendering
 
@@ -213,6 +222,9 @@ Rust sends each trace as a compact binary buffer of at most \~4W points, and Web
 - Accepted Each trace header also carries `reduce_us`, the core's own time to reduce it: WebKit rounds the page's clocks to 1 ms, too coarse to time a sub-millisecond query.
 - Accepted The app's UI is TypeScript and Vite with no framework while it is one pane; the framework is chosen when the prototype's UI is ported.
 - Accepted Views over 256k samples are reduced on several threads (rayon), so a 1M-sample view takes about 0.5 ms on an M1 instead of 1.7 ms.
+- Proposed Phase 2 IPC: `view` takes every pane of a tab at once (each with its channels and width) under one generation, so the stack redraws together; the overview is one more entry. Wire version 2 adds per trace flags (coarse, from pyramid or raw) and the time up to which the file has been read. `open` returns a channel that streams build progress. `values_at {file, channels, t}` returns each channel's nearest raw sample (time and value) for hover and cursors; `stats {file, channels, t0, t1}` returns exact min, max, mean, standard deviation and count from the pyramid plus raw edges, for Measure.
+- Proposed The UI stays TypeScript without a framework through Phase 2: the plot stack, overview, hover and cursors are canvas and a little DOM. The framework is chosen when Explorer, tables and menus are ported.
+- Proposed Phase 2 picks channels from a plain list in a left sidebar (checkbox plots into the selected pane, as in the prototype's Explorer rows); the full Explorer comes with the port.
 
 ### Loading what's on screen
 
@@ -244,6 +256,7 @@ In the app the summary is cached in the app cache after the first open, so chart
 - **Coarse charts on a first open.**
   - Accepted Draw from the coarse levels as soon as they cover the file, labelled "coarse", then refine.
   - Rejected Wait for the full summary, as the prototype does.
+  - Proposed Every coarse summary needs every raw sample under it, so no level can cover the file before one full read, and by then every stored level is built too. So a first open reads the file once, in order, at disk speed, and panes fill in left to right with exact data; the part not read yet is hatched and says "Reading 43%". A view zoomed into that part is reduced straight from raw samples. "Coarse" then labels a view drawn from whole summaries before its edge samples are read (about 1 pixel of difference at most, every extreme still shown); it sharpens a moment later.
 
 ## Live streaming
 
@@ -941,6 +954,7 @@ The export is a folder of static files: `index.html`, the viewer's script and st
 - Accepted Export budget 250 MB per folder: Full when it fits, otherwise Light with raw windows around events and violations, then coarser levels; one-file variant 25 MB.
 - Accepted `check` exit codes 0/1/2/3, with JUnit, CSV, JSON and HTML reports, and results cached by file contents and set version.
 - Accepted Python bindings in v1, over the same core library.
+- Proposed Two more commands: `tlmbench cache` (build, list and clear cache entries, as Settings does) and `tlmbench query` (a view as M4 points, values at a time, or exact stats over a range, as CSV or JSON). They make the store testable headlessly and are what the Python bindings wrap. `info` also reports gaps once the gap index exists.
 
 ### Open questions
 
@@ -1003,6 +1017,7 @@ The command-line tool ships in v1 with the app. It is built on the same core fro
 - Accepted How the Phase 1 gate is judged (`just gate`): a scripted 30 s sweep in the release app (zoom from the whole file to 1 s and back, pans), one view per frame. It passes when at most 1% of frames miss a vsync (an interval over 1.5 refresh periods) and none exceeds 3 periods, and when the core reduces views of up to 1M samples in p95 under 5 ms, timed in Rust. Missed vsyncs replace a 16.7 ms p95 because WebKit rounds the page's clocks to 1 ms. Whole-file views are reported, not gated. A run in which the window was hidden counts as invalid, not as a fail.
 - Accepted The Phase 1 gate uses one 100M-sample trace; the 20-trace target is reported later, once the pyramid exists.
 - Accepted How Gate 2 (10 GB first paint under 1 s) is judged, since reading 10 GB takes at least 3 s on the development Mac: reopening a 10 GB recording with its pyramid cached, after the OS file cache is flushed (`purge`), draws the whole view in under 1 s; a first-ever open shows axes and build progress in under 1 s and builds the pyramid at disk speed (reported, not gated). The recording is a 10 GB `.tlm` of 20 channels × 125M f32 samples, which also reports the 20-trace target. It is generated on the internal disk for the run and deleted afterwards.
+- Proposed `just gate2` builds the pyramid with the CLI, flushes the file cache with `sudo purge`, then opens the file in the release app and times the whole view drawn; then it clears that cache entry, flushes again and times a first open (axes and progress, then the build). The 20 channels sit in a stack of panes; a 30 s sweep like Phase 1's reports the 20-trace frame times. `just gen --size 10G --channels 20` writes the file.
 
 ## Risks
 
