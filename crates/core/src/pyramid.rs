@@ -337,8 +337,10 @@ impl From<Summary> for Stats {
 
 /// A coarse view: each pixel bucket from whole summaries, with values from the summaries, so raw samples are read
 /// only within 256 samples of the view's two edges and of buckets small enough to reduce raw (and the one beyond
-/// each edge). Every extreme is drawn at its true time. A boundary between two such buckets rounds up to the finest
-/// summaries' grid, which moves a sample at most a quarter of a pixel into the next one; no sample is left out.
+/// each edge). Every extreme is drawn at its true time. A boundary between two such buckets rounds up to one grid
+/// for the view, summaries of the coarsest level at most a quarter of the smallest such bucket: it moves a sample at
+/// most a quarter of a pixel into the next one, leaves none out, and reads no finer summary than the grid's
+/// (finer ones only next to the exact edges).
 /// Shown first, labelled "coarse", until [`m4`] answers. Buckets past a partly built pyramid are left empty.
 pub fn m4_coarse<T: Times + ?Sized, S: Samples + ?Sized>(
     times: &T,
@@ -352,13 +354,23 @@ pub fn m4_coarse<T: Times + ?Sized, S: Samples + ?Sized>(
     // both, so they share no sample and leave none out). The view's outer edges and the edges of buckets small
     // enough to reduce from raw samples stay exact.
     let bw = vp.bucket_ns();
-    let edge = |b: i64| times.lower_bound(b.saturating_mul(bw));
     let (b_first, b_last) = (vp.t0.div_euclid(bw), (vp.t1 - 1).div_euclid(bw));
-    let big = |b: i64| edge(b + 1) - edge(b) >= MIN_BUCKET_SAMPLES;
-    let g = span(MIN_LEVEL);
+    // where each pixel starts (as reduce_with places them), once
+    let starts: Vec<usize> = (b_first..=b_last + 1).map(|b| times.lower_bound(b.saturating_mul(bw))).collect();
+    let size = |b: i64| starts[(b - b_first + 1) as usize] - starts[(b - b_first) as usize];
+    let big = |b: i64| size(b) >= MIN_BUCKET_SAMPLES;
+    // the grid: summaries of the coarsest level at most a quarter of the smallest pixel answered from summaries, so
+    // a boundary moves at most a quarter pixel and every pixel is whole summaries of that level or coarser
+    let smallest = (b_first..=b_last)
+        .filter(|&b| big(b) && starts[(b - b_first + 1) as usize] <= pyr.len)
+        .map(size)
+        .min()
+        .unwrap_or(MIN_BUCKET_SAMPLES);
+    let grid = span((MIN_LEVEL..=pyr.top()).rev().find(|&k| 4 * span(k) <= smallest).unwrap_or(MIN_LEVEL));
+    let fine = span(MIN_LEVEL);
     let snap = |i: usize, left: i64| {
         let inner = left >= b_first && left < b_last && big(left) && big(left + 1);
-        if inner && i < pyr.len { i.next_multiple_of(g).min(pyr.len) } else { i }
+        if inner && i < pyr.len { i.next_multiple_of(grid).min(pyr.len) } else { i }
     };
     let (kind, emits) = reduce_with(times, vp, |start, end, bucket_t, out| {
         if end - start < MIN_BUCKET_SAMPLES {
@@ -369,9 +381,10 @@ pub fn m4_coarse<T: Times + ?Sized, S: Samples + ?Sized>(
         }
         let b = bucket_t.div_euclid(bw);
         let (a, b) = (snap(start, b - 1), snap(end, b));
-        // raw samples up to the grid at exact edges, whole summaries between
-        let a1 = a.next_multiple_of(g).min(b);
-        let b1 = if b == pyr.len { b } else { b / g * g }.max(a1);
+        // at an exact edge: raw samples up to the finest summaries, then finer summaries up to the grid; between
+        // grid points, whole summaries of the grid's level or coarser
+        let a1 = a.next_multiple_of(fine).min(b);
+        let b1 = if b == pyr.len { b } else { b / fine * fine }.max(a1);
         let mut m: Option<Summary> = None;
         let mut add = |s: Summary| m = Some(m.map_or(s, |p| p.merge(&s)));
         if a < a1 {
