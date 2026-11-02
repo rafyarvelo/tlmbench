@@ -328,7 +328,8 @@ fn query(what: Query, common: &Common) -> Result<(), Fail> {
             let (t0, t1) = span_of(&o, &span)?;
             w(&mut out, "channel,time_ns,value".into())?;
             let precision = if coarse { Precision::Coarse } else { Precision::Exact };
-            for v in o.views(&chans, Viewport { t0, t1, width_px: width.max(1) }, gap_factor, precision) {
+            let factors = vec![gap_factor; chans.len()];
+            for v in o.views(&chans, Viewport { t0, t1, width_px: width.max(1) }, &factors, precision) {
                 let name = &o.recording().info().channels[v.channel].name;
                 for (t, y) in v.trace.t.iter().zip(&v.trace.y) {
                     let y = if y.is_nan() { String::new() } else { y.to_string() };

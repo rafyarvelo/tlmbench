@@ -5,9 +5,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use tlmbench_core::{TraceKind, Viewport};
+use tlmbench_decode::descriptor::TimeUnit;
 use tlmbench_decode::descriptor::{DType, Descriptor, Endian, Field, SCHEMA, TimeSpec};
 use tlmbench_decode::reference;
-use tlmbench_store::{Limits, Precision, Status, Store};
+use tlmbench_store::{Limits, Precision, Request, Status, Store};
 
 /// Samples per channel: a little over three 4^10-sample blocks.
 const N: usize = 3 * (1 << 20) + 12_345;
@@ -110,7 +111,7 @@ fn builds_reopens_and_answers_like_raw_samples() {
         }
     }
     let vp = Viewport { t0: first, t1: last + 1, width_px: 1999 };
-    let coarse = opened.views(&[0, 1], vp, 4.0, Precision::Coarse);
+    let coarse = opened.views(&[0, 1], vp, &[4.0, 4.0], Precision::Coarse);
     assert!(coarse.iter().all(|v| v.coarse && v.from_pyramid));
     assert!(coarse[0].trace.y.contains(&50.0), "coarse views keep every spike too");
     let whole = opened.view(0, vp, 4.0, Precision::Exact);
@@ -205,7 +206,7 @@ fn chunked_reads_answer_like_reads_in_place() {
     let (first, last) = (a.recording().info().t_first.unwrap(), a.recording().info().t_last.unwrap());
     for vp in views(first, last) {
         for p in [Precision::Exact, Precision::Coarse] {
-            for (x, y) in a.views(&[0, 1], vp, 4.0, p).iter().zip(&b.views(&[0, 1], vp, 4.0, p)) {
+            for (x, y) in a.views(&[0, 1], vp, &[4.0, 4.0], p).iter().zip(&b.views(&[0, 1], vp, &[4.0, 4.0], p)) {
                 assert!(same(&x.trace, &y.trace), "{vp:?} {p:?}");
             }
         }
@@ -216,7 +217,7 @@ fn chunked_reads_answer_like_reads_in_place() {
     // a 1M-sample view: chunks 1 to 16 of each channel, decoded together
     chunked.chunk_cache().clear();
     let t = |i: usize| a.recording().time_at(i);
-    a.views(&[0, 1], Viewport { t0: t(70_000), t1: t(1_070_000), width_px: 1736 }, 4.0, Precision::Exact);
+    a.views(&[0, 1], Viewport { t0: t(70_000), t1: t(1_070_000), width_px: 1736 }, &[], Precision::Exact);
     assert_eq!(chunked.chunk_cache().len(), 2 * 16);
     let (i, j) = (12_345, 2_999_999);
     let st = |o: &tlmbench_store::Opened| o.stats(&[0, 1], t(i), t(j)).unwrap();
@@ -228,6 +229,83 @@ fn chunked_reads_answer_like_reads_in_place() {
     assert_eq!(a.values_at(&[0, 1], at), b.values_at(&[0, 1], at));
     drop(a);
     assert!(chunked.chunk_cache().is_empty(), "closing forgets its chunks");
+}
+
+/// A batch answers each entry (its own channels, span and width) as a view of it alone would.
+#[test]
+fn a_batch_answers_like_its_entries_alone() {
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let store = Store::new(Some(cache.path()));
+    let o = store.open(&path, None).unwrap();
+    o.build(&mut |_, _| {}).unwrap();
+    let t = |i: usize| o.recording().time_at(i);
+    let zoomed = |w| Viewport { t0: t(1_000_000), t1: t(1_400_000), width_px: w };
+    let whole = Viewport { t0: t(0), t1: t(N - 1) + 1, width_px: 1200 };
+    let requests = [
+        Request { channels: vec![0], gap_factors: vec![4.0], vp: zoomed(900) },
+        Request { channels: vec![1, 0], gap_factors: vec![], vp: zoomed(437) },
+        Request { channels: vec![1], gap_factors: vec![4.0], vp: whole },
+    ];
+    for p in [Precision::Coarse, Precision::Exact] {
+        let batch = o.view_batch(&requests, p);
+        assert_eq!(batch.len(), 3);
+        for (r, views) in requests.iter().zip(&batch) {
+            let alone = o.views(&r.channels, r.vp, &r.gap_factors, p);
+            assert_eq!(views.iter().map(|v| v.channel).collect::<Vec<_>>(), r.channels);
+            assert!(views.iter().zip(&alone).all(|(a, b)| same(&a.trace, &b.trace) && a.coarse == b.coarse));
+        }
+    }
+}
+
+/// Each channel breaks its line at its own gap factor, from the one gap index (nothing is rebuilt).
+#[test]
+fn gap_factors_apply_per_channel() {
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let field = |name: &str, dtype, offset| Field {
+        name: name.into(),
+        dtype,
+        offset,
+        unit: None,
+        scale: 1.0,
+        value_offset: 0.0,
+    };
+    let desc = Descriptor {
+        schema: SCHEMA,
+        name: None,
+        endian: Endian::Little,
+        header_size: 0,
+        record_size: 12,
+        time: TimeSpec::Field { field: "t".into(), unit: TimeUnit::Us, t0_ns: 0 },
+        fields: vec![field("t", DType::I64, 0), field("a", DType::F32, 8)],
+    };
+    let path = data.path().join("gaps.tlm");
+    let mut w = std::io::BufWriter::new(fs::File::create(&path).unwrap());
+    reference::write_header(&mut w, &desc).unwrap();
+    // 100 µs steps, with a 3× jump before sample 3000 and a 6× jump before sample 6000
+    let mut t = 0i64;
+    for i in 0..10_000 {
+        t += match i {
+            3000 => 300,
+            6000 => 600,
+            _ => 100,
+        };
+        w.write_all(&t.to_le_bytes()).unwrap();
+        w.write_all(&((i % 17) as f32).to_le_bytes()).unwrap();
+    }
+    w.flush().unwrap();
+    drop(w);
+    let o = Store::new(Some(cache.path())).open(&path, None).unwrap();
+    o.build(&mut |_, _| {}).unwrap();
+    let vp = Viewport { t0: 0, t1: t * 1000 + 1, width_px: 100 };
+    let gaps = |f: f64| o.view(0, vp, f, Precision::Exact).trace.y.iter().filter(|y| y.is_nan()).count();
+    assert_eq!((gaps(2.0), gaps(4.0), gaps(8.0)), (2, 1, 0));
+    let both = o.views(&[0, 0], vp, &[2.0, 8.0], Precision::Exact);
+    let nan = |k: usize| both[k].trace.y.iter().filter(|y| y.is_nan()).count();
+    assert_eq!((nan(0), nan(1)), (2, 0));
+    assert_eq!(gaps(1.0), 2, "factors below 2 count as 2");
 }
 
 #[test]

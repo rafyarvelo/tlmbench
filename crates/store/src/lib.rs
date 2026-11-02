@@ -35,6 +35,7 @@ pub use error::{Error, Result};
 use rayon::prelude::*;
 use serde::Serialize;
 use tlmbench_core::chunks::{CHUNK_SAMPLES, Held, chunk_of};
+use tlmbench_core::gaps::{DEFAULT_FACTOR, MIN_FACTOR};
 use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Pyramid, Stats};
 use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
 use tlmbench_decode::OpenOptions;
@@ -249,6 +250,36 @@ pub enum Precision {
     Exact,
 }
 
+/// One entry of a view batch: channels (each with its gap factor) reduced for a viewport.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Request {
+    pub channels: Vec<usize>,
+    /// A time jump over this many median intervals breaks the line, per channel (missing: [`DEFAULT_FACTOR`]; at
+    /// least [`MIN_FACTOR`]).
+    pub gap_factors: Vec<f64>,
+    pub vp: Viewport,
+}
+
+/// How [`Opened::view_batch`] answers one request.
+#[derive(Clone, Copy, Debug)]
+struct Plan {
+    /// Samples `lo..hi` are in view.
+    lo: usize,
+    hi: usize,
+    /// Pixels of at least [`MIN_BUCKET_SAMPLES`]: summaries answer them (else they are reduced raw).
+    coarse_pays: bool,
+    /// Read level 4 through before an exact view of a cold file.
+    warm: bool,
+}
+
+impl Plan {
+    /// The chunks a raw reduction of the view reads, with the whole pixels at its edges.
+    fn chunks(&self, n: usize) -> Vec<usize> {
+        let (a, b) = (self.lo.saturating_sub(MIN_BUCKET_SAMPLES), (self.hi + MIN_BUCKET_SAMPLES).min(n));
+        if a < b { (chunk_of(a)..=chunk_of(b - 1)).collect() } else { Vec::new() }
+    }
+}
+
 /// A trace, and how it was made.
 #[derive(Clone, Debug)]
 pub struct View {
@@ -308,16 +339,59 @@ impl Opened {
     /// Channel `channel` reduced for `vp`, with lines broken at gaps over `gap_factor` × the median interval.
     /// From the pyramid where it is built (exact: the same result as raw samples, faster).
     pub fn view(&self, channel: usize, vp: Viewport, gap_factor: f64, precision: Precision) -> View {
-        self.views(&[channel], vp, gap_factor, precision).pop().expect("one channel")
+        self.views(&[channel], vp, &[gap_factor], precision).pop().expect("one channel")
     }
 
-    /// [`Opened::view`] of several channels, in parallel (cold reads of different files overlap).
-    pub fn views(&self, channels: &[usize], vp: Viewport, gap_factor: f64, precision: Precision) -> Vec<View> {
+    /// [`Opened::view`] of several channels, in parallel (cold reads of different files overlap), each with its
+    /// gap factor (`gap_factors[i]` for `channels[i]`; missing ones are [`DEFAULT_FACTOR`]).
+    pub fn views(&self, channels: &[usize], vp: Viewport, gap_factors: &[f64], precision: Precision) -> Vec<View> {
+        let req = Request { channels: channels.to_vec(), gap_factors: gap_factors.to_vec(), vp };
+        self.view_batch(std::slice::from_ref(&req), precision).pop().expect("one request")
+    }
+
+    /// Every request of a batch (the panes of a tab and the overview, each with its own viewport and width), with
+    /// the chunks that raw reductions read decoded once for all of them.
+    pub fn view_batch(&self, requests: &[Request], precision: Precision) -> Vec<Vec<View>> {
         let g = self.loaded.read().unwrap();
         let l = g.as_ref();
-        let breaks = l.map(|l| l.gaps.breaks(gap_factor)).unwrap_or_default();
-        let built_until =
-            l.filter(|l| !l.complete).map(|l| if l.done == 0 { i64::MIN } else { self.rec.time_at(l.done - 1) });
+        let n = self.rec.info().samples;
+        let plans: Vec<Plan> = requests.iter().map(|r| self.plan(r, l, precision)).collect();
+        // raw reductions read every sample in view: their chunks are decoded for all their channels at once
+        let mut chans: Vec<usize> = Vec::new();
+        let mut ks: Vec<usize> = Vec::new();
+        for (r, p) in requests.iter().zip(&plans).filter(|(_, p)| !p.coarse_pays) {
+            chans.extend(&r.channels);
+            ks.extend(p.chunks(n));
+        }
+        chans.sort_unstable();
+        chans.dedup();
+        ks.sort_unstable();
+        ks.dedup();
+        let decoded: Vec<Held> = self.hold(&chans, &ks, true);
+        // views from the pyramid read a few samples at each pixel edge: through the chunks already decoded, else
+        // in place
+        requests
+            .iter()
+            .zip(&plans)
+            .map(|(r, p)| {
+                let held: Vec<Held> = if !p.coarse_pays {
+                    r.channels.iter().map(|c| decoded[chans.binary_search(c).expect("listed")].clone()).collect()
+                } else {
+                    let ks = p.chunks(n);
+                    if ks.len() <= LOOKUP_CHUNKS_MAX {
+                        self.hold(&r.channels, &ks, false)
+                    } else {
+                        r.channels.iter().map(|_| Held::default()).collect()
+                    }
+                };
+                self.views_planned(r, p, l, precision, &held)
+            })
+            .collect()
+    }
+
+    /// How a request is answered: its samples, whether summaries pay, whether to read level 4 through first.
+    fn plan(&self, r: &Request, l: Option<&Loaded>, precision: Precision) -> Plan {
+        let vp = r.vp;
         let (lo, hi) = (self.rec.lower_bound(vp.t0), self.rec.lower_bound(vp.t1));
         let in_view = hi.saturating_sub(lo);
         let coarse_pays = in_view / vp.width_px.max(1) as usize >= MIN_BUCKET_SAMPLES;
@@ -327,8 +401,31 @@ impl Opened {
         let warm = precision == Precision::Exact
             && coarse_pays
             && in_view / vp.width_px.max(1) as usize <= 1024 * 256
-            && l.zip(channels.first()).and_then(|(l, &c)| l.cold(c, lo, hi.min(l.done))) == Some(true);
-        if warm {
+            && l.zip(r.channels.first()).and_then(|(l, &c)| l.cold(c, lo, hi.min(l.done))) == Some(true);
+        Plan { lo, hi, coarse_pays, warm }
+    }
+
+    fn views_planned(
+        &self,
+        r: &Request,
+        p: &Plan,
+        l: Option<&Loaded>,
+        precision: Precision,
+        held: &[Held],
+    ) -> Vec<View> {
+        let (vp, lo, hi) = (r.vp, p.lo, p.hi);
+        let built_until =
+            l.filter(|l| !l.complete).map(|l| if l.done == 0 { i64::MIN } else { self.rec.time_at(l.done - 1) });
+        // one break list per distinct factor
+        let factor = |i: usize| r.gap_factors.get(i).copied().unwrap_or(DEFAULT_FACTOR).max(MIN_FACTOR);
+        let mut breaks: Vec<(f64, Vec<usize>)> = Vec::new();
+        for i in 0..r.channels.len() {
+            if !breaks.iter().any(|(f, _)| *f == factor(i)) {
+                breaks.push((factor(i), l.map(|l| l.gaps.breaks(factor(i))).unwrap_or_default()));
+            }
+        }
+        let breaks_of = |i: usize| &breaks.iter().find(|(f, _)| *f == factor(i)).expect("listed").1;
+        if p.warm {
             // every pixel edge reads raw samples next to it: fetch them for all channels at once
             let bw = vp.bucket_ns();
             let (b0, b1) = (vp.t0.div_euclid(bw), (vp.t1 - 1).div_euclid(bw) + 1);
@@ -338,21 +435,14 @@ impl Opened {
                 .collect();
             self.rec.prefetch(&edges);
         }
-        // raw reductions read every sample in view: decode the chunks for all channels at once; views from the
-        // pyramid read a few samples at each pixel edge, through the chunks already decoded or else in place
-        let n = self.rec.info().samples;
-        let (a, b) = (lo.saturating_sub(MIN_BUCKET_SAMPLES), (hi + MIN_BUCKET_SAMPLES).min(n));
-        let ks: Vec<usize> = if a < b { (chunk_of(a)..=chunk_of(b - 1)).collect() } else { Vec::new() };
-        let held = match coarse_pays {
-            false => self.hold(channels, &ks, true),
-            true if ks.len() <= LOOKUP_CHUNKS_MAX => self.hold(channels, &ks, false),
-            true => channels.iter().map(|_| Held::default()).collect(),
-        };
-        channels
+        r.channels
             .par_iter()
-            .zip(&held)
-            .map(|(&channel, held)| {
-                if warm && let Some(l) = l {
+            .enumerate()
+            .zip(held)
+            .map(|((i, &channel), held)| {
+                if p.warm
+                    && let Some(l) = l
+                {
                     l.warm(channel, lo, hi.min(l.done));
                 }
                 let mut pyr = l.and_then(|l| l.pyramid(channel));
@@ -363,13 +453,14 @@ impl Opened {
                 if let Some(p) = &mut pyr {
                     p.raw_past = !skip_unread;
                 }
-                let coarse = precision == Precision::Coarse && coarse_pays && pyr.is_some();
+                let coarse = precision == Precision::Coarse && p.coarse_pays && pyr.is_some();
+                let breaks = breaks_of(i);
                 let trace = match &pyr {
-                    Some(p) if coarse => self.rec.view_coarse(channel, vp, p, &breaks, held),
+                    Some(py) if coarse => self.rec.view_coarse(channel, vp, py, breaks, held),
                     None if skip_unread => {
                         Trace { kind: TraceKind::Raw, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] }
                     }
-                    _ => self.rec.view(channel, vp, pyr.as_ref(), &breaks, held),
+                    _ => self.rec.view(channel, vp, pyr.as_ref(), breaks, held),
                 };
                 View { channel, trace, from_pyramid: pyr.is_some(), coarse, built_until }
             })

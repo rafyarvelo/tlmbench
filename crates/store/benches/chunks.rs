@@ -77,16 +77,16 @@ fn bench_zoomed(c: &mut Criterion) {
 
     let mut g = c.benchmark_group(format!("zoomed_1M_x{CHANNELS}"));
     g.sample_size(30);
-    g.bench_function("in_place", |bch| bch.iter(|| black_box(a.views(&all, vp, 4.0, Precision::Exact))));
+    g.bench_function("in_place", |bch| bch.iter(|| black_box(a.views(&all, vp, &[], Precision::Exact))));
     g.bench_function("cold", |bch| {
         bch.iter_batched(
             || chunked.chunk_cache().clear(),
-            |()| black_box(b.views(&all, vp, 4.0, Precision::Exact)),
+            |()| black_box(b.views(&all, vp, &[], Precision::Exact)),
             BatchSize::PerIteration,
         )
     });
-    b.views(&all, vp, 4.0, Precision::Exact);
-    g.bench_function("warm", |bch| bch.iter(|| black_box(b.views(&all, vp, 4.0, Precision::Exact))));
+    b.views(&all, vp, &[], Precision::Exact);
+    g.bench_function("warm", |bch| bch.iter(|| black_box(b.views(&all, vp, &[], Precision::Exact))));
     g.finish();
 }
 
