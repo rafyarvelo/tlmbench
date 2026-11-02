@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 use std::path::Path;
 
-use tlmbench_core::{ChannelInfo, RateTimes, Recording, RecordingInfo, TimeSource, Times, Trace, Viewport, m4};
+use tlmbench_core::{ChannelInfo, ChannelOp, Channels, RateTimes, RecordingInfo, TimeSource, Times, TimesOp};
 
 use crate::bytes::{self, Bytes};
 use crate::descriptor::{DType, Descriptor, Endian, TimeSpec};
@@ -143,82 +143,85 @@ impl<T: Times> TimesRef for T {
     }
 }
 
-impl Recording for FixedWidth {
-    fn info(&self) -> &RecordingInfo {
+impl Channels for FixedWidth {
+    fn describe(&self) -> &RecordingInfo {
         &self.info
     }
 
-    fn trace(&self, channel: usize, vp: Viewport) -> Trace {
+    fn dispatch<O: ChannelOp>(&self, channel: usize, op: O) -> O::Out {
         let field = &self.desc.fields[self.channels[channel]];
-        let records = self.records_bytes();
-        let stride = self.desc.record_size as usize;
-        let offset = field.offset as usize;
-        let big_endian = self.desc.endian == Endian::Big;
+        let (records, stride, offset) = (self.records_bytes(), self.desc.record_size as usize, field.offset as usize);
+        let big = self.desc.endian == Endian::Big;
 
-        fn run<V: Pod>(
-            times: &impl Times,
-            records: &[u8],
+        struct WithTimes<'a, O> {
+            op: O,
+            dtype: DType,
+            records: &'a [u8],
             offset: usize,
             stride: usize,
             big: bool,
-            vp: Viewport,
-        ) -> Trace {
-            // contiguous, native order and aligned: read the map as a slice (the fast path)
-            if stride == V::SIZE
-                && offset == 0
-                && !big
-                && cfg!(target_endian = "little")
-                && let Ok(values) = bytemuck::try_cast_slice::<u8, V>(records)
-            {
-                return m4(times, values, vp);
-            }
-            m4(times, &Strided::<V> { records, offset, stride, big_endian: big, _v: PhantomData }, vp)
         }
-
-        fn by_type(dtype: DType, times: &impl Times, r: &[u8], o: usize, s: usize, b: bool, vp: Viewport) -> Trace {
-            match dtype {
-                DType::I8 => run::<i8>(times, r, o, s, b, vp),
-                DType::I16 => run::<i16>(times, r, o, s, b, vp),
-                DType::I32 => run::<i32>(times, r, o, s, b, vp),
-                DType::I64 => run::<i64>(times, r, o, s, b, vp),
-                DType::U8 => run::<u8>(times, r, o, s, b, vp),
-                DType::U16 => run::<u16>(times, r, o, s, b, vp),
-                DType::U32 => run::<u32>(times, r, o, s, b, vp),
-                DType::U64 => run::<u64>(times, r, o, s, b, vp),
-                DType::F32 => run::<f32>(times, r, o, s, b, vp),
-                DType::F64 => run::<f64>(times, r, o, s, b, vp),
+        impl<O: ChannelOp> TimesOp for WithTimes<'_, O> {
+            type Out = O::Out;
+            fn run<T: Times + ?Sized>(self, times: &T) -> O::Out {
+                fn run<V: Pod, O: ChannelOp, T: Times + ?Sized>(w: WithTimes<O>, times: &T) -> O::Out {
+                    // contiguous, native order and aligned: read the map as a slice (the fast path)
+                    if w.stride == V::SIZE
+                        && w.offset == 0
+                        && !w.big
+                        && cfg!(target_endian = "little")
+                        && let Ok(values) = bytemuck::try_cast_slice::<u8, V>(w.records)
+                    {
+                        return w.op.run(times, values);
+                    }
+                    let (records, offset, stride, big_endian) = (w.records, w.offset, w.stride, w.big);
+                    w.op.run(times, &Strided::<V> { records, offset, stride, big_endian, _v: PhantomData })
+                }
+                match self.dtype {
+                    DType::I8 => run::<i8, _, _>(self, times),
+                    DType::I16 => run::<i16, _, _>(self, times),
+                    DType::I32 => run::<i32, _, _>(self, times),
+                    DType::I64 => run::<i64, _, _>(self, times),
+                    DType::U8 => run::<u8, _, _>(self, times),
+                    DType::U16 => run::<u16, _, _>(self, times),
+                    DType::U32 => run::<u32, _, _>(self, times),
+                    DType::U64 => run::<u64, _, _>(self, times),
+                    DType::F32 => run::<f32, _, _>(self, times),
+                    DType::F64 => run::<f64, _, _>(self, times),
+                }
             }
         }
+        self.dispatch_times(WithTimes { op, dtype: field.dtype, records, offset, stride, big })
+    }
 
-        let mut trace = match &self.desc.time {
-            TimeSpec::Rate { rate_hz, t0_ns } => {
-                let t = RateTimes::from_rate(*t0_ns, *rate_hz, self.records);
-                by_type(field.dtype, &t, records, offset, stride, big_endian, vp)
-            }
-            TimeSpec::Index => {
-                let t = RateTimes::from_rate(0, 1.0, self.records);
-                by_type(field.dtype, &t, records, offset, stride, big_endian, vp)
-            }
-            TimeSpec::Field { field: tname, unit, t0_ns } => {
-                let tf = self.desc.fields.iter().find(|x| &x.name == tname).expect("validated");
-                let t = FieldTimes {
-                    records,
+    fn dispatch_times<O: TimesOp>(&self, op: O) -> O::Out {
+        match &self.desc.time {
+            TimeSpec::Rate { rate_hz, t0_ns } => op.run(&RateTimes::from_rate(*t0_ns, *rate_hz, self.records)),
+            TimeSpec::Index => op.run(&RateTimes::from_rate(0, 1.0, self.records)),
+            TimeSpec::Field { field, unit, t0_ns } => {
+                let tf = self.desc.fields.iter().find(|x| &x.name == field).expect("validated");
+                op.run(&FieldTimes {
+                    records: self.records_bytes(),
                     offset: tf.offset as usize,
-                    stride,
-                    big_endian,
+                    stride: self.desc.record_size as usize,
+                    big_endian: self.desc.endian == Endian::Big,
                     dtype: tf.dtype,
                     scale_ns: unit.ns(),
                     t0_ns: *t0_ns,
-                };
-                by_type(field.dtype, &t, records, offset, stride, big_endian, vp)
-            }
-        };
-        if field.scale != 1.0 || field.value_offset != 0.0 {
-            for y in &mut trace.y {
-                *y = (*y as f64 * field.scale + field.value_offset) as f32;
+                })
             }
         }
-        trace
+    }
+
+    fn transform(&self, channel: usize) -> (f64, f64) {
+        let f = &self.desc.fields[self.channels[channel]];
+        (f.scale, f.value_offset)
+    }
+
+    fn layout_id(&self) -> Vec<u8> {
+        let mut id = format!("fixed\n{}\n{}\n", self.info.format, self.header_len).into_bytes();
+        id.extend(toml::to_string(&self.desc).unwrap_or_default().into_bytes());
+        id
     }
 }
 
@@ -226,7 +229,7 @@ impl Recording for FixedWidth {
 mod tests {
     use super::*;
     use crate::descriptor::{Field, TimeUnit};
-    use tlmbench_core::TraceKind;
+    use tlmbench_core::{Recording, TraceKind, Viewport};
 
     fn field(name: &str, dtype: DType, offset: u64) -> Field {
         Field { name: name.into(), dtype, offset, unit: None, scale: 1.0, value_offset: 0.0 }
@@ -290,6 +293,40 @@ mod tests {
         let tr = f.trace(0, Viewport { t0: 0, t1: 5_000_000, width_px: 100 });
         assert_eq!(tr.t[3], 1_500_000);
         assert!((tr.y[3] - 4.0).abs() < 1e-6); // 3000 * 0.001 + 1
+    }
+
+    #[test]
+    fn pyramid_views_and_stats_of_a_strided_scaled_field() {
+        let mut v = field("v", DType::I16, 2);
+        v.scale = -0.5;
+        v.value_offset = 10.0;
+        let desc = Descriptor {
+            schema: 1,
+            name: None,
+            endian: Endian::Big,
+            header_size: 0,
+            record_size: 6,
+            time: TimeSpec::Rate { rate_hz: 1000.0, t0_ns: 0 },
+            fields: vec![field("a", DType::U16, 0), v, field("b", DType::U16, 4)],
+        };
+        let n = 50_000usize;
+        let raw = |i: usize| {
+            ((i * 7919 % 2001) as i16 - 1000) * if i == 31_337 { 0 } else { 1 } + if i == 4_242 { 2000 } else { 0 }
+        };
+        let f = file(&desc, (0..n).map(|i| [0u16.to_be_bytes(), raw(i).to_be_bytes(), 0u16.to_be_bytes()].concat()));
+        let levels = tlmbench_core::pyramid::build_levels(f.summarize(1, 0, n));
+        let pyr = tlmbench_core::pyramid::Pyramid::new(n, levels.iter().map(Vec::as_slice).collect());
+        let vp = Viewport { t0: 0, t1: f.info().t_last.unwrap() + 1, width_px: 30 };
+        assert_eq!(f.view(1, vp, Some(&pyr), &[]), f.trace(1, vp));
+        let st = f.stats(1, &pyr, 100, 40_000);
+        // the largest stored value (2000 + something at 4242) becomes the smallest shown one
+        let shown: Vec<f64> = (100..40_000).map(|i| raw(i) as f64 * -0.5 + 10.0).collect();
+        let lo = shown.iter().copied().fold(f64::INFINITY, f64::min);
+        assert_eq!(st.min.map(|m| m.0), Some(lo));
+        assert_eq!(st.min.map(|m| m.1), Some(4_242));
+        assert_eq!(f.value_at(1, 4_242), raw(4_242) as f64 * -0.5 + 10.0);
+        let mean = shown.iter().sum::<f64>() / shown.len() as f64;
+        assert!((st.mean - mean).abs() < 1e-9);
     }
 
     #[test]

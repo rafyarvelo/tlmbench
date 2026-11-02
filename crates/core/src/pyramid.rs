@@ -292,6 +292,19 @@ pub struct Stats {
     pub std: f64,
 }
 
+impl Stats {
+    /// The stats of `value × scale + offset`.
+    pub fn transformed(self, scale: f64, offset: f64) -> Stats {
+        if scale == 1.0 && offset == 0.0 {
+            return self;
+        }
+        let f = |(v, i): (f64, usize)| (v * scale + offset, i);
+        let (min, max) =
+            if scale < 0.0 { (self.max.map(f), self.min.map(f)) } else { (self.min.map(f), self.max.map(f)) };
+        Stats { count: self.count, min, max, mean: self.mean * scale + offset, std: self.std * scale.abs() }
+    }
+}
+
 impl From<Summary> for Stats {
     fn from(s: Summary) -> Self {
         let n = s.count as f64;

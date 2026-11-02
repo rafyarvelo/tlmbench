@@ -19,7 +19,7 @@ use std::time::UNIX_EPOCH;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use tlmbench_core::{ChannelInfo, RateTimes, Recording, RecordingInfo, TimeSource, Trace, Viewport, m4};
+use tlmbench_core::{ChannelInfo, ChannelOp, Channels, RateTimes, RecordingInfo, TimeSource, TimesOp};
 
 use crate::bytes::{self, Bytes};
 use crate::csv::{self, TimeColumn};
@@ -374,23 +374,35 @@ fn load(path: &Path, dir: &Path, m: Manifest) -> Result<CsvRecording> {
     Ok(CsvRecording { info, rows: m.rows, t, columns, skipped_rows: m.skipped_rows })
 }
 
-impl Recording for CsvRecording {
-    fn info(&self) -> &RecordingInfo {
+impl Channels for CsvRecording {
+    fn describe(&self) -> &RecordingInfo {
         &self.info
     }
 
-    fn trace(&self, channel: usize, vp: Viewport) -> Trace {
+    fn dispatch<O: ChannelOp>(&self, channel: usize, op: O) -> O::Out {
         let values: &[f64] = bytemuck::cast_slice(&self.columns[channel]);
         match &self.t {
-            Some(t) => m4(bytemuck::cast_slice::<u8, i64>(t), values, vp),
-            None => m4(&RateTimes::from_rate(0, 1.0, self.rows), values, vp),
+            Some(t) => op.run(bytemuck::cast_slice::<u8, i64>(t), values),
+            None => op.run(&RateTimes::from_rate(0, 1.0, self.rows), values),
         }
+    }
+
+    fn dispatch_times<O: TimesOp>(&self, op: O) -> O::Out {
+        match &self.t {
+            Some(t) => op.run(bytemuck::cast_slice::<u8, i64>(t)),
+            None => op.run(&RateTimes::from_rate(0, 1.0, self.rows)),
+        }
+    }
+
+    fn layout_id(&self) -> Vec<u8> {
+        format!("csv\n{MANIFEST_VERSION}\n").into_bytes()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tlmbench_core::{Recording, Viewport};
 
     #[test]
     fn builds_once_then_reuses() {
