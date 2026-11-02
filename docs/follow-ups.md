@@ -34,4 +34,12 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
   coarse-to-exact handoff (only the pixels whose edges matter), could cut it.
 - Column-time recordings binary-search the time column for every pixel edge; a cold file faults on each search. The
   design's chunk index (first time of every 64k samples, kept in the cache) would bound that to one page.
+- The LRU chunk store (Proposed in the design) isn't built: builds gather each block's channels into reused buffers
+  and views read pyramid files and raw edges through mmap. Zoomed views of the 20-channel file reduce in about 1 ms a
+  trace, so it has had no measured need yet.
+- A cold build of the 10 GB file took 15-20 s on a nearly full disk (writes at 74 MB/s); rerun `just gate2` with
+  space free to report the build at disk speed. Writing pyramid levels into holes of a sparse file was the slow part;
+  F_PREALLOCATE moved the cost rather than removing it there.
+- Hover, cursors and Measure in the app have no automated test yet; the prototype's suite covers the behaviour, and
+  the app's end-to-end tests come with the port.
 

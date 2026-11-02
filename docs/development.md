@@ -33,6 +33,7 @@ About 9–10 GB at first: toolchains ~3–4 GB, `target/` ~5 GB (it grows; `just
 | `just app-icons` | regenerate `icon.png`, `icon.icns` and `icon.ico` from `app/src-tauri/icons/icon.svg` (Mac) |
 | `just gen …`, `just gen-gate` | write synthetic recordings (sine + noise + spikes + gaps) to `$TLMBENCH_DATA` (default `~/tlmbench-data`) |
 | `just gate [file]` | the Phase 1 gate in the release app (below) |
+| `just gen-gate2`, `just gate2 [file] [keep]` | write the 10 GB Gate 2 recording; run the Phase 2 gate over it (below) |
 | `just ci-linux`, `just ci-native` | everything a CI job runs |
 
 Recipes for code that doesn't exist yet (no Cargo workspace, no `app/`, no `python/`) say so and skip.
@@ -97,4 +98,22 @@ Pass: at most 1% of frames miss a vsync and no interval exceeds 3 refresh period
 
 Last run (MacBook Air M1, 8 GB, 59 Hz, 2264 px): pass. 1799 frames, 3 missed; reduce p95 1.4 ms for views of up to
 1M samples, whole-file p50 21 ms (657 ms on a cold first read); round trip p50 4 ms.
+
+## The Phase 2 gate
+
+`just gen-gate2` writes the Gate 2 recording (a 10 GB `.tlm`, 20 channels × 125M f32 samples) to
+`$TLMBENCH_DATA/gate2` in about 30 s. It needs about 12 GB free: the file and its 1.1 GB pyramid. `just gate2` builds the
+pyramid with the CLI into a fresh cache, drops the file's and the cache's pages from memory (`ci/evict.py`, no root),
+and times a reopen in the release app; then it clears the cache and times a first-ever open. It prints two JSON reports,
+exits 0 when the reopen passes, and deletes the 10 GB file afterwards (`just gate2 <file> 1` keeps it). Keep the window
+visible.
+
+Pass: the reopen's first paint of the whole view (all 20 channels, coarse counts) within 1 s of asking to open.
+Reported: when the exact view replaced it, the 30 s sweep of Phase 1 over all 20 channels, and for the first-ever open,
+when axes and progress showed and how long the build took.
+
+Last run (MacBook Air M1, 8 GB, 1736 px): pass. First paint 142 ms (coarse), exact 1.9 s; sweep 12 of 1,778 frames
+missed (0.7%), longest 245 ms, 20-trace replies p50 1.6 ms in the core. First-ever open: axes and progress in 84 ms,
+build 20 s. That run's disk was nearly full, which slowed writes to 74 MB/s (the disk reads the file cold at
+1.06 GB/s, 9.5 s); the build is to be measured again with space free.
 
