@@ -18,6 +18,7 @@ export const ICON = {
   fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
   more: s('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>', 'fill="currentColor"'),
   file: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'),
+  chevron: s('<path d="M6 9l6 6 6-6"/>', 'fill="none" stroke="currentColor" stroke-width="2.4"'),
   close: s('<path d="M6 6l12 12M18 6L6 18"/>', 'fill="none" stroke="currentColor" stroke-width="2.4"'),
   folder: s('<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
   expand: s('<path d="M7 9l5-5 5 5M7 15l5 5 5-5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),

@@ -17,6 +17,7 @@ import { runGate, runGate2 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { applyTheme, type Mode, onSetting, saveSettings, setSetting, settings } from './settings.svelte';
 import { addPaneBelow, labelled, normalize, note, onStackChange, type Pane, stack } from './stack.svelte';
+import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 
@@ -768,60 +769,163 @@ function scheduleResize(): void {
 
 // ---------- opening ----------
 
+// ---------- tabs: one per open file ----------
+
+/** A tab's state while another tab is in front (the one in front lives in `state` and `stack`). */
+interface TabData {
+  file: NonNullable<typeof state.file>;
+  building: typeof state.building;
+  panes: Pane[];
+  sel: number;
+  t0: bigint;
+  t1: bigint;
+  A: bigint | null;
+  B: bigint | null;
+  history: [bigint, bigint][];
+  future: [bigint, bigint][];
+  exactMs: number;
+}
+const tabData = new Map<number, TabData>();
+let nextTab = 1;
+const copyPanes = (ps: Pane[]): Pane[] => ps.map((p) => ({ ...p, channels: [...p.channels] }));
+const nameOf = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
+/** Keeps the tab in front's state, to come back to. */
+function stashTab(): void {
+  const f = state.file;
+  if (tabs.active < 0 || !f) return;
+  tabData.set(tabs.active, {
+    file: f,
+    building: state.building,
+    panes: copyPanes(stack.panes),
+    sel: stack.sel,
+    t0: state.t0,
+    t1: state.t1,
+    A: state.A,
+    B: state.B,
+    history: state.history,
+    future: state.future,
+    exactMs: state.exactMs,
+  });
+}
+
+function freeLayers(): void {
+  state.layers.forEach((l) => l?.traces.forEach((t) => renderer.free(t.gl)));
+  state.ov?.traces.forEach((t) => renderer.free(t.gl));
+  Object.assign(state, { layers: [], ov: null, ovStale: true, coarseSince: [], hatchFrom: null, hoverT: null });
+  state.hover.clear();
+  stack.values = {};
+}
+
+/** Brings tab `key` to the front, as it was left. */
+async function showTab(key: number): Promise<void> {
+  const d = tabData.get(key);
+  if (!d || (key === tabs.active && state.file)) return;
+  stashTab();
+  tabs.active = key;
+  freeLayers();
+  Object.assign(state, {
+    file: d.file,
+    building: d.building,
+    A: d.A,
+    B: d.B,
+    history: d.history,
+    future: d.future,
+    exactMs: d.exactMs,
+  });
+  stack.panes = copyPanes(d.panes);
+  stack.sel = d.sel;
+  normalize();
+  ui.file = nameOf(d.file.info.path);
+  ui.path = d.file.info.path;
+  ui.measureDismissed = false;
+  ui.channels = d.file.info.channels.map((c) => ({ name: c.name, unit: c.unit }));
+  $('empty').hidden = true;
+  saveSession();
+  await tick();
+  renderPanes();
+  setView(d.t0, d.t1);
+  void refreshMeasure();
+}
+
+/** Opens `path` in a tab of its own (or brings its tab to the front). */
 async function openPath(path: string): Promise<void> {
-  ui.note = '';
-  ui.undo = null;
+  const open = tabs.list.find((t) => t.path === path);
+  if (open) return showTab(open.key);
   try {
+    const key = nextTab++;
     const progress = new Channel<Progress>();
-    progress.onmessage = onProgress;
+    progress.onmessage = (p) => onProgress(key, p);
     const o = await invoke<Opened>('open', { path, progress });
     if (!o.range) {
       void invoke('close', { file: o.id });
       throw new Error('it has no samples');
     }
-    // the file open so far stays until the new one is open
-    if (state.file) void invoke('close', { file: state.file.id });
-    state.file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
-    state.building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
+    const file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
     const saved = settings.layouts[o.info.path];
     const n = o.info.channels.length;
-    stack.panes = saved?.every((p) => p.channels?.every((ch) => ch < n)) ? saved.map((p) => ({ ...p, channels: [...p.channels] })) : defaultPanes(n);
-    stack.sel = 0;
-    normalize();
-    state.layers.forEach((l) => l?.traces.forEach((t) => renderer.free(t.gl)));
-    state.ov?.traces.forEach((t) => renderer.free(t.gl));
-    state.layers = [];
-    state.coarseSince = [];
-    state.hatchFrom = null;
-    state.ov = null;
-    state.ovStale = true;
-    state.A = state.B = null;
-    state.history = [];
-    state.future = [];
-    state.exactMs = Infinity;
-    ui.file = path.split(/[\\/]/).pop() ?? path;
-    ui.path = path;
-    ui.measureDismissed = false;
-    ui.channels = o.info.channels.map((c) => ({ name: c.name, unit: c.unit }));
-    $('empty').hidden = true;
-    await tick();
-    renderPanes();
-    setView(state.file.first, state.file.last + 1n);
-    void refreshMeasure();
+    tabData.set(key, {
+      file,
+      building: o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null },
+      panes: saved?.every((p) => p.channels?.every((ch) => ch < n)) ? copyPanes(saved) : defaultPanes(n),
+      sel: 0,
+      t0: file.first,
+      t1: file.last + 1n,
+      A: null,
+      B: null,
+      history: [],
+      future: [],
+      exactMs: Infinity,
+    });
+    tabs.list.push({ key, path: o.info.path, name: nameOf(o.info.path) });
+    ui.note = '';
+    ui.undo = null;
+    await showTab(key);
   } catch (e) {
-    note(`Couldn't open ${path.split(/[\\/]/).pop()}: ${e}`);
+    note(`Couldn't open ${nameOf(path)}: ${e}`);
   }
 }
 
+/** Closes tab `key` and its file; the next tab comes to the front, or the window empties. */
+async function closeTab(key: number): Promise<void> {
+  const i = tabs.list.findIndex((t) => t.key === key);
+  if (i < 0) return;
+  const front = key === tabs.active;
+  const file = front ? state.file : tabData.get(key)?.file;
+  if (file) void invoke('close', { file: file.id });
+  tabs.list.splice(i, 1);
+  tabData.delete(key);
+  if (front) {
+    tabs.active = -1;
+    const next = tabs.list[Math.min(i, tabs.list.length - 1)];
+    if (next) await showTab(next.key);
+    else emptyWindow();
+  }
+  saveSession();
+}
+
+/** The open tabs, to reopen after a restart. */
+function saveSession(): void {
+  const active = tabs.list.find((t) => t.key === tabs.active)?.path ?? null;
+  setSetting('session', { files: tabs.list.map((t) => t.path), active });
+}
+
 let progressRefresh = 0;
-function onProgress(p: Progress): void {
-  if (!state.file) return;
+function onProgress(key: number, p: Progress): void {
   if (p.error) {
-    note(`Couldn't read ${ui.file} to the end: ${p.error}`);
+    note(`Couldn't read ${tabs.list.find((t) => t.key === key)?.name ?? 'a file'} to the end: ${p.error}`);
     return;
   }
   const done = p.done >= p.total;
-  state.building = done ? null : { done: p.done, total: p.total, until: p.builtUntil != null ? BigInt(p.builtUntil) : null };
+  const building = done ? null : { done: p.done, total: p.total, until: p.builtUntil != null ? BigInt(p.builtUntil) : null };
+  // a tab behind keeps its progress for when it comes to the front
+  if (key !== tabs.active) {
+    const d = tabData.get(key);
+    if (d) d.building = building;
+    return;
+  }
+  if (!state.file) return;
+  state.building = building;
   if (!done) ui.perf = `Reading ${Math.floor((100 * p.done) / Math.max(1, p.total))}%`;
   // new summaries: fill in the panes (at most four times a second)
   const now = performance.now();
@@ -855,17 +959,16 @@ async function showFolder(path: string): Promise<void> {
   }
 }
 
-/** Closes the open file: the panes empty, the folder stays listed. */
-function closeFile(): void {
-  const f = state.file;
-  if (!f) return;
-  void invoke('close', { file: f.id });
-  state.layers.forEach((l) => l?.traces.forEach((t) => renderer.free(t.gl)));
-  state.ov?.traces.forEach((t) => renderer.free(t.gl));
-  Object.assign(state, { file: null, layers: [], ov: null, building: null, A: null, B: null, hoverT: null, history: [], future: [] });
-  state.hover.clear();
+/** Closes every tab and its file: the panes empty, the folder stays listed. */
+async function closeAll(): Promise<void> {
+  for (const t of [...tabs.list]) await closeTab(t.key);
+}
+
+/** No tab: the window as at launch. */
+function emptyWindow(): void {
+  freeLayers();
+  Object.assign(state, { file: null, building: null, A: null, B: null, history: [], future: [] });
   stack.panes = [];
-  stack.values = {};
   Object.assign(ui, { file: '', path: '', channels: [], range: '', span: '', pointer: '', canBack: false, cursors: false, anyCursor: false, perf: '' });
   $('empty').hidden = false;
   renderPanes();
@@ -1186,8 +1289,12 @@ window.addEventListener('keydown', (e) => {
 Object.assign(actions, {
   open: () => void chooseFile(),
   openFolder: () => void chooseFolder(),
-  openPath: (p: string) => void (p !== state.file?.info.path && openPath(p)),
-  closeFile,
+  openPath: (p: string) => void openPath(p),
+  closeFile: () => void closeAll(),
+  showTab: (key: number) => void showTab(key),
+  closeTab: (key: number) => void closeTab(key),
+  closeOtherTabs: (key: number) => void Promise.all(tabs.list.filter((t) => t.key !== key).map((t) => closeTab(t.key))),
+  saveSession,
   fit,
   back,
   clearCursors,
@@ -1267,7 +1374,14 @@ export const gateApi = {
 if (settings.folder) void showFolder(settings.folder);
 const launch = await invoke<{ file: string | null; gate: '1' | '2' | null; gateMode: string | null }>('launch');
 if (launch.gate === '2' && launch.file) await runGate2(gateApi, launch.file, launch.gateMode === 'first' ? 'first' : 'reopen');
-else {
-  if (launch.file) await openPath(launch.file);
-  if (launch.gate === '1') await runGate(gateApi);
+else if (launch.gate === '1' && launch.file) {
+  await openPath(launch.file);
+  await runGate(gateApi);
+} else {
+  // the tabs open when the app last closed, then a file it was asked to open (in front)
+  const { files, active } = settings.session;
+  for (const f of files) await openPath(f);
+  const front = launch.file ?? active;
+  if (front) await openPath(front);
+  ui.note = '';
 }

@@ -26,13 +26,13 @@ run('explorer', async ({ p, check, text, visible, fake, paneCount, until, settin
   check('a click selects the file', (await p.getAttribute('#explorer .row.file[data-path$="hover.csv"]', 'aria-selected')) === 'true' && (await paneCount()) === 0);
   check('…and shows Open beside it', await visible('#explorer .row.file.sel .act'));
   await p.click('#explorer .row.file.sel .act');
-  check('Open opens it', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'hover.csv'));
+  check('Open opens it', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'hover.csv'));
   check('its channels under it', (await p.$$eval('#explorer .row.chan .nm', (r) => r.map((x) => x.textContent))).join() === 'volts,amps');
   await p.dblclick('#explorer .row.file[data-path$="esc_bench.csv"]');
-  check('double-click opens another', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'esc_bench.csv'));
+  check('double-click opens another', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'esc_bench.csv'));
   await p.focus('#explorer .row.file[data-path$="flight.tlm"]');
   await p.keyboard.press('Enter');
-  check('Enter opens one', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'flight.tlm') && (await paneCount()) === 3);
+  check('Enter opens one', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'flight.tlm') && (await paneCount()) === 3);
 
   // the checkbox plots a channel in the selected pane; a click on the row only selects it
   await p.click('#explorer .row.chan[data-ch="5"] .nm');

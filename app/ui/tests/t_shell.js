@@ -97,7 +97,7 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   // a file that can't be opened: a note, dismissed with ×
   await fake(() => window.__tlmFake.drop(['/data/missing.tlm']));
   check('a note says why', await until(() => /Couldn't open missing\.tlm/.test(document.getElementById('wsNote')?.textContent ?? '')), await text('#wsNote'));
-  check('the file open stays open', (await text('#wsTabs .nm')) === 'flight.tlm' && (await until(() => window.__tlmFake.open.size === 1)));
+  check('the file open stays open', (await text('#wsTabs [aria-selected=true] .nm')) === 'flight.tlm' && (await until(() => window.__tlmFake.open.size === 1)));
   await p.click('#wsNote button');
   check('× dismisses it', !(await visible('#wsNote')));
 

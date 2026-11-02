@@ -11,6 +11,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | Test | Covers |
 | --- | --- |
 | t_wire | the wire format: the fake core encodes the core's golden batch byte for byte, and `wire.ts` decodes it (Node, no browser) |
+| t_tabs | a tab per open file, each keeping its panes, view and cursors; reordering by drag; middle-click, × and the tab menu (close, close others, close all) closing tabs and their files; the tabs after a reload |
 | t_view | panes and the channel list, wheel and box zoom, Fit and Back, hover readouts, cursors and Measure, settings after a reload |
 | t_open | Open…, ⌘O and drops, a file still being read (progress, Measure waiting for exact stats), the coarse label, the gap factor dialog |
 | t_explorer | Open folder (folder → file → channel), select-first rows (a click selects and shows Open; double-click or Enter opens), the checkbox plotting in the selected pane, the filter (text, regex, a bad one marked), Expand all / Collapse all, Close all, the folder after a reload |

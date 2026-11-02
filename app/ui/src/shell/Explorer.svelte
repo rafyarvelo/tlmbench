@@ -7,6 +7,7 @@
   import { ICON } from '../icons';
   import { setSetting, settings } from '../settings.svelte';
   import { stack, toggleChannel } from '../stack.svelte';
+  import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui } from '../ui.svelte';
 
   let q = $state('');
@@ -29,6 +30,7 @@
   });
 
   const isOpen = (path: string) => path === ui.path;
+  const inTab = (path: string) => tabs.list.some((t) => t.path === path);
   /** A file shows when its name, or (the open one) one of its channels, matches. */
   const chanMatch = (ch: { name: string }) => matcher.test(ch.name);
   const fileShown = (f: FolderEntry) => matcher.test(f.name) || (isOpen(f.path) && ui.channels.some(chanMatch));
@@ -74,10 +76,21 @@
     <button class="rx" aria-pressed={regex} aria-label="Regular expression" data-tip="Regular expression" onclick={() => (regex = !regex)}>.*</button>
   </label>
 
-  {#if ui.file}
+  {#if tabs.list.length}
     <div class="openstrip">
-      <span class="cap">Open · 1</span><span class="spacer"></span>
+      <span class="cap">Open · {tabs.list.length}</span><span class="spacer"></span>
       <button class="linkbtn" id="closeAll" onclick={actions.closeFile}>Close all</button>
+    </div>
+    <div class="openfiles" id="openFiles">
+      {#each tabs.list as t (t.key)}
+        <span class="ofile" class:on={t.key === tabs.active} data-tip={t.path}>
+          <button class="ofnm" onclick={() => actions.showTab(t.key)}>{t.name}</button><button
+            class="ofx"
+            aria-label="Close {t.name}"
+            onclick={() => actions.closeTab(t.key)}>{@html ICON.close}</button
+          >
+        </span>
+      {/each}
     </div>
   {/if}
 
@@ -123,7 +136,7 @@
     ondblclick={() => actions.openPath(path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {@html ICON.file}<span class="nm">{name}</span>
+    {@html ICON.file}<span class="nm">{name}</span>{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
     {:else if bytes != null}
@@ -215,6 +228,55 @@
   .openstrip .linkbtn {
     color: var(--accent);
     font-size: 11.5px;
+  }
+  .openfiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0 12px 8px;
+  }
+  .ofile {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--raised);
+    font-size: 12px;
+  }
+  .ofile.on {
+    border-color: var(--accent-line);
+    background: var(--accent-soft);
+  }
+  .ofnm {
+    min-width: 0;
+    overflow: hidden;
+    padding: 2px 4px 2px 8px;
+    border: 0;
+    background: transparent;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ofx {
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--fg-muted);
+  }
+  .ofx :global(svg) {
+    width: 10px;
+    height: 10px;
+  }
+  .dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
   }
   .tree {
     flex: 1;

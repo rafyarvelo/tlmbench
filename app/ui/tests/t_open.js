@@ -13,16 +13,16 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
   // Open… asks the dialog; ⌘O too
   await fake((a) => (window.__tlmFake.pick = a), A);
   await p.click('#exOpen');
-  check('Open… opens the picked file', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'flight.tlm'));
+  check('Open… opens the picked file', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'flight.tlm'));
   check('empty state hidden', !(await visible('#empty')) && (await paneCount()) === 3);
   await fake((b) => (window.__tlmFake.pick = b), B);
   await p.keyboard.press('ControlOrMeta+o');
-  check('⌘O opens another, closing the first', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'bench run.csv'));
-  check('the first file was closed', await until(() => window.__tlmFake.open.size === 1));
+  check('⌘O opens another in a tab of its own', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'bench run.csv'));
+  check('the first stays open in its tab', (await fake(() => window.__tlmFake.open.size)) === 2 && (await p.$$('#wsTabs .wstab')).length === 2);
 
   // a drop opens the first dropped file
   await fake((a) => window.__tlmFake.drop([a]), A);
-  check('a dropped file opens', await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'flight.tlm'));
+  check('a dropped file opens', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'flight.tlm'));
 
   // a file being read: hatched, Measure waits for exact stats, then fills in
   await fake((c) => (window.__tlmFake.files[c] = { built: false }), COLD);
@@ -47,6 +47,10 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
   await p.keyboard.press('Escape');
 
   // a cold file: the first view is coarse and labelled, the exact one replaces it
+  // closed, then opened again cold (its tab would keep the view it had)
+  await p.hover(`#wsTabs .wstab[data-tip="${COLD}"]`);
+  await p.click(`#wsTabs .wstab[data-tip="${COLD}"] .tx`);
+  check('closing a tab closes its file', await until((c) => ![...window.__tlmFake.open.values()].some((o) => o.r.path === c), COLD));
   await fake((c) => (window.__tlmFake.files[c] = { cold: true }), COLD);
   await fake(() => {
     const seen = (window.__coarseSeen = []);
@@ -60,11 +64,11 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
   await fake(() => (window.__tlmFake.files['/data/quick.tlm'] = { cold: true, exactMs: 60 }));
   await fake(() => (window.__coarseSeen.length = 0));
   await fake(() => window.__tlmFake.drop(['/data/quick.tlm']));
-  await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'quick.tlm');
+  await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'quick.tlm');
   await wait(700);
   check('a quickly replaced coarse view has no label', await p.evaluate(() => !window.__coarseSeen.some((n) => n > 0)));
   await fake(() => window.__tlmFake.drop(['/data/cold.tlm']));
-  await until(() => document.querySelector('#wsTabs .nm')?.textContent === 'cold.tlm');
+  await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'cold.tlm');
 
   // gap factor: right-click a chip
   await p.click('#stack .chip[data-ch="1"]', { button: 'right' });

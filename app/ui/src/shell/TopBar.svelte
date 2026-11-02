@@ -2,6 +2,7 @@
 <script lang="ts">
   import { ICON } from '../icons';
   import { type Mode, setSetting, settings } from '../settings.svelte';
+  import { moveTab, tabs } from '../tabs.svelte';
   import { actions, ui } from '../ui.svelte';
 
   const MODES: [Mode, string, string][] = [
@@ -10,6 +11,18 @@
     ['cursor', 'Cursors', 'Click to place cursors A and B (C)'],
   ];
   let more = $state(false);
+  /** The tab whose menu is open, and where. */
+  let tabMenu = $state<null | { key: number; x: number; y: number }>(null);
+  let dragTab = $state<number | null>(null);
+  /** Runs a tab menu item on the menu's tab, closing the menu first. */
+  function tabAct(f: (key: number) => void) {
+    const key = tabMenu?.key;
+    tabMenu = null;
+    if (key != null) f(key);
+  }
+  function openTabMenu(key: number, x: number, y: number) {
+    tabMenu = { key, x: Math.min(x, window.innerWidth - 220), y };
+  }
   let moreBtn: HTMLButtonElement | undefined = $state();
   const pick = (f: () => void) => () => {
     more = false;
@@ -17,8 +30,14 @@
   };
   function outside(e: PointerEvent) {
     if (more && !(e.target as HTMLElement).closest('.moremenu, #b-more')) more = false;
+    if (tabMenu && !(e.target as HTMLElement).closest('.tabmenu, .tm')) tabMenu = null;
   }
   function key(e: KeyboardEvent) {
+    if (tabMenu && e.key === 'Escape') {
+      tabMenu = null;
+      e.stopPropagation();
+      return;
+    }
     if (more && e.key === 'Escape') {
       more = false;
       e.stopPropagation();
@@ -32,9 +51,53 @@
 
 <header class="toolbar">
   <div class="wstabs" role="tablist" aria-label="Open tabs" id="wsTabs">
-    {#if ui.file}
-      <div class="wstab" role="tab" tabindex="0" aria-selected="true" data-tip={ui.path}>{@html ICON.file}<span class="nm">{ui.file}</span></div>
-    {/if}
+    {#each tabs.list as t, i (t.key)}
+      <div
+        class="wstab"
+        role="tab"
+        tabindex="0"
+        aria-selected={t.key === tabs.active}
+        data-tab={t.key}
+        data-tip={t.path}
+        draggable="true"
+        onclick={() => actions.showTab(t.key)}
+        onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), actions.showTab(t.key))}
+        onauxclick={(e) => e.button === 1 && actions.closeTab(t.key)}
+        oncontextmenu={(e) => (e.preventDefault(), openTabMenu(t.key, e.clientX, e.clientY))}
+        ondragstart={() => (dragTab = i)}
+        ondragover={(e) => dragTab != null && e.preventDefault()}
+        ondrop={(e) => {
+          e.preventDefault();
+          if (dragTab != null) moveTab(dragTab, i);
+          dragTab = null;
+          actions.saveSession();
+        }}
+        ondragend={() => (dragTab = null)}
+      >
+        {@html ICON.file}<span class="nm">{t.name}</span>
+        <span
+          class="tm"
+          role="button"
+          tabindex="-1"
+          aria-label="Menu for {t.name}"
+          aria-haspopup="menu"
+          onclick={(e) => {
+            e.stopPropagation();
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            openTabMenu(t.key, r.left, r.bottom + 4);
+          }}
+          onkeydown={() => {}}>{@html ICON.chevron}</span
+        >
+        <span
+          class="tx"
+          role="button"
+          tabindex="-1"
+          aria-label="Close {t.name}"
+          onclick={(e) => (e.stopPropagation(), actions.closeTab(t.key))}
+          onkeydown={() => {}}>{@html ICON.close}</span
+        >
+      </div>
+    {/each}
   </div>
   <div class="rangebar">
     <span class="num" id="rangeTxt">{ui.range}</span>
@@ -52,6 +115,15 @@
   <button class="tb" id="b-back" aria-label="Back" disabled={!ui.canBack} data-tip="Previous view (⌥←)" onclick={actions.back}>{@html ICON.back}</button>
   <button class="tb" id="b-fit" aria-label="Fit" disabled={!ui.file} data-tip="Show the whole recording (F)" onclick={actions.fit}>{@html ICON.fit}</button>
   <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.more}</button>
+  {#if tabMenu}
+    <div class="menu tabmenu" role="menu" style="left: {tabMenu.x}px; top: {tabMenu.y}px">
+      <button class="mi" role="menuitem" onclick={() => tabAct(actions.closeTab)}><span class="nm">Close tab</span></button>
+      <button class="mi" role="menuitem" disabled={tabs.list.length < 2} onclick={() => tabAct(actions.closeOtherTabs)}
+        ><span class="nm">Close other tabs</span></button
+      >
+      <button class="mi" role="menuitem" onclick={() => tabAct(() => actions.closeFile())}><span class="nm">Close all tabs</span></button>
+    </div>
+  {/if}
   {#if more}
     <div class="menu moremenu" role="menu">
       <button class="mi" role="menuitem" onclick={pick(actions.open)}><span class="nm">Open recording…</span><kbd>⌘O</kbd></button>
@@ -86,11 +158,48 @@
     gap: 6px;
     min-width: 96px;
     max-width: 220px;
-    padding: 0 14px;
-    color: var(--fg);
+    padding: 0 6px 0 14px;
+    color: var(--fg-muted);
     font-size: 13px;
+    cursor: pointer;
+  }
+  .wstab:hover {
+    background: var(--raised);
+  }
+  .wstab[aria-selected='true'] {
+    color: var(--fg);
     font-weight: 600;
     box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .tm,
+  .tx {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    color: var(--fg-muted);
+    visibility: hidden;
+  }
+  .tm :global(svg),
+  .tx :global(svg) {
+    width: 11px;
+    height: 11px;
+  }
+  .wstab:hover .tm,
+  .wstab:hover .tx,
+  .wstab[aria-selected='true'] .tm,
+  .wstab[aria-selected='true'] .tx {
+    visibility: visible;
+  }
+  .tm:hover,
+  .tx:hover {
+    background: var(--border);
+    color: var(--fg);
+  }
+  .tabmenu {
+    position: fixed;
+    min-width: 200px;
   }
   .wstab :global(svg) {
     flex: none;

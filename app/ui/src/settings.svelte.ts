@@ -25,6 +25,8 @@ export interface Settings {
   /** The folder Explorer lists, and its folders (and open files) shown expanded. */
   folder: string;
   exExpanded: string[];
+  /** The tabs open when the app last closed (their files), and the one in front. */
+  session: { files: string[]; active: string | null };
   /** Each file's panes (their channel numbers and where they sit), by file path. */
   layouts: Record<string, Pane[]>;
   /** Gap factors set by hand, by file path and channel number (the rest use the default). */
@@ -44,6 +46,7 @@ export const DEFAULTS: Settings = {
   settingsAll: false,
   folder: '',
   exExpanded: [],
+  session: { files: [], active: null },
   layouts: {},
   gapFactors: {},
 };
@@ -82,7 +85,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['layouts', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded'];
+const KEEP: (keyof Settings)[] = ['layouts', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
