@@ -175,8 +175,14 @@ pub struct Pyramid<'a> {
 }
 
 impl<'a> Pyramid<'a> {
+    /// `levels` are the first levels of a channel of `len` samples: all of them, or fewer while a build is still
+    /// making the coarse ones. `len` may be less than the channel's samples while a build is under way: views
+    /// read raw samples past it.
     pub fn new(len: usize, levels: Vec<&'a [Summary]>) -> Self {
-        debug_assert_eq!(levels.iter().map(|l| l.len()).collect::<Vec<_>>(), level_lengths(len));
+        assert!(!levels.is_empty(), "a pyramid has at least level 4");
+        let want = level_lengths(len);
+        assert!(levels.len() <= want.len(), "more levels than the samples make");
+        assert!(levels.iter().zip(&want).all(|(l, &n)| l.len() >= n), "a level is too short for {len} samples");
         Self { len, levels }
     }
 
@@ -237,9 +243,9 @@ pub(crate) fn reduce<T: Times + ?Sized, S: Samples + ?Sized>(
     min_bucket: usize,
 ) -> (TraceKind, Vec<Emit>) {
     assert_eq!(times.len(), values.len(), "times and values differ in length");
-    assert_eq!(pyr.len, values.len(), "the pyramid is of another channel");
+    assert!(pyr.len <= values.len(), "the pyramid is of another channel");
     reduce_with(times, vp, |start, end, bucket_t, out| {
-        if end - start < min_bucket {
+        if end - start < min_bucket || end > pyr.len {
             reduce_bucket(values, start, end, bucket_t, out)
         } else {
             let picks = first_real(pyr, values, start, end).map(|first| {
@@ -614,6 +620,20 @@ mod tests {
             let pyr = view(&levels, v.len());
             prop_assert_eq!(reduce(&times, &v, &pyr, vp, 1), crate::m4::reduce(&times, &v, vp));
             prop_assert_eq!(reduce(&times, &v, &pyr, vp, MIN_BUCKET_SAMPLES), crate::m4::reduce(&times, &v, vp));
+        }
+
+        /// While a build is under way only a prefix (whole blocks, fine levels only) exists: buckets past it are
+        /// reduced from raw samples, and the result is still exact.
+        #[test]
+        fn partial_pyramid_m4_equals_raw_m4(v in values(), vp in vp_within(5_000_000), cut in 0.0f64..1.0) {
+            let times = crate::RateTimes::from_rate(0, 1000.0, v.len());
+            let levels = owned(&times, &v);
+            let block = span(MIN_LEVEL + 1);
+            let len = ((v.len() as f64 * cut) as usize / block * block).max(block).min(v.len() / block * block);
+            prop_assume!(len >= block);
+            let pyr = Pyramid::new(len, levels.iter().take(2).map(Vec::as_slice).collect());
+            let vp = Viewport { t0: vp.t0 * 1000, t1: vp.t1 * 1000, width_px: vp.width_px };
+            prop_assert_eq!(reduce(&times, &v, &pyr, vp, 1), crate::m4::reduce(&times, &v, vp));
         }
 
         #[test]

@@ -39,6 +39,12 @@ pub fn cache_root(over: Option<&Path>) -> PathBuf {
     dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("tlmbench")
 }
 
+/// The cache key of a source file: its size and modification time, and a BLAKE3 hash of its first and last MiB
+/// and 63 blocks spread through it (32 hex digits).
+pub fn fingerprint(path: &Path) -> Result<String> {
+    Source::open(path)?.fingerprint()
+}
+
 /// Bytes read for the schema: the header and the sample rows.
 const HEAD_BYTES: usize = 16 << 20;
 
