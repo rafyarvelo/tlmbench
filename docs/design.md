@@ -223,7 +223,7 @@ Rust sends each trace as a compact binary buffer of at most \~4W points, and Web
 - Accepted The app's UI is TypeScript and Vite with no framework while it is one pane; the framework is chosen when the prototype's UI is ported.
 - Accepted Views over 256k samples are reduced on several threads (rayon), so a 1M-sample view takes about 0.5 ms on an M1 instead of 1.7 ms.
 - Proposed Phase 2 IPC: `view` takes every pane of a tab at once (each with its channels and width) under one generation, so the stack redraws together; the overview is one more entry. Wire version 2 adds per trace flags (coarse, from pyramid or raw) and the time up to which the file has been read. `open` returns a channel that streams build progress. `values_at {file, channels, t}` returns each channel's nearest raw sample (time and value) for hover and cursors; `stats {file, channels, t0, t1}` returns exact min, max, mean, standard deviation and count from the pyramid plus raw edges, for Measure.
-- Proposed The UI stays TypeScript without a framework through Phase 2: the plot stack, overview, hover and cursors are canvas and a little DOM. The framework is chosen when Explorer, tables and menus are ported.
+- Accepted The UI stays TypeScript without a framework through Phase 2: the plot stack, overview, hover and cursors are canvas and a little DOM. The framework is chosen when Explorer, tables and menus are ported.
 - Proposed Phase 2 picks channels from a plain list in a left sidebar (checkbox plots into the selected pane, as in the prototype's Explorer rows); the full Explorer comes with the port.
 
 ### Loading what's on screen
@@ -235,7 +235,7 @@ Opening a file never waits for the whole file. Panes appear at once and each fil
 | Table | The rows on screen, read in whole chunks (about 64k rows) and cached with the charts' chunks; the row count comes from the index | Rows and the scrollbar show at once; cells not read yet show … |
 | Table sort and filter | A scan of the whole column | The table stays usable unsorted; "Sorting and filtering when X is read…" |
 | Values pane | One value per channel (one chunk) | The tile shows … and "reading" |
-| Chart, chart and table, XY, overview | The whole-file summary (pyramid), or the raw chunks in view when zoomed in | Draws from the coarse levels, labelled "coarse", as soon as they cover the file, and sharpens as finer levels arrive; coarse levels keep every min and max, so no spike is hidden |
+| Chart, chart and table, XY, overview | The whole-file summary (pyramid), or the raw chunks in view when zoomed in | On a first open, fills in left to right with exact data as the file is read (the rest hatched, "Reading 43%"); a view drawn from whole summaries before its edge samples are read is labelled "coarse" and sharpens a moment later; summaries keep every min and max, so no spike is hidden |
 | Measure stats | The summary over the range | "Reading X…" instead of a number |
 | Rules, checks, event tints | A scan of the channels they read | The Events list says "checking rules…" |
 | Derived channels | Their inputs, with lookback for rolling windows; whole-file numbers need everything | "computing" until the inputs are in |
@@ -246,7 +246,7 @@ In the app the summary is cached in the app cache after the first open, so chart
 
 - Accepted Panes appear at once and fill in as their data arrives; on-screen channels load first, and channels nothing shows are not read.
 - Accepted Tables fetch row windows from the core; sort and filter run in the core over the whole column, with progress.
-- Modified Charts, XY and the overview draw from the coarse summary levels as soon as they cover the file, labelled "coarse", and sharpen as finer levels arrive. Anything that must be exact (stats, values at a cursor, checks) waits for the full summary and never shows a partial answer.
+- Modified Charts, XY and the overview fill in left to right with exact data while a first open reads the file once, the unread part hatched. A view drawn from whole summaries before its edge samples are read is labelled "coarse" and sharpens a moment later. Anything that must be exact (stats, values at a cursor, checks) waits for the full summary and never shows a partial answer.
 
 #### Open questions
 
@@ -254,9 +254,9 @@ In the app the summary is cached in the app cache after the first open, so chart
   - Rejected Fetch the rows on screen plus one screen above and below; keep the last 8 windows per table (a few MB).
   - Accepted Fetch whole chunks (about 64k rows) and cache them by chunk, sharing the cache with charts: sorts and jumps reuse what's read, and nothing is read twice.
 - **Coarse charts on a first open.**
-  - Accepted Draw from the coarse levels as soon as they cover the file, labelled "coarse", then refine.
+  - Rejected Draw from the coarse levels as soon as they cover the file, labelled "coarse", then refine.
   - Rejected Wait for the full summary, as the prototype does.
-  - Proposed Every coarse summary needs every raw sample under it, so no level can cover the file before one full read, and by then every stored level is built too. So a first open reads the file once, in order, at disk speed, and panes fill in left to right with exact data; the part not read yet is hatched and says "Reading 43%". A view zoomed into that part is reduced straight from raw samples. "Coarse" then labels a view drawn from whole summaries before its edge samples are read (about 1 pixel of difference at most, every extreme still shown); it sharpens a moment later.
+  - Accepted Every coarse summary needs every raw sample under it, so no level can cover the file before one full read, and by then every stored level is built too. So a first open reads the file once, in order, at disk speed, and panes fill in left to right with exact data; the part not read yet is hatched and says "Reading 43%". A view zoomed into that part is reduced straight from raw samples. "Coarse" then labels a view drawn from whole summaries before its edge samples are read (about 1 pixel of difference at most, every extreme still shown); it sharpens a moment later.
 
 ## Live streaming
 
@@ -954,7 +954,7 @@ The export is a folder of static files: `index.html`, the viewer's script and st
 - Accepted Export budget 250 MB per folder: Full when it fits, otherwise Light with raw windows around events and violations, then coarser levels; one-file variant 25 MB.
 - Accepted `check` exit codes 0/1/2/3, with JUnit, CSV, JSON and HTML reports, and results cached by file contents and set version.
 - Accepted Python bindings in v1, over the same core library.
-- Proposed Two more commands: `tlmbench cache` (build, list and clear cache entries, as Settings does) and `tlmbench query` (a view as M4 points, values at a time, or exact stats over a range, as CSV or JSON). They make the store testable headlessly and are what the Python bindings wrap. `info` also reports gaps once the gap index exists.
+- Accepted Two more commands: `tlmbench cache` (build, list and clear cache entries, as Settings does) and `tlmbench query` (a view as M4 points, values at a time, or exact stats over a range, as CSV or JSON). They make the store testable headlessly and are what the Python bindings wrap. `info` also reports gaps once the gap index exists.
 
 ### Open questions
 
@@ -1017,7 +1017,7 @@ The command-line tool ships in v1 with the app. It is built on the same core fro
 - Accepted How the Phase 1 gate is judged (`just gate`): a scripted 30 s sweep in the release app (zoom from the whole file to 1 s and back, pans), one view per frame. It passes when at most 1% of frames miss a vsync (an interval over 1.5 refresh periods) and none exceeds 3 periods, and when the core reduces views of up to 1M samples in p95 under 5 ms, timed in Rust. Missed vsyncs replace a 16.7 ms p95 because WebKit rounds the page's clocks to 1 ms. Whole-file views are reported, not gated. A run in which the window was hidden counts as invalid, not as a fail.
 - Accepted The Phase 1 gate uses one 100M-sample trace; the 20-trace target is reported later, once the pyramid exists.
 - Accepted How Gate 2 (10 GB first paint under 1 s) is judged, since reading 10 GB takes at least 3 s on the development Mac: reopening a 10 GB recording with its pyramid cached, after the OS file cache is flushed (`purge`), draws the whole view in under 1 s; a first-ever open shows axes and build progress in under 1 s and builds the pyramid at disk speed (reported, not gated). The recording is a 10 GB `.tlm` of 20 channels × 125M f32 samples, which also reports the 20-trace target. It is generated on the internal disk for the run and deleted afterwards.
-- Proposed `just gate2` builds the pyramid with the CLI, flushes the file cache with `sudo purge`, then opens the file in the release app and times the whole view drawn; then it clears that cache entry, flushes again and times a first open (axes and progress, then the build). The 20 channels sit in a stack of panes; a 30 s sweep like Phase 1's reports the 20-trace frame times. `just gen --size 10G --channels 20` writes the file.
+- Accepted `just gate2` builds the pyramid with the CLI, flushes the file cache with `sudo purge`, then opens the file in the release app and times the whole view drawn; then it clears that cache entry, flushes again and times a first open (axes and progress, then the build). The 20 channels sit in a stack of panes; a 30 s sweep like Phase 1's reports the 20-trace frame times. `just gen --size 10G --channels 20` writes the file.
 
 ## Risks
 
@@ -1027,6 +1027,6 @@ The command-line tool ships in v1 with the app. It is built on the same core fro
 | WebView differences (WebView2, WKWebView, WebKitGTK) | WebGL bugs or slower GPU paths on Linux | Test all three in CI; keep a Canvas2D fallback |
 | Compressed formats without random access | Slow seeks into the middle of a file | One-time packet index in the app cache (never beside the file); recompress to cache if packets are huge |
 | CSV quirks (locales, quoted fields, mixed timestamps) | Wrong or failed parses | Import dialog with preview, explicit column types and timestamp format |
-| Pyramid build time on first open | Wait before full-res browsing | Build coarse levels first in a background task; stream progress |
+| Pyramid build time on first open | Wait before full-res browsing | Build in one background pass at disk speed, cached for later opens; stream progress, and fill panes left to right with exact data |
 | v1 scope (multiple windows, checks, derived channels, widgets, CLI, Python, sharing) | A late release or uneven quality | Phases with measurable gates; each feature lands in the core and CLI first, so it is tested headlessly before it gets UI |
 | Shared code widgets and plugins | Untrusted code arriving with a shared folder | Trust prompt per folder; plugins in the WASM sandbox; HTML exports drop the code |
