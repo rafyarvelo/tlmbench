@@ -4012,7 +4012,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tlmbench-core",
- "tlmbench-decode",
+ "tlmbench-store",
 ]
 
 [[package]]

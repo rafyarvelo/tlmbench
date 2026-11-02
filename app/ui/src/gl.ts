@@ -1,6 +1,7 @@
-// The WebGL2 trace renderer. A trace is uploaded once; pan and zoom only change two uniforms (clip = v * a + b
+// The WebGL2 trace renderer. Each trace is uploaded once; pan and zoom only change two uniforms (clip = v * a + b
 // on each axis), so redrawing a stale reply at the new view costs almost nothing while the sharper one is
-// computed. NaN in y is a gap: the trace is drawn as separate line strips around it.
+// computed. NaN in y is a gap: a trace is drawn as separate line strips around it. One canvas covers the whole
+// plot stack and the overview; each trace draws into its pane's rectangle.
 
 const VERT = `#version 300 es
 in float a_x;
@@ -9,6 +10,7 @@ uniform vec2 u_x;
 uniform vec2 u_y;
 void main() {
   gl_Position = vec4(a_x * u_x.x + u_x.y, a_y * u_y.x + u_y.y, 0.0, 1.0);
+  gl_PointSize = 2.0;
 }`;
 
 const FRAG = `#version 300 es
@@ -32,44 +34,35 @@ export interface Axis {
   b: number;
 }
 
-export class TraceRenderer {
+export type Rgba = [number, number, number, number];
+
+/** One uploaded trace. */
+export interface GlTrace {
+  vao: WebGLVertexArrayObject;
+  bufs: WebGLBuffer[];
+  /** [start, count] of each run without NaN */
+  runs: [number, number][];
+}
+
+export class Renderer {
   private gl: WebGL2RenderingContext;
   private prog: WebGLProgram;
-  private vao: WebGLVertexArrayObject;
-  private xBuf: WebGLBuffer;
-  private yBuf: WebGLBuffer;
   private uX: WebGLUniformLocation;
   private uY: WebGLUniformLocation;
   private uColor: WebGLUniformLocation;
-  /** [start, count] of each run without NaN */
-  private runs: [number, number][] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true });
     if (!gl) throw new Error('WebGL2 is not available');
     this.gl = gl;
     this.prog = link(gl, VERT, FRAG);
-    this.vao = gl.createVertexArray()!;
-    this.xBuf = gl.createBuffer()!;
-    this.yBuf = gl.createBuffer()!;
-    gl.bindVertexArray(this.vao);
-    for (const [buf, name] of [
-      [this.xBuf, 'a_x'],
-      [this.yBuf, 'a_y'],
-    ] as const) {
-      const loc = gl.getAttribLocation(this.prog, name);
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, 0);
-    }
-    gl.bindVertexArray(null);
     this.uX = gl.getUniformLocation(this.prog, 'u_x')!;
     this.uY = gl.getUniformLocation(this.prog, 'u_y')!;
     this.uColor = gl.getUniformLocation(this.prog, 'u_color')!;
   }
 
-  /** Matches the drawing buffer to the canvas's size in device pixels. */
-  resize(): void {
+  /** Matches the drawing buffer to the canvas's size in device pixels, and clears it. */
+  begin(): void {
     const dpr = window.devicePixelRatio || 1;
     const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
     const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
@@ -77,34 +70,50 @@ export class TraceRenderer {
       this.canvas.width = w;
       this.canvas.height = h;
     }
+    const gl = this.gl;
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
-  setTrace(x: Float32Array, y: Float32Array): void {
+  upload(x: Float32Array, y: Float32Array, reuse?: GlTrace): GlTrace {
     const gl = this.gl;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.xBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, x, gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.yBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, y, gl.DYNAMIC_DRAW);
-    this.runs = [];
+    const t = reuse ?? { vao: gl.createVertexArray()!, bufs: [gl.createBuffer()!, gl.createBuffer()!], runs: [] };
+    gl.bindVertexArray(t.vao);
+    for (const [k, data, name] of [
+      [0, x, 'a_x'],
+      [1, y, 'a_y'],
+    ] as const) {
+      const loc = gl.getAttribLocation(this.prog, name);
+      gl.bindBuffer(gl.ARRAY_BUFFER, t.bufs[k]);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, 0);
+    }
+    gl.bindVertexArray(null);
+    t.runs = [];
     let start = -1;
     for (let i = 0; i <= y.length; i++) {
       const gap = i === y.length || Number.isNaN(y[i]);
       if (!gap && start < 0) start = i;
       if (gap && start >= 0) {
-        this.runs.push([start, i - start]);
+        t.runs.push([start, i - start]);
         start = -1;
       }
     }
+    return t;
   }
 
-  /** Draws into `rect` (CSS pixels from the top left); clip space spans the rect. */
-  draw(x: Axis, y: Axis, rgba: [number, number, number, number], rect: Rect): void {
+  free(t: GlTrace): void {
+    this.gl.deleteVertexArray(t.vao);
+    t.bufs.forEach((b) => this.gl.deleteBuffer(b));
+  }
+
+  /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. */
+  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect): void {
+    if (!t.runs.length || rect.w <= 0 || rect.h <= 0) return;
     const gl = this.gl;
     const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    if (!this.runs.length) return;
     const [vx, vw, vh] = [Math.round(rect.x * dpr), Math.round(rect.w * dpr), Math.round(rect.h * dpr)];
     const vy = this.canvas.height - Math.round(rect.y * dpr) - vh;
     gl.viewport(vx, vy, vw, vh);
@@ -114,18 +123,10 @@ export class TraceRenderer {
     gl.uniform2f(this.uX, x.a, x.b);
     gl.uniform2f(this.uY, y.a, y.b);
     gl.uniform4f(this.uColor, ...rgba);
-    gl.bindVertexArray(this.vao);
-    for (const [start, count] of this.runs) {
-      gl.drawArrays(count === 1 ? gl.POINTS : gl.LINE_STRIP, start, count);
-    }
+    gl.bindVertexArray(t.vao);
+    for (const [start, count] of t.runs) gl.drawArrays(count === 1 ? gl.POINTS : gl.LINE_STRIP, start, count);
     gl.bindVertexArray(null);
     gl.disable(gl.SCISSOR_TEST);
-  }
-
-  clear(): void {
-    this.runs = [];
-    this.gl.clearColor(0, 0, 0, 0);
-    this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 }
 

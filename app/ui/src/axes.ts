@@ -1,4 +1,7 @@
-// Axes, grid and labels on a 2D canvas over the WebGL one (text in WebGL isn't worth it).
+// Axes, grid and labels on a 2D canvas over the WebGL one (text in WebGL isn't worth it), and the time and value
+// formats readouts share.
+
+import type { Rect } from './gl';
 
 const NS = 1_000_000_000;
 /** Times before 2000 are offsets from the start of a relative recording, not dates. */
@@ -21,21 +24,56 @@ function niceStep(span: number, maxTicks: number): number {
   return 10 * p;
 }
 
-function timeLabel(tNs: bigint, stepNs: number): string {
+const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+
+/** A time at the resolution `stepNs` calls for: a clock time for dates, seconds for relative recordings. */
+export function timeLabel(tNs: bigint, stepNs: number): string {
   if (tNs < BigInt(RELATIVE_BEFORE) && tNs > -BigInt(RELATIVE_BEFORE)) {
     const s = Number(tNs) / NS;
     const digits = Math.max(0, Math.min(9, Math.ceil(-Math.log10(stepNs / NS))));
     return `${s.toFixed(digits)} s`;
   }
-  const ms = Number(tNs / 1_000_000n);
-  const d = new Date(ms);
-  const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+  const d = new Date(Number(tNs / 1_000_000n));
   const hms = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
   if (stepNs >= 86400 * NS) return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   if (stepNs >= NS) return hms;
   const subNs = Number(((tNs % BigInt(NS)) + BigInt(NS)) % BigInt(NS));
   const digits = Math.max(1, Math.min(9, Math.ceil(-Math.log10(stepNs / NS))));
   return `${hms}.${String(subNs).padStart(9, '0').slice(0, digits)}`;
+}
+
+/** A time for a readout, at a thousandth of the visible span. */
+export function readoutTime(tNs: bigint, spanNs: number): string {
+  return timeLabel(tNs, Math.max(1, spanNs / 1000));
+}
+
+/** A duration: `250 µs`, `1.25 s`, `00:03:20.5`. */
+export function duration(ns: number): string {
+  const a = Math.abs(ns);
+  const sign = ns < 0 ? '−' : '';
+  if (a < 1e3) return `${sign}${a.toFixed(0)} ns`;
+  if (a < 1e6) return `${sign}${(a / 1e3).toPrecision(4)} µs`;
+  if (a < 1e9) return `${sign}${(a / 1e6).toPrecision(4)} ms`;
+  if (a < 60e9) return `${sign}${(a / 1e9).toPrecision(5)} s`;
+  const s = a / 1e9;
+  const tail = (s % 60).toFixed(1).padStart(4, '0');
+  return `${sign}${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${tail}`;
+}
+
+/** A value with about six significant digits, as readouts show it. */
+export function value(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a !== 0 && (a >= 1e7 || a < 1e-4)) return v.toExponential(4);
+  return String(Number(v.toPrecision(6)));
+}
+
+/** A frequency: `12.5 Hz`, `1.2 kHz`. */
+export function frequency(hz: number): string {
+  if (!Number.isFinite(hz)) return '—';
+  if (hz >= 1e6) return `${(hz / 1e6).toPrecision(4)} MHz`;
+  if (hz >= 1e3) return `${(hz / 1e3).toPrecision(4)} kHz`;
+  return `${hz.toPrecision(4)} Hz`;
 }
 
 function numberLabel(v: number, step: number): string {
@@ -50,60 +88,53 @@ export interface AxesView {
   yMax: number;
 }
 
-export const PAD = { left: 56, right: 12, top: 10, bottom: 24 };
+export interface AxesStyle {
+  grid: string;
+  muted: string;
+  mono: string;
+  /** Draw the time labels under the plot (the last pane only). */
+  timeLabels: boolean;
+}
 
-export function drawAxes(canvas: HTMLCanvasElement, view: AxesView): void {
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-  }
-  const ctx = canvas.getContext('2d')!;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-  const css = getComputedStyle(document.documentElement);
-  const grid = css.getPropertyValue('--grid').trim();
-  const muted = css.getPropertyValue('--muted').trim();
-  const mono = css.getPropertyValue('--mono').trim();
-  const plotW = w - PAD.left - PAD.right;
-  const plotH = h - PAD.top - PAD.bottom;
-  if (plotW <= 0 || plotH <= 0) return;
+/** Margins around each pane's plot for the value labels on the left and the time labels under the last one. */
+export const PAD = { left: 52, right: 14, timeLabels: 22 };
 
-  ctx.font = `11px ${mono}`;
-  ctx.fillStyle = muted;
-  ctx.strokeStyle = grid;
+/** Grid lines and labels for the plot in `r` (CSS pixels on the overlay). */
+export function drawAxes(ctx: CanvasRenderingContext2D, r: Rect, view: AxesView, s: AxesStyle): void {
+  if (r.w <= 0 || r.h <= 0) return;
+  ctx.save();
+  ctx.font = `11px ${s.mono}`;
+  ctx.fillStyle = s.muted;
+  ctx.strokeStyle = s.grid;
   ctx.lineWidth = 1;
 
-  // time axis
   const span = Number(view.t1 - view.t0);
-  const step = TIME_STEPS.find((s) => s >= span / Math.max(2, plotW / 110)) ?? TIME_STEPS[TIME_STEPS.length - 1];
+  const step = TIME_STEPS.find((x) => x >= span / Math.max(2, r.w / 110)) ?? TIME_STEPS[TIME_STEPS.length - 1];
   const stepBig = BigInt(Math.round(step));
-  let t = ((view.t0 / stepBig) + (view.t0 % stepBig > 0n ? 1n : 0n)) * stepBig;
+  let t = (view.t0 / stepBig + (view.t0 % stepBig > 0n ? 1n : 0n)) * stepBig;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   for (; t < view.t1; t += stepBig) {
-    const x = PAD.left + (Number(t - view.t0) / span) * plotW;
+    const x = Math.round(r.x + (Number(t - view.t0) / span) * r.w) + 0.5;
     ctx.beginPath();
-    ctx.moveTo(Math.round(x) + 0.5, PAD.top);
-    ctx.lineTo(Math.round(x) + 0.5, PAD.top + plotH);
+    ctx.moveTo(x, r.y);
+    ctx.lineTo(x, r.y + r.h);
     ctx.stroke();
-    ctx.fillText(timeLabel(t, step), x, PAD.top + plotH + 6);
+    if (s.timeLabels) ctx.fillText(timeLabel(t, step), x, r.y + r.h + 6);
   }
 
-  // value axis
   if (Number.isFinite(view.yMin) && Number.isFinite(view.yMax) && view.yMax > view.yMin) {
-    const ystep = niceStep(view.yMax - view.yMin, Math.max(2, plotH / 40));
+    const ystep = niceStep(view.yMax - view.yMin, Math.max(2, r.h / 28));
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     for (let v = Math.ceil(view.yMin / ystep) * ystep; v <= view.yMax; v += ystep) {
-      const y = PAD.top + plotH - ((v - view.yMin) / (view.yMax - view.yMin)) * plotH;
+      const y = Math.round(r.y + r.h - ((v - view.yMin) / (view.yMax - view.yMin)) * r.h) + 0.5;
       ctx.beginPath();
-      ctx.moveTo(PAD.left, Math.round(y) + 0.5);
-      ctx.lineTo(PAD.left + plotW, Math.round(y) + 0.5);
+      ctx.moveTo(r.x, y);
+      ctx.lineTo(r.x + r.w, y);
       ctx.stroke();
-      ctx.fillText(numberLabel(v, ystep), PAD.left - 6, y);
+      ctx.fillText(numberLabel(v, ystep), r.x - 8, y);
     }
   }
+  ctx.restore();
 }
