@@ -1,5 +1,6 @@
 //! TelemetryBench desktop app: the core runs in this process, and the web UI asks it for viewport reductions over
-//! Tauri IPC, which return the binary wire format (`tlmbench_core::wire`) as raw bytes.
+//! Tauri IPC, which return the binary wire format (`tlmbench_core::wire`) as raw bytes: one batch per request, for
+//! every pane and the overview.
 //!
 //! Recordings open through the store (`tlmbench_store`): read-only, with their pyramid and gap index built in the
 //! background into the shared cache root, never beside the data. While a build runs, views are exact from the
@@ -23,7 +24,7 @@ use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, State};
 use tlmbench_core::gaps::DEFAULT_FACTOR;
 use tlmbench_core::{RecordingInfo, Viewport, wire};
-use tlmbench_store::{Opened as StoreOpened, Precision, Status, Store};
+use tlmbench_store::{Opened as StoreOpened, Precision, Request, Status, Store};
 
 /// Open files, by id. Each window keeps its own view; files are shared.
 struct Files {
@@ -97,43 +98,75 @@ fn close(file: u32, files: State<'_, Files>) {
     }
 }
 
-/// Channels of `file` reduced for `[t0, t1)` over `width_px` columns, as the binary wire format. Times are
-/// decimal strings: a JSON number can't hold i64 nanoseconds exactly. `precision` is "coarse" (from the pyramid
-/// alone, drawn first on a cold file) or "exact".
-#[allow(clippy::too_many_arguments)]
-#[tauri::command]
-async fn view(
-    file: u32,
+/// One pane (or the overview) of a view batch.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ViewEntry {
+    /// Echoed in the reply (the UI's pane number, or the overview's id).
+    id: u32,
     channels: Vec<u32>,
+    /// Per channel: a time jump over this many median intervals breaks its line (missing: the default, 4).
+    #[serde(default)]
+    gap_factors: Vec<f64>,
+    /// Decimal strings: a JSON number can't hold i64 nanoseconds exactly.
     t0: String,
     t1: String,
     width_px: u32,
+}
+
+/// Every pane of a tab and the overview, each reduced over its own span and width under one generation, as a
+/// batch of the binary wire format (`wire::encode_batch`), so the stack redraws together. `precision` is "coarse"
+/// (from the pyramid alone, drawn first on a cold file) or "exact".
+#[tauri::command]
+async fn view(
+    file: u32,
     generation: u32,
     precision: Option<String>,
+    entries: Vec<ViewEntry>,
     files: State<'_, Files>,
 ) -> Result<Response, String> {
     let o = files.get(file)?;
-    let vp = Viewport { t0: parse_time(&t0)?, t1: parse_time(&t1)?, width_px: width_px.clamp(1, 16_384) };
     let precision = if precision.as_deref() == Some("coarse") { Precision::Coarse } else { Precision::Exact };
-    let bytes = spawn_blocking(move || {
-        let n = o.recording().info().channels.len();
-        let chans: Vec<usize> = channels.iter().map(|&c| c as usize).filter(|&c| c < n).collect();
-        let started = Instant::now();
-        let views = o.views(&chans, vp, DEFAULT_FACTOR, precision);
-        // channels reduce in parallel: each trace reports the whole call's time
-        let us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
-        let built_until = views.first().and_then(|v| v.built_until);
-        let outs: Vec<_> = views
+    let n = o.recording().info().channels.len();
+    let mut ids = Vec::with_capacity(entries.len());
+    let mut requests = Vec::with_capacity(entries.len());
+    for e in entries {
+        let vp = Viewport { t0: parse_time(&e.t0)?, t1: parse_time(&e.t1)?, width_px: e.width_px.clamp(1, 16_384) };
+        let (channels, gap_factors) = e
+            .channels
             .iter()
-            .map(|v| wire::Out {
-                channel: v.channel as u32,
-                trace: &v.trace,
-                reduce_us: us,
-                coarse: v.coarse,
-                from_pyramid: v.from_pyramid,
+            .enumerate()
+            .filter(|&(_, &c)| (c as usize) < n)
+            .map(|(i, &c)| (c as usize, e.gap_factors.get(i).copied().unwrap_or(DEFAULT_FACTOR)))
+            .unzip();
+        ids.push(e.id);
+        requests.push(Request { channels, gap_factors, vp });
+    }
+    let bytes = spawn_blocking(move || {
+        let started = Instant::now();
+        let batch = o.view_batch(&requests, precision);
+        // channels and panes reduce together: each trace reports the whole call's time
+        let us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
+        let parts: Vec<(u32, Vec<u8>)> = ids
+            .iter()
+            .zip(&requests)
+            .zip(&batch)
+            .map(|((&id, r), views)| {
+                let built_until = views.first().and_then(|v| v.built_until);
+                let outs: Vec<_> = views
+                    .iter()
+                    .map(|v| wire::Out {
+                        channel: v.channel as u32,
+                        trace: &v.trace,
+                        reduce_us: us,
+                        coarse: v.coarse,
+                        from_pyramid: v.from_pyramid,
+                    })
+                    .collect();
+                (id, wire::encode(generation, r.vp, built_until, &outs))
             })
             .collect();
-        wire::encode(generation, vp, built_until, &outs)
+        wire::encode_batch(generation, &parts)
     })
     .await
     .map_err(|e| e.to_string())?;

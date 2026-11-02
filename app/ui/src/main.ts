@@ -1,7 +1,8 @@
 // Phase 2 UI: a stack of panes on one time axis, an overview of the whole recording, hover readouts and cursors
 // with Measure. Pan and zoom re-project the last reply at once (two uniforms per trace) while the core computes
 // the sharper one; replies carry a generation and older ones are dropped. At most one query is in flight, and
-// the latest view is asked for as soon as it returns.
+// the latest view is asked for as soon as it returns. One query asks for every pane (each at its own width) and,
+// when it needs redrawing, the overview, so the stack redraws together.
 //
 // On a cold file the first reply is coarse (from whole summaries, labelled), and the exact one follows. While the
 // pyramid is built, panes fill in left to right and the part not read yet is hatched.
@@ -13,7 +14,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value } from './axes';
 import { runGate, runGate2 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
-import { decode } from './wire';
+import { type Batch, decodeBatch, type Reply } from './wire';
 
 interface ChannelInfo {
   name: string;
@@ -130,16 +131,17 @@ const state = {
   t1: 1n,
   history: [] as [bigint, bigint][],
   future: [] as [bigint, bigint][],
-  main: null as Layer | null,
+  /** Each pane's last reply. */
+  layers: [] as (Layer | null)[],
   ov: null as Layer | null,
+  /** The overview needs asking for again (layout, selection, size or build progress changed, or it's coarse). */
+  ovStale: true,
   generation: 0,
   drawnGeneration: 0,
   inflight: false,
   pending: false,
   /** The last exact reply's round trip: a slow one means a cold file, so new views ask for coarse first. */
   exactMs: Infinity,
-  ovInflight: false,
-  ovPending: false,
   /** Build progress; null when built. */
   building: null as null | { done: number; total: number; until: bigint | null },
   hoverT: null as bigint | null,
@@ -199,10 +201,16 @@ function ovRect(): Rect | null {
   return el ? rectIn(el, { l: 1, r: 1, t: 1, b: 1 }) : null;
 }
 
-/** Pixel columns the core reduces for: the plot width in device pixels. */
-function widthPx(): number {
-  return Math.max(1, Math.round(plotRect(0).w * (window.devicePixelRatio || 1)));
+/** Pixel columns the core reduces pane `i` for: its plot width in device pixels. */
+function widthPx(i = 0): number {
+  return Math.max(1, Math.round(plotRect(i).w * (window.devicePixelRatio || 1)));
 }
+
+/** The overview's entry id in a view batch (panes are 0, 1, …). */
+const OVERVIEW = 0xffffffff;
+
+/** The gap factor of channel `ch`: a time jump over this many median intervals breaks its line. */
+const gapFactor = (_ch: number): number => 4;
 
 const plotted = () => [...new Set(state.panes.flat())];
 
@@ -219,8 +227,7 @@ const xAt = (r: Rect, t: bigint) => r.x + (Number(t - state.t0) / Number(state.t
 
 // ---------- queries ----------
 
-function upload(layer: Layer | null, buf: ArrayBuffer): Layer {
-  const reply = decode(buf);
+function upload(layer: Layer | null, reply: Reply): Layer {
   const next: Layer = { originNs: reply.originNs, xScaleNs: reply.xScaleNs, traces: new Map() };
   for (const t of reply.traces) {
     const old = layer?.traces.get(t.channel);
@@ -237,6 +244,12 @@ function upload(layer: Layer | null, buf: ArrayBuffer): Layer {
   return next;
 }
 
+/** A pane's or the overview's request: its channels with their gap factors, over its own width. */
+function entry(id: number, channels: number[], t0: bigint, t1: bigint, width: number) {
+  return { id, channels, gapFactors: channels.map(gapFactor), t0: t0.toString(), t1: t1.toString(), widthPx: width };
+}
+
+/** Asks for every pane and, when stale, the overview, in one query under one generation. */
 async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const f = state.file;
   if (!f || !state.panes.length) return;
@@ -249,33 +262,44 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const generation = ++state.generation;
   const want = precision ?? (state.exactMs > 150 ? 'coarse' : 'exact');
   const inView = samplesInView();
+  const entries = state.panes.map((chans, i) => entry(i, chans, state.t0, state.t1, widthPx(i)));
+  const r = ovRect();
+  const withOv = state.ovStale && !!r;
+  if (withOv && r) {
+    const w = Math.max(1, Math.round(r.w * (window.devicePixelRatio || 1)));
+    entries.push(entry(OVERVIEW, state.panes[state.sel] ?? [], f.first, f.last + 1n, w));
+    state.ovStale = false;
+  }
   const started = performance.now();
   let followUp = false;
   try {
-    const buf = await invoke<ArrayBuffer>('view', {
-      file: f.id,
-      channels: plotted(),
-      t0: state.t0.toString(),
-      t1: state.t1.toString(),
-      widthPx: widthPx(),
-      generation,
-      precision: want,
-    });
+    const batch: Batch = decodeBatch(await invoke<ArrayBuffer>('view', { file: f.id, generation, precision: want, entries }));
     const ms = performance.now() - started;
-    const reply = decode(buf);
-    const coarse = reply.traces.some((t) => t.coarse);
+    const panes = [...batch.entries].filter(([id]) => id !== OVERVIEW).map(([, reply]) => reply);
+    const traces = panes.flatMap((reply) => reply.traces);
+    const coarse = traces.some((t) => t.coarse);
     if (!coarse) state.exactMs = ms;
+    const ov = batch.entries.get(OVERVIEW);
+    if (ov) {
+      state.ov = upload(state.ov, ov);
+      if (ov.traces.some((t) => t.coarse)) state.ovStale = true;
+    }
     if (generation > state.drawnGeneration) {
       state.drawnGeneration = generation;
-      state.main = upload(state.main, buf);
-      const points = reply.traces.reduce((a, t) => a + t.x.length, 0);
-      const kind = reply.traces.some((t) => t.kind === 'm4') ? 'M4' : 'raw';
+      state.layers = state.panes.map((_, i) => {
+        const reply = batch.entries.get(i);
+        return reply ? upload(state.layers[i] ?? null, reply) : (state.layers[i] ?? null);
+      });
+      const points = traces.reduce((a, t) => a + t.x.length, 0);
+      const kind = traces.some((t) => t.kind === 'm4') ? 'M4' : 'raw';
       statusEl.textContent = `${points.toLocaleString()} points · ${kind}${coarse ? ' · coarse' : ''} · ${ms.toFixed(0)} ms`;
-      state.onQuery?.({ ms, reduceUs: reply.traces[0]?.reduceUs ?? 0, points, bytes: reply.bytes, samplesInView: inView, coarse, traces: reply.traces.length });
+      state.onQuery?.({ ms, reduceUs: traces[0]?.reduceUs ?? 0, points, bytes: batch.bytes, samplesInView: inView, coarse, traces: traces.length });
       followUp = coarse && !state.pending;
-      scheduleDraw();
     }
+    if (ov && state.ovStale && !state.pending) followUp = true;
+    scheduleDraw();
   } catch (e) {
+    if (withOv) state.ovStale = true;
     statusEl.textContent = String(e);
   } finally {
     state.inflight = false;
@@ -284,38 +308,10 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   }
 }
 
-/** The overview: the selected pane's channels over the whole recording. */
-async function requestOverview(precision: 'coarse' | 'exact' = 'coarse'): Promise<void> {
-  const f = state.file;
-  const r = ovRect();
-  if (!f || !r) return;
-  if (state.ovInflight) {
-    state.ovPending = true;
-    return;
-  }
-  state.ovInflight = true;
-  state.ovPending = false;
-  let followUp = false;
-  try {
-    const buf = await invoke<ArrayBuffer>('view', {
-      file: f.id,
-      channels: state.panes[state.sel] ?? [],
-      t0: f.first.toString(),
-      t1: (f.last + 1n).toString(),
-      widthPx: Math.max(1, Math.round(r.w * (window.devicePixelRatio || 1))),
-      generation: 0,
-      precision,
-    });
-    state.ov = upload(state.ov, buf);
-    followUp = [...state.ov.traces.values()].some((t) => t.coarse);
-    scheduleDraw();
-  } catch (e) {
-    statusEl.textContent = String(e);
-  } finally {
-    state.ovInflight = false;
-    if (state.ovPending) void requestOverview();
-    else if (followUp) void requestOverview('exact');
-  }
+/** Asks for the overview again with the panes. */
+function overviewChanged(): void {
+  state.ovStale = true;
+  void requestView();
 }
 
 // hover: each channel's real sample nearest the pointer
@@ -442,12 +438,12 @@ function draw(): void {
   const tk = tokens();
   const span = Number(state.t1 - state.t0);
   const style: AxesStyle = { grid: tk['--grid'], muted: tk['--fg-muted'], mono: tk['--font-data'], timeLabels: false };
-  const main = state.main;
   let coarse = false;
-  let complete = !!main;
+  let complete = state.panes.length > 0;
 
   state.panes.forEach((chans, i) => {
     const r = plotRect(i);
+    const main = state.layers[i];
     // the pane's value range: what its traces hold in view
     let lo = Infinity;
     let hi = -Infinity;
@@ -486,7 +482,7 @@ function draw(): void {
     }
   });
   stackEl.querySelectorAll<HTMLElement>('.pill[data-coarse]').forEach((el, i) => {
-    el.hidden = !state.panes[i]?.some((ch) => main?.traces.get(ch)?.coarse);
+    el.hidden = !state.panes[i]?.some((ch) => state.layers[i]?.traces.get(ch)?.coarse);
   });
   drawOverview(ctx, tk);
   state.onPaint?.({ coarse, complete });
@@ -698,8 +694,7 @@ function saveLayout(): void {
 function layoutChanged(): void {
   saveLayout();
   renderPanes();
-  void requestView();
-  void requestOverview();
+  overviewChanged();
   if (state.A != null && state.B != null) void refreshMeasure();
 }
 
@@ -709,7 +704,7 @@ function selectPane(i: number): void {
   stackEl.querySelectorAll('.pane').forEach((p, k) => p.classList.toggle('sel', k === i));
   renderChannels();
   renderOverviewHead();
-  void requestOverview();
+  overviewChanged();
 }
 
 /** A new file's panes: one per channel up to four, else the channels shared out over four. */
@@ -786,8 +781,7 @@ function scheduleResize(): void {
   requestAnimationFrame(() => {
     resizeScheduled = false;
     scheduleDraw();
-    void requestView();
-    void requestOverview();
+    overviewChanged();
   });
 }
 
@@ -807,8 +801,11 @@ async function openPath(path: string): Promise<void> {
     const n = o.info.channels.length;
     state.panes = saved?.every((p) => p.every((ch) => ch < n)) ? saved : defaultPanes(n);
     state.sel = 0;
-    state.main = null;
+    state.layers.forEach((l) => l?.traces.forEach((t) => renderer.free(t.gl)));
+    state.ov?.traces.forEach((t) => renderer.free(t.gl));
+    state.layers = [];
     state.ov = null;
+    state.ovStale = true;
     state.A = state.B = null;
     state.history = [];
     state.future = [];
@@ -819,7 +816,6 @@ async function openPath(path: string): Promise<void> {
     $('empty').hidden = true;
     renderPanes();
     setView(state.file.first, state.file.last + 1n);
-    void requestOverview();
   } catch (e) {
     statusEl.textContent = String(e);
   }
@@ -840,8 +836,7 @@ function onProgress(p: Progress): void {
   if (done || now - progressRefresh > 250) {
     progressRefresh = now;
     state.exactMs = Infinity;
-    void requestView();
-    void requestOverview();
+    overviewChanged();
     if (done && state.A != null && state.B != null) void refreshMeasure();
   }
   scheduleDraw();
