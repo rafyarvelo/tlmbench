@@ -15,7 +15,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
-import type { QueryStats, RecordingInfo } from './main';
+import type { QueryStats, RecordingInfo } from './app';
 
 export interface GateApi {
   readonly file: null | { info: RecordingInfo; first: bigint; last: bigint };

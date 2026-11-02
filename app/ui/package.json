@@ -1,19 +1,22 @@
 {
   "name": "tlmbench-ui",
   "private": true,
-  "description": "TelemetryBench web UI (Phase 1: one WebGL2 pane over the core's binary viewport replies)",
+  "description": "TelemetryBench web UI: Svelte components around a WebGL2 renderer over the core's binary view batches",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit"
+    "build": "svelte-check --fail-on-warnings && vite build",
+    "typecheck": "svelte-check --fail-on-warnings"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-dialog": "2.8.4"
   },
   "devDependencies": {
-    "typescript": "7.0.2",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.7",
+    "typescript": "6.0.3",
     "vite": "8.3.5"
   }
 }

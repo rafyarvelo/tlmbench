@@ -45,8 +45,11 @@ Recipes for code that doesn't exist yet (no Cargo workspace, no `app/`, no `pyth
 | Rust stable, components, wasm targets | `rust-toolchain.toml` |
 | Node, nightly, just, cargo-binstall, nextest, cargo-fuzz, tauri-cli, wasmtime, wasm-tools | `ci/versions.env` |
 | Playwright | `prototype/tests/package.json` (+ lock file) |
+| Svelte, its Vite plugin, svelte-check, TypeScript, Vite, the Tauri JS API | `app/ui/package.json` (+ lock file) |
 | maturin, pytest, numpy, pyarrow | `requirements-dev.txt` |
 | CI base image | digest in `ci/Dockerfile` |
+
+The UI stays on TypeScript 6 until svelte-check supports 7 (it needs TypeScript's JavaScript API, which 7 doesn't have).
 
 `ci/setup.sh` installs from these on the Mac and in the CI image. On the Mac, Python and coreutils
 follow Homebrew and Node is whatever nodejs.org installer you ran; CI uses the exact versions.
