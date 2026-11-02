@@ -19,6 +19,15 @@
 //! since the epoch. `y_min`/`y_max` cover the samples inside the viewport (NaN when there are none), for autoscale.
 //! A NaN in `y` is a gap. `reduce_us` is how long the core took to reduce the trace (the UI's clocks are too coarse to
 //! time it).
+//!
+//! A batch (the reply to one `view` request: every pane of a tab and the overview, under one generation) frames
+//! one such message per entry, each with its own viewport and width:
+//!
+//! ```text
+//! header (16 B):    magic "TLMB" · u16 version · u16 0 · u32 generation · u32 entry count
+//! per entry (16 B): u32 id · u32 0 · u32 offset · u32 length   (the entry's TLMV message, from the batch's start)
+//! messages:         back to back, each 8-byte aligned
+//! ```
 
 use crate::{Timestamp, Trace, TraceKind, Viewport};
 
@@ -140,6 +149,60 @@ pub fn decode(b: &[u8]) -> Option<Reply> {
     (o == b.len()).then_some(Reply { generation, origin_ns, x_scale_ns, built_until, traces })
 }
 
+pub const BATCH_MAGIC: &[u8; 4] = b"TLMB";
+pub const BATCH_VERSION: u16 = 1;
+pub const BATCH_HEADER_BYTES: usize = 16;
+pub const BATCH_ENTRY_BYTES: usize = 16;
+
+/// The replies of one batch, by entry id, in request order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Batch {
+    pub generation: u32,
+    pub entries: Vec<(u32, Reply)>,
+}
+
+/// Frames encoded replies (see [`encode`]) as one batch: `(id, message)` per entry.
+pub fn encode_batch(generation: u32, entries: &[(u32, Vec<u8>)]) -> Vec<u8> {
+    let table = BATCH_HEADER_BYTES + BATCH_ENTRY_BYTES * entries.len();
+    let mut out = Vec::with_capacity(table + entries.iter().map(|(_, m)| m.len().next_multiple_of(8)).sum::<usize>());
+    out.extend_from_slice(BATCH_MAGIC);
+    out.extend_from_slice(&BATCH_VERSION.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&generation.to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    let mut at = table;
+    for (id, m) in entries {
+        for v in [*id, 0, at as u32, m.len() as u32] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        at += m.len().next_multiple_of(8);
+    }
+    for (_, m) in entries {
+        out.extend_from_slice(m);
+        out.resize(out.len().next_multiple_of(8), 0);
+    }
+    out
+}
+
+/// Decodes a batch and every reply in it.
+pub fn decode_batch(b: &[u8]) -> Option<Batch> {
+    let u32_at = |o: usize| Some(u32::from_le_bytes(b.get(o..o + 4)?.try_into().ok()?));
+    if b.get(..4)? != BATCH_MAGIC || u16::from_le_bytes(b.get(4..6)?.try_into().ok()?) != BATCH_VERSION {
+        return None;
+    }
+    let (generation, count) = (u32_at(8)?, u32_at(12)? as usize);
+    let mut entries = Vec::with_capacity(count.min(1024));
+    for k in 0..count {
+        let e = BATCH_HEADER_BYTES + BATCH_ENTRY_BYTES * k;
+        let (id, at, len) = (u32_at(e)?, u32_at(e + 8)? as usize, u32_at(e + 12)? as usize);
+        if !at.is_multiple_of(8) {
+            return None;
+        }
+        entries.push((id, decode(b.get(at..at.checked_add(len)?)?)?));
+    }
+    Some(Batch { generation, entries })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,6 +239,45 @@ mod tests {
         assert!(w.y_min >= -1.0 && w.y_max <= 1.0 && w.y_min < w.y_max);
         assert_eq!(r.traces[1].kind, TraceKind::Raw);
         assert_eq!(r.traces[1].y, b.y);
+    }
+
+    #[test]
+    fn batch_round_trip() {
+        let times = RateTimes::from_rate(1_767_225_600_000_000_000, 1000.0, 50_000);
+        let values: Vec<f32> = (0..50_000).map(|i| (i as f32 * 0.02).cos()).collect();
+        let (a, b) = (
+            Viewport { t0: times.at(100), t1: times.at(40_000), width_px: 640 },
+            Viewport { t0: times.at(100), t1: times.at(40_000), width_px: 311 },
+        );
+        let whole = Viewport { t0: times.at(0), t1: times.at(49_999) + 1, width_px: 1200 };
+        let (ta, tb, tw) = (m4(&times, &values, a), m4(&times, &values, b), m4(&times, &values, whole));
+        let one = |vp, t: &Trace, ch| {
+            let out = Out { channel: ch, trace: t, reduce_us: 7, coarse: false, from_pyramid: true };
+            encode(9, vp, None, &[out])
+        };
+        // the second pane has three channels: odd lengths keep every message 8-byte aligned anyway
+        let three = encode(
+            9,
+            b,
+            Some(b.t0 + 5),
+            &[0, 1, 2].map(|ch| Out { channel: ch, trace: &tb, reduce_us: 1, coarse: true, from_pyramid: false }),
+        );
+        let parts = vec![(1, one(a, &ta, 4)), (2, three), (u32::MAX, one(whole, &tw, 4))];
+        let bytes = encode_batch(9, &parts);
+        assert_eq!(bytes.len() % 8, 0);
+        let got = decode_batch(&bytes).unwrap();
+        assert_eq!(got.generation, 9);
+        let ids: Vec<u32> = got.entries.iter().map(|e| e.0).collect();
+        assert_eq!(ids, [1, 2, u32::MAX]);
+        for ((_, r), (_, m)) in got.entries.iter().zip(&parts) {
+            assert_eq!(Some(r), decode(m).as_ref());
+        }
+        assert_eq!(got.entries[1].1.traces.len(), 3);
+        assert_eq!(got.entries[1].1.x_scale_ns, b.bucket_ns() as f64);
+        assert_eq!(got.entries[2].1.traces[0].y.len(), tw.len());
+        assert_eq!(decode_batch(&encode_batch(3, &[])), Some(Batch { generation: 3, entries: vec![] }));
+        assert!(decode_batch(&bytes[..bytes.len() - 8]).is_none());
+        assert!(decode_batch(&parts[0].1).is_none(), "a lone reply isn't a batch");
     }
 
     #[test]
