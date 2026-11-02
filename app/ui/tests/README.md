@@ -13,6 +13,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_wire | the wire format: the fake core encodes the core's golden batch byte for byte, and `wire.ts` decodes it (Node, no browser) |
 | t_view | panes and the channel list, wheel and box zoom, Fit and Back, hover readouts, cursors and Measure, settings after a reload |
 | t_open | Open…, ⌘O and drops, a file still being read (progress, Measure waiting for exact stats), the coarse label, the gap factor dialog |
+| t_panes | the pane ⋯ menu and right-click: close (pane, others, below) with Undo, duplicate, split right into columns and down within one, add below; dragging a pane's number; time labels under each column; the layout after a reload |
 | t_shell | the rail and left sidebar (Ctrl+B), Settings (Basic/All, search, ⓘ, apply and save, Reset to defaults), mouse modes, the ⋯ menu, the status bar, Measure docking by hand and by itself, the note when a file can't be opened |
 
 Each test uses `lib.js`: `run(name, async h => { ... }, opts)`. `h.check(label, condition, got)` records a result;
@@ -23,7 +24,7 @@ a test fails on any failed check, any error in the page, or an exception in the 
 start; null for none), `settings` (the first-launch settings), `viewport`, `colorScheme`.
 
 The page's state is read through `window.__tlmApp` (`app.ts`): the view, cursors, hover time, build progress,
-panes and what each one has drawn.
+panes (their channels and `layout`: row, beside or under) and what each one has drawn.
 
 The core's side of the wire format is pinned by `golden_batch` in `crates/core/src/wire.rs`; after a deliberate
 format change, `TLMBENCH_BLESS=1 cargo test -p tlmbench-core golden_batch` rewrites the fixture, and `fakecore.js`

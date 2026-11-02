@@ -8,6 +8,7 @@
 // pyramid is built, panes fill in left to right and the part not read yet is hatched.
 
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { tick } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
@@ -15,6 +16,7 @@ import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value 
 import { runGate, runGate2 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { applyTheme, type Mode, onSetting, saveSettings, setSetting, settings } from './settings.svelte';
+import { addPaneBelow, labelled, normalize, note, onStackChange, type Pane, stack, toggleChannel } from './stack.svelte';
 import { actions, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 
@@ -99,8 +101,6 @@ const renderer = new Renderer($<HTMLCanvasElement>('gl'));
 
 const state = {
   file: null as null | { id: number; info: RecordingInfo; first: bigint; last: bigint },
-  panes: [] as number[][],
-  sel: 0,
   t0: 0n,
   t1: 1n,
   history: [] as [bigint, bigint][],
@@ -164,10 +164,9 @@ function rectIn(el: Element, inset: { l: number; r: number; t: number; b: number
 
 /** The plot rectangle of pane `i`, in CSS pixels on the canvases. */
 function plotRect(i: number): Rect {
-  const el = stackEl.children[i]?.querySelector('.plot');
+  const el = stackEl.querySelector(`[data-pane="${i}"] .plot`);
   if (!el) return { x: 0, y: 0, w: 0, h: 0 };
-  const last = i === state.panes.length - 1;
-  return rectIn(el, { l: PAD.left, r: PAD.right, t: 4, b: last ? PAD.timeLabels : 4 });
+  return rectIn(el, { l: PAD.left, r: PAD.right, t: 4, b: labelled(i) ? PAD.timeLabels : 4 });
 }
 
 function ovRect(): Rect | null {
@@ -190,7 +189,9 @@ const GAP_MIN = 2;
 /** The gap factor of channel `ch`: a time jump over this many median intervals breaks its line. */
 const gapFactor = (ch: number): number => (state.file && settings.gapFactors[state.file.info.path]?.[ch]) || GAP_DEFAULT;
 
-const plotted = () => [...new Set(state.panes.flat())];
+/** Each pane's channels. */
+const panes = (): number[][] => stack.panes.map((p) => p.channels);
+const plotted = () => [...new Set(panes().flat())];
 
 function samplesInView(): number {
   const f = state.file;
@@ -230,7 +231,7 @@ function entry(id: number, channels: number[], t0: bigint, t1: bigint, width: nu
 /** Asks for every pane and, when stale, the overview, in one query under one generation. */
 async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const f = state.file;
-  if (!f || !state.panes.length) return;
+  if (!f || !stack.panes.length) return;
   if (state.inflight) {
     state.pending = true;
     return;
@@ -240,12 +241,12 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const generation = ++state.generation;
   const want = precision ?? (state.exactMs > 150 ? 'coarse' : 'exact');
   const inView = samplesInView();
-  const entries = state.panes.map((chans, i) => entry(i, chans, state.t0, state.t1, widthPx(i)));
+  const entries = panes().map((chans, i) => entry(i, chans, state.t0, state.t1, widthPx(i)));
   const r = ovRect();
   const withOv = state.ovStale && !!r;
   if (withOv && r) {
     const w = Math.max(1, Math.round(r.w * (window.devicePixelRatio || 1)));
-    entries.push(entry(OVERVIEW, state.panes[state.sel] ?? [], f.first, f.last + 1n, w));
+    entries.push(entry(OVERVIEW, panes()[stack.sel] ?? [], f.first, f.last + 1n, w));
     state.ovStale = false;
   }
   const started = performance.now();
@@ -264,7 +265,7 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
     }
     if (generation > state.drawnGeneration) {
       state.drawnGeneration = generation;
-      state.layers = state.panes.map((_, i) => {
+      state.layers = stack.panes.map((_, i) => {
         const reply = batch.entries.get(i);
         return reply ? upload(state.layers[i] ?? null, reply) : (state.layers[i] ?? null);
       });
@@ -278,7 +279,7 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
     scheduleDraw();
   } catch (e) {
     if (withOv) state.ovStale = true;
-    ui.note = `Couldn't draw the view: ${e}`;
+    note(`Couldn't draw the view: ${e}`);
   } finally {
     state.inflight = false;
     if (state.pending) void requestView();
@@ -418,9 +419,9 @@ function draw(): void {
   const span = Number(state.t1 - state.t0);
   const style: AxesStyle = { grid: tk['--grid'], muted: tk['--fg-muted'], mono: tk['--font-data'], timeLabels: false };
   let coarse = false;
-  let complete = state.panes.length > 0;
+  let complete = stack.panes.length > 0;
 
-  state.panes.forEach((chans, i) => {
+  panes().forEach((chans, i) => {
     const r = plotRect(i);
     const main = state.layers[i];
     // the pane's value range: what its traces hold in view
@@ -440,7 +441,7 @@ function draw(): void {
     const padY = (hi - lo) * 0.06 || Math.abs(hi) * 0.06 || 1;
     const [yMin, yMax] = [lo - padY, hi + padY];
     paneY[i] = { yMin, yMax };
-    drawAxes(ctx, r, { t0: state.t0, t1: state.t1, yMin, yMax }, { ...style, timeLabels: i === state.panes.length - 1 });
+    drawAxes(ctx, r, { t0: state.t0, t1: state.t1, yMin, yMax }, { ...style, timeLabels: labelled(i) });
     if (main && span > 0) {
       const x: Axis = { a: (2 * main.xScaleNs) / span, b: (2 * Number(main.originNs - state.t0)) / span - 1 };
       const y: Axis = { a: 2 / (yMax - yMin), b: (-2 * yMin) / (yMax - yMin) - 1 };
@@ -460,9 +461,8 @@ function draw(): void {
       ctx.strokeRect(Math.round(a) + 0.5, r.y + 0.5, Math.round(b - a), r.h - 1);
     }
   });
-  stackEl.querySelectorAll<HTMLElement>('.pill[data-coarse]').forEach((el, i) => {
-    el.hidden = !state.panes[i]?.some((ch) => state.layers[i]?.traces.get(ch)?.coarse);
-  });
+  const coarsePanes = panes().map((chans, i) => chans.some((ch) => state.layers[i]?.traces.get(ch)?.coarse));
+  if (coarsePanes.join() !== stack.coarse.join()) stack.coarse = coarsePanes;
   drawOverview(ctx, tk);
   state.onPaint?.({ coarse, complete });
 }
@@ -598,31 +598,8 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
 
+/** What changes with the panes: the channel list, the overview's title, the plots. */
 function renderPanes(): void {
-  const f = state.file;
-  stackEl.replaceChildren();
-  if (!f) return;
-  state.panes.forEach((chans, i) => {
-    const sec = document.createElement('section');
-    sec.className = `pane${i === state.sel ? ' sel' : ''}`;
-    sec.dataset.pane = String(i);
-    const chips = chans
-      .map((ch) => {
-        const c = f.info.channels[ch];
-        const unit = c.unit ? `<span class="unit">${esc(c.unit)}</span>` : '';
-        return `<span class="chip" data-ch="${ch}" style="--c:${colorOf(ch)}">${esc(c.name)}${unit}<span class="val" data-val="${ch}"></span></span>`;
-      })
-      .join('');
-    const close =
-      state.panes.length > 1
-        ? `<button class="ibtn pclose" data-close="${i}" data-tip="Close pane" aria-label="Close pane"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>`
-        : '';
-    const empty = chans.length ? '' : '<span class="mnote">Tick channels on the left to plot them here</span>';
-    sec.innerHTML = `<div class="phead"><span class="pnum">${i + 1}</span>${chips}${empty}<span class="spacer"></span><span class="pill" data-coarse hidden data-tip="Drawn from summaries; the exact view follows">coarse</span>${close}</div><div class="plot"></div>`;
-    const last = i === state.panes.length - 1;
-    sec.querySelector<HTMLElement>('.plot')!.style.setProperty('--pb', `${last ? PAD.timeLabels : 4}px`);
-    stackEl.append(sec);
-  });
   renderChannels();
   renderOverviewHead();
   applyTips();
@@ -635,7 +612,7 @@ function renderChannels(): void {
   $('addPane').hidden = !f;
   if (!f) host.replaceChildren();
   if (!f) return;
-  const inSel = new Set(state.panes[state.sel] ?? []);
+  const inSel = new Set(panes()[stack.sel] ?? []);
   host.innerHTML = f.info.channels
     .map(
       (c, ch) =>
@@ -651,45 +628,47 @@ function renderOverviewHead(): void {
   if (!state.file) return;
   const wrap = document.createElement('div');
   wrap.className = 'overview';
-  wrap.innerHTML = `<div class="ovhead"><span>Overview of pane ${state.sel + 1}</span><span class="spacer"></span><button class="linkbtn" data-ovtop>${settings.overviewTop ? 'Show at the bottom' : 'Show on top'}</button></div><div class="ovplot"></div>`;
+  wrap.innerHTML = `<div class="ovhead"><span>Overview of pane ${stack.sel + 1}</span><span class="spacer"></span><button class="linkbtn" data-ovtop>${settings.overviewTop ? 'Show at the bottom' : 'Show on top'}</button></div><div class="ovplot"></div>`;
   slot.append(wrap);
 }
 
 function updateChips(): void {
-  stackEl.querySelectorAll<HTMLElement>('[data-val]').forEach((el) => {
-    const s = state.hover.get(Number(el.dataset.val));
-    el.textContent = s ? value(s.v) : '';
-  });
+  const values: Record<number, string> = {};
+  state.hover.forEach((s, ch) => (values[ch] = value(s.v)));
+  if (JSON.stringify(values) !== JSON.stringify(stack.values)) stack.values = values;
   ui.pointer = state.hoverT != null ? readoutTime(state.hoverT, Number(state.t1 - state.t0)) : '';
 }
 
 function saveLayout(): void {
   if (!state.file) return;
-  settings.layouts[state.file.info.path] = state.panes.map((p) => [...p]);
+  settings.layouts[state.file.info.path] = stack.panes.map((p) => ({ ...p, channels: [...p.channels] }));
   saveSettings();
 }
 
-function layoutChanged(): void {
+/** After an edit of the panes, once they are on the page (their plots are measured). */
+async function layoutChanged(): Promise<void> {
   saveLayout();
+  await tick();
   renderPanes();
   overviewChanged();
   if (state.A != null && state.B != null) void refreshMeasure();
 }
 
 function selectPane(i: number): void {
-  if (i === state.sel) return;
-  state.sel = i;
-  stackEl.querySelectorAll('.pane').forEach((p, k) => p.classList.toggle('sel', k === i));
+  if (i === stack.sel) return;
+  stack.sel = i;
   renderChannels();
   renderOverviewHead();
   overviewChanged();
 }
 
 /** A new file's panes: one per channel up to four, else the channels shared out over four. */
-function defaultPanes(n: number): number[][] {
-  if (n <= 4) return Array.from({ length: n }, (_, i) => [i]);
+function defaultPanes(n: number): Pane[] {
+  if (n <= 4) return Array.from({ length: n }, (_, i) => ({ channels: [i] }));
   const per = Math.ceil(n / 4);
-  return Array.from({ length: Math.ceil(n / per) }, (_, p) => Array.from({ length: Math.min(per, n - p * per) }, (_, k) => p * per + k));
+  return Array.from({ length: Math.ceil(n / per) }, (_, p) => ({
+    channels: Array.from({ length: Math.min(per, n - p * per) }, (_, k) => p * per + k),
+  }));
 }
 
 // ---------- Measure ----------
@@ -765,6 +744,7 @@ function scheduleResize(): void {
 
 async function openPath(path: string): Promise<void> {
   ui.note = '';
+  ui.undo = null;
   try {
     const progress = new Channel<Progress>();
     progress.onmessage = onProgress;
@@ -779,8 +759,9 @@ async function openPath(path: string): Promise<void> {
     state.building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
     const saved = settings.layouts[o.info.path];
     const n = o.info.channels.length;
-    state.panes = saved?.every((p) => p.every((ch) => ch < n)) ? saved.map((p) => [...p]) : defaultPanes(n);
-    state.sel = 0;
+    stack.panes = saved?.every((p) => p.channels?.every((ch) => ch < n)) ? saved.map((p) => ({ ...p, channels: [...p.channels] })) : defaultPanes(n);
+    stack.sel = 0;
+    normalize();
     state.layers.forEach((l) => l?.traces.forEach((t) => renderer.free(t.gl)));
     state.ov?.traces.forEach((t) => renderer.free(t.gl));
     state.layers = [];
@@ -793,12 +774,14 @@ async function openPath(path: string): Promise<void> {
     ui.file = path.split(/[\\/]/).pop() ?? path;
     ui.path = path;
     ui.measureDismissed = false;
+    ui.channels = o.info.channels.map((c) => ({ name: c.name, unit: c.unit }));
     $('empty').hidden = true;
+    await tick();
     renderPanes();
     setView(state.file.first, state.file.last + 1n);
     void refreshMeasure();
   } catch (e) {
-    ui.note = `Couldn't open ${path.split(/[\\/]/).pop()}: ${e}`;
+    note(`Couldn't open ${path.split(/[\\/]/).pop()}: ${e}`);
   }
 }
 
@@ -806,7 +789,7 @@ let progressRefresh = 0;
 function onProgress(p: Progress): void {
   if (!state.file) return;
   if (p.error) {
-    ui.note = `Couldn't read ${ui.file} to the end: ${p.error}`;
+    note(`Couldn't read ${ui.file} to the end: ${p.error}`);
     return;
   }
   const done = p.done >= p.total;
@@ -837,9 +820,10 @@ function paneAt(e: { clientX: number; clientY: number }): { i: number; r: Rect; 
   const c = center.getBoundingClientRect();
   const x = e.clientX - c.left;
   const y = e.clientY - c.top;
-  for (let i = 0; i < state.panes.length; i++) {
+  for (let i = 0; i < stack.panes.length; i++) {
     const r = plotRect(i);
-    if (y >= r.y - 4 && y <= r.y + r.h + 4) return { i, r, x };
+    const inX = x >= r.x - PAD.left && x <= r.x + r.w + PAD.right;
+    if (inX && y >= r.y - 4 && y <= r.y + r.h + 4) return { i, r, x };
   }
   return null;
 }
@@ -872,18 +856,11 @@ let lastPointer: { clientX: number; clientY: number } | null = null;
 
 stackEl.addEventListener('pointerdown', (e) => {
   if (!state.file) return;
-  const close = (e.target as HTMLElement).closest<HTMLElement>('[data-close]');
-  if (close) {
-    const i = Number(close.dataset.close);
-    state.panes.splice(i, 1);
-    state.sel = Math.min(state.sel, state.panes.length - 1);
-    layoutChanged();
-    return;
-  }
+  const pane = (e.target as HTMLElement).closest<HTMLElement>('[data-pane]');
+  if (pane) selectPane(Number(pane.dataset.pane));
+  if (!(e.target as HTMLElement).closest('.plot')) return;
   const hit = paneAt(e);
   if (!hit) return;
-  selectPane(hit.i);
-  if (!(e.target as HTMLElement).closest('.plot')) return;
   const panGesture = e.button === 1 || (e.button === 0 && e.shiftKey);
   if (e.button !== 0 && !panGesture) return;
   e.preventDefault();
@@ -1014,19 +991,11 @@ center.addEventListener('pointerup', () => {
 $('chans').addEventListener('click', (e) => {
   const row = (e.target as HTMLElement).closest<HTMLElement>('[data-ch]');
   if (!row || !state.file) return;
-  const ch = Number(row.dataset.ch);
-  const pane = (state.panes[state.sel] ??= []);
-  const k = pane.indexOf(ch);
-  if (k >= 0) pane.splice(k, 1);
-  else pane.push(ch);
-  layoutChanged();
+  toggleChannel(Number(row.dataset.ch));
 });
 
-$('addPane').addEventListener('click', () => {
-  state.panes.push([]);
-  state.sel = state.panes.length - 1;
-  layoutChanged();
-});
+$('addPane').addEventListener('click', () => addPaneBelow(stack.panes.length - 1));
+onStackChange(() => void layoutChanged());
 
 measureEl.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('[data-clear]')) clearCursors();
@@ -1096,7 +1065,7 @@ function gapDialog(ch: number, x: number, y: number): void {
     saveSettings();
     closePopup();
     // the gap index keeps every jump over 2× the median, so this only redraws
-    if (state.panes[state.sel]?.includes(ch)) overviewChanged();
+    if (panes()[stack.sel]?.includes(ch)) overviewChanged();
     else void requestView();
   };
   el.querySelector('[data-apply]')!.addEventListener('click', () => apply(input.valueAsNumber));
@@ -1187,7 +1156,7 @@ export const gateApi = {
     return state.file;
   },
   get panes() {
-    return state.panes;
+    return panes();
   },
   widthPx,
   /** Sets the view without scheduling a frame: the gate draws in its own animation frames. */
@@ -1219,8 +1188,9 @@ export const gateApi = {
   cursors: () => ({ A: state.A == null ? null : String(state.A), B: state.B == null ? null : String(state.B) }),
   hoverT: () => (state.hoverT == null ? null : String(state.hoverT)),
   building: () => state.building && { done: state.building.done, total: state.building.total },
-  panes: () => state.panes.map((p) => [...p]),
-  sel: () => state.sel,
+  panes: () => panes().map((p) => [...p]),
+  layout: () => stack.panes.map((p) => (p.beside ? 'beside' : p.under ? 'under' : 'row')),
+  sel: () => stack.sel,
   mode: () => settings.mode,
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
 };

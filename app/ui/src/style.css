@@ -143,7 +143,8 @@ body {
   border-color: var(--accent-line);
 }
 
-.sel {
+select.sel,
+input.sel {
   min-height: 30px;
   padding: 0 6px;
   border: 1px solid var(--border);

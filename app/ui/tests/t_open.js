@@ -46,11 +46,11 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
   await fake((c) => (window.__tlmFake.files[c] = { cold: true }), COLD);
   await fake(() => {
     const seen = (window.__coarseSeen = []);
-    new MutationObserver(() => seen.push(document.querySelectorAll('.pill[data-coarse]:not([hidden])').length)).observe(document.getElementById('stack'), { subtree: true, attributes: true, attributeFilter: ['hidden'] });
+    new MutationObserver(() => seen.push(document.querySelectorAll('.pill[data-coarse]').length)).observe(document.getElementById('stack'), { subtree: true, childList: true });
   });
   await fake((c) => window.__tlmFake.drop([c]), COLD);
   check('coarse label shown first', await until(() => window.__coarseSeen.some((n) => n > 0)));
-  check('then the exact view hides it', await until(() => document.querySelectorAll('.pill[data-coarse]:not([hidden])').length === 0));
+  check('then the exact view hides it', await until(() => document.querySelectorAll('.pill[data-coarse]').length === 0));
 
   // gap factor: right-click a chip
   await p.click('#stack .chip[data-ch="1"]', { button: 'right' });

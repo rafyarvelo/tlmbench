@@ -2,6 +2,7 @@
      overview, Measure on the right, and the status bar (a setting). app.ts drives the stack, the channel list and
      Measure's contents; it finds them by id, so they stay in the page (hidden, not removed). -->
 <script lang="ts">
+  import PaneStack from './shell/PaneStack.svelte';
   import Rail from './shell/Rail.svelte';
   import Settings from './shell/Settings.svelte';
   import TopBar from './shell/TopBar.svelte';
@@ -29,7 +30,18 @@
     {#if ui.note}
       <div class="wsnote" id="wsNote" role="status">
         <span class="dot"></span><span class="txt">{ui.note}</span>
-        <button class="ibtn" aria-label="Dismiss" onclick={() => (ui.note = '')}>{@html ICON.close}</button>
+        {#if ui.undo}
+          <button
+            class="tbtn"
+            onclick={() => {
+              const undo = ui.undo;
+              ui.note = '';
+              ui.undo = null;
+              undo?.();
+            }}>Undo</button
+          >
+        {/if}
+        <button class="ibtn" aria-label="Dismiss" onclick={() => ((ui.note = ''), (ui.undo = null))}>{@html ICON.close}</button>
       </div>
     {/if}
     <div class="work">
@@ -50,7 +62,7 @@
       </aside>
       <main id="center" class="center" data-mode={settings.mode}>
         <div id="ovTop" class="ovslot"></div>
-        <div id="stack" class="stack"></div>
+        <PaneStack />
         <button id="addPane" class="addpane" hidden>+ Add pane</button>
         <div id="ovBottom" class="ovslot"></div>
         <canvas id="gl" class="layer"></canvas>

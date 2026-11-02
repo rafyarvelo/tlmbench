@@ -3,6 +3,8 @@
 export const ui = $state({
   /** The open file's name and path ('' when none). */
   file: '',
+  /** Its channels' names and units. */
+  channels: [] as { name: string; unit: string | null }[],
   path: '',
   /** The view's time range, its span, and the pointer's time over a plot. */
   range: '',
@@ -16,8 +18,10 @@ export const ui = $state({
   measureDismissed: false,
   /** The last query (points, kind, time), for the status bar. */
   perf: '',
-  /** A message for the person (an error), shown under the top bar until closed. */
+  /** A message for the person (an error, or what an edit did), shown under the top bar until closed. */
   note: '',
+  /** Undoes what the note says was done. */
+  undo: null as null | (() => void),
 });
 
 /** Measure shows when opened by hand, or by itself when both cursors are placed. */

@@ -1,6 +1,8 @@
 // Settings: everything configurable, saved in the app's local storage as it changes (CLAUDE.md: production-like).
 // Components and app.ts read `settings` directly; changes go through `setSetting` so they are saved and applied.
 
+import type { Pane } from './stack.svelte';
+
 export type Mode = 'box' | 'pan' | 'cursor';
 export type Theme = 'system' | 'light' | 'dark';
 export type ZoomSpeed = 'slow' | 'normal' | 'fast';
@@ -20,8 +22,8 @@ export interface Settings {
   showPerf: boolean;
   /** Settings shows every setting, not just the everyday ones. */
   settingsAll: boolean;
-  /** Channel numbers of each pane, by file path. */
-  layouts: Record<string, number[][]>;
+  /** Each file's panes (their channel numbers and where they sit), by file path. */
+  layouts: Record<string, Pane[]>;
   /** Gap factors set by hand, by file path and channel number (the rest use the default). */
   gapFactors: Record<string, Record<number, number>>;
 }

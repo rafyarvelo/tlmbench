@@ -20,7 +20,9 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   await p.click('#chans .chan[data-ch="0"]');
   await p.click('#addPane');
   check('+ Add pane', (await paneCount()) === 4 && (await app('sel')) === 3, await paneCount());
-  await p.locator('#stack section.pane >> nth=3 >> [data-close]').dispatchEvent('pointerdown');
+  await p.hover('#stack [data-pane="3"] .phead');
+  await p.click('#stack [data-pane="3"] [data-pmenu]');
+  await p.locator('.panemenu .mi', { hasText: /^Close pane$/ }).click();
   check('closing a pane', (await paneCount()) === 3, await paneCount());
 
   // wheel zooms around the pointer; Back and Fit
