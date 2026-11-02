@@ -33,6 +33,7 @@ fn recording(dir: &Path) -> PathBuf {
         value_offset: 0.0,
     };
     let desc = Descriptor {
+        sequence: None,
         schema: SCHEMA,
         name: None,
         endian: Endian::Little,
@@ -273,6 +274,7 @@ fn gap_factors_apply_per_channel() {
         value_offset: 0.0,
     };
     let desc = Descriptor {
+        sequence: None,
         schema: SCHEMA,
         name: None,
         endian: Endian::Little,

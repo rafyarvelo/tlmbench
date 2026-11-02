@@ -1,8 +1,9 @@
-//! `tlmbench`: the command line over the same core as the desktop app. It has `info`, `cache` and `query`;
-//! convert, check, export html, validate, derive and config export land in later phases.
+//! `tlmbench`: the command line over the same core as the desktop app. It has `info`, `cache`, `query` and
+//! `record`; convert, check, export html, validate, derive and config export land in later phases.
 //!
 //! It reads recordings and never writes beside them: the only writes are cache entries under the cache root
-//! (`--cache`, `$TLMBENCH_CACHE`, or the OS cache dir shared with the app).
+//! (`--cache`, `$TLMBENCH_CACHE`, or the OS cache dir shared with the app), and `record`'s session folders (`--out`,
+//! `$TLMBENCH_RECORDINGS`, or the app's Recordings folder).
 //!
 //! Exit codes: 0 done; 2 a file couldn't be read; 3 a configuration error (a bad descriptor or argument).
 
@@ -59,6 +60,29 @@ enum Command {
         what: Query,
         #[command(flatten)]
         common: Common,
+    },
+    /// Record a live source into a new session folder until it ends (or --seconds pass); prints its stream health
+    Record {
+        /// tcp://host:port (connects to it) or udp://host:port (listens on it)
+        endpoint: tlmbench_live::Endpoint,
+        /// The frames' format descriptor (TOML)
+        #[arg(long)]
+        descriptor: PathBuf,
+        /// Where the session folder goes (default: $TLMBENCH_RECORDINGS, else the app's Recordings folder)
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Stop after this many seconds
+        #[arg(long)]
+        seconds: Option<f64>,
+        /// UDP: stop once no datagram has come for this many seconds
+        #[arg(long)]
+        idle_end: Option<f64>,
+        /// The ring buffer's size in MB (default: about 10 s of the descriptor's rate)
+        #[arg(long)]
+        ring_mb: Option<usize>,
+        /// The result as one JSON object
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -154,6 +178,9 @@ fn main() -> ExitCode {
         Command::Info { files, json, common } => info(&files, json, &common),
         Command::Cache { action, common } => cache(action, &common),
         Command::Query { what, common } => query(what, &common),
+        Command::Record { endpoint, descriptor, out, seconds, idle_end, ring_mb, json } => {
+            record(endpoint, &descriptor, out, seconds, idle_end, ring_mb, json)
+        }
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -437,4 +464,64 @@ fn group(n: usize) -> String {
         out.push(c);
     }
     out
+}
+
+fn record(
+    endpoint: tlmbench_live::Endpoint,
+    descriptor: &std::path::Path,
+    out: Option<PathBuf>,
+    seconds: Option<f64>,
+    idle_end: Option<f64>,
+    ring_mb: Option<usize>,
+    json: bool,
+) -> Result<(), Fail> {
+    use std::time::{Duration, Instant};
+    let text = std::fs::read_to_string(descriptor).map_err(|e| Fail(3, format!("{}: {e}", descriptor.display())))?;
+    let desc = tlmbench_decode::descriptor::Descriptor::parse(&text)
+        .map_err(|e| Fail(3, format!("{}: {e}", descriptor.display())))?;
+    let root = out.unwrap_or_else(tlmbench_live::recordings_dir);
+    let mut session = tlmbench_live::Session::create(&root).map_err(|e| Fail(2, format!("{}: {e}", root.display())))?;
+    let opts = tlmbench_live::Options {
+        ring_bytes: ring_mb.map(|mb| mb << 20),
+        idle_end: idle_end.map(Duration::from_secs_f64),
+        ..Default::default()
+    };
+    let source = session.add_source(endpoint, &desc, &opts).map_err(|e| Fail(2, e.to_string()))?;
+    let file = source.path().to_owned();
+    let (started, live) = (Instant::now(), std::io::stderr().is_terminal() && !json);
+    let mut last = Instant::now();
+    while !source.health().ended && seconds.is_none_or(|s| started.elapsed().as_secs_f64() < s) {
+        std::thread::sleep(Duration::from_millis(50));
+        if live && last.elapsed() >= Duration::from_secs(1) {
+            last = Instant::now();
+            let h = source.health();
+            eprint!(
+                "\r{} records, {} dropped, {} missing   ",
+                h.records_written, h.records_dropped, h.sequence_missing
+            );
+        }
+    }
+    let h = source.stop();
+    if live {
+        eprintln!();
+    }
+    if json {
+        let v = serde_json::json!({ "session": session.dir(), "file": file, "health": h });
+        println!("{v}");
+    } else {
+        println!("{}", file.display());
+        println!(
+            "{} records in {:.1} s · {} dropped · {} missing, {} repeated by sequence · ring high water {:.0}%",
+            h.records_written,
+            h.seconds,
+            h.records_dropped,
+            h.sequence_missing,
+            h.sequence_repeated,
+            100.0 * h.ring_high_water_bytes as f64 / h.ring_bytes.max(1) as f64
+        );
+    }
+    match h.error {
+        Some(e) => Err(Fail(2, e)),
+        None => Ok(()),
+    }
 }

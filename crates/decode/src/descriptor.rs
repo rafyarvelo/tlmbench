@@ -12,6 +12,8 @@
 //! header_size = 0        # bytes before the first record (ignored when the file's own header says)
 //! record_size = 16
 //!
+//! sequence = "seq"      # optional: an integer field counting frames, so a live source can count lost ones
+//!
 //! [time]
 //! source = "field"       # rate | field | index
 //! field = "t"            # an integer field, not a channel
@@ -50,6 +52,9 @@ pub struct Descriptor {
     #[serde(default)]
     pub header_size: u64,
     pub record_size: u64,
+    /// An integer field that counts records up by one each, for live sources: a jump is that many records lost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<String>,
     pub time: TimeSpec,
     pub fields: Vec<Field>,
 }
@@ -217,6 +222,13 @@ impl Descriptor {
                 return bad(format!("field {:?}: scale must be finite and non-zero, value_offset finite", f.name));
             }
         }
+        if let Some(seq) = &self.sequence {
+            match self.fields.iter().find(|f| &f.name == seq) {
+                None => return bad(format!("sequence {seq:?} is not one of the fields")),
+                Some(f) if f.dtype.is_float() => return bad(format!("sequence {seq:?} must be an integer type")),
+                Some(_) => {}
+            }
+        }
         match &self.time {
             TimeSpec::Rate { rate_hz, .. } if !(rate_hz.is_finite() && *rate_hz > 0.0) => {
                 bad(format!("time.rate_hz {rate_hz} must be a positive number"))
@@ -285,6 +297,7 @@ mod tests {
             ("scale = 0.001", "scale = 0.0", "scale"),
             ("unit = \"us\"", "unit = \"fortnights\"", "unknown variant"),
             ("endian = \"little\"", "endian = \"little\"\ncolour = 3", "unknown field"),
+            ("record_size = 16", "record_size = 16\nsequence = \"nope\"", "sequence \"nope\""),
         ];
         for (from, to, expect) in cases {
             let err = Descriptor::parse(&EXAMPLE.replacen(from, to, 1)).unwrap_err().to_string();

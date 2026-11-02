@@ -507,6 +507,7 @@ mod tests {
     #[test]
     fn rate_file_reads_contiguous_f32() {
         let desc = Descriptor {
+            sequence: None,
             schema: 1,
             name: None,
             endian: Endian::Little,
@@ -529,6 +530,7 @@ mod tests {
         v.scale = 0.001;
         v.value_offset = 1.0;
         let desc = Descriptor {
+            sequence: None,
             schema: 1,
             name: Some("bench".into()),
             endian: Endian::Big,
@@ -561,6 +563,7 @@ mod tests {
         v.scale = -0.5;
         v.value_offset = 10.0;
         let desc = Descriptor {
+            sequence: None,
             schema: 1,
             name: None,
             endian: Endian::Big,
@@ -593,6 +596,7 @@ mod tests {
     #[test]
     fn block_summaries_match_per_channel_ones() {
         let desc = Descriptor {
+            sequence: None,
             schema: 1,
             name: None,
             endian: Endian::Big,
@@ -637,6 +641,7 @@ mod tests {
     #[test]
     fn decoded_chunks_read_like_the_fields() {
         let desc = Descriptor {
+            sequence: None,
             schema: 1,
             name: None,
             endian: Endian::Big,
@@ -674,6 +679,7 @@ mod tests {
     #[test]
     fn a_native_one_field_file_is_not_chunked() {
         let desc = Descriptor {
+            sequence: None,
             schema: 1,
             name: None,
             endian: Endian::Little,
@@ -689,6 +695,7 @@ mod tests {
     #[test]
     fn backwards_time_is_an_error() {
         let desc = Descriptor {
+            sequence: None,
             schema: 1,
             name: None,
             endian: Endian::Little,
@@ -710,6 +717,7 @@ mod tests {
     #[test]
     fn truncated_header_is_an_error() {
         let desc = Descriptor {
+            sequence: None,
             schema: 1,
             name: None,
             endian: Endian::Little,

@@ -4,6 +4,10 @@
 //! Each channel is a sine (period 30 s × (channel + 1), amplitude 10) plus uniform noise of ±0.5, a ±25 spike
 //! about every 200k samples, and a gap about every 5M samples: a run of NaN for 0.1 s in .tlm (fixed rate), and
 //! 2 s with no rows in CSV (a time jump).
+//!
+//! `--send` streams the same signal live instead, and `--verify` checks a recording of it (see `stream`).
+
+mod stream;
 
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -27,8 +31,8 @@ struct Args {
     size: Option<u64>,
     #[arg(long, default_value_t = 1)]
     channels: usize,
-    /// Sample rate in Hz
-    #[arg(long, default_value_t = 10_000)]
+    /// Sample rate in Hz (a K or M suffix works: 1M)
+    #[arg(long, value_parser = parse_count, default_value = "10K")]
     rate: u64,
     /// Formats to write
     #[arg(long, value_enum, value_delimiter = ',', default_value = "tlm,csv")]
@@ -44,6 +48,21 @@ struct Args {
     /// Time of the first sample (ISO 8601)
     #[arg(long, default_value = "2026-01-01T00:00:00Z")]
     start: String,
+    /// Stream live instead of writing files: tcp://host:port (listens, sends to the first client) or
+    /// udp://host:port (sends to it). --rate records a second, each a sequence number and the channels.
+    #[arg(long)]
+    send: Option<tlmbench_live::Endpoint>,
+    /// How long --send streams
+    #[arg(long, default_value_t = 60.0)]
+    seconds: f64,
+    /// Write the descriptor of --send's records here (a receiver's --descriptor)
+    #[arg(long)]
+    descriptor_out: Option<PathBuf>,
+    /// Check a recording of --send holds every record in order, bit for bit (with --expect: that many)
+    #[arg(long)]
+    verify: Option<PathBuf>,
+    #[arg(long, requires = "verify")]
+    expect: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -131,6 +150,7 @@ fn progress(label: &str, i: u64, n: u64, started: Instant) {
 
 fn write_tlm(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
     let desc = Descriptor {
+        sequence: None,
         schema: SCHEMA,
         name: Some("tlmbench-gen synthetic".into()),
         endian: Endian::Little,
@@ -262,6 +282,19 @@ fn write_csv(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
 
 fn main() -> io::Result<()> {
     let mut a = Args::parse();
+    if let Some(path) = &a.verify {
+        let ok = stream::verify(path, a.seed, a.expect)?;
+        std::process::exit(if ok { 0 } else { 1 });
+    }
+    if let Some(path) = &a.descriptor_out {
+        std::fs::write(path, stream::descriptor(a.channels, a.rate).to_toml())?;
+    }
+    if let Some(to) = &a.send {
+        return stream::send(to, a.channels, a.rate, a.seconds, a.seed);
+    }
+    if a.descriptor_out.is_some() {
+        return Ok(());
+    }
     if let Some(size) = a.size {
         a.samples = size / (4 * a.channels.max(1) as u64);
     }

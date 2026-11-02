@@ -12,5 +12,8 @@ find "$dir" -name '*.csv' -print0 | while IFS= read -r -d '' f; do
   "$bin" query values --cache "$c" --at 0 "$f" > /dev/null
   "$bin" query stats --cache "$c" "$f" > /dev/null
 done
+# record: a session folder goes only where --out says (nothing is sent here, so it records nothing)
+printf 'schema = 1\nrecord_size = 8\nsequence = "seq"\n[time]\nsource = "rate"\nrate_hz = 1000.0\n[[fields]]\nname = "seq"\ntype = "u32"\noffset = 0\n[[fields]]\nname = "v"\ntype = "f32"\noffset = 4\n' > "$c/live.toml"
+"$bin" record udp://127.0.0.1:0 --descriptor "$c/live.toml" --out "$c/rec" --seconds 0.3 --json > /dev/null
 "$bin" cache list --cache "$c" > /dev/null
 "$bin" cache clear --cache "$c" > /dev/null

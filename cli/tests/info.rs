@@ -39,6 +39,7 @@ fn reference_file_text_output() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("rec.tlm");
     let desc = Descriptor {
+        sequence: None,
         schema: SCHEMA,
         name: None,
         endian: Endian::Little,

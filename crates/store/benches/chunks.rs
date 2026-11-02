@@ -35,6 +35,7 @@ fn write(path: &std::path::Path, n: usize) {
         })
         .collect();
     let desc = Descriptor {
+        sequence: None,
         schema: SCHEMA,
         name: None,
         endian: Endian::Little,
