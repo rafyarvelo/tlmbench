@@ -15,7 +15,7 @@ use serde::Serialize;
 use tlmbench_core::datetime::{format_duration, format_time, parse_decimal, parse_iso};
 use tlmbench_core::gaps::DEFAULT_FACTOR;
 use tlmbench_core::{RecordingInfo, TimeSource, Timestamp, Viewport};
-use tlmbench_store::{Opened, Status, Store};
+use tlmbench_store::{Opened, Precision, Status, Store};
 
 #[derive(Parser, Debug)]
 #[command(name = "tlmbench", version, about = "TelemetryBench on the command line")]
@@ -113,6 +113,10 @@ enum Query {
         /// A time jump over this many median intervals breaks the line
         #[arg(long, default_value_t = DEFAULT_FACTOR)]
         gap_factor: f64,
+        /// From the pyramid alone, as charts first draw on a cold file (every extreme kept, edges within a
+        /// quarter pixel)
+        #[arg(long)]
+        coarse: bool,
     },
     /// Each channel's sample nearest a time, as CSV: channel, index, time_ns, value
     Values {
@@ -319,13 +323,13 @@ fn query(what: Query, common: &Common) -> Result<(), Fail> {
         writeln!(out, "{line}").map_err(|e| Fail(2, e.to_string()))
     };
     match what {
-        Query::View { pick, span, width, gap_factor } => {
+        Query::View { pick, span, width, gap_factor, coarse } => {
             let (o, chans) = open(&pick)?;
             let (t0, t1) = span_of(&o, &span)?;
             w(&mut out, "channel,time_ns,value".into())?;
-            for c in chans {
-                let name = &o.recording().info().channels[c].name;
-                let v = o.view(c, Viewport { t0, t1, width_px: width.max(1) }, gap_factor);
+            let precision = if coarse { Precision::Coarse } else { Precision::Exact };
+            for v in o.views(&chans, Viewport { t0, t1, width_px: width.max(1) }, gap_factor, precision) {
+                let name = &o.recording().info().channels[v.channel].name;
                 for (t, y) in v.trace.t.iter().zip(&v.trace.y) {
                     let y = if y.is_nan() { String::new() } else { y.to_string() };
                     w(&mut out, format!("{},{t},{y}", csv_field(name)))?;

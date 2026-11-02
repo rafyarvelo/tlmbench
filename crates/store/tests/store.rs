@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use tlmbench_core::{TraceKind, Viewport};
 use tlmbench_decode::descriptor::{DType, Descriptor, Endian, Field, SCHEMA, TimeSpec};
 use tlmbench_decode::reference;
-use tlmbench_store::{Limits, Status, Store};
+use tlmbench_store::{Limits, Precision, Status, Store};
 
 /// Samples per channel: a little over three 4^10-sample blocks.
 const N: usize = 3 * (1 << 20) + 12_345;
@@ -104,12 +104,17 @@ fn builds_reopens_and_answers_like_raw_samples() {
     let (first, last) = (info.t_first.unwrap(), info.t_last.unwrap());
     for vp in views(first, last) {
         for c in 0..2 {
-            let v = opened.view(c, vp, 4.0);
+            let v = opened.view(c, vp, 4.0, Precision::Exact);
             assert!(same(&v.trace, &opened.recording().trace(c, vp)), "channel {c}, {vp:?}");
             assert!(v.from_pyramid && v.built_until.is_none());
         }
     }
-    let whole = opened.view(0, Viewport { t0: first, t1: last + 1, width_px: 1999 }, 4.0);
+    let vp = Viewport { t0: first, t1: last + 1, width_px: 1999 };
+    let coarse = opened.views(&[0, 1], vp, 4.0, Precision::Coarse);
+    assert!(coarse.iter().all(|v| v.coarse && v.from_pyramid));
+    assert!(coarse[0].trace.y.contains(&50.0), "coarse views keep every spike too");
+    let whole = opened.view(0, vp, 4.0, Precision::Exact);
+    assert!(!whole.coarse);
     assert_eq!(whole.trace.kind, TraceKind::M4);
     assert!(whole.trace.y.iter().any(|y| y.is_nan()), "the NaN run is a gap");
     assert!(whole.trace.y.contains(&50.0), "every spike is kept");
@@ -161,7 +166,7 @@ fn an_interrupted_build_resumes_where_it_stopped() {
     // views are exact meanwhile: from the built blocks, raw beyond
     let info = first.recording().info().clone();
     for vp in views(info.t_first.unwrap(), info.t_last.unwrap()) {
-        let v = first.view(1, vp, 4.0);
+        let v = first.view(1, vp, 4.0, Precision::Exact);
         assert!(same(&v.trace, &first.recording().trace(1, vp)), "{vp:?}");
         assert!(v.built_until.is_some());
     }

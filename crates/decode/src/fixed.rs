@@ -304,6 +304,22 @@ impl Channels for FixedWidth {
         self.dispatch_times(Op { me: self, buf: &buf, start })
     }
 
+    /// Reads the records' pages with positioned reads on several threads (faults on one map would come one by one).
+    fn prefetch(&self, ranges: &[std::ops::Range<usize>]) {
+        if !matches!(self.bytes, Bytes::Mapped(_)) {
+            return;
+        }
+        let Ok(f) = std::fs::File::open(&self.info.path) else { return };
+        let stride = self.desc.record_size as usize;
+        ranges.par_iter().for_each_init(Vec::new, |buf, r| {
+            let (a, b) = (r.start.min(self.records), r.end.min(self.records));
+            if a < b {
+                buf.resize((b - a) * stride, 0);
+                let _ = read_exact_at(&f, buf, (self.header_len + a * stride) as u64);
+            }
+        });
+    }
+
     fn transform(&self, channel: usize) -> (f64, f64) {
         let f = &self.desc.fields[self.channels[channel]];
         (f.scale, f.value_offset)

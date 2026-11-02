@@ -26,8 +26,9 @@ use std::sync::{Mutex, RwLock};
 use std::time::{Duration, SystemTime};
 
 pub use error::{Error, Result};
+use rayon::prelude::*;
 use serde::Serialize;
-use tlmbench_core::pyramid::{Pyramid, Stats};
+use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Pyramid, Stats};
 use tlmbench_core::{Recording, Timestamp, Trace, Viewport};
 use tlmbench_decode::OpenOptions;
 
@@ -208,12 +209,25 @@ pub struct Opened {
     building: Mutex<()>,
 }
 
+/// How a view is answered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Precision {
+    /// From the pyramid alone, reading no raw samples: fast on a cold file (see `pyramid::m4_coarse`).
+    Coarse,
+    /// The same pixels as every raw sample would draw.
+    Exact,
+}
+
 /// A trace, and how it was made.
 #[derive(Clone, Debug)]
 pub struct View {
+    pub channel: usize,
     pub trace: Trace,
     /// Answered (at least partly) from the pyramid.
     pub from_pyramid: bool,
+    /// Coarse: summaries counted whole at pixel edges (it moves at most a quarter pixel); show it labelled.
+    pub coarse: bool,
     /// Samples up to this time are summarized (None: all of them, or no pyramid yet).
     pub built_until: Option<Timestamp>,
 }
@@ -262,23 +276,53 @@ impl Opened {
     }
 
     /// Channel `channel` reduced for `vp`, with lines broken at gaps over `gap_factor` × the median interval.
-    /// From the pyramid where it is built (the same result as raw samples, faster).
-    pub fn view(&self, channel: usize, vp: Viewport, gap_factor: f64) -> View {
+    /// From the pyramid where it is built (exact: the same result as raw samples, faster).
+    pub fn view(&self, channel: usize, vp: Viewport, gap_factor: f64, precision: Precision) -> View {
+        self.views(&[channel], vp, gap_factor, precision).pop().expect("one channel")
+    }
+
+    /// [`Opened::view`] of several channels, in parallel (cold reads of different files overlap).
+    pub fn views(&self, channels: &[usize], vp: Viewport, gap_factor: f64, precision: Precision) -> Vec<View> {
         let g = self.loaded.read().unwrap();
-        match &*g {
-            Some(l) => {
-                let breaks = l.gaps.breaks(gap_factor);
-                let pyr = l.pyramid(channel);
-                let built_until =
-                    (!l.complete).then(|| if l.done == 0 { i64::MIN } else { self.rec.time_at(l.done - 1) });
-                View {
-                    trace: self.rec.view(channel, vp, pyr.as_ref(), &breaks),
-                    from_pyramid: pyr.is_some(),
-                    built_until,
-                }
-            }
-            None => View { trace: self.rec.view(channel, vp, None, &[]), from_pyramid: false, built_until: None },
+        let l = g.as_ref();
+        let breaks = l.map(|l| l.gaps.breaks(gap_factor)).unwrap_or_default();
+        let built_until =
+            l.filter(|l| !l.complete).map(|l| if l.done == 0 { i64::MIN } else { self.rec.time_at(l.done - 1) });
+        let (lo, hi) = (self.rec.lower_bound(vp.t0), self.rec.lower_bound(vp.t1));
+        let in_view = hi.saturating_sub(lo);
+        let coarse_pays = in_view / vp.width_px.max(1) as usize >= MIN_BUCKET_SAMPLES;
+        // An exact view reads level 4 at every pixel edge. A cold page fault costs about as much as reading 128 KB
+        // in sequence, so when edges are closer than about 1024 summaries (88 KB) the range is read through first.
+        // Only when cold: from memory, reading through costs more than it saves.
+        let warm = precision == Precision::Exact
+            && coarse_pays
+            && in_view / vp.width_px.max(1) as usize <= 1024 * 256
+            && l.zip(channels.first()).and_then(|(l, &c)| l.cold(c, lo, hi.min(l.done))) == Some(true);
+        if warm {
+            // every pixel edge reads raw samples next to it: fetch them for all channels at once
+            let bw = vp.bucket_ns();
+            let (b0, b1) = (vp.t0.div_euclid(bw), (vp.t1 - 1).div_euclid(bw) + 1);
+            let edges: Vec<_> = (b0..=b1)
+                .map(|b| self.rec.lower_bound(b.saturating_mul(bw)))
+                .map(|i| i.saturating_sub(256)..i + 256)
+                .collect();
+            self.rec.prefetch(&edges);
         }
+        channels
+            .par_iter()
+            .map(|&channel| {
+                if warm && let Some(l) = l {
+                    l.warm(channel, lo, hi.min(l.done));
+                }
+                let pyr = l.and_then(|l| l.pyramid(channel));
+                let coarse = precision == Precision::Coarse && coarse_pays && pyr.is_some();
+                let trace = match &pyr {
+                    Some(p) if coarse => self.rec.view_coarse(channel, vp, p, &breaks),
+                    _ => self.rec.view(channel, vp, pyr.as_ref(), &breaks),
+                };
+                View { channel, trace, from_pyramid: pyr.is_some(), coarse, built_until }
+            })
+            .collect()
     }
 
     /// Exact statistics of the samples in `[t0, t1)`; None until the pyramid is built (exact answers wait for it).

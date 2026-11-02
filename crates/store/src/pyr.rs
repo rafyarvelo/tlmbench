@@ -2,7 +2,7 @@
 
 use std::fs::{self, File, TryLockError};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
 use memmap2::Mmap;
@@ -73,6 +73,8 @@ pub(crate) fn fingerprint_of(dir: &Path) -> Option<String> {
 pub(crate) struct Loaded {
     /// One per channel: every level back to back.
     maps: Vec<Mmap>,
+    /// The files mapped.
+    paths: Vec<PathBuf>,
     /// Summaries per level, and where each level starts (in summaries).
     lens: Vec<usize>,
     offsets: Vec<usize>,
@@ -93,6 +95,39 @@ impl Loaded {
         let all: &[Summary] = bytemuck::cast_slice(&self.maps[channel]);
         let levels = (0..self.usable).map(|j| &all[self.offsets[j]..self.offsets[j] + self.lens[j]]).collect();
         Some(Pyramid::new(self.done, levels))
+    }
+
+    /// Reads channel `channel`'s level-4 summaries of samples `a..b` with large sequential reads. An exact view of
+    /// much of a cold file touches nearly every page of level 4 (its pixel edges), and page faults one by one are
+    /// several times slower than reading the range through.
+    pub fn warm(&self, channel: usize, a: usize, b: usize) {
+        let w = span(MIN_LEVEL);
+        let (s0, s1) = (a / w, b.div_ceil(w).min(self.lens[0]));
+        let Ok(f) = File::open(&self.paths[channel]) else { return };
+        let mut buf = vec![0u8; 8 << 20];
+        let (mut at, end) = (((self.offsets[0] + s0) * SUMMARY) as u64, ((self.offsets[0] + s1) * SUMMARY) as u64);
+        while at < end {
+            let n = buf.len().min((end - at) as usize);
+            if read_at(&f, &mut buf[..n], at).is_err() {
+                return;
+            }
+            at += n as u64;
+        }
+    }
+
+    /// Whether most of channel `channel`'s level 4 for samples `a..b` is out of memory (None: can't tell).
+    pub fn cold(&self, channel: usize, a: usize, b: usize) -> Option<bool> {
+        let w = span(MIN_LEVEL);
+        let (s0, s1) = (a / w, b.div_ceil(w).min(self.lens[0]));
+        if s0 >= s1 {
+            return None;
+        }
+        let bytes = &self.maps[channel][(self.offsets[0] + s0) * SUMMARY..(self.offsets[0] + s1) * SUMMARY];
+        crate::sys::resident_share(bytes).map(|r| r < 0.5)
+    }
+
+    fn paths(dir: &Path, channels: usize) -> Vec<PathBuf> {
+        (0..channels).map(|c| dir.join(format!("c{c}.pyr"))).collect()
     }
 
     fn map(dir: &Path, channels: usize, total: usize) -> Result<Vec<Mmap>> {
@@ -134,6 +169,7 @@ impl Loaded {
         let usable = lens.len();
         Ok(Some(Loaded {
             maps,
+            paths: Self::paths(dir, m.channels),
             lens,
             offsets,
             usable,
@@ -150,7 +186,8 @@ impl Loaded {
         let maps = Self::map(dir, p.channels, offsets[lens.len()])?;
         let usable = lens.len().min((BLOCK_LEVEL - MIN_LEVEL) as usize + 1);
         let done = (p.blocks_done * span(BLOCK_LEVEL)).min(p.samples);
-        Ok(Loaded { maps, lens, offsets, usable, done, complete: false, gaps: GapIndex::default() })
+        let paths = Self::paths(dir, p.channels);
+        Ok(Loaded { maps, paths, lens, offsets, usable, done, complete: false, gaps: GapIndex::default() })
     }
 }
 
@@ -161,6 +198,26 @@ fn offsets(lens: &[usize]) -> Vec<usize> {
         out.push(out.last().unwrap() + l);
     }
     out
+}
+
+#[cfg(unix)]
+fn read_at(f: &File, buf: &mut [u8], at: u64) -> io::Result<()> {
+    std::os::unix::fs::FileExt::read_exact_at(f, buf, at)
+}
+
+#[cfg(windows)]
+fn read_at(f: &File, buf: &mut [u8], at: u64) -> io::Result<()> {
+    use std::os::windows::fs::FileExt;
+    let mut done = 0;
+    while done < buf.len() {
+        match f.seek_read(&mut buf[done..], at + done as u64) {
+            Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+            Ok(n) => done += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
