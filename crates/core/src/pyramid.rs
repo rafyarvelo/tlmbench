@@ -331,11 +331,11 @@ impl From<Summary> for Stats {
     }
 }
 
-/// A coarse view: each pixel bucket from whole summaries of a level at least four times finer than the bucket,
-/// with values from the summaries, so no raw sample is read (but the one beyond each edge of the view). Every
-/// extreme is drawn at its true time; summaries at a bucket's edges count whole, which moves at most a quarter of
-/// a pixel between neighbours. Shown first, labelled "coarse", until [`m4`] answers. Buckets past a partly built
-/// pyramid are left empty.
+/// A coarse view: each pixel bucket from whole summaries, with values from the summaries, so raw samples are read
+/// only within 256 samples of the view's two edges and of buckets small enough to reduce raw (and the one beyond
+/// each edge). Every extreme is drawn at its true time. A boundary between two such buckets rounds up to the finest
+/// summaries' grid, which moves a sample at most a quarter of a pixel into the next one; no sample is left out.
+/// Shown first, labelled "coarse", until [`m4`] answers. Buckets past a partly built pyramid are left empty.
 pub fn m4_coarse<T: Times + ?Sized, S: Samples + ?Sized>(
     times: &T,
     values: &S,
@@ -344,6 +344,18 @@ pub fn m4_coarse<T: Times + ?Sized, S: Samples + ?Sized>(
     breaks: &[usize],
 ) -> Trace {
     assert_eq!(times.len(), values.len(), "times and values differ in length");
+    // A boundary between two buckets of whole summaries rounds up to the finest summaries' grid (the same answer for
+    // both, so they share no sample and leave none out). The view's outer edges and the edges of buckets small
+    // enough to reduce from raw samples stay exact.
+    let bw = vp.bucket_ns();
+    let edge = |b: i64| times.lower_bound(b.saturating_mul(bw));
+    let (b_first, b_last) = (vp.t0.div_euclid(bw), (vp.t1 - 1).div_euclid(bw));
+    let big = |b: i64| edge(b + 1) - edge(b) >= MIN_BUCKET_SAMPLES;
+    let g = span(MIN_LEVEL);
+    let snap = |i: usize, left: i64| {
+        let inner = left >= b_first && left < b_last && big(left) && big(left + 1);
+        if inner && i < pyr.len { i.next_multiple_of(g).min(pyr.len) } else { i }
+    };
     let (kind, emits) = reduce_with(times, vp, |start, end, bucket_t, out| {
         if end - start < MIN_BUCKET_SAMPLES {
             return reduce_bucket(values, start, end, bucket_t, out);
@@ -351,18 +363,33 @@ pub fn m4_coarse<T: Times + ?Sized, S: Samples + ?Sized>(
         if end > pyr.len {
             return push_bucket(out, None, bucket_t);
         }
-        let k = (MIN_LEVEL..=pyr.top()).rev().find(|&k| 4 * span(k) <= end - start).unwrap_or(MIN_LEVEL);
-        let w = span(k);
-        let level = pyr.levels[(k - MIN_LEVEL) as usize];
-        let (s0, s1) = (start.div_ceil(w), end.div_ceil(w).min(pyr.len.div_ceil(w)));
-        let Some(m) = level[s0..s1].iter().copied().reduce(|a, b| a.merge(&b)).filter(|m| m.count > 0) else {
+        let b = bucket_t.div_euclid(bw);
+        let (a, b) = (snap(start, b - 1), snap(end, b));
+        // raw samples up to the grid at exact edges, whole summaries between
+        let a1 = a.next_multiple_of(g).min(b);
+        let b1 = if b == pyr.len { b } else { b / g * g }.max(a1);
+        let mut m: Option<Summary> = None;
+        let mut add = |s: Summary| m = Some(m.map_or(s, |p| p.merge(&s)));
+        if a < a1 {
+            add(Summary::of(times, values, a, a1));
+        }
+        let mut i = a1;
+        while i < b1 {
+            let k = pyr.fits_from(i, b1, pyr.top()).expect("summaries cover the grid");
+            add(*pyr.at(k, i));
+            i = (i + span(k)).min(pyr.len);
+        }
+        if b1 < b {
+            add(Summary::of(times, values, b1, b));
+        }
+        let Some(m) = m.filter(|m| m.count > 0) else {
             return push_bucket(out, None, bucket_t);
         };
         let mut pts = [
-            (!m.first.is_nan()).then_some((s0 * w, m.first)),
+            (!m.first.is_nan()).then_some((a, m.first)),
             Some((m.min_idx as usize, m.min)),
             Some((m.max_idx as usize, m.max)),
-            (!m.last.is_nan()).then_some(((s1 * w).min(pyr.len) - 1, m.last)),
+            (!m.last.is_nan()).then_some((b - 1, m.last)),
         ];
         pts.sort_by_key(|p| p.map(|(i, _)| i));
         let mut prev = usize::MAX;
@@ -715,6 +742,7 @@ mod tests {
             let (t0, t1) = ((a * n as f64) as i64 * 1_000_000, (b * n as f64) as i64 * 1_000_000 + 1);
             let vp = Viewport { t0, t1, width_px: w };
             let tr = m4_coarse(&times, &v, &pyr, vp, &[]);
+            prop_assert!(tr.t.is_sorted(), "times go back");
             for (&t, &y) in tr.t.iter().zip(&tr.y) {
                 if y.is_nan() { continue; }
                 let i = (t / 1_000_000) as usize;

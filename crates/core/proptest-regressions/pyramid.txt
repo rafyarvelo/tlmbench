@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b4a135ce4cf12d6e488043283ea7489dbd0290a3f62f97b1679819ad528dd46f # coarse_views_are_real_samples_and_hide_nothing: a small bucket beside coarse ones (Nov 2, 2026)

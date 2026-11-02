@@ -2,7 +2,7 @@
 //!
 //! One fixed-rate channel of 100M f32 samples (the Phase 1 gate size, 400 MB), viewed whole, at 10% and at 0.1%,
 //! on all threads and on one. Plus 10M samples with a timestamp column (binary searches instead of arithmetic),
-//! and the Phase 2 pyramid: building it, and the same views answered from it.
+//! and the Phase 2 pyramid: building it, and the same views answered from it, exactly and coarse.
 //! `TLMBENCH_BENCH_SAMPLES` overrides the size.
 
 use std::hint::black_box;
@@ -100,6 +100,9 @@ fn bench_pyramid(c: &mut Criterion) {
         g.throughput(Throughput::Elements((times.lower_bound(t1) - times.lower_bound(t0)) as u64));
         g.bench_with_input(BenchmarkId::new(format!("{view}/m4"), 2000), &vp, |b, &vp| {
             b.iter(|| black_box(pyramid::m4(&times, &values, &pyr, vp, &[])))
+        });
+        g.bench_with_input(BenchmarkId::new(format!("{view}/coarse"), 2000), &vp, |b, &vp| {
+            b.iter(|| black_box(pyramid::m4_coarse(&times, &values, &pyr, vp, &[])))
         });
     }
     g.finish();
