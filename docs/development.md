@@ -28,7 +28,9 @@ About 9–10 GB at first: toolchains ~3–4 GB, `target/` ~5 GB (it grows; `just
 | `just proto-test [t_name …]` | syntax-check the prototype, then its Playwright suite |
 | `just fuzz-smoke [secs]`, `just fuzz <crate> <target>` | fuzz every target briefly, or one until stopped (nightly) |
 | `just ro-test`, `just ro-test-mac` | prove nothing is written next to the data (below) |
-| `just app-dev`, `just app-build` | run the desktop app with hot reload (WKWebView), or build it without bundling |
+| `just app-dev [file]`, `just app-build` | run the desktop app with hot reload (WKWebView), or build it without bundling |
+| `just gen …`, `just gen-gate` | write synthetic recordings (sine + noise + spikes + gaps) to `$TLMBENCH_DATA` (default `~/tlmbench-data`) |
+| `just gate [file]` | the Phase 1 gate in the release app (below) |
 | `just ci-linux`, `just ci-native` | everything a CI job runs |
 
 Recipes for code that doesn't exist yet (no Cargo workspace, no `app/`, no `python/`) say so and skip.
@@ -79,3 +81,17 @@ When a Linux job fails and you need a shell in the same environment, open the re
 Cursor and VS Code read `.vscode/extensions.json` (rust-analyzer, Even Better TOML, Playwright, Python, basedpyright,
 Ruff, CodeLLDB, EditorConfig, Tauri) and `.vscode/settings.json` (clippy on save, the `.venv` interpreter, `target/`
 excluded from watching). basedpyright stands in for Pylance, which is VS Code only.
+
+## The Phase 1 gate
+
+`just gen-gate` writes the gate recording (100M samples, one channel, as `.tlm` ~400 MB and CSV ~2.4 GB) to
+`$TLMBENCH_DATA/gate`. `just gate` builds the release app and runs a scripted 30 s sweep over it (zoom from the whole
+file to 1 s and back, pans), then prints a JSON report and exits 0 on pass. Keep the window visible: a hidden window
+or sleeping display pauses animation frames, and the run is reported as invalid.
+
+Pass: at most 1% of frames miss a vsync and no interval exceeds 3 refresh periods; the core reduces views of up to
+1M samples in p95 < 5 ms (timed in Rust; the webview's clocks round to 1 ms). Whole-file views are reported only.
+
+Last run (MacBook Air M1, 8 GB, 59 Hz, 2264 px): pass. 1799 frames, 3 missed; reduce p95 1.4 ms for views of up to
+1M samples, whole-file p50 21 ms (657 ms on a cold first read); round trip p50 4 ms.
+
