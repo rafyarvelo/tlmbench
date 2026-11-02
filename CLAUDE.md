@@ -1,8 +1,8 @@
 # TelemetryBench (tlmbench): notes for Claude
 
 Desktop telemetry workbench: Rust core, Tauri app with a web UI, CLI and Python bindings over the same core.
-Today the repo holds the design doc, a single-file HTML prototype of the UI, its tests, and example shared config.
-The v1 code has not started; the roadmap (Phases 1–5) is in `docs/design.md`.
+The repo holds the design doc, the Rust crates, CLI and Tauri app, a single-file HTML prototype of the UI, its tests, and example shared config.
+Phase 1 (core loop) is done and Phase 2 (Scale) is in progress; the roadmap (Phases 1–5) is in `docs/design.md`.
 
 ## Hard requirements (never trade these away)
 
