@@ -29,6 +29,7 @@ About 9–10 GB at first: toolchains ~3–4 GB, `target/` ~5 GB (it grows; `just
 | `just fuzz-smoke [secs]`, `just fuzz <crate> <target>` | fuzz every target briefly, or one until stopped (nightly) |
 | `just ro-test`, `just ro-test-mac` | prove nothing is written next to the data (below) |
 | `just app-dev [file]`, `just app-build` | run the desktop app with hot reload (WKWebView), or build it without bundling |
+| `just app-shot [file] [out]` | screenshot the release app's window to `target/app-shot.png` (Mac; the editor needs Screen Recording in System Settings › Privacy & Security) |
 | `just gen …`, `just gen-gate` | write synthetic recordings (sine + noise + spikes + gaps) to `$TLMBENCH_DATA` (default `~/tlmbench-data`) |
 | `just gate [file]` | the Phase 1 gate in the release app (below) |
 | `just ci-linux`, `just ci-native` | everything a CI job runs |

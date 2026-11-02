@@ -97,6 +97,20 @@ app-dev *args:
 app-build:
     cd app/src-tauri && cargo tauri build --debug --no-bundle
 
+# Screenshot the release app's window (Mac; needs Screen Recording for the editor): opens a file, waits, captures
+app-shot file=(data / "gate/gate-100M.tlm") out="target/app-shot.png" wait="3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd app/src-tauri && cargo tauri build --no-bundle && cd ../..
+    mkdir -p target && swiftc -O tools/winid/winid.swift -o target/winid
+    target/release/tlmbench-app "{{file}}" > /dev/null 2>&1 & pid=$!
+    trap 'kill $pid 2> /dev/null || true' EXIT
+    id=""; for _ in $(seq 40); do id=$(target/winid tlmbench-app | head -1 | cut -f1); [ -n "$id" ] && break; sleep 0.25; done
+    [ -n "$id" ] || { echo "app window not found" >&2; exit 1; }
+    sleep {{wait}}
+    screencapture -x -o -l "$id" "{{out}}"
+    echo "{{out}}"
+
 # The Phase 1 gate: a 30 s scripted sweep in the release app over the gate recording (`just gen-gate` first)
 gate file=(data / "gate/gate-100M.tlm"):
     cd app/src-tauri && cargo tauri build --no-bundle

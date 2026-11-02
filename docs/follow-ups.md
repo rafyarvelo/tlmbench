@@ -25,8 +25,6 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
 
 ## Phase 1 loose ends
 
-- Visual check of the app: screenshots from this environment can't capture other apps' windows (no Screen Recording
-  permission), so the pane's look (axes, labels, dark mode) needs a look by eye.
 - The CI image doesn't include the app UI's npm packages; the Linux job installs them on each run.
 - Whole-file views read every raw sample: 21 ms warm, 657 ms cold for 100M. The Phase 2 pyramid fixes both.
 - M4's inner loop isn't vectorized (about 600M samples/s per core); worth doing alongside the pyramid.
