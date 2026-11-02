@@ -97,7 +97,7 @@ trait Source {
 | CSV (multi-GB) | Memory-map the file, split at newline boundaries, parse chunks in parallel; infer schema from the first 10k rows; numeric fast path | `memmap2`, `csv-core`, `lexical-core`, `rayon` |
 | Parquet | Read the footer for schema and row-group stats; load only the columns plotted, skip row groups outside the time range by their min/max; decode straight into native chunks | `parquet, arrow-array` |
 | Fixed-width binary | Record size known up front, so record N is at `header + N × size`; decode columns directly from the mmap with zero copies | `memmap2`, `bytemuck` |
-| Packetized / compressed | Scan once to build a packet index (offset, timestamp, length) saved as a sidecar file; decompress packets on demand in parallel | `zstd`, `lz4_flex`, `flate2`, `nom` |
+| Packetized / compressed | Scan once to build a packet index (offset, timestamp, length) kept in the app cache, never beside the file; decompress packets on demand in parallel | `zstd`, `lz4_flex`, `flate2`, `nom` |
 | Serial port | Reader thread → frame decoder → ring buffer | `serialport` |
 | UDP / TCP | Async socket task → same frame decoder | `tokio` |
 | Tail-a-file | Watch for appends, parse new bytes only | `notify` |
@@ -1005,7 +1005,7 @@ The command-line tool ships in v1 with the app. It is built on the same core fro
 | --- | --- | --- |
 | Tauri IPC throughput for large binary payloads | Laggy zoom if transfers are slow | Payloads are capped at \~4W points per trace (\~100 KB); benchmark early in Phase 1 |
 | WebView differences (WebView2, WKWebView, WebKitGTK) | WebGL bugs or slower GPU paths on Linux | Test all three in CI; keep a Canvas2D fallback |
-| Compressed formats without random access | Slow seeks into the middle of a file | One-time packet index sidecar; recompress to cache if packets are huge |
+| Compressed formats without random access | Slow seeks into the middle of a file | One-time packet index in the app cache (never beside the file); recompress to cache if packets are huge |
 | CSV quirks (locales, quoted fields, mixed timestamps) | Wrong or failed parses | Import dialog with preview, explicit column types and timestamp format |
 | Pyramid build time on first open | Wait before full-res browsing | Build coarse levels first in a background task; stream progress |
 | v1 scope (multiple windows, checks, derived channels, widgets, CLI, Python, sharing) | A late release or uneven quality | Phases with measurable gates; each feature lands in the core and CLI first, so it is tested headlessly before it gets UI |
