@@ -27,6 +27,10 @@ pub struct FixedWidth {
     info: RecordingInfo,
     /// The next block's records being read in the background while a build summarizes this one.
     read_ahead: Mutex<Option<ReadAhead>>,
+    /// Buffers kept between a build's blocks: fresh ones of tens of MB per block would be zero-filled page by page,
+    /// and page faults on macOS come one at a time.
+    spare_reads: Mutex<Vec<Vec<u8>>>,
+    spare_columns: Mutex<Vec<Vec<u64>>>,
 }
 
 /// Records `start..` read on another thread.
@@ -78,6 +82,8 @@ impl FixedWidth {
             records,
             channels,
             read_ahead: Mutex::new(None),
+            spare_reads: Mutex::default(),
+            spare_columns: Mutex::default(),
             info: RecordingInfo {
                 path: path.to_owned(),
                 format: format.to_owned(),
@@ -233,23 +239,26 @@ impl Channels for FixedWidth {
     /// meanwhile.
     fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>> {
         let stride = self.desc.record_size as usize;
-        let read = move |path: PathBuf, header: usize, a: usize, b: usize| {
-            let mut buf = vec![0u8; (b - a) * stride];
+        let read = move |path: PathBuf, header: usize, a: usize, b: usize, mut buf: Vec<u8>| {
+            buf.resize((b - a) * stride, 0);
             let f = std::fs::File::open(path).ok()?;
             read_exact_at(&f, &mut buf, (header + a * stride) as u64).ok().map(|()| buf)
         };
+        let spare = || self.spare_reads.lock().unwrap().pop().unwrap_or_default();
         let mut ahead = self.read_ahead.lock().unwrap();
         let buf = match ahead.take() {
             Some(r) if (r.start, r.end) == (start, end) => r.bytes.join().ok().flatten(),
-            _ if matches!(self.bytes, Bytes::Mapped(_)) => read(self.info.path.clone(), self.header_len, start, end),
+            _ if matches!(self.bytes, Bytes::Mapped(_)) => {
+                read(self.info.path.clone(), self.header_len, start, end, spare())
+            }
             _ => None,
         }
         .unwrap_or_else(|| self.records_bytes()[start * stride..end * stride].to_vec());
         // read the next block of the same size while this one is summarized
         let (next, next_end) = (end, (end + (end - start)).min(self.records));
         if matches!(self.bytes, Bytes::Mapped(_)) && next < next_end {
-            let (path, header) = (self.info.path.clone(), self.header_len);
-            let bytes = std::thread::spawn(move || read(path, header, next, next_end));
+            let (path, header, into) = (self.info.path.clone(), self.header_len, spare());
+            let bytes = std::thread::spawn(move || read(path, header, next, next_end, into));
             *ahead = Some(ReadAhead { start: next, end: next_end, bytes });
         }
         drop(ahead);
@@ -269,16 +278,17 @@ impl Channels for FixedWidth {
                 ) -> Vec<Summary> {
                     let (stride, offset) = (op.me.desc.record_size as usize, field.offset as usize);
                     let big = op.me.desc.endian == Endian::Big;
-                    let data: Vec<V> = op
-                        .buf
-                        .chunks_exact(stride)
-                        .map(|r| {
-                            let b = &r[offset..offset + V::SIZE];
-                            if big { V::from_be(b) } else { V::from_le(b) }
-                        })
-                        .collect();
-                    let n = data.len();
-                    pyramid::summarize(times, &Shifted { offset: op.start, data: &data }, op.start, op.start + n)
+                    let n = op.buf.len() / stride;
+                    let mut words = op.me.spare_columns.lock().unwrap().pop().unwrap_or_default();
+                    words.resize((n * V::SIZE).div_ceil(8), 0);
+                    let data = &mut bytemuck::cast_slice_mut::<u64, V>(&mut words)[..n];
+                    for (d, r) in data.iter_mut().zip(op.buf.chunks_exact(stride)) {
+                        let b = &r[offset..offset + V::SIZE];
+                        *d = if big { V::from_be(b) } else { V::from_le(b) };
+                    }
+                    let out = pyramid::summarize(times, &Shifted { offset: op.start, data }, op.start, op.start + n);
+                    op.me.spare_columns.lock().unwrap().push(words);
+                    out
                 }
                 self.me
                     .channels
@@ -301,7 +311,9 @@ impl Channels for FixedWidth {
                     .collect()
             }
         }
-        self.dispatch_times(Op { me: self, buf: &buf, start })
+        let out = self.dispatch_times(Op { me: self, buf: &buf, start });
+        self.spare_reads.lock().unwrap().push(buf);
+        out
     }
 
     /// Reads the records' pages with positioned reads on several threads (faults on one map would come one by one).
