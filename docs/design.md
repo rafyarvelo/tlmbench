@@ -77,6 +77,8 @@ Moving tabs: drag a tab out of the tab bar to make a new window, drag it onto an
 - **Where settings changes apply.**
   - Modified All settings are app-wide and apply to every window at once. The exception is which sidebars are shown and their widths, which are per window, since that's layout rather than a setting.
   - Rejected A few view settings (theme, sidebar, time format) can be set per window.
+- **App identifier.** The reverse-domain bundle ID the OS knows the app by (settings and cache folders, file associations, permissions, signing, updates). It can't change after the first public build without the OS treating the app as new.
+  - Proposed `dev.tlmbench.desktop`, the placeholder in the Phase 1 build; replace it with a domain the project owns.
 
 ## Data ingestion
 
@@ -125,6 +127,10 @@ Index channels sit in their own linked group, since they can't share an axis wit
 ### Decisions
 
 - Accepted v1 formats are CSV (first-class), Parquet, and one custom binary format we define as the reference for the descriptor schema.
+- Accepted The reference binary format is `.tlm`: fixed-width records after a header that embeds the file's own descriptor, so a file opens with no extra config and every open goes through the descriptor parser. The header is the magic `TLMBENCH`, a version, the header length (a multiple of 64 bytes) and the descriptor length, then the descriptor as TOML. Records follow back to back; a trailing partial record is ignored. Other fixed-width files take a separate descriptor.
+- Accepted The Phase 1 descriptor covers fixed-width records: schema version, byte order, header and record size, time from a rate, an integer field (ns, µs, ms or s) or the sample index, and per field a name, type (i8 to u64, f32, f64), byte offset, unit, scale and value offset. Bitfields, packet framing and plugin fields come later as new keys.
+- Proposed CSV schema detection: comma, semicolon or tab, whichever the header row has most of. A unit after a space in brackets or parentheses (`Speed [m/s]`, `Temp (°C)`) becomes the channel's unit, while `accel[0]` stays a name; repeated names get `  (2) `. The time column is the first one named like a time (`time`, `t`, `timestamp`, `date`, `time_s`, `t_ms`, …) with at least 90% of its sampled values parsing, else the first column of ISO dates, else row numbers. A column with any non-numeric value in the first 10,000 rows is text and left out. Rows whose time doesn't parse are skipped and counted.
+- Proposed Time that goes backwards is an error naming the row or record, until the index can flag it as the design intends.
 
 ## Storage and indexing
 
@@ -141,6 +147,10 @@ Data is stored once as raw columns plus a precomputed min/max pyramid, so any zo
 ### Decisions
 
 - Accepted Hard requirement: full capability from the app cache alone, so a read-only folder works. Source folders stay untouched; caches and sessions live only in the app cache dir. Only actions you start write to a folder: Share writes `.tlmbench/` at the folder root, Export to HTML writes where you choose.
+- Accepted The CSV cache is a simple custom columnar layout, not Arrow IPC: one plain little-endian file per column (`t.i64` for times, `c<k>.f64` per numeric column) plus `manifest.json`, memory-mapped on reopen. It is written to a temporary folder and renamed into place, so a failed or interrupted build leaves nothing. Arrow stays an export format.
+- Proposed The cache key is a fingerprint, not a whole-file hash: size, modification time, and a BLAKE3 hash of the first and last MiB plus 63 blocks spread through the file. A whole-file hash would cost about a second on every open of a multi-GB file; reopening a 2.4 GB CSV takes 0.01 s.
+- Proposed One cache root for the CLI and the app: `--cache`, else `$TLMBENCH_CACHE`, else the OS cache folder's `tlmbench` (`~/Library/Caches/tlmbench` on macOS), rather than Tauri's per-app cache folder, so a file cached by one is instant in the other.
+- Proposed CSV is read with positioned reads, each worker reading its own 8 MB chunk, not through one memory map: parallel page faults on one mapping serialize on macOS. Unquoted data takes a fast path (lines split with memchr); a quote found anywhere restarts the file with the general CSV reader, since a quoted field can hold a newline. On a MacBook Air M1 a 2.4 GB, 100M-row CSV ingests in 3.0 s (about 800 MB/s) with 430 MB peak memory.
 
 ## Downsampling
 
@@ -167,13 +177,19 @@ Use min/max-per-pixel (M4) as the default renderer: it is exact for line charts,
 - Non-uniform sample rates and gaps: a bucket with no samples breaks the line rather than interpolating.
 - NaN / invalid values are dropped from min/max and rendered as gaps.
 
+### Decisions
+
+- Proposed Raw samples are sent when the view holds at most 4W samples, not W: that is no more points than M4 would send, and raw is the exact picture. Every trace also includes the nearest sample beyond each edge of the view, so the line runs to the edges while panning.
+- Proposed Bucket width is a whole number of nanoseconds (the span divided by W, at least 1 ns), so the global grid `floor(t / bucket_width)` is exact integer arithmetic. Ties for min or max go to the earliest sample.
+- Proposed Gaps in Phase 1: a bucket with no samples, or only NaN, breaks the line (one gap for a run of empty buckets). Time jumps between samples in a raw view don't break it yet; that comes with the gap index in the pyramid phase.
+
 ## Rendering
 
 Rust sends each trace as a compact binary buffer of at most \~4W points, and WebGL2 draws it in one call per trace, so a frame costs well under 16 ms with dozens of traces (the target is 20 traces; see Performance).
 
 **Request loop.** On pan/zoom the frontend sends `{channel_ids, t0, t1, width_px, generation}` to Rust. Rust answers with M4 buffers tagged by `generation`; stale replies are dropped. While waiting, the frontend re-projects the last buffer with a new transform matrix, so pans feel instant and the sharper data swaps in a frame or two later.
 
-**IPC.** Avoid JSON for sample data. Return raw bytes from Tauri commands (`tauri::ipc::Response` with a `Vec<u8>`), arriving as an `ArrayBuffer` that becomes a `Float32Array` with no parsing. Layout per trace: `[u32 count][f32 x …][f32 y …]`.
+**IPC.** Avoid JSON for sample data. Return raw bytes from Tauri commands (`tauri::ipc::Response` with a `Vec<u8>`), arriving as an `ArrayBuffer` that becomes a `Float32Array` with no parsing. Each trace is a small header then its x and y arrays (layout under Decisions below).
 
 **Precision.** `f32` can't hold nanosecond timestamps. Send x as `f32` offsets relative to the viewport start (or the buffer's own origin) and keep the origin in `f64`/`BigInt` on the JS side. Do the same for y when values have a large DC offset.
 
@@ -186,6 +202,13 @@ Rust sends each trace as a compact binary buffer of at most \~4W points, and Web
 5. Axes, grid, labels, cursors and legends in a 2D canvas or DOM overlay on top (text in WebGL is not worth the effort).
 
 **Library choice.** The app uses a thin custom WebGL2 layer (\~1–2k lines), since the data is pre-reduced. The HTML prototype uses `uPlot` (Canvas2D, very fast for pre-reduced data), which also serves as the app's Canvas2D fallback. Keep the renderer behind an interface so a native `wgpu` path stays possible later.
+
+### Decisions
+
+- Accepted The viewport reply format, defined once in the core for IPC now and the daemon's socket later: a 32-byte header (magic `TLMV`, version, generation, trace count, `origin_ns` as i64, `x_scale_ns` as f64), then per trace a 24-byte header (channel, n, kind raw or M4, `y_min`, `y_max`) and `f32 x[n]`, `f32 y[n]`, all 8-byte aligned so the UI takes `Float32Array` views with no copy. A sample's time is `origin_ns + x × x_scale_ns`, with the origin at the view's start and the scale one bucket, so x runs over about 0 to W and f32 stays exact at any zoom. `y_min`/`y_max` cover the samples inside the view, for autoscale; NaN in y is a gap. Times in requests are decimal strings, since a JSON number can't hold i64 nanoseconds.
+- Proposed Each trace header also carries `reduce_us`, the core's own time to reduce it: WebKit rounds the page's clocks to 1 ms, too coarse to time a sub-millisecond query.
+- Accepted The app's UI is TypeScript and Vite with no framework while it is one pane; the framework is chosen when the prototype's UI is ported.
+- Proposed Views over 256k samples are reduced on several threads (rayon), so a 1M-sample view takes about 0.5 ms on an M1 instead of 1.7 ms.
 
 ### Loading what's on screen
 
@@ -955,7 +978,7 @@ These targets are starting points for a mid-range laptop (8 cores, 16 GB, SSD); 
 - Benchmarks with `criterion` for parsing, pyramid build and viewport queries, tracked per commit.
 - Fuzz the binary decoders (`cargo-fuzz`) since they parse untrusted files.
 - Golden-output tests for the CLI and Python bindings: convert, check, derive and export html on fixed recordings, compared byte for byte (exports through their checksum manifest).
-- Prototype suite: browser tests (Playwright) with one runner, `./run.sh`. It runs three at a time, then the timing tests alone: how fast rows appear, and a 100+ widget frame. Each test checks behaviour, not pixels (the chart and table libraries are stubbed). The same flows become the app's end-to-end tests against the real core.
+- Prototype suite: 21 browser tests (Playwright) with one runner, `./run.sh`. It runs three at a time, then the timing tests alone: how fast rows appear, and a 100+ widget frame. Each test checks behaviour, not pixels (the chart and table libraries are stubbed). The same flows become the app's end-to-end tests against the real core.
 
 ## Roadmap
 
@@ -965,9 +988,16 @@ Build the riskiest loop first — Rust reduces, IPC transfers, WebGL draws — a
 
 Phase 1 deliberately skips the pyramid: computing M4 straight from mmapped raw data is fast enough up to \~100M points and teaches the downsampling core before adding caching.
 
+**Phase 1 result (Nov 1, 2026): the gate passes** on a MacBook Air M1 (8 GB, 59 Hz display, 2264 px wide pane) over 100M f32 samples in a `.tlm` file. In a 30 s scripted sweep, 3 of 1,799 frames missed a vsync (0.17%), the longest interval was 41 ms, and the core reduced views of up to 1M samples in 0.5 ms (median) and 1.4 ms (p95). Whole-file views took 21 ms (median), and 657 ms on the first, cold read of the file: bounding those is the pyramid's job. The UI's round trip was 4 ms (median), and moving 64 KB over IPC took under 1 ms.
+
 Phase 5, Workbench, holds the rest of v1: multiple windows, widgets, rules and checks with reports, derived channels, shared `.tlmbench/` config, the CLI and Python bindings, static HTML export and the browser-only mode (its cache lives in the browser's private file storage, so nothing is written next to the data). Its gate is a folder check plus an HTML export of a 2 h flight within the default budget; passing it is the v1 release.
 
 The command-line tool ships in v1 with the app. It is built on the same core from Phase 1 on, so each phase's work is usable headlessly as soon as it lands. Its own gate: `convert` and `check` on a 10 GB file run at disk-read speed with flat memory, and `export html` of a 2 h flight fits the default budget and opens in under 2 s from a static host.
+
+### Decisions
+
+- Proposed How the Phase 1 gate is judged (`just gate`): a scripted 30 s sweep in the release app (zoom from the whole file to 1 s and back, pans), one view per frame. It passes when at most 1% of frames miss a vsync (an interval over 1.5 refresh periods) and none exceeds 3 periods, and when the core reduces views of up to 1M samples in p95 under 5 ms, timed in Rust. Missed vsyncs replace a 16.7 ms p95 because WebKit rounds the page's clocks to 1 ms. Whole-file views are reported, not gated. A run in which the window was hidden counts as invalid, not as a fail.
+- Accepted The Phase 1 gate uses one 100M-sample trace; the 20-trace target is reported later, once the pyramid exists.
 
 ## Risks
 

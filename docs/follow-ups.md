@@ -23,32 +23,6 @@ The design asks for criterion benchmarks "tracked per commit". CI only runs them
 because shared runners are too noisy. To decide: a dedicated runner, a hosted tracker, or results saved locally with
 `just bench -- --save-baseline`.
 
-## Design doc updates from Phase 1
-
-Decisions taken while building Phase 1, to carry into the living doc and `docs/design.md`:
-
-- **Reference binary format** (`.tlm`): 64-byte-aligned header with magic `TLMBENCH`, version, header and descriptor
-  lengths, then the descriptor itself as TOML, then fixed-width records. Layout in `crates/decode/src/reference.rs`.
-- **Descriptor schema, Phase 1 subset**: schema version, byte order, header and record size, time from a rate, an
-  integer field (ns/us/ms/s) or the index, and per field name, type, offset, unit, scale and value offset.
-- **CSV cache layout**: one plain little-endian file per column (`t.i64`, `c<k>.f64`) plus `manifest.json`, chosen
-  over Arrow IPC.
-- **Cache key**: size + mtime + BLAKE3 of the first and last MiB and 63 sampled blocks, not a whole-file hash (which
-  would cost about a second per open on multi-GB files).
-- **Cache root**: `$TLMBENCH_CACHE`, else the OS cache dir's `tlmbench` folder, shared by the CLI and the app, rather
-  than Tauri's per-identifier app_cache_dir.
-- **M4 raw threshold**: raw samples are sent when the view holds at most 4W samples (not W), since that is no more
-  points than M4 would send. Each trace includes the nearest sample beyond each edge.
-- **Gaps in Phase 1**: empty or all-NaN buckets break the line; time jumps between samples in a raw view don't yet
-  (the gap index arrives with the pyramid).
-- **Time that goes backwards**: an error naming the row or record for now, not flagged in the index.
-- **Relative times**: times before 2000-01-01 display as offsets from zero.
-- **CSV ingest**: ~800 MB/s on an M1 with positioned reads per chunk; memory maps serialize parallel page faults on
-  macOS, which matters for the Phase 2 pyramid build too.
-- **Gate definition**: missed vsyncs instead of a 16.7 ms p95 (WebKit timer resolution), core reduce time measured
-  in Rust, whole-file views reported but not gated.
-- **Bundle identifier**: `dev.tlmbench.desktop` is a placeholder; the owner should choose the real one.
-
 ## Phase 1 loose ends
 
 - Visual check of the app: screenshots from this environment can't capture other apps' windows (no Screen Recording
