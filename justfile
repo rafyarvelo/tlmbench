@@ -55,6 +55,11 @@ proto-check:
 proto-test *tests: proto-check
     cd prototype/tests && ./run.sh {{tests}}
 
+# The app's UI tests: the built UI in headless Chromium against a fake core (`just app-test t_view` runs some)
+app-test *tests:
+    cd app/ui && npm run -s build
+    cd app/ui/tests && ./run.sh {{tests}}
+
 # Fuzz each target of every crates/*/fuzz for a few seconds (nightly)
 fuzz-smoke secs="30":
     #!/usr/bin/env bash
@@ -156,7 +161,7 @@ gate2 file=(data / "gate2/gate2-10G.tlm") keep="":
     exit $status
 
 # Everything the Linux CI job runs (inside the CI image)
-ci-linux: lint test bench-smoke proto-test ro-test fuzz-smoke app-build
+ci-linux: lint test bench-smoke proto-test app-test ro-test fuzz-smoke app-build
 
 # Everything the macOS and Windows CI jobs run
 ci-native: lint test app-build

@@ -13,6 +13,8 @@ __pycache__/
 
 # never commit recordings or caches; examples/ holds configuration only
 *.bin
+# small wire-format fixtures the tests compare against (not recordings)
+!crates/*/tests/fixtures/*.bin
 *.tlmcache/
 examples/recordings/*
 !examples/recordings/.tlmbench/
@@ -22,3 +24,6 @@ examples/recordings/*
 # app build output (Tauri regenerates gen/ on each build)
 app/ui/dist/
 app/src-tauri/gen/
+
+# the app UI tests
+app/ui/tests/out/

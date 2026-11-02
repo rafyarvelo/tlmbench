@@ -280,6 +280,59 @@ mod tests {
         assert!(decode_batch(&parts[0].1).is_none(), "a lone reply isn't a batch");
     }
 
+    /// A small batch kept as a file: the app's UI tests decode it with wire.ts and their fake core must encode the
+    /// same bytes from the same traces (app/ui/tests/t_wire.mjs). `TLMBENCH_BLESS=1` rewrites it after a format change.
+    #[test]
+    fn golden_batch() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/wire-batch.bin");
+        let t0 = 1_767_225_600_000_000_123;
+        let pane = Viewport { t0, t1: t0 + 10_000, width_px: 4 };
+        let m4 = Trace {
+            kind: TraceKind::M4,
+            bucket_ns: pane.bucket_ns(),
+            t: vec![t0 - 500, t0, t0 + 2500, t0 + 7499, t0 + 10_000],
+            y: vec![1.5, -2.0, f32::NAN, 3.25, 0.5],
+        };
+        let raw = Trace {
+            kind: TraceKind::Raw,
+            bucket_ns: pane.bucket_ns(),
+            t: vec![t0 + 1000, t0 + 9000],
+            y: vec![-1.0, 1.0],
+        };
+        let ov = Viewport { t0: 0, t1: 1000, width_px: 3 };
+        let flat = Trace { kind: TraceKind::Raw, bucket_ns: ov.bucket_ns(), t: vec![0, 999], y: vec![4.0, 4.0] };
+        let bytes = encode_batch(
+            7,
+            &[
+                (
+                    0,
+                    encode(
+                        7,
+                        pane,
+                        Some(t0 + 5000),
+                        &[
+                            Out { channel: 2, trace: &m4, reduce_us: 11, coarse: true, from_pyramid: true },
+                            Out { channel: 5, trace: &raw, reduce_us: 3, coarse: false, from_pyramid: false },
+                        ],
+                    ),
+                ),
+                (
+                    u32::MAX,
+                    encode(
+                        7,
+                        ov,
+                        None,
+                        &[Out { channel: 0, trace: &flat, reduce_us: 1, coarse: false, from_pyramid: true }],
+                    ),
+                ),
+            ],
+        );
+        if std::env::var_os("TLMBENCH_BLESS").is_some() {
+            std::fs::write(path, &bytes).unwrap();
+        }
+        assert_eq!(std::fs::read(path).expect("the fixture (TLMBENCH_BLESS=1 writes it)"), bytes);
+    }
+
     #[test]
     fn rejects_truncated_or_foreign_bytes() {
         let bytes = encode(1, Viewport { t0: 0, t1: 10, width_px: 10 }, None, &[]);

@@ -1238,6 +1238,18 @@ export const gateApi = {
   },
 };
 
+/** What the UI tests read (app/ui/tests): the view, cursors and build state, as plain values. */
+(window as unknown as { __tlmApp: unknown }).__tlmApp = {
+  view: () => ({ t0: String(state.t0), t1: String(state.t1), back: state.history.length }),
+  cursors: () => ({ A: state.A == null ? null : String(state.A), B: state.B == null ? null : String(state.B) }),
+  hoverT: () => (state.hoverT == null ? null : String(state.hoverT)),
+  building: () => state.building && { done: state.building.done, total: state.building.total },
+  panes: () => state.panes.map((p) => [...p]),
+  sel: () => state.sel,
+  mode: () => settings.mode,
+  drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
+};
+
 const launch = await invoke<{ file: string | null; gate: '1' | '2' | null; gateMode: string | null }>('launch');
 if (launch.gate === '2' && launch.file) await runGate2(gateApi, launch.file, launch.gateMode === 'first' ? 'first' : 'reopen');
 else {
