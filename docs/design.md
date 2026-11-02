@@ -202,7 +202,7 @@ Use min/max-per-pixel (M4) as the default renderer: it is exact for line charts,
 
 Rust sends each trace as a compact binary buffer of at most \~4W points, and WebGL2 draws it in one call per trace, so a frame costs well under 16 ms with dozens of traces (the target is 20 traces; see Performance).
 
-**Request loop.** On pan/zoom the frontend sends `{channel_ids, t0, t1, width_px, generation}` to Rust. Rust answers with M4 buffers tagged by `generation`; stale replies are dropped. While waiting, the frontend re-projects the last buffer with a new transform matrix, so pans feel instant and the sharper data swaps in a frame or two later.
+**Request loop.** On pan/zoom the frontend sends one request for the whole tab: `{generation, precision, entries: [{id, channels, gap_factors, t0, t1, width_px}]}`, one entry per pane plus the overview when it needs redrawing. Rust answers with one batch of M4 buffers tagged by `generation`; stale replies are dropped. While waiting, the frontend re-projects the last buffer with a new transform matrix, so pans feel instant and the sharper data swaps in a frame or two later.
 
 **IPC.** Avoid JSON for sample data. Return raw bytes from Tauri commands (`tauri::ipc::Response` with a `Vec<u8>`), arriving as an `ArrayBuffer` that becomes a `Float32Array` with no parsing. Each trace is a small header then its x and y arrays (layout under Decisions below).
 
@@ -220,7 +220,7 @@ Rust sends each trace as a compact binary buffer of at most \~4W points, and Web
 
 ### Decisions
 
-- Accepted The viewport reply format, defined once in the core for IPC now and the daemon's socket later: a 32-byte header (magic `TLMV`, version, generation, trace count, `origin_ns` as i64, `x_scale_ns` as f64), then per trace a 24-byte header (channel, n, kind raw or M4, `y_min`, `y_max`) and `f32 x[n]`, `f32 y[n]`, all 8-byte aligned so the UI takes `Float32Array` views with no copy. A sample's time is `origin_ns + x × x_scale_ns`, with the origin at the view's start and the scale one bucket, so x runs over about 0 to W and f32 stays exact at any zoom. `y_min`/`y_max` cover the samples inside the view, for autoscale; NaN in y is a gap. Times in requests are decimal strings, since a JSON number can't hold i64 nanoseconds.
+- Accepted The viewport reply format, defined once in the core for IPC now and the daemon's socket later: a 40-byte header since version 2 (magic `TLMV`, version, generation, trace count, `origin_ns` as i64, `x_scale_ns` as f64, flags, and the time up to which the file is summarized), then per trace a 24-byte header (channel, n, kind raw or M4 with its flags, the core's time to reduce it, `y_min`, `y_max`) and `f32 x[n]`, `f32 y[n]`, all 8-byte aligned so the UI takes `Float32Array` views with no copy. A sample's time is `origin_ns + x × x_scale_ns`, with the origin at the view's start and the scale one bucket, so x runs over about 0 to W and f32 stays exact at any zoom. `y_min`/`y_max` cover the samples inside the view, for autoscale; NaN in y is a gap. Times in requests are decimal strings, since a JSON number can't hold i64 nanoseconds.
 - Accepted Each trace header also carries `reduce_us`, the core's own time to reduce it: WebKit rounds the page's clocks to 1 ms, too coarse to time a sub-millisecond query.
 - Accepted The app's UI is TypeScript and Vite with no framework while it is one pane; the framework is chosen when the prototype's UI is ported.
 - Accepted Views over 256k samples are reduced on several threads (rayon), so a 1M-sample view takes about 0.5 ms on an M1 instead of 1.7 ms.
@@ -1006,6 +1006,14 @@ Build the riskiest loop first — Rust reduces, IPC transfers, WebGL draws — a
 
 &#91;embedded content: roadmap · 5 phases, each closed by a measurable gate\]
 
+The phases and their gates, as the diagram shows them (Phases 1 and 2 are done; Phase 3 is next):
+
+1. Core loop: fixed-width and CSV, M4 from raw data, a single WebGL pane, the binary IPC path. Gate 1: 100M points at 60 fps.
+2. Scale: pyramid and cache files, the LRU chunk store, the plot stack and overview, hover and cursors. Gate 2: 10 GB first paint under 1 s.
+3. Live: serial, UDP and TCP sources, ring buffer ingest, follow mode, auto-recording. Gate 3: 4M samples/s with no drops.
+4. Formats and polish: the TOML descriptor UI, compressed packets, data export, workspace files. Gate 4: formats complete.
+5. Workbench: multiple windows and widgets, rules, checks and reports, derived channels, shared `.tlmbench/` config, the CLI and Python bindings, static HTML export. Gate 5: a folder check and a 2 h HTML export within budget; the v1 release.
+
 Phase 1 deliberately skips the pyramid: computing M4 straight from mmapped raw data is fast enough up to \~100M points and teaches the downsampling core before adding caching.
 
 **Phase 1 result (Nov 1, 2026): the gate passes** on a MacBook Air M1 (8 GB, 59 Hz display, 2264 px wide pane) over 100M f32 samples in a `.tlm` file. In a 30 s scripted sweep, 3 of 1,799 frames missed a vsync (0.17%), the longest interval was 41 ms, and the core reduced views of up to 1M samples in 0.5 ms (median) and 1.4 ms (p95). Whole-file views took 21 ms (median), and 657 ms on the first, cold read of the file: bounding those is the pyramid's job. The UI's round trip was 4 ms (median), and moving 64 KB over IPC took under 1 ms.
@@ -1023,6 +1031,8 @@ The command-line tool ships in v1 with the app. It is built on the same core fro
 - Accepted How Gate 2 (10 GB first paint under 1 s) is judged, since reading 10 GB takes at least 3 s on the development Mac: reopening a 10 GB recording with its pyramid cached, after the OS file cache is flushed (`purge`), draws the whole view in under 1 s; a first-ever open shows axes and build progress in under 1 s and builds the pyramid at disk speed (reported, not gated). The recording is a 10 GB `.tlm` of 20 channels × 125M f32 samples, which also reports the 20-trace target. It is generated on the internal disk for the run and deleted afterwards.
 - Modified `just gate2` builds the pyramid with the CLI, drops the recording's and its cache entry's pages from the file cache (msync with MS\_INVALIDATE, no root; changed from `sudo purge`), then opens the file in the release app and times the whole view drawn; then it clears that cache entry, flushes again and times a first open (axes and progress, then the build). The 20 channels sit in a stack of panes; a 30 s sweep like Phase 1's reports the 20-trace frame times. `just gen --size 10G --channels 20` writes the file.
 - Accepted Gate 2(a) times the first paint, which is the coarse view (it hides no extreme and is labelled), and reports how long the exact view takes to replace it. The flush can also be done without root: `msync(MS_INVALIDATE)` on a map of each file drops its pages on macOS, which evicts just the recording and its cache entry.
+- Proposed The app takes the prototype's UI at the start of Phase 3, before Live's UI is built: the shell (top bar, tabs, Explorer, the pane stack with its menus), the time modes and transport (Analyze, Play, Live), settings, and the prototype's Playwright suite turned into the app's end-to-end tests. Phase 3's core work (sources, ring buffer ingest, Gate 3) goes on alongside, since it doesn't touch the UI. Why then: follow mode, the transport and auto-recording are already designed in the prototype, so building them in the interim UI would mean building them twice, and hover, cursors and Measure gain tests with the port. Later options: in Phase 4 (Live ships with interim UI), or in Phase 5 (the interim UI grows through two more phases). The prototype's features beyond that (widgets, checks, derived channels, sharing) come over in the phases that build them.
+- Proposed The port uses Svelte with TypeScript: compiled components with no virtual DOM suit a UI that is mostly canvas and WebGL with a little DOM around it, and its small runtime keeps the HTML export light. The renderer, axes and wire decoder stay plain TypeScript modules. Alternatives: React (larger ecosystem, heavier runtime), or no framework (the prototype's own approach, harder to keep consistent at its size of about 11k lines).
 
 ## Risks
 
