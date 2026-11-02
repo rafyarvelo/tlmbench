@@ -26,6 +26,8 @@ export interface RecordingInfo {
   path: string;
   format: string;
   samples: number;
+  /** Where sample times come from: a column has gaps; a fixed rate or row numbers don't. */
+  time: { kind: 'column'; name: string } | { kind: 'rate'; hz: number } | { kind: 'index' };
   channels: ChannelInfo[];
   skipped: string[];
 }
@@ -102,11 +104,13 @@ interface Settings {
   overviewTop: boolean;
   /** Channel numbers of each pane, by file path. */
   layouts: Record<string, number[][]>;
+  /** Gap factors set by hand, by file path and channel number (the rest use the default). */
+  gapFactors: Record<string, Record<number, number>>;
 }
 
 const SETTINGS_KEY = 'tlmbench.settings';
 const settings: Settings = (() => {
-  const base: Settings = { mode: 'box', overviewTop: false, layouts: {} };
+  const base: Settings = { mode: 'box', overviewTop: false, layouts: {}, gapFactors: {} };
   try {
     return { ...base, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
   } catch {
@@ -209,8 +213,12 @@ function widthPx(i = 0): number {
 /** The overview's entry id in a view batch (panes are 0, 1, …). */
 const OVERVIEW = 0xffffffff;
 
+/** The default gap factor, and the smallest a channel can have (as in the core). */
+const GAP_DEFAULT = 4;
+const GAP_MIN = 2;
+
 /** The gap factor of channel `ch`: a time jump over this many median intervals breaks its line. */
-const gapFactor = (_ch: number): number => 4;
+const gapFactor = (ch: number): number => (state.file && settings.gapFactors[state.file.info.path]?.[ch]) || GAP_DEFAULT;
 
 const plotted = () => [...new Set(state.panes.flat())];
 
@@ -631,7 +639,7 @@ function renderPanes(): void {
       .map((ch) => {
         const c = f.info.channels[ch];
         const unit = c.unit ? `<span class="unit">${esc(c.unit)}</span>` : '';
-        return `<span class="chip" style="--c:${colorOf(ch)}">${esc(c.name)}${unit}<span class="val" data-val="${ch}"></span></span>`;
+        return `<span class="chip" data-ch="${ch}" style="--c:${colorOf(ch)}">${esc(c.name)}${unit}<span class="val" data-val="${ch}"></span></span>`;
       })
       .join('');
     const close =
@@ -1058,6 +1066,97 @@ measureEl.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('[data-clear]')) clearCursors();
 });
 
+// ---------- channel menu and gap factor ----------
+
+let popup: HTMLElement | null = null;
+function closePopup(): boolean {
+  if (!popup) return false;
+  popup.remove();
+  popup = null;
+  return true;
+}
+
+/** Places a popup at (x, y), kept inside the window. */
+function place(el: HTMLElement, x: number, y: number): void {
+  closePopup();
+  document.body.append(el);
+  popup = el;
+  el.style.left = `${Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, x))}px`;
+  el.style.top = `${Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, y))}px`;
+}
+
+function channelMenu(ch: number, x: number, y: number): void {
+  const f = state.file;
+  if (!f) return;
+  const el = document.createElement('div');
+  el.className = 'menu';
+  el.setAttribute('role', 'menu');
+  el.innerHTML = `<div class="mgrp">${esc(f.info.channels[ch].name)}</div><button class="mi" role="menuitem" data-gap><span class="nm">Gap factor…</span><span class="hint num">${gapFactor(ch)}×</span></button>`;
+  el.querySelector('[data-gap]')!.addEventListener('click', () => gapDialog(ch, x, y));
+  place(el, x, y);
+}
+
+/** Sets how far apart samples of channel `ch` must be to break its line, in median intervals. */
+function gapDialog(ch: number, x: number, y: number): void {
+  const f = state.file;
+  if (!f) return;
+  const c = f.info.channels[ch];
+  const el = document.createElement('div');
+  el.className = 'dlg';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', `Gap factor of ${c.name}`);
+  const note =
+    f.info.time.kind === 'column'
+      ? ''
+      : '<p class="dnote">This file has a fixed sample rate, so its lines have no gaps to break.</p>';
+  el.innerHTML =
+    `<header><b>Gap factor</b><span class="dsub">${esc(c.name)}</span></header>` +
+    `<div class="dbody"><p>Break the line where samples are more than this many times the usual interval apart.</p>` +
+    `<label class="dfield"><input class="num" type="number" min="${GAP_MIN}" step="0.5" value="${gapFactor(ch)}"><span>× the median interval</span></label>` +
+    `<p class="dnote" data-err hidden>Use ${GAP_MIN} or more.</p>${note}</div>` +
+    `<footer><button class="linkbtn" data-reset>Reset to ${GAP_DEFAULT}</button><span class="spacer"></span><button class="btn" data-cancel>Cancel</button><button class="btn primary" data-apply>Apply</button></footer>`;
+  const input = el.querySelector('input')!;
+  const err = el.querySelector<HTMLElement>('[data-err]')!;
+  const apply = (v: number) => {
+    if (!(v >= GAP_MIN)) {
+      err.hidden = false;
+      input.focus();
+      return;
+    }
+    const byCh = (settings.gapFactors[f.info.path] ??= {});
+    if (v === GAP_DEFAULT) delete byCh[ch];
+    else byCh[ch] = v;
+    if (!Object.keys(byCh).length) delete settings.gapFactors[f.info.path];
+    saveSettings();
+    closePopup();
+    // the gap index keeps every jump over 2× the median, so this only redraws
+    if (state.panes[state.sel]?.includes(ch)) overviewChanged();
+    else void requestView();
+  };
+  el.querySelector('[data-apply]')!.addEventListener('click', () => apply(input.valueAsNumber));
+  el.querySelector('[data-reset]')!.addEventListener('click', () => apply(GAP_DEFAULT));
+  el.querySelector('[data-cancel]')!.addEventListener('click', () => closePopup());
+  input.addEventListener('input', () => (err.hidden = true));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') apply(input.valueAsNumber);
+  });
+  place(el, x, y);
+  input.focus();
+  input.select();
+}
+
+function onChannelContext(e: MouseEvent): void {
+  const hit = (e.target as HTMLElement).closest<HTMLElement>('[data-ch]');
+  if (!hit) return;
+  e.preventDefault();
+  channelMenu(Number(hit.dataset.ch), e.clientX, e.clientY);
+}
+$('chans').addEventListener('contextmenu', onChannelContext);
+stackEl.addEventListener('contextmenu', onChannelContext);
+document.addEventListener('pointerdown', (e) => {
+  if (popup && !(e.target as HTMLElement).closest('.menu, .dlg')) closePopup();
+});
+
 function clearCursors(): void {
   state.A = state.B = null;
   scheduleDraw();
@@ -1071,6 +1170,8 @@ window.addEventListener('keydown', (e) => {
     void chooseFile();
     return;
   }
+  if (e.key === 'Escape' && closePopup()) return;
+  if (popup) return;
   if (e.metaKey || e.ctrlKey) return;
   if (e.altKey && e.key === 'ArrowLeft') return back();
   if (e.altKey && e.key === 'ArrowRight') return forward();
