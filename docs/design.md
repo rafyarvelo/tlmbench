@@ -1009,7 +1009,7 @@ Build the riskiest loop first — Rust reduces, IPC transfers, WebGL draws — a
 
 &#91;embedded content: roadmap · 5 phases, each closed by a measurable gate\]
 
-The phases and their gates, as the diagram shows them (Phases 1 and 2 are done; Phase 3 is next):
+The phases and their gates, as the diagram shows them (Phases 1 to 3 are done; Phase 4 is next):
 
 1. Core loop: fixed-width and CSV, M4 from raw data, a single WebGL pane, the binary IPC path. Gate 1: 100M points at 60 fps.
 2. Scale: pyramid and cache files, the LRU chunk store, the plot stack and overview, hover and cursors. Gate 2: 10 GB first paint under 1 s.
@@ -1022,6 +1022,8 @@ Phase 1 deliberately skips the pyramid: computing M4 straight from mmapped raw d
 **Phase 1 result (Nov 1, 2026): the gate passes** on a MacBook Air M1 (8 GB, 59 Hz display, 2264 px wide pane) over 100M f32 samples in a `.tlm` file. In a 30 s scripted sweep, 3 of 1,799 frames missed a vsync (0.17%), the longest interval was 41 ms, and the core reduced views of up to 1M samples in 0.5 ms (median) and 1.4 ms (p95). Whole-file views took 21 ms (median), and 657 ms on the first, cold read of the file: bounding those is the pyramid's job. The UI's round trip was 4 ms (median), and moving 64 KB over IPC took under 1 ms.
 
 **Gate 2 result (Nov 2, 2026): the gate passes** on the same Mac (1736 px wide panes) over a 10 GB `.tlm` of 20 channels × 125M f32 samples. Reopened with its pyramid cached and its pages evicted from memory, the whole view of all 20 channels drew in 70 ms (coarse) and exactly in 1.3 s. A 30 s sweep over the 20 traces missed 1 of 1,800 vsyncs, with a longest interval of 40 ms; the core answered zoomed views of all 20 channels in 4.4 ms (p95; 15.7 ms before the chunk store and view batches). A first-ever open showed axes and build progress in 62 ms and built the pyramid in 9.9 s (12.5 s in the first run), against 9.5 s to read the file cold; the pyramid adds 1.1 GB to the cache.
+
+**Gate 3 result (Nov 2, 2026): the gate passes** on the same Mac. Core (`just gate3 core`): a sender streamed 4M f32 samples/s over TCP for 60 s in each of two shapes, 4 channels at 1 MHz and 32 at 125 kHz, and the recorder kept every record, identical to what was sent, with nothing dropped or missing and its ring buffer at most 0.8% full, at 3.7% and 6.5% of a core. Reported: UDP, the same with a larger receive buffer (45% and 22% of a core); CSV tails kept up at 1M and 4M samples/s. App (`just gate3 app`): a live tab followed each stream with a 10 s window and missed 0 of 3,539 and 3 of 3,541 vsyncs (longest 24 and 36 ms), with views asked for 30 times a second (p95 under 20 ms), and the session's recording matched the sender record for record. Phase 3 ships serial, UDP, TCP and growing-file sources, ring buffer ingest, sessions recorded to the Recordings folder, pyramids that grow, live tabs that follow now, and the app's UI ported to the prototype's (shell, panes, Explorer, tabs, Play).
 
 Phase 5, Workbench, holds the rest of v1: multiple windows, widgets, rules and checks with reports, derived channels, shared `.tlmbench/` config, the CLI and Python bindings, static HTML export and the browser-only mode (its cache lives in the browser's private file storage, so nothing is written next to the data). Its gate is a folder check plus an HTML export of a 2 h flight within the default budget; passing it is the v1 release.
 
