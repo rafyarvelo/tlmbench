@@ -34,7 +34,7 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
   coarse-to-exact handoff (only the pixels whose edges matter), could cut it.
 - Column-time recordings binary-search the time column for every pixel edge; a cold file faults on each search. The
   design's chunk index (first time of every 64k samples, kept in the cache) would bound that to one page.
-- A cold build of the 10 GB file takes 12.5 s against the disk's 9.5 s read: the pyramid's writes (into a sparse
+- A cold build of the 10 GB file took 12.5 s against the disk's 9.5 s read (9.9 s in the latest Gate 2 run, with 30 GB free): the pyramid's writes (into a sparse
   file's holes) aren't overlapped with reading yet. A writer thread would close most of the gap.
 - Hover, cursors and Measure in the app have no automated test yet; the prototype's suite covers the behaviour, and
   the app's end-to-end tests come with the port.
