@@ -75,6 +75,10 @@ pub trait Channels: Send + Sync + Debug {
     /// Bytes that identify how the source is decoded (format and descriptor), for cache keys.
     fn layout_id(&self) -> Vec<u8>;
 
+    /// Hints that samples in `ranges` will be read soon: a decoder reading a cold file can fetch them all at once
+    /// (in parallel) rather than fault them in one by one.
+    fn prefetch(&self, _ranges: &[std::ops::Range<usize>]) {}
+
     /// Level-4 summaries of samples `start..end` of every channel (`start` a multiple of 256). A decoder whose
     /// channels are interleaved overrides this to read the block once for all of them.
     fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>> {
@@ -103,8 +107,15 @@ pub trait Recording: Send + Sync + Debug {
     /// broken before each sample in `breaks`.
     fn view(&self, channel: usize, vp: Viewport, pyr: Option<&Pyramid>, breaks: &[usize]) -> Trace;
 
+    /// A coarse view from the pyramid alone (see [`pyramid::m4_coarse`]): drawn first, then replaced by
+    /// [`Recording::view`].
+    fn view_coarse(&self, channel: usize, vp: Viewport, pyr: &Pyramid, breaks: &[usize]) -> Trace;
+
     /// Level-4 summaries of the stored values of samples `start..end` (see [`pyramid::summarize`]).
     fn summarize(&self, channel: usize, start: usize, end: usize) -> Vec<Summary>;
+
+    /// See [`Channels::prefetch`].
+    fn prefetch(&self, ranges: &[std::ops::Range<usize>]);
 
     /// [`Recording::summarize`] for every channel at once (see [`Channels::summarize_all`]).
     fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>>;
@@ -147,14 +158,24 @@ impl<C: Channels> Recording for C {
                 }
             }
         }
-        let mut trace = self.dispatch(channel, Op { vp, pyr, breaks });
-        let (scale, offset) = self.transform(channel);
-        if scale != 1.0 || offset != 0.0 {
-            for y in &mut trace.y {
-                *y = (*y as f64 * scale + offset) as f32;
+        let trace = self.dispatch(channel, Op { vp, pyr, breaks });
+        transformed(trace, self.transform(channel))
+    }
+
+    fn view_coarse(&self, channel: usize, vp: Viewport, pyr: &Pyramid, breaks: &[usize]) -> Trace {
+        struct Op<'a> {
+            vp: Viewport,
+            pyr: &'a Pyramid<'a>,
+            breaks: &'a [usize],
+        }
+        impl ChannelOp for Op<'_> {
+            type Out = Trace;
+            fn run<T: Times + ?Sized, S: Samples + ?Sized>(self, times: &T, values: &S) -> Trace {
+                pyramid::m4_coarse(times, values, self.pyr, self.vp, self.breaks)
             }
         }
-        trace
+        let trace = self.dispatch(channel, Op { vp, pyr, breaks });
+        transformed(trace, self.transform(channel))
     }
 
     fn summarize(&self, channel: usize, start: usize, end: usize) -> Vec<Summary> {
@@ -170,6 +191,10 @@ impl<C: Channels> Recording for C {
 
     fn summarize_all(&self, start: usize, end: usize) -> Vec<Vec<Summary>> {
         Channels::summarize_all(self, start, end)
+    }
+
+    fn prefetch(&self, ranges: &[std::ops::Range<usize>]) {
+        Channels::prefetch(self, ranges)
     }
 
     fn stats(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize) -> Stats {
@@ -235,4 +260,14 @@ impl<C: Channels> Recording for C {
     fn layout_id(&self) -> Vec<u8> {
         Channels::layout_id(self)
     }
+}
+
+/// Applies a channel's scale and offset to a trace's values.
+fn transformed(mut trace: Trace, (scale, offset): (f64, f64)) -> Trace {
+    if scale != 1.0 || offset != 0.0 {
+        for y in &mut trace.y {
+            *y = (*y as f64 * scale + offset) as f32;
+        }
+    }
+    trace
 }

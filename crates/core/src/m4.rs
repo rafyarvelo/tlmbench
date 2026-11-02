@@ -61,9 +61,11 @@ impl Trace {
 }
 
 /// What the reduction emits, before times and values are looked up.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Emit {
     Sample(usize),
+    /// A sample whose value is already known (from a summary), so it needn't be read.
+    Known(usize, f32),
     /// A gap starting at this time.
     Gap(Timestamp),
 }
@@ -95,14 +97,14 @@ pub(crate) fn break_lines<T: Times + ?Sized>(emits: Vec<Emit>, breaks: &[usize],
     let mut out = Vec::with_capacity(emits.len() + 8);
     let mut prev: Option<usize> = None;
     for e in emits {
-        if let (Emit::Sample(q), Some(p)) = (e, prev) {
+        if let (Emit::Sample(q) | Emit::Known(q, _), Some(p)) = (e, prev) {
             let k = breaks.partition_point(|&b| b <= p);
             if breaks.get(k).is_some_and(|&b| b <= q) && !matches!(out.last(), Some(Emit::Gap(_))) {
                 out.push(Emit::Gap(times.at(q - 1)));
             }
         }
         prev = match e {
-            Emit::Sample(i) => Some(i),
+            Emit::Sample(i) | Emit::Known(i, _) => Some(i),
             Emit::Gap(_) => prev,
         };
         out.push(e);
@@ -125,6 +127,10 @@ pub(crate) fn to_trace<T: Times + ?Sized, S: Samples + ?Sized>(
             Emit::Sample(i) => {
                 t.push(times.at(i));
                 y.push(values.get(i).to_f32());
+            }
+            Emit::Known(i, v) => {
+                t.push(times.at(i));
+                y.push(v);
             }
             Emit::Gap(at) => {
                 t.push(at);

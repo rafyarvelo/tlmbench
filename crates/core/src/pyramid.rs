@@ -190,7 +190,7 @@ impl<'a> Pyramid<'a> {
     pub fn at(&self, k: u32, i: usize) -> &Summary {
         &self.levels[(k - MIN_LEVEL) as usize][i >> (2 * k)]
     }
-    fn top(&self) -> u32 {
+    pub(crate) fn top(&self) -> u32 {
         MIN_LEVEL + self.levels.len() as u32 - 1
     }
 
@@ -324,6 +324,51 @@ impl From<Summary> for Stats {
             std: if real { (s.sum_sq / n - mean * mean).max(0.0).sqrt() } else { f64::NAN },
         }
     }
+}
+
+/// A coarse view: each pixel bucket from whole summaries of a level at least four times finer than the bucket,
+/// with values from the summaries, so no raw sample is read (but the one beyond each edge of the view). Every
+/// extreme is drawn at its true time; summaries at a bucket's edges count whole, which moves at most a quarter of
+/// a pixel between neighbours. Shown first, labelled "coarse", until [`m4`] answers. Buckets past a partly built
+/// pyramid are left empty.
+pub fn m4_coarse<T: Times + ?Sized, S: Samples + ?Sized>(
+    times: &T,
+    values: &S,
+    pyr: &Pyramid,
+    vp: Viewport,
+    breaks: &[usize],
+) -> Trace {
+    assert_eq!(times.len(), values.len(), "times and values differ in length");
+    let (kind, emits) = reduce_with(times, vp, |start, end, bucket_t, out| {
+        if end - start < MIN_BUCKET_SAMPLES {
+            return reduce_bucket(values, start, end, bucket_t, out);
+        }
+        if end > pyr.len {
+            return push_bucket(out, None, bucket_t);
+        }
+        let k = (MIN_LEVEL..=pyr.top()).rev().find(|&k| 4 * span(k) <= end - start).unwrap_or(MIN_LEVEL);
+        let w = span(k);
+        let level = pyr.levels[(k - MIN_LEVEL) as usize];
+        let (s0, s1) = (start.div_ceil(w), end.div_ceil(w).min(pyr.len.div_ceil(w)));
+        let Some(m) = level[s0..s1].iter().copied().reduce(|a, b| a.merge(&b)).filter(|m| m.count > 0) else {
+            return push_bucket(out, None, bucket_t);
+        };
+        let mut pts = [
+            (!m.first.is_nan()).then_some((s0 * w, m.first)),
+            Some((m.min_idx as usize, m.min)),
+            Some((m.max_idx as usize, m.max)),
+            (!m.last.is_nan()).then_some(((s1 * w).min(pyr.len) - 1, m.last)),
+        ];
+        pts.sort_by_key(|p| p.map(|(i, _)| i));
+        let mut prev = usize::MAX;
+        for (i, v) in pts.into_iter().flatten() {
+            if i != prev {
+                out.push(Emit::Known(i, v as f32));
+                prev = i;
+            }
+        }
+    });
+    to_trace(times, values, kind, &break_lines(emits, breaks, times), vp)
 }
 
 /// The next multiple of 256 after `i`.
@@ -643,6 +688,43 @@ mod tests {
             let levels = owned(&times, &v);
             let pyr = view(&levels, v.len());
             prop_assert_eq!(reduce(&times, &v, &pyr, vp, 1), crate::m4::reduce(&times, &v, vp));
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(80))]
+
+        /// Coarse views show only real samples at their true times, and hide no spike: every sample lies within
+        /// the range drawn in its own pixel or a neighbour.
+        #[test]
+        fn coarse_views_are_real_samples_and_hide_nothing(
+            v in proptest::collection::vec(prop_oneof![20 => -100f32..100.0, 1 => Just(f32::NAN), 1 => Just(500f32)], 4096..30_000),
+            w in 1u32..40,
+            a in 0.0f64..0.5,
+            b in 0.5f64..1.0,
+        ) {
+            let n = v.len();
+            let times = crate::RateTimes::from_rate(0, 1000.0, n);
+            let levels = owned(&times, &v);
+            let pyr = view(&levels, n);
+            let (t0, t1) = ((a * n as f64) as i64 * 1_000_000, (b * n as f64) as i64 * 1_000_000 + 1);
+            let vp = Viewport { t0, t1, width_px: w };
+            let tr = m4_coarse(&times, &v, &pyr, vp, &[]);
+            for (&t, &y) in tr.t.iter().zip(&tr.y) {
+                if y.is_nan() { continue; }
+                let i = (t / 1_000_000) as usize;
+                prop_assert_eq!(times.at(i), t);
+                prop_assert_eq!(v[i], y, "point at sample {} isn't that sample", i);
+            }
+            let bw = vp.bucket_ns();
+            let bucket = |t: i64| t.div_euclid(bw);
+            for (i, &x) in v.iter().enumerate().take(times.lower_bound(t1)).skip(times.lower_bound(t0)) {
+                if x.is_nan() { continue; }
+                let b = bucket(times.at(i));
+                let near = tr.t.iter().zip(&tr.y).filter(|(t, y)| (bucket(**t) - b).abs() <= 1 && !y.is_nan());
+                let (lo, hi) = near.fold((f32::INFINITY, f32::NEG_INFINITY), |(l, h), (_, &y)| (l.min(y), h.max(y)));
+                prop_assert!(lo <= x && x <= hi, "sample {} ({}) outside [{}, {}] near its pixel", i, x, lo, hi);
+            }
         }
     }
 
