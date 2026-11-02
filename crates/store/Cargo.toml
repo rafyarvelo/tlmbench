@@ -1,0 +1,30 @@
+[package]
+name = "tlmbench-store"
+description = "TelemetryBench store: the cache root, pyramid and gap files, background builds and the chunk cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tlmbench-core.workspace = true
+tlmbench-decode.workspace = true
+blake3.workspace = true
+bytemuck.workspace = true
+memmap2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_SystemInformation"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

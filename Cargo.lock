@@ -4056,6 +4056,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tlmbench-store"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "bytemuck",
+ "libc",
+ "memmap2",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tlmbench-core",
+ "tlmbench-decode",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "tokio"
 version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

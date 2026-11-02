@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/decode", "cli", "tools/gen", "app/src-tauri"]
+members = ["crates/core", "crates/decode", "crates/store", "cli", "tools/gen", "app/src-tauri"]
 exclude = ["crates/decode/fuzz"]
 
 [workspace.package]
@@ -13,6 +13,7 @@ publish = false
 [workspace.dependencies]
 tlmbench-core = { path = "crates/core" }
 tlmbench-decode = { path = "crates/decode" }
+tlmbench-store = { path = "crates/store" }
 rayon = "1.12.0"
 thiserror = "2.0.21"
 serde = { version = "1.0.229", features = ["derive"] }

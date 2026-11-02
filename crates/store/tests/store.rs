@@ -1,0 +1,207 @@
+//! The store end to end: builds, reopens, resumes, queries, and never writes beside the data.
+
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use tlmbench_core::{TraceKind, Viewport};
+use tlmbench_decode::descriptor::{DType, Descriptor, Endian, Field, SCHEMA, TimeSpec};
+use tlmbench_decode::reference;
+use tlmbench_store::{Limits, Status, Store};
+
+/// Samples per channel: a little over three 4^10-sample blocks.
+const N: usize = 3 * (1 << 20) + 12_345;
+
+fn value(c: usize, i: usize) -> f32 {
+    let x = (i as f32 * 0.0007 * (c + 1) as f32).sin() * 10.0 + ((i * 7919 + c) % 101) as f32 * 0.01;
+    match i {
+        _ if i.is_multiple_of(400_009) => 50.0,
+        _ if (2_000_000..2_005_000).contains(&i) => f32::NAN,
+        _ => x,
+    }
+}
+
+/// A two-channel interleaved .tlm at 10 kHz in `dir`.
+fn recording(dir: &Path) -> PathBuf {
+    let field = |name: &str, offset| Field {
+        name: name.into(),
+        dtype: DType::F32,
+        offset,
+        unit: None,
+        scale: 1.0,
+        value_offset: 0.0,
+    };
+    let desc = Descriptor {
+        schema: SCHEMA,
+        name: None,
+        endian: Endian::Little,
+        header_size: 0,
+        record_size: 8,
+        time: TimeSpec::Rate { rate_hz: 10_000.0, t0_ns: 1_700_000_000_000_000_000 },
+        fields: vec![field("a", 0), field("b", 4)],
+    };
+    let path = dir.join("rec.tlm");
+    let mut w = std::io::BufWriter::new(fs::File::create(&path).unwrap());
+    reference::write_header(&mut w, &desc).unwrap();
+    for i in 0..N {
+        w.write_all(&value(0, i).to_le_bytes()).unwrap();
+        w.write_all(&value(1, i).to_le_bytes()).unwrap();
+    }
+    w.flush().unwrap();
+    path
+}
+
+/// Path → (size, modified) for every file under `dir`.
+fn snapshot(dir: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
+    let mut out: Vec<_> = fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| {
+            let m = e.metadata().unwrap();
+            (e.path(), m.len(), m.modified().unwrap())
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// Equal traces, NaN (a gap) equal to NaN.
+fn same(a: &tlmbench_core::Trace, b: &tlmbench_core::Trace) -> bool {
+    (a.kind, a.bucket_ns, &a.t) == (b.kind, b.bucket_ns, &b.t)
+        && a.y.iter().map(|y| y.to_bits()).eq(b.y.iter().map(|y| y.to_bits()))
+}
+
+fn views(first: i64, last: i64) -> Vec<Viewport> {
+    let span = last - first;
+    let mut out = vec![Viewport { t0: first, t1: last + 1, width_px: 1999 }];
+    for k in 1..12i64 {
+        let t0 = first + span * k / 13 - 777_777 * k;
+        out.push(Viewport { t0, t1: t0 + span / (k * k * 3) + 1, width_px: 300 + 97 * k as u32 });
+    }
+    out
+}
+
+#[test]
+fn builds_reopens_and_answers_like_raw_samples() {
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let before = snapshot(data.path());
+    let store = Store::new(Some(cache.path()));
+
+    let opened = store.open(&path, None).unwrap();
+    assert_eq!(opened.status(), Status::Missing);
+    let mut calls = 0;
+    opened
+        .build(&mut |done, total| {
+            calls += 1;
+            assert!(done <= total && total == N as u64);
+        })
+        .unwrap();
+    assert!(calls >= 4, "progress after each block");
+    assert_eq!(opened.status(), Status::Built);
+    let info = opened.recording().info().clone();
+    let (first, last) = (info.t_first.unwrap(), info.t_last.unwrap());
+    for vp in views(first, last) {
+        for c in 0..2 {
+            let v = opened.view(c, vp, 4.0);
+            assert!(same(&v.trace, &opened.recording().trace(c, vp)), "channel {c}, {vp:?}");
+            assert!(v.from_pyramid && v.built_until.is_none());
+        }
+    }
+    let whole = opened.view(0, Viewport { t0: first, t1: last + 1, width_px: 1999 }, 4.0);
+    assert_eq!(whole.trace.kind, TraceKind::M4);
+    assert!(whole.trace.y.iter().any(|y| y.is_nan()), "the NaN run is a gap");
+    assert!(whole.trace.y.contains(&50.0), "every spike is kept");
+
+    // stats against brute force
+    let (a, b) = (123_457usize, 2_765_432usize);
+    let st = opened.stats(1, opened.recording().time_at(a), opened.recording().time_at(b)).unwrap();
+    let real: Vec<f64> = (a..b).map(|i| value(1, i)).filter(|v| !v.is_nan()).map(f64::from).collect();
+    assert_eq!(st.count, real.len() as u64);
+    assert_eq!(st.max.unwrap().0, real.iter().copied().fold(f64::MIN, f64::max));
+    assert!((st.mean - real.iter().sum::<f64>() / real.len() as f64).abs() < 1e-9);
+
+    // nearest sample
+    let t = opened.recording().time_at(1000) + 40_000; // 0.4 of a period after sample 1000
+    assert_eq!(opened.nearest(0, t).map(|(i, _, _)| i), Some(1000));
+    drop(opened);
+
+    // a second open reads the built pyramid without building
+    let again = store.open(&path, None).unwrap();
+    assert_eq!(again.status(), Status::Built);
+    assert_eq!(snapshot(data.path()), before, "nothing written beside the data");
+}
+
+#[test]
+fn an_interrupted_build_resumes_where_it_stopped() {
+    let data = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let (c1, c2) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+
+    // build in one go in c1, for reference
+    let whole = Store::new(Some(c1.path())).open(&path, None).unwrap();
+    whole.build(&mut |_, _| {}).unwrap();
+
+    // in c2, stop after the second block
+    let store = Store::new(Some(c2.path()));
+    let first = store.open(&path, None).unwrap();
+    let blocks = std::cell::Cell::new(0);
+    first
+        .build(&mut |done, _| {
+            if done > 0 {
+                blocks.set(blocks.get() + 1);
+            }
+            if blocks.get() == 2 {
+                first.cancel();
+            }
+        })
+        .unwrap();
+    assert_eq!(first.status(), Status::Building { done: 2 << 20, total: N as u64 });
+    // views are exact meanwhile: from the built blocks, raw beyond
+    let info = first.recording().info().clone();
+    for vp in views(info.t_first.unwrap(), info.t_last.unwrap()) {
+        let v = first.view(1, vp, 4.0);
+        assert!(same(&v.trace, &first.recording().trace(1, vp)), "{vp:?}");
+        assert!(v.built_until.is_some());
+    }
+    drop(first);
+    let building: Vec<_> = store.entries().unwrap().into_iter().filter(|e| e.building).collect();
+    assert_eq!(building.len(), 1);
+
+    let second = store.open(&path, None).unwrap();
+    let mut starts = None;
+    second
+        .build(&mut |done, _| {
+            starts.get_or_insert(done);
+        })
+        .unwrap();
+    assert_eq!(starts, Some(2 << 20), "resumed after two blocks");
+    assert_eq!(second.status(), Status::Built);
+    let dir = |root: &Path| root.join("pyr/v1").join(second.key());
+    for f in ["c0.pyr", "c1.pyr", "gaps.bin"] {
+        assert_eq!(fs::read(dir(c1.path()).join(f)).unwrap(), fs::read(dir(c2.path()).join(f)).unwrap(), "{f}");
+    }
+}
+
+#[test]
+fn eviction_keeps_what_is_in_use() {
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let mut store = Store::new(Some(cache.path()));
+    let opened = store.open(&path, None).unwrap();
+    opened.build(&mut |_, _| {}).unwrap();
+    // a stale entry from an older recording
+    let stale = cache.path().join("pyr/v1/0123456789abcdef0123456789abcdef");
+    fs::create_dir_all(&stale).unwrap();
+    fs::write(stale.join("c0.pyr"), vec![0u8; 4096]).unwrap();
+
+    store.limits = Limits { cap: 1, min_free: 0 };
+    let removed = store.evict().unwrap();
+    assert_eq!(removed, vec![stale]);
+    assert!(cache.path().join("pyr/v1").join(opened.key()).is_dir(), "in use: kept");
+    drop(opened);
+    let removed = store.evict().unwrap();
+    assert_eq!(removed.len(), 1, "no longer in use: evicted");
+}
