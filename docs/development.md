@@ -128,17 +128,21 @@ on a nearly full disk writes slow to 74 MB/s and the build takes 20 s.
 `just gate3 core` judges the live path without the app (`ci/gate3.py`): `tlmbench-gen --send` streams records (a u64
 sequence number and an f32 per channel) at 4M samples/s to `tlmbench record` on localhost, for 60 s in each of two
 shapes, 4 channels at 1 MHz and 32 at 125 kHz, over TCP and then UDP. Each recording is then checked record by record
-against the sender (`tlmbench-gen --verify`) and deleted. It needs about 2 GB free while a run lasts. `just gate3 core
-5` runs 5 s each, for a quick check.
+against the sender (`tlmbench-gen --verify`) and deleted. Then it tails a growing CSV (`tlmbench-gen --append`, lines
+cut mid-way, truncated once half-way) at 1M and 4M samples/s with `tlmbench record file://…`. It needs about 2 GB
+free while a run lasts and takes about 7 minutes; `just gate3 core 5` runs 5 s each, for a quick check.
 
 Pass (TCP runs): every record recorded and identical, none dropped by the ring buffer, no sequence number missing or
 repeated, and the ring never more than half full. A run where the sender fell more than 0.1 s behind its schedule is
-invalid, not failed. UDP runs are reported: localhost UDP can lose datagrams in the kernel, which shows as missing
-sequence numbers. `just gate3 app` (a live tab following the stream, with Gate 1's frame rule) comes with the live UI.
+invalid, not failed. Reported: UDP runs (localhost UDP can lose datagrams in the kernel, which shows as missing
+sequence numbers) and CSV tails (whether the tail kept up, rows identical, and the rows a truncation took before they
+were read). `just gate3 app` (a live tab following the stream, with Gate 1's frame rule) comes with the live UI.
 
-Last run (MacBook Air M1, 8 GB, Nov 2, 2026): pass. Every run recorded all its records bit for bit, none dropped or
-missing; the ring buffer peaked at 0.2–0.7% of its 229 MB (TCP 4 × 1 MHz: 22.9 MB/s written, the recorder at 2.6% of a
-core; TCP 32 × 125 kHz: 16.2 MB/s, 5.5%; UDP: 42% and 16%, one datagram read at a time).
+Last run (MacBook Air M1, 8 GB, Nov 2, 2026): pass. Every TCP and UDP run recorded all its records bit for bit, none
+dropped or missing, the ring buffer at most 0.7% of its 229 MB; the recorder took 3.7% of a core for TCP 4 × 1 MHz
+(22.9 MB/s written), 6.5% for TCP 32 × 125 kHz (16.2 MB/s), 45% and 22% for UDP (one datagram a read). The CSV tails
+kept up at both rates with every recorded row identical, at 11% and 17% of a core; the truncation took 5,221 rows
+(about 20 ms) at 1M samples/s and none at 4M. A finished CSV is tailed at about 7.5M rows/s.
 
 ## Zoomed views and the chunk cache
 
