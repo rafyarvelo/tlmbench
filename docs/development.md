@@ -47,7 +47,7 @@ Recipes for code that doesn't exist yet (no Cargo workspace, no `app/`, no `pyth
 | Rust stable, components, wasm targets | `rust-toolchain.toml` |
 | Node, nightly, just, cargo-binstall, nextest, cargo-fuzz, tauri-cli, wasmtime, wasm-tools | `ci/versions.env` |
 | Playwright | `prototype/tests/package.json` (+ lock file); the app's UI tests use the same install |
-| Svelte, its Vite plugin, svelte-check, TypeScript, Vite, the Tauri JS API | `app/ui/package.json` (+ lock file) |
+| Svelte, its Vite plugin, svelte-check, TypeScript, Vite, the Tauri JS API, TanStack Table (table-core) | `app/ui/package.json` (+ lock file) |
 | maturin, pytest, numpy, pyarrow | `requirements-dev.txt` |
 | CI base image | digest in `ci/Dockerfile` |
 

@@ -4461,6 +4461,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+ "tempfile",
  "tlmbench-core",
  "tlmbench-decode",
  "tlmbench-live",

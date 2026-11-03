@@ -363,6 +363,67 @@ async fn values_at(file: u32, channels: Vec<u32>, t: String, files: State<'_, Fi
     .map_err(|e| e.to_string())
 }
 
+/// Rows a `rows` call returns at most.
+const MAX_ROWS: usize = 10_000;
+
+/// The raw samples in `[t0, t1)`, rows `offset..offset + limit` of them, for a table pane. Little-endian: `TLMR`,
+/// u32 channels, u64 the first row's sample index, u64 rows in the span, u32 rows returned, u32 0; then each row's
+/// time (i64 ns), then each channel's values for those rows (f64 after scale and offset, NaN where missing).
+#[tauri::command]
+async fn rows(
+    file: u32,
+    channels: Vec<u32>,
+    span: Span,
+    offset: u64,
+    limit: u32,
+    files: State<'_, Files>,
+) -> Result<Response, String> {
+    let o = files.get(file)?;
+    let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
+    let bytes = spawn_blocking(move || {
+        let channels: Vec<usize> = channels.into_iter().map(|c| c as usize).collect();
+        encode_rows(o.recording(), &channels, t0, t1, offset, limit)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(Response::new(bytes))
+}
+
+/// A `rows` reply (see [`rows`]); channels past the recording's are left out.
+fn encode_rows(
+    rec: &dyn tlmbench_core::Recording,
+    channels: &[usize],
+    t0: i64,
+    t1: i64,
+    offset: u64,
+    limit: u32,
+) -> Vec<u8> {
+    let n = rec.info().channels.len();
+    let chans: Vec<usize> = channels.iter().copied().filter(|&c| c < n).collect();
+    let a = rec.lower_bound(t0);
+    let b = rec.lower_bound(t1).max(a);
+    let start = (a as u64).saturating_add(offset).min(b as u64) as usize;
+    let end = start + (b - start).min(limit as usize).min(MAX_ROWS);
+    let k = end - start;
+    let mut out = Vec::with_capacity(32 + 8 * k * (1 + chans.len()));
+    out.extend_from_slice(b"TLMR");
+    out.extend_from_slice(&(chans.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(start as u64).to_le_bytes());
+    out.extend_from_slice(&((b - a) as u64).to_le_bytes());
+    out.extend_from_slice(&(k as u32).to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    for t in rec.read_times(start, end) {
+        out.extend_from_slice(&t.to_le_bytes());
+    }
+    for &c in &chans {
+        let (scale, off) = rec.scale_offset(c);
+        for v in rec.read(c, start, end).to_f64(scale, off) {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    out
+}
+
 /// Exact statistics of a channel over a span.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -543,6 +604,7 @@ fn main() {
             view,
             values_at,
             stats,
+            rows,
             list_folder,
             live_connect,
             live_state,
@@ -553,4 +615,33 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("TelemetryBench failed to start");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rows_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("r.csv");
+        let body: String = (0..10).map(|i| format!("{i},{},{}\n", i * 10, i as f64 / 2.0)).collect();
+        std::fs::write(&path, format!("time,a,b\n{body}")).unwrap();
+        let opts = tlmbench_decode::OpenOptions { cache_dir: Some(dir.path().join("cache")), ..Default::default() };
+        let rec = tlmbench_decode::open(&path, &opts).unwrap();
+        let t = |i: usize| rec.time_at(i);
+        // samples 2..8 are in view; rows 1..4 of them, channel 9 doesn't exist
+        let out = encode_rows(rec.as_ref(), &[1, 9], t(2), t(8), 1, 3);
+        let u32_at = |o: usize| u32::from_le_bytes(out[o..o + 4].try_into().unwrap());
+        let u64_at = |o: usize| u64::from_le_bytes(out[o..o + 8].try_into().unwrap());
+        assert_eq!(&out[..4], b"TLMR");
+        assert_eq!((u32_at(4), u64_at(8), u64_at(16), u32_at(24)), (1, 3, 6, 3));
+        let times: Vec<i64> = (0..3).map(|k| u64_at(32 + 8 * k) as i64).collect();
+        assert_eq!(times, vec![t(3), t(4), t(5)]);
+        let b: Vec<f64> = (0..3).map(|k| f64::from_bits(u64_at(56 + 8 * k))).collect();
+        assert_eq!(b, vec![1.5, 2.0, 2.5]);
+        // past the end: no rows, the count still given
+        let out = encode_rows(rec.as_ref(), &[0], t(2), t(8), 100, 10);
+        assert_eq!((u64::from_le_bytes(out[16..24].try_into().unwrap()), out.len()), (6, 32));
+    }
 }

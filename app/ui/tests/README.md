@@ -1,7 +1,7 @@
 # The app's UI tests
 
 The built UI (`app/ui/dist`) in headless Chromium, with `fakecore.js` answering the Tauri commands the UI calls
-(`launch`, `open`, `close`, `view`, `values_at`, `stats`, `list_folder`, `live_connect`, `live_state`, `live_stop`, the file
+(`launch`, `open`, `close`, `view`, `values_at`, `stats`, `rows`, `list_folder`, `live_connect`, `live_state`, `live_stop`, the file
 and folder dialogs and drag and drop) from synthetic
 recordings. Tests check behaviour and state, not pixels; check visual changes with a screenshot.
 
@@ -20,7 +20,8 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_playback | the transport: Play back opens it paused, play/pause and Space, the view following at 85% of the window and holding when you choose one, readouts following the playhead, speed, window presets, scrubbing, stopping at the end, the A–B loop, each tab keeping its playhead (paused), close |
 | t_panes | the pane ⋯ menu and right-click: close (pane, others, below) with Undo, duplicate, split right into columns and down within one, add below; dragging a pane's number; time labels under each column; the layout after a reload |
 | t_shell | the rail and left sidebar (Ctrl+B), Settings (Basic/All, search, ⓘ, apply and save, Reset to defaults), mouse modes, the ⋯ menu, the status bar, Measure docking by hand and by itself, the note when a file can't be opened |
-| t_modes | a pane's view menu (chart, values), value tiles at the pointer, else cursor A, else the end of the view, the view saved with the layout and kept by Duplicate |
+| t_modes | a pane's view menu (chart, table, chart and table, values), value tiles at the pointer, else cursor A, else the end of the view, the view saved with the layout and kept by Duplicate |
+| t_tables | table panes (Table, Chart and table): a row per sample in view, read a window at a time as it scrolls and moving with the view; a row click placing cursor A (Shift: B), double-click centring the view, Go to A; column widths and the table's height under a chart saved with the layout |
 
 Each test uses `lib.js`: `run(name, async h => { ... }, opts)`. `h.check(label, condition, got)` records a result;
 a test fails on any failed check, any error in the page, or an exception in the script. Helpers: `text`, `visible`,

@@ -80,7 +80,11 @@ Next, in order:
 2. Once the owner accepts the form: port it to the app (descriptor lookup by `files` pattern in the app cache and
    `.tlmbench/decoders/`, the form on an unclaimed binary file, Open through the descriptor); the CLI finds
    descriptors the same way when `--descriptor` is left out.
-3. The pane view switch (chart, table, both, values) and tables, and "Axis and scale…" (from Phase 3's list above).
+3. The pane view switch and tables: done are the view menu (Chart, Table, Chart and table, Values), value tiles, and
+   table panes over the `rows` command (a window of raw rows read as the table scrolls; row click places A, Shift B,
+   double-click centres; Go to A/B; resizable columns and the table's height saved with the layout). Left for
+   tables: sort and filter in Rust (a row-id list the table pages through), the Columns list, Autofit, pinned
+   columns, copy as CSV, and the rows on screen as a band on the charts. Then "Axis and scale…" (Phase 3's list).
 4. Workspace files (save/open a layout as JSON; design: Files, workspaces and sharing).
 5. The app's Export (visible range or selection → the `convert` writers; PNG/SVG of the view).
 6. `just gate4`: the format matrix (one recording in every format with identical per-channel checksums and views;

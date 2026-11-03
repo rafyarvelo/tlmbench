@@ -4,12 +4,17 @@
 
 import { ui } from './ui.svelte';
 
-/** How a pane shows its channels: the chart (the default, left out of saved layouts) or value tiles. */
-export type PaneMode = 'chart' | 'values';
+/** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
+ * view, the chart with its table below, or value tiles. */
+export type PaneMode = 'chart' | 'table' | 'both' | 'values';
 
 export interface Pane {
   channels: number[];
   mode?: PaneMode;
+  /** Table column widths by column id ('n', 't', 'c<channel>'), where resized. */
+  widths?: Record<string, number>;
+  /** The table's height under a chart ('both'), where dragged. */
+  tableH?: number;
   beside?: boolean;
   under?: boolean;
 }
@@ -117,7 +122,7 @@ export const canSplitRight = (i: number) => columns(rowOf(i)).length < MAX_PER_R
 export function duplicate(i: number, beside = false): void {
   const p = stack.panes[i];
   edit(() => {
-    const again = { channels: [...p.channels], mode: p.mode };
+    const again = { ...p, channels: [...p.channels], beside: undefined, under: undefined };
     stack.panes.splice(i + 1, 0, beside ? { ...again, beside: true } : { ...again, under: p.under });
     stack.sel = i + 1;
   });
@@ -160,7 +165,7 @@ export function movePane(from: number, to: number): void {
   edit(() => {
     const [p] = stack.panes.splice(from, 1);
     const at = to > from ? to - 1 : to;
-    stack.panes.splice(at, 0, { channels: p.channels, mode: p.mode });
+    stack.panes.splice(at, 0, { ...p, beside: undefined, under: undefined });
     stack.sel = at;
   });
 }
@@ -169,6 +174,18 @@ export function setMode(i: number, mode: PaneMode): void {
   edit(() => {
     stack.panes[i].mode = mode;
     stack.sel = i;
+  });
+}
+
+/** Sets a pane's table widths or height (undefined: back to the default). */
+export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH'>>): void {
+  edit(() => {
+    const p = stack.panes[i];
+    if (!p) return;
+    for (const [k, v] of Object.entries(patch) as [keyof typeof patch, never][]) {
+      if (v === undefined || (k === 'widths' && !Object.keys(v).length)) delete p[k];
+      else p[k] = v;
+    }
   });
 }
 

@@ -22,13 +22,17 @@
     stack,
   } from '../stack.svelte';
   import { ui } from '../ui.svelte';
+  import Table from './Table.svelte';
 
   let menu = $state<null | { i: number; x: number; y: number }>(null);
   let views = $state<null | { i: number; x: number; y: number }>(null);
   const VIEWS = [
     { mode: 'chart', label: 'Chart', hint: 'Channels over time' },
+    { mode: 'table', label: 'Table', hint: 'The samples in view, one row each' },
+    { mode: 'both', label: 'Chart and table', hint: 'The chart with its table below' },
     { mode: 'values', label: 'Values', hint: 'Value tiles at the pointer, cursor A or the end of the view' },
   ] as const;
+  const viewName = (i: number) => VIEWS.find((v) => v.mode === (stack.panes[i]?.mode ?? 'chart'))!.label;
   let dragging = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
 
@@ -70,12 +74,12 @@
 
 <div id="stack" class="stack">
   {#each rows() as row, r (r)}
-    <div class="prow">
+    <div class="prow" style:flex-grow={row.some((k) => stack.panes[k].mode === 'both') ? 2 : null}>
       {#each columns(row) as col, c (c)}
         <div class="pcol">
           {#each col as i (i)}
             {@const p = stack.panes[i]}
-            <section class="pane" class:sel={i === stack.sel} class:drop={dropAt === i} data-pane={i}>
+            <section class="pane" class:both={p.mode === 'both'} class:sel={i === stack.sel} class:drop={dropAt === i} data-pane={i}>
               <div
                 class="phead"
                 role="group"
@@ -124,8 +128,8 @@
                   class="pmore"
                   data-vmenu
                   aria-haspopup="menu"
-                  aria-label="View of pane {i + 1}: {p.mode === 'values' ? 'Values' : 'Chart'}"
-                  data-tip="View: {p.mode === 'values' ? 'values' : 'chart'}. Click to change"
+                  aria-label="View of pane {i + 1}: {viewName(i)}"
+                  data-tip="View: {viewName(i).toLowerCase()}. Click to change"
                   onclick={(e) => {
                     const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     menu = null;
@@ -157,8 +161,11 @@
                     <span class="mnote">Tick channels on the left to show them here</span>
                   {/each}
                 </div>
+              {:else if p.mode === 'table'}
+                <Table {i} />
               {:else}
                 <div class="plot" style="--pb: {labelled(i) ? PAD.timeLabels : 4}px"></div>
+                {#if p.mode === 'both'}<Table {i} height={p.tableH ?? 210} />{/if}
               {/if}
             </section>
           {/each}
@@ -225,6 +232,13 @@
     flex: 1;
     flex-direction: column;
     min-width: 0;
+  }
+  /* a chart with its table below takes twice the room, and the chart keeps some of it */
+  .pane.both {
+    flex-grow: 2;
+  }
+  .pane.both .plot {
+    min-height: 100px;
   }
   .pane.drop {
     box-shadow: inset 0 2px 0 var(--accent);

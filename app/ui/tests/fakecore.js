@@ -1,5 +1,5 @@
 // A fake of the app's core for the UI tests: it answers the Tauri commands the UI calls (launch, open, close,
-// view, values_at, stats, the dialog and the drag-and-drop events) from synthetic recordings, and encodes view
+// view, values_at, stats, rows, the dialog and the drag-and-drop events) from synthetic recordings, and encodes view
 // batches in the core's wire format (crates/core/src/wire.rs; t_wire checks it against the core's golden file).
 //
 // Loaded before the page (an init script), it installs window.__TAURI_INTERNALS__ the way Tauri's mockIPC does.
@@ -145,6 +145,8 @@
     /** Live sources by endpoint: a recording spec, plus `already` (seconds recorded when it connects). */
     sources: {},
     calls: [],
+    /** Rows each `rows` call returned. */
+    rowsAsked: [],
     /** The precision each `view` asked for. */
     precisions: [],
     open: new Map(),
@@ -230,6 +232,30 @@
         const mean = n ? sum / n : null;
         return { channel: ch, count: n, min: n ? min : null, minT: n ? String(timeAt(r, minI)) : null, max: n ? max : null, maxT: n ? String(timeAt(r, maxI)) : null, mean, std: n ? Math.sqrt(Math.max(0, sq / n - mean * mean)) : null };
       });
+    },
+    // the raw samples in [t0, t1), rows offset..offset + limit, in the app's rows format
+    rows({ file, channels, span, offset, limit }) {
+      const r = fake.open.get(file)?.r;
+      if (!r) throw 'that file is not open';
+      const lower = (t) => Math.max(0, Math.min(r.samples, Math.ceil(Number(BigInt(t) - T0) / Number(dtNs(r)))));
+      const a = lower(span.t0);
+      const b = Math.max(a, lower(span.t1));
+      const start = Math.min(b, a + offset);
+      const n = Math.min(b - start, limit, 10000);
+      const chans = channels.filter((ch) => ch < r.chans.length);
+      fake.rowsAsked.push(n);
+      const buf = new ArrayBuffer(32 + 8 * n * (1 + chans.length));
+      const v = new DataView(buf);
+      [...'TLMR'].forEach((c, i) => v.setUint8(i, c.charCodeAt(0)));
+      v.setUint32(4, chans.length, true);
+      v.setBigUint64(8, BigInt(start), true);
+      v.setBigUint64(16, BigInt(b - a), true);
+      v.setUint32(24, n, true);
+      for (let k = 0; k < n; k++) v.setBigInt64(32 + 8 * k, timeAt(r, start + k), true);
+      chans.forEach((ch, c) => {
+        for (let k = 0; k < n; k++) v.setFloat64(32 + 8 * n * (c + 1) + 8 * k, valueAt(r, ch, start + k), true);
+      });
+      return buf;
     },
     // a live source: a recording that grows with the clock at its rate, until stopped
     live_connect({ endpoint, descriptor }) {

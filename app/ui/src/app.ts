@@ -201,6 +201,8 @@ const gapFactor = (ch: number): number => (state.file && settings.gapFactors[sta
 /** Each pane's channels. */
 const panes = (): number[][] => stack.panes.map((p) => p.channels);
 const plotted = () => [...new Set(panes().flat())];
+/** Whether pane `i` draws a chart (a table or values pane doesn't). */
+const hasPlot = (i: number) => !['values', 'table'].includes(stack.panes[i]?.mode ?? 'chart');
 
 function samplesInView(): number {
   const f = state.file;
@@ -262,8 +264,8 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const generation = ++state.generation;
   const want = precision ?? (state.exactMs > 150 ? 'coarse' : 'exact');
   const inView = samplesInView();
-  // a values pane has no plot to ask for
-  const entries = panes().flatMap((chans, i) => (stack.panes[i].mode === 'values' ? [] : [entry(i, chans, state.t0, state.t1, widthPx(i))]));
+  // values and table panes have no plot to ask for
+  const entries = panes().flatMap((chans, i) => (hasPlot(i) ? [entry(i, chans, state.t0, state.t1, widthPx(i))] : []));
   const r = ovRect();
   const withOv = state.ovStale && !!r;
   if (withOv && r) {
@@ -573,10 +575,20 @@ function updateRange(): void {
   ui.canBack = state.history.length > 0;
 }
 
+/** What table panes read: the file, the time view and the cursors (only written when they change). */
+function syncView(): void {
+  const v = ui.view;
+  const file = state.file?.id ?? null;
+  const [t0, t1] = [state.t0.toString(), state.t1.toString()];
+  const [A, B] = [state.A?.toString() ?? null, state.B?.toString() ?? null];
+  if (v.file !== file || v.t0 !== t0 || v.t1 !== t1 || v.A !== A || v.B !== B) ui.view = { file, t0, t1, A, B };
+}
+
 // ---------- drawing ----------
 
 function draw(): void {
   state.drawScheduled = false;
+  syncView();
   renderer.begin();
   const dpr = window.devicePixelRatio || 1;
   const w = overlay.clientWidth;
@@ -597,7 +609,7 @@ function draw(): void {
   let complete = stack.panes.length > 0;
 
   panes().forEach((chans, i) => {
-    if (stack.panes[i].mode === 'values') return;
+    if (!hasPlot(i)) return;
     const r = plotRect(i);
     const main = state.layers[i];
     // the pane's value range: what its traces hold in view
@@ -1631,6 +1643,11 @@ Object.assign(actions, {
   fit,
   back,
   clearCursors,
+  placeCursor,
+  centreOn: (t: bigint) => {
+    const half = (state.t1 - state.t0) / 2n;
+    setView(t - half, t + half, true);
+  },
 });
 onSetting((key) => {
   if (key === 'theme') {

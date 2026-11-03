@@ -14,7 +14,7 @@ run('modes', async ({ p, check, text, visible, until, settingsLS, wait }) => {
   check('panes start as charts', (await app('modes')).every((m) => m === 'chart'), await app('modes'));
   await viewMenu(0);
   const items = await p.$$eval('.viewmenu [data-vm]', (b) => b.map((x) => x.dataset.vm + ':' + x.getAttribute('aria-checked')));
-  check('the view menu', items.join() === 'chart:true,values:false', items);
+  check('the view menu', items.join() === 'chart:true,table:false,both:false,values:false', items);
   await pick('values');
   check('pane 1 shows values', JSON.stringify(await app('modes')).startsWith('["values"'), await app('modes'));
   const chans = (await app('panes'))[0];

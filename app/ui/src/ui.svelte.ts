@@ -22,6 +22,8 @@ export const ui = $state({
   span: '',
   pointer: '',
   canBack: false,
+  /** The open file's id, the time view and the cursors (exact ns as decimal strings), for table panes. */
+  view: { file: null as number | null, t0: '0', t1: '1', A: null as string | null, B: null as string | null },
   /** Both cursors are placed; any is. */
   cursors: false,
   anyCursor: false,
@@ -53,4 +55,8 @@ export const actions = {
   fit: () => {},
   back: () => {},
   clearCursors: () => {},
+  /** Places cursor A or B at a time (a table row). */
+  placeCursor: (_which: 'A' | 'B', _t: bigint) => {},
+  /** Centres the time view on a time, keeping its span. */
+  centreOn: (_t: bigint) => {},
 };

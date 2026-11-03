@@ -86,3 +86,26 @@ export function decode(buf: ArrayBuffer, at = 0, len = buf.byteLength): Reply {
     bytes: len,
   };
 }
+
+/** A `rows` reply: a window of the raw samples in a span (see the app's `rows` command). */
+export interface Rows {
+  /** The first row's sample index in the recording. */
+  first: number;
+  /** Rows in the whole span. */
+  total: number;
+  times: BigInt64Array;
+  /** One column per channel asked for, in order (NaN where missing). */
+  values: Float64Array[];
+}
+
+const ROWS_HEADER = 32;
+
+export function decodeRows(buf: ArrayBuffer): Rows {
+  const v = new DataView(buf);
+  if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== 'TLMR') throw new Error('not a rows reply');
+  const channels = v.getUint32(4, true);
+  const n = v.getUint32(24, true);
+  const times = new BigInt64Array(buf, ROWS_HEADER, n);
+  const values = Array.from({ length: channels }, (_, k) => new Float64Array(buf, ROWS_HEADER + 8 * n * (k + 1), n));
+  return { first: Number(v.getBigUint64(8, true)), total: Number(v.getBigUint64(16, true)), times, values };
+}
