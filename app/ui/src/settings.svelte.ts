@@ -24,6 +24,9 @@ export interface Settings {
   leftWidth: number;
   measureWidth: number;
   panelsClosed: string[];
+  /** The start page shows at launch, and the recordings opened last (newest first). */
+  showStart: boolean;
+  recent: string[];
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
@@ -61,6 +64,8 @@ export const DEFAULTS: Settings = {
   leftWidth: 300,
   measureWidth: 260,
   panelsClosed: [],
+  showStart: true,
+  recent: [],
   exCategories: true,
   exCatClosed: [],
   exOnlyOpen: false,
@@ -111,7 +116,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['leftWidth', 'measureWidth', 'panelsClosed', 'sidesSwapped', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
+const KEEP: (keyof Settings)[] = ['recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'sidesSwapped', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

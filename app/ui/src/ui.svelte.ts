@@ -24,6 +24,8 @@ export const ui = $state({
   span: '',
   pointer: '',
   canBack: false,
+  /** The start page is open over the panes (it is also what shows with no file). */
+  start: false,
   /** Focus mode: only the panes and the range show. */
   focus: false,
   /** The open file's id, the time view and the cursors (exact ns as decimal strings), for table panes. */

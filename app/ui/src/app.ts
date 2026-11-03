@@ -1242,6 +1242,8 @@ async function openPath(path: string): Promise<void> {
       live: null,
     });
     tabs.list.push({ key, path: file.info.path, name: nameOf(file.info.path) });
+    ui.start = false;
+    setSetting('recent', [file.info.path, ...settings.recent.filter((r) => r !== file.info.path)].slice(0, 8));
     ui.note = '';
     ui.undo = null;
     await showTab(key);
@@ -2022,6 +2024,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'Escape' && closePopup()) return;
+  if (e.key === 'Escape' && ui.start && state.file) return void (ui.start = false);
   if (e.key === ' ' && state.file && !(e.target as HTMLElement).closest('input, select, textarea, button')) {
     e.preventDefault();
     togglePlay();
@@ -2249,4 +2252,5 @@ else if (launch.gate === '1' && launch.file) {
   if (wsFront) await showTab(wsFront.key);
   else if (front) await openPath(front);
   ui.note = '';
+  if (settings.showStart && !launch.file && tabs.list.length) ui.start = true;
 }

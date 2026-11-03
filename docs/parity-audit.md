@@ -23,8 +23,8 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 96 ·
-Partial 42 · Different 37 · Missing 103** (278 rows; counts as of Nov 3). Of the missing rows, 37 belong to Phase 3 (the shell port
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 99 ·
+Partial 43 · Different 36 · Missing 100** (278 rows; counts as of Nov 3). Of the missing rows, 34 belong to Phase 3 (the shell port
 that is already due), 31 to Phase 4 and 35 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
@@ -42,7 +42,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Item | Prototype | App | Status | Phase | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Rail views | Logo, Explorer, Events, Rules & checks, Layouts, Measure, Live, Settings (`6547-6558`) | Logo, Explorer, Measure, Live, Settings (`shell/Rail.svelte:21-28`) | Partial | 3 (Events, checks: 5; Layouts: 4) | Events, Rules & checks and Layouts are missing. |
-| Rail logo | Button that opens the start page (`6551`, `6599`) | Static icon (`shell/Rail.svelte:22`) | Missing | 3 | No start page to open. |
+| Rail logo | Button that opens the start page (`6551`, `6599`) | Button that opens the start page (`shell/Rail.svelte`) | Ported | 3 | Fixed Nov 3. |
 | Settings position in rail | Under Live, with the other views; a spacer below (`6560`) | Pinned to the bottom of the rail (`shell/Rail.svelte:26-27`) | Different | 3 | Compare `proto_main_dark.png` with `app_main_dark.png`. |
 | Rail Live button | Brings the live tab forward if there is one, else opens Connect. A dot shows while streaming (`6600-6604`) | Toggles the Connect dialog (`shell/Rail.svelte:25`) | Partial | 3 | No streaming dot, no jump to the live tab. |
 | Rail toggles | Clicking the active view hides the sidebar (`6654-6666`) | Same (`shell/Rail.svelte:8`) | Ported | 3 | |
@@ -71,7 +71,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Sidebar resize | Drag the inner edge (200 px to half the window, keeping 420 px of plots); double-click resets; saved (`6747-6779`) | Drag the inner edge, 200 px to half the window keeping 420 px of plots; double-click resets; saved (`App.svelte` `grip`) | Ported | 3 | Fixed Nov 3, for both sidebars. |
 | Reset UI layout | Settings button (`6297-6303`) | Settings → Layout → Reset UI layout | Ported | 3 | Fixed Nov 3. |
 | Status bar | State dot and text, memory, load, query, draw, points (`1662-1669`) | One string: points, kind, round trip (`App.svelte:76-78`) | Partial | 3 | |
-| Start page | Open folder…, Open recording…, Connect live source…, recent sessions, recent recordings, live sources with saved connections, layouts in the folder, "Show this page at launch" (`7039-7212`) | — | Missing | 3 | Deferred in `docs/follow-ups.md`. |
+| Start page | Open folder…, Open recording…, Connect live source…, recent sessions, recent recordings, live sources with saved connections, layouts in the folder, "Show this page at launch" (`7039-7212`) | Open folder…, Open recording…, Connect live source…, the last folder, recent recordings, "Show this page at launch" (`shell/StartPage.svelte`); with no file it fills the stack, else it opens over the tabs | Partial | 3 | Fixed Nov 3 except recent sessions, live sources with saved connections and layouts in the folder. |
 | No file open | In the stack: "No file open", a line of help, Start page button (`3773`) | Centred "Open a recording / Drop a CSV or .tlm file here, or press ⌘O" (`App.svelte:69-72`), plus a note in Explorer | Different | 3 | The app's mode buttons stay enabled with no file (`app_empty.png`). |
 | No panes in a tab | "No channels plotted", a line of help, a large + Add pane (`3777-3784`) | Only the "+ Add pane" bar (`App.svelte:65`, `app.ts:929-931`) | Different | 3 | |
 | Focus mode | Ctrl/Cmd+. hides everything but the panes and range; Esc or "Exit focus" leaves (`6389-6397`) | Ctrl/Cmd+. or ⋯ → Focus mode hides the rail, tabs, buttons, sidebars and status bar; Esc or Exit focus leaves | Ported | 3 | Fixed Nov 3. |
@@ -250,7 +250,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Basic and All | Segment under the search (`6412-6414`) | Segment above the search (`shell/Settings.svelte:34-38`) | Ported | 3 | Order is swapped. |
 | Search | Over names, explanations and choices; Esc clears (`6415-6443`) | Over labels, hints and options (`shell/Settings.svelte:25-29`) | Ported | 3 | |
 | ⓘ explanations | `i` button per row (`6407-6409`) | ⓘ per row (`shell/Settings.svelte:45`) | Ported | 3 | |
-| Switch style | Toggle switches | Native checkboxes | Different | 3 | `proto_settings_all.png`, `app_settings_all.png`. |
+| Switch style | Toggle switches | Switches (`input[role=switch]`) | Ported | 3 | Fixed Nov 3. |
 | Basic set | Theme, Time format, When a file opens, Files opened for the first time, Channels from several files, Clicking a row, Tooltips, Quiet interface, Mouse mode, Group channels, Left sidebar, Measure panel (`6399`) | Mouse mode, Theme, Overview above the panes, Open Measure… (`shell/Settings.svelte:16-22`) | Different | 3 | |
 | Footer | "Saved in this browser as you change them", Reset to defaults | "Saved as you change them", Reset to defaults (`shell/Settings.svelte:63`) | Ported | 3 | |
 | Lock the time view | `1676` | `shell/Settings.svelte` | Ported | 3 | Fixed Nov 3. |
@@ -270,7 +270,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Forget remembered file layouts | `1704` | — | Missing | 3 | |
 | Derived channels and import profiles: Manage… | `1705` | — | Missing | 5 | |
 | Channels (display settings list) | `1709`, `renderChannelSettings 10720` | — | Missing | 5 | |
-| Show the start page at launch | `1713` | — | Missing | 3 | |
+| Show the start page at launch | `1713` | Settings → Show the start page at launch; over the restored tabs at launch | Ported | 3 | Fixed Nov 3. |
 | Record live sessions to | `1714` | — | Missing | 3 | The app records to a fixed Recordings folder. |
 | Session status, Reset session | `1715` | — | Missing | 3 | |
 | Theme | `1719` | `shell/Settings.svelte:19` | Ported | 3 | |
@@ -366,6 +366,10 @@ reorder it, Missing in Stats, and the sidebar padding.
 Explorer's channels (Nov 3): the swatch checkbox, multi-select with the selection bar, dragging channels onto panes, the
 file right-click menu, Show only these and Undo on Close all files. `t_channels` covers them. Channel categories group by name prefix (Settings → Group channels into categories). Not done: moving a channel between categories, "Show files that can't be opened", Explorer's
 ⋯ and folder menus, Open only this, dragging onto pane edges.
+
+Start page and switches (Nov 3): the start page (with no file, and from the rail's logo over the tabs), recent
+recordings, "Show this page at launch", and switches in Settings and on the page. `t_start` covers them. The empty
+state's mode buttons still stay enabled with no file.
 
 ## 9. Look and feel
 

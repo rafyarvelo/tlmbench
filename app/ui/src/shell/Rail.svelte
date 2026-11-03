@@ -19,7 +19,7 @@
 </script>
 
 <nav class="arail" aria-label="Views">
-  <span class="rlogo" aria-hidden="true">{@html ICON.logo}</span>
+  <button class="rlogo" id="b-start" aria-label="Start page" aria-pressed={ui.start} data-tip="Start page: open a folder or recording, or a recent one" onclick={() => (ui.start = !ui.start)}>{@html ICON.logo}</button>
   <button class="rb" data-rail="explorer" aria-pressed={settings.leftPanel === 'explorer'} aria-label="Explorer" data-tip="Explorer: the open file and its channels (Ctrl+B)" onclick={() => left('explorer')}>{@html ICON.explorer}</button>
   <button class="rb" data-rail="measure" aria-pressed={shown} aria-label="Measure" data-tip="Measure: values at the cursors and stats between them (Ctrl+Alt+B)" onclick={measure}>{@html ICON.measure}</button>
   <button class="rb" data-rail="live" aria-pressed={live.connect} aria-label="Live" data-tip="Live: connect a source (TCP, UDP or a growing file)" onclick={() => ((live.connect = !live.connect), (live.error = ''))}>{@html ICON.live}</button>
@@ -42,6 +42,11 @@
     flex: 1;
   }
   .rlogo {
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
     display: inline-grid;
     place-items: center;
     width: 38px;
