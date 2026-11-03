@@ -1,7 +1,7 @@
 <!-- Settings in the left sidebar: the everyday ones (Basic) or all of them, a search over every setting by name,
      explanation and choices, and each explanation behind an ⓘ. Changes apply and save at once. -->
 <script lang="ts">
-  import { resetSettings, type Settings, setSetting, settings } from '../settings.svelte';
+  import { resetSettings, resetUiLayout, type Settings, setSetting, settings } from '../settings.svelte';
 
   interface Row {
     key: keyof Settings;
@@ -15,6 +15,8 @@
   const ROWS: Row[] = [
     { key: 'mode', section: 'Mouse', basic: true, label: 'Mouse mode', hint: 'What dragging across a chart does. Shift-drag or middle-drag always pans.', options: [['box', 'Box zoom'], ['pan', 'Pan'], ['cursor', 'Cursors']] },
     { key: 'zoomSpeed', section: 'Mouse', label: 'Zoom speed', hint: 'How far one wheel notch or trackpad swipe zooms.', options: [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']] },
+    { key: 'locked', section: 'Mouse', label: 'Lock the time view', hint: "Zoom, pan and fit gestures can't change the view. Also on the top bar (L)." },
+    { key: 'lockCursors', section: 'Mouse', label: 'Cursors still work while locked' },
     { key: 'dblFit', section: 'Mouse', label: 'Double-click fits the whole recording' },
     { key: 'theme', section: 'Display', basic: true, label: 'Theme', hint: 'Match system follows your light or dark setting.', options: [['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']] },
     { key: 'overviewTop', section: 'Display', basic: true, label: 'Overview above the panes' },
@@ -60,6 +62,7 @@
   {:else}
     <p class="setnone">No setting matches “{q.trim()}”.</p>
   {/each}
+  <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div></section>
   <footer><span>Saved as you change them</span><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
 </div>
 
@@ -115,7 +118,8 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
-  .row {
+  .row,
+  .urow {
     display: flex;
     align-items: center;
     justify-content: space-between;

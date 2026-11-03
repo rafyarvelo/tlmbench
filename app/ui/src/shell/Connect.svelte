@@ -67,12 +67,6 @@
 </div>
 
 <style>
-  .scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 59;
-    background: rgba(0, 0, 0, 0.25);
-  }
   .cdlg {
     top: 80px;
     left: 50%;
@@ -123,7 +117,7 @@
   }
   .err {
     margin: 6px 0 0;
-    color: var(--danger, #ff6b78);
+    color: var(--danger);
     font-size: 12px;
   }
 </style>

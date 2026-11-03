@@ -41,7 +41,7 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
     const pt = await plotAt(0, fx);
     await p.mouse.click(pt.x, pt.y);
   }
-  check('Measure waits for exact stats', await until(() => /exact stats between the cursors once it's read \(40%\)/.test(document.getElementById('measure').innerText)), await text('#measure'));
+  check('Measure waits for exact stats', await until(() => /exact stats once it's read \(40%\)/.test(document.getElementById('measure').innerText)), await text('#measure'));
   await fake((c) => window.__tlmFake.build(c, 1), COLD);
   check('built: no hatching', await until(() => window.__tlmApp.building() === null));
   check('Measure fills in its stats', await until(() => /Std dev/.test(document.getElementById('measure').innerText)), await text('#measure'));

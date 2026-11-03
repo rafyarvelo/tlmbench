@@ -14,9 +14,32 @@
   import { play } from './play.svelte';
   import { ICON } from './icons';
   import { setSetting, settings } from './settings.svelte';
-  import { measureShown, ui } from './ui.svelte';
+  import { actions, measureShown, ui } from './ui.svelte';
 
   const shown = $derived(measureShown(settings.measureOpen, settings.measureAuto));
+
+  const MIN_PLOTS = 420;
+  let workEl: HTMLElement | undefined = $state();
+
+  /** Drags a sidebar's inner edge: 200 px up to half the window, keeping room for the plots. */
+  function grip(e: PointerEvent, which: 'left' | 'measure') {
+    const other = (which === 'left' ? document.getElementById('measure') : document.getElementById('side'))!;
+    const otherW = other.hidden ? 0 : other.offsetWidth;
+    const docksLeft = (which === 'left') !== settings.sidesSwapped;
+    const box = workEl!.getBoundingClientRect();
+    const max = Math.max(200, Math.min(box.width / 2, box.width - MIN_PLOTS - otherW));
+    const move = (m: PointerEvent) => {
+      const w = docksLeft ? m.clientX - box.left : box.right - m.clientX;
+      setSetting(which === 'left' ? 'leftWidth' : 'measureWidth', Math.round(Math.max(200, Math.min(max, w))));
+    };
+    const up = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', up);
+    };
+    e.preventDefault();
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  }
 
   // Ctrl+B: the left sidebar; Ctrl+Alt+B: Measure
   function key(e: KeyboardEvent) {
@@ -31,10 +54,11 @@
 
 {#if live.connect}<Connect />{/if}
 
-<div class="app" id="app">
+<div class="app" id="app" class:focus={ui.focus}>
   <Rail />
   <div class="col">
     <TopBar />
+    {#if ui.focus}<button class="tbtn exitfocus" id="focusExit" data-tip="Show the sidebars and toolbar again (Esc)" onclick={() => actions.toggleFocus(false)}>Exit focus</button>{/if}
     {#if play.open}<Transport />{/if}
     {#if live.on}<LiveStrip />{/if}
     {#if ui.note}
@@ -54,11 +78,12 @@
         <button class="ibtn" aria-label="Dismiss" onclick={() => ((ui.note = ''), (ui.undo = null))}>{@html ICON.close}</button>
       </div>
     {/if}
-    <div class="work">
-      <aside id="side" class="side" hidden={!settings.leftPanel}>
-        <div hidden={settings.leftPanel !== 'explorer'}><Explorer /></div>
+    <div class="work" class:swapped={settings.sidesSwapped} bind:this={workEl}>
+      <aside id="side" class="side" hidden={!settings.leftPanel} style:width="{settings.leftWidth}px">
+        <div class="exwrap" hidden={settings.leftPanel !== 'explorer'}><Explorer /></div>
         {#if settings.leftPanel === 'settings'}<Settings />{/if}
       </aside>
+      <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" data-grip="left" hidden={!settings.leftPanel} onpointerdown={(e) => grip(e, 'left')} ondblclick={() => setSetting('leftWidth', 300)}></div>
       <main id="center" class="center" data-mode={settings.mode}>
         <div id="ovTop" class="ovslot"></div>
         <PaneStack />
@@ -71,7 +96,8 @@
           <p class="empty-sub">Drop a CSV or .tlm file here, or press ⌘O</p>
         </div>
       </main>
-      <aside id="measure" class="measure" hidden={!shown}></aside>
+      <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize Measure" data-grip="measure" hidden={!shown} onpointerdown={(e) => grip(e, 'measure')} ondblclick={() => setSetting('measureWidth', 260)}></div>
+      <aside id="measure" class="measure" hidden={!shown} style:width="{settings.measureWidth}px"></aside>
     </div>
     {#if settings.showPerf}
       <footer class="statusbar" id="statusBar"><span id="status" class="num">{ui.perf}</span></footer>
@@ -80,12 +106,33 @@
 </div>
 
 <style>
+  .app.focus {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app.focus :global(.arail),
+  .app.focus :global(.wstabs),
+  .app.focus :global(.toolbar > .seg),
+  .app.focus :global(.toolbar > .tb),
+  .app.focus :global(.toolbar > .vsep),
+  .app.focus .side,
+  .app.focus .statusbar,
+  .app.focus :global(#measure),
+  .app.focus :global(.addpane) {
+    display: none !important;
+  }
+  .exitfocus {
+    position: absolute;
+    top: 7px;
+    right: 12px;
+    z-index: 5;
+  }
   .app {
     display: grid;
     grid-template-columns: 52px minmax(0, 1fr);
     height: 100vh;
   }
   .col {
+    position: relative;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -96,14 +143,43 @@
     flex: 1;
     min-height: 0;
   }
+  .work.swapped {
+    flex-direction: row-reverse;
+  }
+  .work.swapped .side {
+    border-right: 0;
+    border-left: 1px solid var(--border);
+  }
+  .work.swapped :global(.measure) {
+    border-left: 0;
+    border-right: 1px solid var(--border);
+  }
+  .grip {
+    flex: none;
+    width: 7px;
+    margin: 0 -4px;
+    z-index: 3;
+    cursor: col-resize;
+  }
+  .grip:hover,
+  .grip:active {
+    background: var(--accent-line);
+    opacity: 0.6;
+  }
   .side {
     display: flex;
     flex-direction: column;
-    width: 260px;
+    width: 300px;
     flex: none;
     overflow: auto;
     border-right: 1px solid var(--border);
     background: var(--surface);
+  }
+  .exwrap {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
   }
   .side[hidden] {
     display: none;
@@ -132,9 +208,9 @@
   .statusbar {
     display: flex;
     align-items: center;
-    gap: 16px;
-    min-height: 24px;
-    padding: 0 14px;
+    gap: 18px;
+    min-height: 28px;
+    padding: 6px 16px;
     border-top: 1px solid var(--border);
     background: var(--surface);
     color: var(--fg-muted);

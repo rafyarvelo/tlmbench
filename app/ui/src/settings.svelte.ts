@@ -15,8 +15,18 @@ export interface Settings {
   theme: Theme;
   zoomSpeed: ZoomSpeed;
   dblFit: boolean;
+  /** The time view can't be changed by gestures; cursors still work unless `lockCursors` is off. */
+  locked: boolean;
+  lockCursors: boolean;
   overviewTop: boolean;
   leftPanel: LeftPanel;
+  /** Sidebar widths in px (dragged at their inner edge), sidebar panels collapsed (by name), and Explorer and Measure traded sides. */
+  leftWidth: number;
+  measureWidth: number;
+  panelsClosed: string[];
+  /** Explorer lists only the open files. */
+  exOnlyOpen: boolean;
+  sidesSwapped: boolean;
   /** Measure opened by hand (it also opens by itself when both cursors are placed, with measureAuto). */
   measureOpen: boolean;
   measureAuto: boolean;
@@ -41,8 +51,15 @@ export const DEFAULTS: Settings = {
   theme: 'system',
   zoomSpeed: 'normal',
   dblFit: true,
+  locked: false,
+  lockCursors: true,
   overviewTop: false,
   leftPanel: 'explorer',
+  leftWidth: 300,
+  measureWidth: 260,
+  panelsClosed: [],
+  exOnlyOpen: false,
+  sidesSwapped: false,
   measureOpen: false,
   measureAuto: true,
   showPerf: false,
@@ -89,13 +106,35 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
+const KEEP: (keyof Settings)[] = ['leftWidth', 'measureWidth', 'panelsClosed', 'sidesSwapped', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
     if (!KEEP.includes(key)) setSetting(key, structuredClone(DEFAULTS[key]) as never);
   }
 }
+
+/** Collapses or expands a sidebar panel (`explorer`, `measure.cur`, `measure.stats`). */
+export function setPanelOpen(name: string, open: boolean): void {
+  const rest = settings.panelsClosed.filter((n) => n !== name);
+  setSetting('panelsClosed', open ? rest : [...rest, name]);
+}
+export const PANELS = ['explorer', 'measure.cur', 'measure.stats'];
+/** Collapses every sidebar panel, or (when all are collapsed) expands them. */
+export function toggleAllPanels(): void {
+  setSetting('panelsClosed', settings.panelsClosed.length >= PANELS.length ? [] : [...PANELS]);
+}
+/** Back to the default sidebar sizes, sides and panels. */
+export function resetUiLayout(): void {
+  setSetting('leftWidth', DEFAULTS.leftWidth);
+  setSetting('measureWidth', DEFAULTS.measureWidth);
+  setSetting('panelsClosed', []);
+  setSetting('sidesSwapped', false);
+}
+
+/** The theme the page shows now (Match system resolved). */
+export const shownTheme = (): 'light' | 'dark' =>
+  settings.theme === 'system' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : settings.theme;
 
 /** The theme on the page: Match system leaves it to the colour scheme. */
 export function applyTheme(): void {

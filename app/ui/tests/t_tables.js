@@ -28,6 +28,7 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   // the whole recording is in view: 200,000 rows, of which only a window is read and drawn
   check('every sample in view is a row', await until(() => /200,000 rows/.test(document.querySelector('[data-table] [data-tstat]').textContent)), await text(`${T} [data-tstat]`));
   check('the first row', await until(() => document.querySelector('[data-table] [data-row="0"] span')?.textContent === '0'), await cell(0, 1));
+  check('table values show the channel\'s decimals, not raw floats', await until(() => { const t = document.querySelector('[data-table] [data-row="3"] span:nth-child(3)')?.textContent ?? ''; return /^-?\d+\.\d{1,3}$/.test(t); }), await cell(3, 3));
   const drawnRows = (await p.$$(`${T} [data-row]`)).length;
   check('only the rows on screen are drawn', drawnRows > 3 && drawnRows < 80, drawnRows);
   check('only a window is read', Math.max(...(await fake(() => window.__tlmFake.rowsAsked))) < 400, await fake(() => window.__tlmFake.rowsAsked));

@@ -24,6 +24,8 @@ export const ui = $state({
   span: '',
   pointer: '',
   canBack: false,
+  /** Focus mode: only the panes and the range show. */
+  focus: false,
   /** The open file's id, the time view and the cursors (exact ns as decimal strings), for table panes. */
   view: { file: null as number | null, t0: '0', t1: '1', A: null as string | null, B: null as string | null },
   /** Both cursors are placed; any is. */
@@ -60,6 +62,8 @@ export const actions = {
   /** The native file picker for these extensions; null when cancelled. */
   pickFile: async (_ext: string[]): Promise<string | null> => null,
   fit: () => {},
+  toggleTheme: () => {},
+  toggleFocus: (_on?: boolean) => {},
   back: () => {},
   clearCursors: () => {},
   /** Places cursor A or B at a time (a table row). */

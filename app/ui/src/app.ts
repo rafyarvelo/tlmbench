@@ -12,14 +12,17 @@ import { tick } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
-import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value, type YAxis } from './axes';
+import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
-import { applyTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
+import { applyTheme, setPanelOpen, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import {
   addPaneBelow,
+  duplicate,
+  fmtCh,
+  learnDecimals,
   type AxisKey,
   axisKey,
   axisOf,
@@ -387,10 +390,17 @@ async function requestResting(): Promise<void> {
   const t = state.A ?? (state.t1 > f.last ? f.last : state.t1);
   const got = await invoke<Nearest[]>('values_at', { file: f.id, channels: chans, t: t.toString() });
   if (mine !== restingWanted) return;
-  stack.resting = Object.fromEntries(got.map((n) => [n.channel, value(n.value)]));
+  stack.resting = Object.fromEntries(got.map((n) => [n.channel, fmtCh(f.id, n.channel, n.value)]));
 }
 
 // ---------- view ----------
+
+/** True (with a note and Unlock) when the view is locked: gestures call this before changing it. */
+function locked(): boolean {
+  if (!settings.locked) return false;
+  note('The view is locked.', () => setSetting('locked', false), 'Unlock');
+  return true;
+}
 
 function setView(t0: bigint, t1: bigint, remember = false): void {
   const f = state.file;
@@ -419,6 +429,7 @@ function setView(t0: bigint, t1: bigint, remember = false): void {
   scheduleDraw();
   void requestView();
   if (state.hoverT == null) void requestResting();
+  if (state.A == null || state.B == null) scheduleMeasure();
 }
 
 // ---------- Play: a playhead moves through the file and the view follows it ----------
@@ -554,6 +565,7 @@ function drawPlayhead(ctx: CanvasRenderingContext2D, r: Rect, tk: Record<string,
 /** Glides to a view over about 0.3 s on its centre and log(span), so a 2× and a 200× zoom look even. */
 let glide = 0;
 function glideTo(t0: bigint, t1: bigint): void {
+  if (locked()) return;
   state.history.push([state.t0, state.t1]);
   state.future = [];
   const id = ++glide;
@@ -583,6 +595,7 @@ function fit(): void {
 }
 
 function back(): void {
+  if (state.history.length && locked()) return;
   const v = state.history.pop();
   if (!v) return;
   state.future.push([state.t0, state.t1]);
@@ -591,6 +604,7 @@ function back(): void {
 }
 
 function forward(): void {
+  if (state.future.length && locked()) return;
   const v = state.future.pop();
   if (!v) return;
   state.history.push([state.t0, state.t1]);
@@ -663,6 +677,11 @@ function draw(): void {
       ranges[key] = { ...axisRange(ax, ts), log: ax.log, dec: ax.dec, label: ax.label };
     }
     paneY[i] = ranges;
+    if (state.file)
+      for (const ch of chans) {
+        const y = ranges[keyOf.get(ch) ?? 'u0'];
+        if (y && !y.log) learnDecimals(state.file.id, ch, y.min, y.max);
+      }
     drawAxes(ctx, r, { t0: state.t0, t1: state.t1, left: ranges.u0, right: ranges.u1 }, { ...style, timeLabels: labelled(i) });
     if (main && span > 0) {
       const x: Axis = { a: (2 * main.xScaleNs) / span, b: (2 * Number(main.originNs - state.t0)) / span - 1 };
@@ -944,7 +963,7 @@ function renderOverviewHead(): void {
 
 function updateChips(): void {
   const values: Record<number, string> = {};
-  state.hover.forEach((s, ch) => (values[ch] = value(s.v)));
+  state.hover.forEach((s, ch) => (values[ch] = fmtCh(state.file?.id ?? null, ch, s.v)));
   if (JSON.stringify(values) !== JSON.stringify(stack.values)) stack.values = values;
   ui.pointer = state.hoverT != null ? readoutTime(state.hoverT, Number(state.t1 - state.t0)) : '';
 }
@@ -987,6 +1006,16 @@ function defaultPanes(n: number): Pane[] {
 // ---------- Measure ----------
 
 let measureSeq = 0;
+/** The channel the Stats panel is about, and which Measure panels are open (kept across redraws). */
+let measureCh: number | null = null;
+let measureTimer = 0;
+/** With no cursors, Measure's stats follow the view: refresh a moment after it stops moving. */
+function scheduleMeasure(): void {
+  if (measureEl.hidden) return;
+  clearTimeout(measureTimer);
+  measureTimer = window.setTimeout(() => void refreshMeasure(), 150);
+}
+
 async function refreshMeasure(): Promise<void> {
   const f = state.file;
   const seq = ++measureSeq;
@@ -994,53 +1023,66 @@ async function refreshMeasure(): Promise<void> {
   ui.cursors = state.A != null && state.B != null;
   play.canLoop = ui.cursors;
   if (!ui.cursors) play.loop = false;
-  if (!f || state.A == null || state.B == null) {
-    measureEl.innerHTML = `<h2>Measure</h2><p class="mnote">${f ? 'Place cursors A and B to measure between them: press C, then click a chart twice. A and B also place them at the pointer.' : 'Open a recording to measure it.'}</p>`;
+  if (!f) {
+    measureEl.innerHTML = `<h2>Measure</h2><p class="mnote">Open a recording to measure it.</p>`;
     return;
   }
-  const [a, b] = state.A <= state.B ? [state.A, state.B] : [state.B, state.A];
   const chans = plotted();
+  if (measureCh == null || !chans.includes(measureCh)) measureCh = chans[0] ?? null;
+  const both = ui.cursors;
+  const [a, b] = both ? (state.A! <= state.B! ? [state.A!, state.B!] : [state.B!, state.A!]) : [state.t0, state.t1 - 1n];
+  const at = (t: bigint | null) => (t != null && chans.length ? invoke<Nearest[]>('values_at', { file: f.id, channels: chans, t: t.toString() }) : Promise.resolve([] as Nearest[]));
+  const t0 = performance.now();
   const [va, vb, st] = await Promise.all([
-    invoke<Nearest[]>('values_at', { file: f.id, channels: chans, t: state.A.toString() }),
-    invoke<Nearest[]>('values_at', { file: f.id, channels: chans, t: state.B.toString() }),
-    invoke<ChannelStats[] | null>('stats', { file: f.id, channels: chans, span: { t0: a.toString(), t1: (b + 1n).toString() } }),
+    at(state.A),
+    at(state.B),
+    measureCh != null ? invoke<ChannelStats[] | null>('stats', { file: f.id, channels: [measureCh], span: { t0: a.toString(), t1: (b + 1n).toString() } }) : Promise.resolve(null),
   ]);
+  const ms = performance.now() - t0;
   if (seq !== measureSeq) return;
   const span = Number(state.t1 - state.t0);
-  const dt = Number(state.B - state.A);
-  const at = (list: Nearest[], ch: number) => list.find((n) => n.channel === ch)?.value ?? null;
-  const rows = (pairs: [string, string][]) => pairs.map(([k, v]) => `<span class="k">${k}</span><span class="v">${v}</span>`).join('');
-  const building = st == null ? Math.floor((100 * (state.building?.done ?? 0)) / Math.max(1, state.building?.total ?? 1)) : null;
+  const dt = state.A != null && state.B != null ? Number(state.B - state.A) : null;
+  const val = (list: Nearest[], ch: number) => list.find((n) => n.channel === ch)?.value ?? null;
+  const fv = (ch: number, v: number | null | undefined) => fmtCh(f.id, ch, v);
+  const tile = (k: string, v: string, hi = false) => `<div class="mt${hi ? ' hi' : ''}"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
+  const rowsHtml = chans.length
+    ? chans
+        .map((ch) => {
+          const [ya, yb] = [val(va, ch), val(vb, ch)];
+          return `<tr data-mrow="${ch}"><td><span class="sw8" style="background:${colorOf(ch)}"></span>${esc(f.info.channels[ch].name)}</td><td>${fv(ch, ya)}</td><td>${fv(ch, yb)}</td><td>${ya != null && yb != null ? fv(ch, yb - ya) : '—'}</td></tr>`;
+        })
+        .join('')
+    : `<tr><td colspan="4" class="mnote">Plot a channel to read values here.</td></tr>`;
+  const c = measureCh != null ? f.info.channels[measureCh] : null;
+  const s = st?.[0];
+  const u = c?.unit ? ` ${esc(c.unit)}` : '';
+  const sd = s?.std ?? null;
+  const rms = s?.mean != null && sd != null ? Math.sqrt(s.mean * s.mean + sd * sd) : null;
+  const building = Math.floor((100 * (state.building?.done ?? 0)) / Math.max(1, state.building?.total ?? 1));
+  const stat = (k: string, v: string) => `<div class="mrow"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
+  const statsBody =
+    c == null
+      ? `<p class="mnote">Plot a channel to see its stats.</p>`
+      : st == null
+        ? `<p class="mnote">Reading ${esc(nameOf(f.info.path))}… exact stats once it's read (${building}%).</p>`
+        : stat('Samples', s ? s.count.toLocaleString() : '—') +
+          stat('Min', s?.min != null ? fv(measureCh!, s.min) + u : '—') +
+          stat('Max', s?.max != null ? fv(measureCh!, s.max) + u : '—') +
+          stat('Mean', s?.mean != null ? fv(measureCh!, s.mean) : '—') +
+          stat('RMS', rms != null ? fv(measureCh!, rms) : '—') +
+          stat('Std dev', sd != null ? fv(measureCh!, sd) : '—') +
+          stat('Computed in', `${ms.toFixed(ms < 10 ? 1 : 0)} ms`);
+  const pick = `<select class="sel" data-mch aria-label="Channel for the stats">${chans.map((ch) => `<option value="${ch}"${ch === measureCh ? ' selected' : ''}>${esc(f.info.channels[ch].name)}</option>`).join('')}</select>`;
   measureEl.innerHTML =
-    `<h2>Measure<span class="spacer"></span><button class="ibtn" data-clear data-tip="Clear cursors (Esc)" aria-label="Clear cursors"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></h2>` +
-    `<div class="mgrid">${rows([
-      ['A', readoutTime(state.A, span)],
-      ['B', readoutTime(state.B, span)],
-      ['Δt', duration(dt)],
-      ['1/Δt', frequency(1e9 / Math.abs(dt))],
-    ])}</div>` +
-    chans
-      .map((ch) => {
-        const c = f.info.channels[ch];
-        const [ya, yb] = [at(va, ch), at(vb, ch)];
-        const s = st?.find((x) => x.channel === ch);
-        const stats = s
-          ? rows([
-              ['Min', value(s.min)],
-              ['Max', value(s.max)],
-              ['Mean', value(s.mean)],
-              ['Std dev', value(s.std)],
-              ['Samples', s.count.toLocaleString()],
-            ])
-          : '';
-        return `<div class="mchan"><span class="chip" style="--c:${colorOf(ch)}">${esc(c.name)}${c.unit ? `<span class="unit">${esc(c.unit)}</span>` : ''}</span><div class="mgrid">${rows([
-          ['At A', value(ya)],
-          ['At B', value(yb)],
-          ['Δy', ya != null && yb != null ? value(yb - ya) : '—'],
-        ])}${stats}</div></div>`;
-      })
-      .join('') +
-    (building != null ? `<p class="mnote">Reading ${esc(f.info.path.split(/[\\/]/).pop() ?? '')}… exact stats between the cursors once it's read (${building}%).</p>` : '');
+    `<h2>Measure<span class="spacer"></span><button class="ibtn" data-clear data-tip="Clear cursors (Esc)" aria-label="Clear cursors"${ui.anyCursor ? '' : ' disabled'}><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></h2>` +
+    `<details class="mpanel" data-panel="cur"${settings.panelsClosed.includes('measure.cur') ? '' : ' open'}><summary>Cursors</summary>` +
+    (state.A == null && state.B == null ? `<p class="mnote">Place cursors A and B: press C, then click a chart twice. A and B also place them at the pointer.</p>` : '') +
+    `<div class="mtiles">${tile('A', state.A != null ? readoutTime(state.A, span) : '—')}${tile('B', state.B != null ? readoutTime(state.B, span) : '—')}${tile('Δt', dt != null ? duration(dt) : '—', true)}${tile('1/Δt', dt ? frequency(1e9 / Math.abs(dt)) : '—')}</div>` +
+    `<table class="mtab"><thead><tr><th>Channel</th><th>A</th><th>B</th><th>Δ</th></tr></thead><tbody>${rowsHtml}</tbody></table></details>` +
+    `<details class="mpanel" data-panel="stats"${settings.panelsClosed.includes('measure.stats') ? '' : ' open'}><summary>Stats · ${both ? 'between cursors' : 'visible range'}</summary>` +
+    (chans.length ? `<div class="mpick">${pick}</div>` : '') +
+    statsBody +
+    `</details>`;
   applyTips();
 }
 
@@ -1642,7 +1684,16 @@ async function showFolder(path: string): Promise<void> {
 
 /** Closes every tab and its file: the panes empty, the folder stays listed. */
 async function closeAll(): Promise<void> {
+  const files = [...new Set(tabs.list.filter((t) => !t.ws && !t.live).map((t) => t.path))];
+  const front = frontTab()?.path;
   for (const t of [...tabs.list]) await closeTab(t.key);
+  if (files.length)
+    note(`Closed ${files.length === 1 ? nameOf(files[0]) : `${files.length} files`}.`, () =>
+      void (async () => {
+        for (const f of files) await openPath(f);
+        if (front) actions.showTab(tabs.list.find((t) => t.path === front && !t.ws)?.key ?? tabs.active);
+      })(),
+    );
 }
 
 /** No tab: the window as at launch. */
@@ -1694,6 +1745,7 @@ function nearCursor(r: Rect, x: number): 'A' | 'B' | null {
 }
 
 function placeCursor(which: 'A' | 'B', t: bigint): void {
+  if (settings.locked && !settings.lockCursors) return void locked();
   state[which] = t;
   scheduleDraw();
   void refreshMeasure();
@@ -1731,7 +1783,7 @@ stackEl.addEventListener('pointerdown', (e) => {
   } else if (settings.mode === 'box' && !panGesture) {
     drag = { type: 'box', pane: hit.i, r: hit.r };
     state.box = { pane: hit.i, x0: hit.x, x1: hit.x };
-  } else {
+  } else if (!locked()) {
     drag = { type: 'pan', cx: e.clientX, t0: state.t0, t1: state.t1, w: hit.r.w };
     center.classList.add('dragging');
   }
@@ -1790,6 +1842,7 @@ stackEl.addEventListener(
     const hit = paneAt(e);
     if (!state.file || !hit) return;
     e.preventDefault();
+    if (locked()) return;
     stopGlide();
     const span = Number(state.t1 - state.t0);
     let dy = e.deltaY;
@@ -1817,7 +1870,7 @@ center.addEventListener('pointerdown', (e) => {
     setSetting('overviewTop', !settings.overviewTop);
     return;
   }
-  if (!f || !target.closest('.ovplot') || e.button !== 0) return;
+  if (!f || !target.closest('.ovplot') || e.button !== 0 || locked()) return;
   const r = ovRect()!;
   const c = center.getBoundingClientRect();
   const span = f.last + 1n - f.first;
@@ -1848,6 +1901,20 @@ onStackChange(() => void layoutChanged());
 measureEl.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('[data-clear]')) clearCursors();
 });
+measureEl.addEventListener('change', (e) => {
+  const t = e.target as HTMLSelectElement;
+  if (!t.matches('[data-mch]')) return;
+  measureCh = Number(t.value);
+  void refreshMeasure();
+});
+measureEl.addEventListener(
+  'toggle',
+  (e) => {
+    const d = e.target as HTMLDetailsElement;
+    if (d.dataset.panel) setPanelOpen(`measure.${d.dataset.panel}`, d.open);
+  },
+  true,
+);
 
 // ---------- channel menu and gap factor ----------
 
@@ -1961,7 +2028,21 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (popup) return;
+  if ((e.metaKey || e.ctrlKey) && e.key === '.') return toggleFocus();
+  if ((e.metaKey || e.ctrlKey) && k === 'd' && state.file) {
+    e.preventDefault();
+    return duplicate(stack.sel, e.shiftKey);
+  }
+  if ((e.metaKey || e.ctrlKey) && k === 'n' && e.shiftKey && state.file) {
+    e.preventDefault();
+    return addPaneBelow(stack.sel);
+  }
   if (e.metaKey || e.ctrlKey) return;
+  if (e.key === 'Escape' && ui.focus) return toggleFocus(false);
+  if (!(e.target as HTMLElement).closest('input, select, textarea')) {
+    if (k === 't') return toggleTheme();
+    if (k === 'l') return setSetting('locked', !settings.locked);
+  }
   if (e.altKey && e.key === 'ArrowLeft') return back();
   if (e.altKey && e.key === 'ArrowRight') return forward();
   if (e.key === 'Escape') return clearCursors();
@@ -1973,7 +2054,33 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'p') setMode('pan');
   else if (k === 'c') setMode('cursor');
   else if (k === 'f') fit();
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') panBy(e.key === 'ArrowLeft' ? -0.15 : 0.15);
+  else if (k === '+' || k === '=' || e.key === 'ArrowUp') zoomBy(0.7);
+  else if (k === '-' || e.key === 'ArrowDown') zoomBy(1 / 0.7);
 });
+
+/** Keyboard pan by a fraction of the view, and zoom about its centre. */
+function panBy(frac: number): void {
+  if (locked()) return;
+  stopGlide();
+  const s = BigInt(Math.round(Number(state.t1 - state.t0) * frac));
+  setView(state.t0 + s, state.t1 + s);
+}
+function zoomBy(factor: number): void {
+  if (locked()) return;
+  const span = Number(state.t1 - state.t0);
+  const c = Number(state.t0 + state.t1) / 2;
+  const half = Math.max(1, (span * factor) / 2);
+  glideTo(BigInt(Math.round(c - half)), BigInt(Math.round(c + half)));
+}
+
+function toggleTheme(): void {
+  setSetting('theme', shownTheme() === 'dark' ? 'light' : 'dark');
+}
+function toggleFocus(on = !ui.focus): void {
+  ui.focus = on;
+  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+}
 
 Object.assign(actions, {
   open: () => void chooseFile(),
@@ -1993,6 +2100,8 @@ Object.assign(actions, {
     return typeof p === 'string' ? p : null;
   },
   fit,
+  toggleTheme,
+  toggleFocus,
   back,
   clearCursors,
   placeCursor,
@@ -2021,6 +2130,8 @@ onSetting((key) => {
     applyTheme();
     tokenCache = null;
     renderPanes();
+  } else if (key === 'panelsClosed') {
+    measureEl.querySelectorAll<HTMLDetailsElement>('details[data-panel]').forEach((d) => (d.open = !settings.panelsClosed.includes(`measure.${d.dataset.panel}`)));
   } else if (key === 'overviewTop') {
     renderOverviewHead();
     scheduleResize();

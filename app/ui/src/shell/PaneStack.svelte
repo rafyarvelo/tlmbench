@@ -5,6 +5,7 @@
   import { PAD } from '../axes';
   import { ICON } from '../icons';
   import {
+    addChannels,
     addPaneBelow,
     canSplitRight,
     closeBelow,
@@ -16,6 +17,7 @@
     hasChart,
     labelled,
     movePane,
+    newPaneWith,
     rightPad,
     rows,
     setMode,
@@ -37,6 +39,32 @@
     { mode: 'values', label: 'Values', hint: 'Value tiles at the pointer, cursor A or the end of the view' },
   ] as const;
   const viewName = (i: number) => VIEWS.find((v) => v.mode === (stack.panes[i]?.mode ?? 'chart'))!.label;
+  /** A channel dragged from Explorer: the pane it would land in (-1: a new pane). */
+  let chanOver = $state<number | null>(null);
+  const isChans = (e: DragEvent) => !!e.dataTransfer?.types.includes('application/x-tlm-channels');
+  const chansOf = (e: DragEvent): number[] => {
+    try {
+      return JSON.parse(e.dataTransfer?.getData('application/x-tlm-channels') ?? '[]');
+    } catch {
+      return [];
+    }
+  };
+  function overChans(e: DragEvent, to: number) {
+    if (!isChans(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    chanOver = to;
+  }
+  function dropChans(e: DragEvent, to: number) {
+    if (!isChans(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    chanOver = null;
+    const chs = chansOf(e);
+    if (!chs.length) return;
+    if (to < 0) newPaneWith(chs);
+    else addChannels(chs, to);
+  }
   let dragging = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
 
@@ -81,14 +109,14 @@
 <svelte:document onpointerdown={outside} />
 <svelte:window onkeydowncapture={key} />
 
-<div id="stack" class="stack">
+<div id="stack" class="stack" class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length === 4 ? 125 : 105}px">
   {#each rows() as row, r (r)}
-    <div class="prow" style:flex-grow={row.some((k) => stack.panes[k].mode === 'both') ? 2 : null}>
+    <div class="prow" class:grow={row.some((k) => stack.panes[k].mode === 'table' || stack.panes[k].mode === 'values')}>
       {#each columns(row) as col, c (c)}
         <div class="pcol">
           {#each col as i (i)}
             {@const p = stack.panes[i]}
-            <section class="pane" class:both={p.mode === 'both'} class:sel={i === stack.sel} class:drop={dropAt === i} data-pane={i}>
+            <section class="pane" class:grow={p.mode === 'table' || p.mode === 'values'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} data-pane={i} ondragover={(e) => overChans(e, i)} ondrop={(e) => dropChans(e, i)} role="presentation">
               <div
                 class="phead"
                 role="group"
@@ -236,7 +264,7 @@
   }
   .prow {
     display: flex;
-    flex: 1;
+    flex: 0 1 auto;
     min-height: 0;
     gap: 8px;
   }
@@ -246,12 +274,17 @@
     flex-direction: column;
     min-width: 0;
   }
-  /* a chart with its table below takes twice the room, and the chart keeps some of it */
-  .pane.both {
-    flex-grow: 2;
+  .prow.grow,
+  .pane.grow {
+    flex: 1 1 0;
   }
-  .pane.both .plot {
-    min-height: 100px;
+  .pane.chanover {
+    background: var(--accent-soft);
+    outline: 2px dashed var(--accent-line);
+    outline-offset: -2px;
+  }
+  .stack.chanover {
+    box-shadow: inset 0 -2px 0 var(--accent);
   }
   .pane.drop {
     box-shadow: inset 0 2px 0 var(--accent);

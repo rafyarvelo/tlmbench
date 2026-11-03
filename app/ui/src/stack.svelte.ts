@@ -2,7 +2,7 @@
 // model). Each pane lists its channels; `beside` puts it right of the pane before, `under` below it in the same
 // column. app.ts draws into each pane's plot; PaneStack.svelte renders the panes, and these edits change them.
 
-import { PAD } from './axes';
+import { PAD, value } from './axes';
 import { ui } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
@@ -48,6 +48,24 @@ export const stack = $state({
   /** Panes drawn from summaries for now (labelled "coarse" until the exact view comes). */
   coarse: [] as boolean[],
 });
+
+/** Decimals each channel's values show, by `file:channel`, learned from the first axis range that drew it. */
+export const decs: Record<string, number> = $state({});
+
+/** Learns channel `ch`'s decimals from a range it was drawn over: four digits at its largest magnitude, 0 to 6 decimals. */
+export function learnDecimals(file: number, ch: number, lo: number, hi: number): void {
+  const k = `${file}:${ch}`;
+  const m = Math.max(Math.abs(lo), Math.abs(hi));
+  if (k in decs || !Number.isFinite(m) || m === 0) return;
+  decs[k] = Math.max(0, Math.min(6, 3 - Math.floor(Math.log10(m))));
+}
+
+/** A channel's value in its decimals (about six significant digits until they're known). */
+export function fmtCh(file: number | null, ch: number, v: number | null | undefined): string {
+  const d = file == null ? undefined : decs[`${file}:${ch}`];
+  if (d == null || v == null || !Number.isFinite(v)) return value(v);
+  return v.toFixed(d);
+}
 
 /** Called after every edit (app.ts saves the layout and asks for a view). */
 let changed = () => {};
@@ -157,6 +175,57 @@ function closeExcept(keep: (i: number) => boolean, what: string): void {
     stack.sel = newSel;
   });
   note(`Closed ${n} pane${n === 1 ? '' : 's'} (${what}).`, () =>
+    edit(() => {
+      stack.panes = before;
+      stack.sel = sel;
+    }),
+  );
+}
+
+/** The panes (numbered from 1) that plot channel `ch`. */
+export const panesOf = (ch: number): number[] => stack.panes.flatMap((p, i) => (p.channels.includes(ch) ? [i + 1] : []));
+
+/** Adds channels to pane `i` (those it has already stay), and selects it. */
+export function addChannels(chs: number[], i = stack.sel): void {
+  edit(() => {
+    if (!stack.panes.length) stack.panes.push({ channels: [] });
+    const p = stack.panes[Math.min(i, stack.panes.length - 1)];
+    for (const ch of chs) if (!p.channels.includes(ch)) p.channels.push(ch);
+    stack.sel = Math.min(i, stack.panes.length - 1);
+  });
+}
+
+/** Takes channels out of every pane. */
+export function removeChannels(chs: number[]): void {
+  edit(() => stack.panes.forEach((p) => (p.channels = p.channels.filter((c) => !chs.includes(c)))));
+}
+
+/** A new pane (a chart, or a table) at the end of the stack with these channels, selected. */
+export function newPaneWith(chs: number[], mode?: PaneMode): void {
+  edit(() => {
+    stack.panes.push({ channels: [...chs], ...(mode && mode !== 'chart' ? { mode } : {}) });
+    stack.sel = stack.panes.length - 1;
+  });
+}
+
+/** Takes every channel out of every pane, keeping the panes, with Undo. */
+export function clearChannels(): void {
+  const before = copy(stack.panes);
+  if (!before.some((p) => p.channels.length)) return;
+  edit(() => stack.panes.forEach((p) => (p.channels = [])));
+  note('Removed every channel from the panes.', () => edit(() => (stack.panes = before)));
+}
+
+/** Closes every pane, with Undo. */
+export function clearPanes(): void {
+  const before = copy(stack.panes);
+  const sel = stack.sel;
+  if (!before.length) return;
+  edit(() => {
+    stack.panes = [];
+    stack.sel = 0;
+  });
+  note(`Removed ${before.length === 1 ? 'the pane' : `all ${before.length} panes`}.`, () =>
     edit(() => {
       stack.panes = before;
       stack.sel = sel;

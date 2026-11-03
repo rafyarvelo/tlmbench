@@ -6,9 +6,9 @@
   import { invoke } from '@tauri-apps/api/core';
   import { type ColumnDef, type ColumnSizingState, createTable, getCoreRowModel, type TableState } from '@tanstack/table-core';
 
-  import { timeLabel, value } from '../axes';
+  import { timeLabel } from '../axes';
   import { live } from '../live.svelte';
-  import { setTable, stack } from '../stack.svelte';
+  import { fmtCh, learnDecimals, setTable, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
 
@@ -103,6 +103,12 @@
     try {
       const buf = await invoke<ArrayBuffer>('rows', { file: f, channels: [...channels], span: { t0: ui.view.t0, t1: ui.view.t1 }, offset, limit });
       got = { key: k, offset, rows: decodeRows(buf) };
+      // a channel no chart has drawn learns its decimals from the rows read
+      got.rows.values.forEach((col, c) => {
+        let [lo2, hi2] = [Infinity, -Infinity];
+        for (const v of col) if (Number.isFinite(v)) [lo2, hi2] = [Math.min(lo2, v), Math.max(hi2, v)];
+        if (channels[c] != null) learnDecimals(f, channels[c], lo2, hi2);
+      });
     } catch {
       got = null;
     } finally {
@@ -245,7 +251,7 @@
               {#each headers as { h, col }, c (col.id)}
                 {@const v = c >= 2 ? x?.v[c - 2] : undefined}
                 <span class:l={col.ch == null} class:gapcell={v != null && Number.isNaN(v)} style="width: {h.getSize()}px" role="gridcell"
-                  >{x == null ? '' : col.id === 'n' ? x.n.toLocaleString() : col.id === 't' ? timeLabel(x.t, step) : value(v)}</span
+                  >{x == null ? '' : col.id === 'n' ? x.n.toLocaleString() : col.id === 't' ? timeLabel(x.t, step) : fmtCh(ui.view.file, col.ch ?? 0, v)}</span
                 >
               {/each}
             </div>

@@ -68,7 +68,7 @@
   .lvbadge {
     padding: 1px 8px;
     border-radius: 4px;
-    background: var(--danger, #ff6b78);
+    background: var(--danger);
     color: #fff;
     font-size: 11px;
     font-weight: 600;
@@ -136,7 +136,7 @@
     color: var(--fg-muted);
   }
   .bad {
-    color: var(--danger, #ff6b78);
+    color: var(--danger);
   }
   .file {
     max-width: 260px;

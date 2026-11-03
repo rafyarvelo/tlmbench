@@ -3,9 +3,10 @@
      tabs. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { type Mode, setSetting, settings } from '../settings.svelte';
+  import { type Mode, PANELS, setSetting, settings, toggleAllPanels } from '../settings.svelte';
   import { play, playActions } from '../play.svelte';
   import { moveTab, tabs } from '../tabs.svelte';
+  import { addPaneBelow, clearChannels, clearPanes, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
 
   const MODES: [Mode, string, string][] = [
@@ -156,12 +157,12 @@
       <button class="tb" id="m-{m}" aria-pressed={settings.mode === m} aria-label={label} data-tip={tip} onclick={() => setSetting('mode', m)}>{@html ICON[m]}</button>
     {/each}
   </div>
-  {#if ui.anyCursor}
-    <button class="tb" id="b-clear" aria-label="Clear cursors" data-tip="Remove cursors A and B (Esc)" onclick={actions.clearCursors}>{@html ICON.clear}</button>
-  {/if}
+  <button class="tb" id="b-clear" aria-label="Clear cursors" disabled={!ui.anyCursor} data-tip="Remove cursors A and B (Esc)" onclick={actions.clearCursors}>{@html ICON.clear}</button>
   <button class="tb" id="b-back" aria-label="Back" disabled={!ui.canBack} data-tip="Previous view (⌥←)" onclick={actions.back}>{@html ICON.back}</button>
   <button class="tb" id="b-fit" aria-label="Fit" disabled={!ui.file} data-tip="Show the whole recording (F)" onclick={actions.fit}>{@html ICON.fit}</button>
   <button class="tb" id="b-play" aria-label="Play back" aria-pressed={play.open} disabled={!ui.file} data-tip="Play back: a playhead moves through the file and the view follows it (Space plays and pauses)" onclick={() => (play.open ? playActions.close() : playActions.open())}>{@html ICON.play}</button>
+  <span class="vsep" aria-hidden="true"></span>
+  <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
   <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.more}</button>
   {#if tabMenu}
     <div class="menu tabmenu" role="menu" style="left: {tabMenu.x}px; top: {tabMenu.y}px">
@@ -276,10 +277,20 @@
   {#if more}
     <div class="menu moremenu" role="menu">
       <button class="mi" role="menuitem" onclick={pick(actions.open)}><span class="nm">Open recording…</span><kbd>⌘O</kbd></button>
+      <div class="mgrp">View</div>
+      <button class="mi" role="menuitemcheckbox" aria-checked={settings.locked} onclick={pick(() => setSetting('locked', !settings.locked))}><span class="nm">Lock the time view</span><kbd>L</kbd></button>
       <button class="mi" role="menuitem" disabled={!ui.anyCursor} onclick={pick(actions.clearCursors)}><span class="nm">Clear cursors</span><kbd>Esc</kbd></button>
       <button class="mi" role="menuitemcheckbox" aria-checked={settings.overviewTop} onclick={pick(() => setSetting('overviewTop', !settings.overviewTop))}><span class="nm">Overview above the panes</span></button>
+      <div class="mgrp">All panes</div>
+      <button class="mi" role="menuitem" data-more="addpane" disabled={!ui.file} onclick={pick(() => addPaneBelow(Math.max(0, stack.panes.length - 1)))}><span class="nm">New pane</span><kbd>⌘⇧N</kbd></button>
+      <button class="mi" role="menuitem" data-more="nochan" disabled={!stack.panes.some((p) => p.channels.length)} onclick={pick(clearChannels)}><span class="nm">Remove every channel</span></button>
+      <button class="mi" role="menuitem" data-more="nopanes" disabled={!stack.panes.length} onclick={pick(clearPanes)}><span class="nm">Remove every pane</span></button>
+      <div class="mgrp">Window</div>
+      <button class="mi" role="menuitem" data-more="panels" onclick={pick(toggleAllPanels)}><span class="nm">{settings.panelsClosed.length >= PANELS.length ? 'Expand all sidebar panels' : 'Collapse all sidebar panels'}</span></button>
+      <button class="mi" role="menuitem" data-more="theme" onclick={pick(actions.toggleTheme)}><span class="nm">Switch theme</span><kbd>T</kbd></button>
+      <button class="mi" role="menuitem" data-more="focus" onclick={pick(() => actions.toggleFocus(true))}><span class="nm">Focus mode</span><kbd>⌘.</kbd></button>
       <button class="mi" role="menuitemcheckbox" aria-checked={settings.showPerf} onclick={pick(() => setSetting('showPerf', !settings.showPerf))}><span class="nm">Show performance details</span></button>
-      <button class="mi sep" role="menuitem" onclick={pick(() => setSetting('leftPanel', 'settings'))}><span class="nm">Settings…</span></button>
+      <button class="mi" role="menuitem" onclick={pick(() => setSetting('leftPanel', 'settings'))}><span class="nm">Settings…</span></button>
     </div>
   {/if}
 </header>
@@ -515,6 +526,12 @@
   .tb:disabled {
     opacity: 0.4;
   }
+  .vsep {
+    align-self: center;
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+  }
   .moremenu {
     position: absolute;
     top: 40px;
@@ -528,11 +545,6 @@
   .mi kbd {
     color: var(--fg-muted);
     font: 11px var(--font-data);
-  }
-  .mi.sep {
-    margin-top: 4px;
-    border-top: 1px solid var(--grid);
-    border-radius: 0 0 8px 8px;
   }
   .mi:disabled {
     opacity: 0.45;

@@ -22,12 +22,12 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   const basic = await rows();
   check('Basic: the everyday settings', basic.length === 4 && basic.includes('Theme') && !basic.includes('Zoom speed'), basic);
   await p.click('#setPanel [data-sv="all"]');
-  check('All settings shows more', (await rows()).length === 7, await rows());
+  check('All settings shows more', (await rows()).length === 9, await rows());
   await p.click('#setPanel [data-sv="basic"]');
   await p.fill('#setPanel input[type=search]', 'wheel');
   check('search finds an All-only setting by its explanation', (await rows()).join() === 'Zoom speed', await rows());
   await p.fill('#setPanel input[type=search]', 'cursors');
-  check('search finds choices too', (await rows()).join() === 'Mouse mode,Open Measure when both cursors are placed', await rows());
+  check('search finds choices too', (await rows()).join() === 'Mouse mode,Cursors still work while locked,Open Measure when both cursors are placed', await rows());
   await p.fill('#setPanel input[type=search]', 'xyzzy');
   check('no match message', await visible('.setnone'));
   await p.fill('#setPanel input[type=search]', '');
@@ -50,7 +50,7 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   // ⋯ menu: performance details, Esc closes
   await p.click('#b-more');
   check('⋯ lists the rest', /Open recording….*Overview above the panes.*Show performance details.*Settings…/s.test(await text('.moremenu')), await text('.moremenu'));
-  check('a ticked setting shows its tick', (await p.getAttribute('.moremenu [role=menuitemcheckbox] >> nth=0', 'aria-checked')) === 'true');
+  check('a ticked setting shows its tick', (await p.getAttribute('.moremenu [role=menuitemcheckbox]:has-text("Overview above")', 'aria-checked')) === 'true');
   await p.click('.moremenu >> text=Show performance details');
   check('status bar with the last view', await until(() => /points · (M4|raw) · \d+ ms/.test(document.getElementById('status')?.textContent ?? '')), await text('#status'));
   await p.click('#b-more');
@@ -85,7 +85,7 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   await wait(200);
   check('…while the cursors move', !(await visible('#measure')));
   await p.click('#b-clear');
-  check('Clear removes the cursors and its button', (await app('cursors')).A === null && !(await visible('#b-clear')));
+  check('Clear removes the cursors and its button', (await app('cursors')).A === null && (await p.evaluate(() => document.getElementById('b-clear').disabled)));
   await p.click('#setPanel label.switch:has([data-set="measureAuto"])');
   await p.click('[data-rail="explorer"]');
   for (const fx of [0.2, 0.5]) {
@@ -100,6 +100,22 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   check('the file open stays open', (await text('#wsTabs [aria-selected=true] .nm')) === 'flight.tlm' && (await until(() => window.__tlmFake.open.size === 1)));
   await p.click('#wsNote button');
   check('× dismisses it', !(await visible('#wsNote')));
+
+  // shared look: sizes and tokens from the prototype
+  const css = await p.evaluate(() => {
+    const g = (sel, prop) => getComputedStyle(document.querySelector(sel))[prop];
+    return {
+      side: g('#side', 'width'), measure: g('#measure', 'width'), btnFont: g('.tb', 'fontFamily') === g('body', 'fontFamily'),
+      head: g('.phead', 'height'), plot: g('.plot', 'height'), plotFill: getComputedStyle(document.querySelector('.plot'), '::before').content,
+      danger: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim(),
+    };
+  });
+  check('left sidebar is 300 px wide', css.side === '300px', css.side);
+  check('buttons use the UI font', css.btnFont);
+  check('pane header 32 px, plot a fixed height (125 px for 4 rows), no plot fill', css.head === '32px' && css.plot === '125px' && css.plotFill === 'none', css);
+  check('--danger is a token', css.danger !== '', css.danger);
+  await p.keyboard.press('Tab');
+  check('a focused control shows the accent ring', await p.evaluate(() => getComputedStyle(document.activeElement).outlineStyle === 'solid'));
 
   // the sidebar and settings come back after a reload
   await p.click('[data-rail="explorer"]');

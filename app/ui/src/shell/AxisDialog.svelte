@@ -72,7 +72,7 @@
     <p class="dnote">Kept with the pane, so saved layouts keep their axes. A fixed range turns off auto-fit; double-click still fits the time axis.</p>
   </div>
   <footer>
-    <button class="linkbtn" data-axreset onclick={() => resetAxes(i)}>Reset axes</button><span class="spacer"></span><button class="btn primary" data-close onclick={onclose}
+    <button class="btn" data-axreset onclick={() => resetAxes(i)}>Reset axes</button><span class="spacer"></span><button class="btn primary" data-close onclick={onclose}
       >Done</button
     >
   </footer>

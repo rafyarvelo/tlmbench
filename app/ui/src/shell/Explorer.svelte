@@ -5,14 +5,17 @@
      them. The folder is only read. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { setSetting, settings } from '../settings.svelte';
-  import { stack, toggleChannel } from '../stack.svelte';
+  import { setPanelOpen, setSetting, settings } from '../settings.svelte';
+  import { addChannels, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui } from '../ui.svelte';
 
   let q = $state('');
   let regex = $state(false);
   let sel = $state<string | null>(null);
+  /** Channels picked together (Ctrl/Cmd-click, Shift-click a range, Ctrl+A); `sel` is the one last clicked. */
+  let picked = $state<number[]>([]);
+  let fmenu = $state<null | { x: number; y: number; path: string }>(null);
 
   const matcher = $derived.by(() => {
     const t = q.trim();
@@ -40,7 +43,7 @@
   );
   /** A file shows when its name, or (the open one) one of its channels, matches. */
   const chanMatch = (ch: { name: string }) => matcher.test(ch.name);
-  const fileShown = (f: FolderEntry) => matcher.test(f.name) || (isOpen(f.path) && ui.channels.some(chanMatch));
+  const fileShown = (f: FolderEntry) => (!settings.exOnlyOpen || inTab(f.path)) && matcher.test(f.name) || (isOpen(f.path) && ui.channels.some(chanMatch));
   const dirShown = (d: FolderEntry): boolean => d.children.some((c) => (c.dir ? dirShown(c) : fileShown(c)));
   const expanded = (path: string) => !!q.trim() || settings.exExpanded.includes(path);
   function toggle(path: string) {
@@ -59,6 +62,42 @@
     }
     return out;
   }
+  const closed = $derived(settings.panelsClosed.includes('explorer'));
+  /** The channels the actions below act on: the picked ones, else the selected row. */
+  const targets = $derived(picked.length > 1 ? picked : sel?.startsWith('ch:') ? [Number(sel.slice(3))] : []);
+  const shownChans = $derived(ui.channels.flatMap((c, ch) => (chanMatch(c) ? [ch] : [])));
+  function clickChan(e: MouseEvent, ch: number) {
+    const id = `ch:${ch}`;
+    if (e.metaKey || e.ctrlKey) {
+      const cur = picked.length ? picked : sel?.startsWith('ch:') ? [Number(sel.slice(3))] : [];
+      picked = cur.includes(ch) ? cur.filter((c) => c !== ch) : [...cur, ch];
+    } else if (e.shiftKey && sel?.startsWith('ch:')) {
+      const [a, b] = [shownChans.indexOf(Number(sel.slice(3))), shownChans.indexOf(ch)];
+      if (a >= 0 && b >= 0) picked = shownChans.slice(Math.min(a, b), Math.max(a, b) + 1);
+    } else picked = [];
+    if (!e.shiftKey) sel = id;
+  }
+  function treeKey(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a' && ui.file) {
+      e.preventDefault();
+      picked = [...shownChans];
+    } else if (e.key === 'Escape' && picked.length) {
+      e.stopPropagation();
+      picked = [];
+    }
+  }
+  function dragChan(e: DragEvent, ch: number) {
+    const chs = picked.length > 1 && picked.includes(ch) ? picked : [ch];
+    e.dataTransfer?.setData('application/x-tlm-channels', JSON.stringify(chs));
+    e.dataTransfer?.setData('text/plain', chs.map((c) => ui.channels[c]?.name).join(', '));
+  }
+  const plottedAnywhere = (ch: number) => stack.panes.some((p) => p.channels.includes(ch));
+  const elsewhere = (ch: number) => (inSel(ch) ? [] : panesOf(ch));
+  function fileMenu(e: MouseEvent, path: string) {
+    e.preventDefault();
+    sel = path;
+    fmenu = { x: Math.min(e.clientX, window.innerWidth - 220), y: Math.min(e.clientY, window.innerHeight - 160), path };
+  }
   const inSel = (ch: number) => stack.panes[stack.sel]?.channels.includes(ch) ?? false;
   const size = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 
@@ -72,12 +111,14 @@
 
 <div class="explorer" id="explorer">
   <div class="phd">
-    <span>Explorer</span><span class="spacer"></span>
+    <button class="phtog" id="exToggle" aria-expanded={!closed} aria-label="Explorer panel" data-tip="Collapse or expand this panel" onclick={() => setPanelOpen('explorer', closed)}><span class="chv" class:shut={closed}>{@html ICON.chevron}</span>Explorer</button><span class="spacer"></span>
+    <button class="ibtn" id="swapSides" aria-label="Move to the other side" data-tip="Swap Explorer and Measure" onclick={() => setSetting('sidesSwapped', !settings.sidesSwapped)}>⇄</button>
     <button class="ibtn" id="exFolder" aria-label="Open folder" data-tip="Open a folder of recordings (only read)" onclick={actions.openFolder}>{@html ICON.folder}</button>
     <button class="ibtn" id="exOpen" aria-label="Open recording" data-tip="Open a CSV or .tlm file (⌘O)" onclick={actions.open}>{@html ICON.open}</button>
     <button class="ibtn" id="treeExpand" aria-label="Expand all" data-tip="Expand all" onclick={() => setSetting('exExpanded', allDirs(ui.folder))}>{@html ICON.expand}</button>
     <button class="ibtn" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all" onclick={() => setSetting('exExpanded', [])}>{@html ICON.collapse}</button>
   </div>
+  <div class="exbody" hidden={closed}>
   <label class="exfilter">
     <input type="search" placeholder="Filter files and channels" aria-label="Filter files and channels" aria-invalid={!matcher.ok} bind:value={q} />
     <button class="rx" aria-pressed={regex} aria-label="Regular expression" data-tip="Regular expression" onclick={() => (regex = !regex)}>.*</button>
@@ -86,6 +127,7 @@
   {#if tabs.list.length}
     <div class="openstrip">
       <span class="cap">Open · {openFiles.length}</span><span class="spacer"></span>
+      <button class="linkbtn" id="onlyOpen" aria-pressed={settings.exOnlyOpen} data-tip="List only the open files" onclick={() => setSetting('exOnlyOpen', !settings.exOnlyOpen)}>{settings.exOnlyOpen ? 'Show all' : 'Show only these'}</button>
       <button class="linkbtn" id="closeAll" onclick={actions.closeFile}>Close all</button>
     </div>
     <div class="openfiles" id="openFiles">
@@ -101,7 +143,7 @@
     </div>
   {/if}
 
-  <div class="tree" role="tree" aria-label="Recordings">
+  <div class="tree" role="tree" aria-label="Recordings" tabindex="-1" onkeydown={treeKey}>
     {#if ui.folder}
       {#snippet dir(d: FolderEntry, depth: number)}
         {#each d.children.filter((c) => (c.dir ? dirShown(c) : fileShown(c))) as c (c.path)}
@@ -124,7 +166,28 @@
       <p class="exnone">No recording open. <button class="linkbtn" onclick={actions.openFolder}>Open a folder</button> or a <button class="linkbtn" onclick={actions.open}>recording</button>, or drop a CSV or .tlm file on the window.</p>
     {/if}
   </div>
+  {#if targets.length && (picked.length > 1 || sel?.startsWith('ch:'))}
+    <div class="selbar" id="selBar" role="toolbar" aria-label="Selected channels">
+      <span class="cap">{targets.length === 1 ? ui.channels[targets[0]]?.name : `${targets.length} selected`}</span><span class="spacer"></span>
+      <button class="tbtn" data-sel="add" data-tip="Plot in the selected pane" onclick={() => addChannels(targets)}>Add to pane {stack.sel + 1}</button>
+      <button class="tbtn" data-sel="chart" onclick={() => newPaneWith(targets)}>Chart</button>
+      <button class="tbtn" data-sel="table" onclick={() => newPaneWith(targets, 'table')}>Table</button>
+      <button class="tbtn" data-sel="remove" disabled={!targets.some(plottedAnywhere)} data-tip="Take out of every pane" onclick={() => removeChannels(targets)}>Remove</button>
+    </div>
+  {/if}
+  </div>
 </div>
+
+{#if fmenu}
+  <div class="menu filemenu" role="menu" style="left: {fmenu.x}px; top: {fmenu.y}px">
+    <button class="mi" role="menuitem" data-fm="open" disabled={isOpen(fmenu.path)} onclick={() => { actions.openPath(fmenu!.path); fmenu = null; }}><span class="nm">Open</span></button>
+    <button class="mi" role="menuitem" data-fm="close" disabled={!inTab(fmenu.path)} onclick={() => { actions.closePath(fmenu!.path); fmenu = null; }}><span class="nm">Close this file</span></button>
+    <button class="mi" role="menuitem" data-fm="closeall" disabled={!tabs.list.length} onclick={() => { actions.closeFile(); fmenu = null; }}><span class="nm">Close all files</span></button>
+  </div>
+{/if}
+
+<svelte:document onpointerdown={(e) => fmenu && !(e.target as HTMLElement).closest('.filemenu') && (fmenu = null)} />
+<svelte:window onkeydowncapture={(e) => e.key === 'Escape' && fmenu && ((fmenu = null), e.stopPropagation())} />
 
 {#snippet file(path: string, name: string, bytes: number | null, depth: number)}
   {@const open = isOpen(path)}
@@ -141,6 +204,7 @@
     data-tip={path}
     onclick={() => (sel = path)}
     ondblclick={() => actions.openPath(path)}
+    oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
     {@html ICON.file}<span class="nm">{name}</span>{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
@@ -154,21 +218,25 @@
     <div id="chans" class="chans" role="group">
       {#each ui.channels as c, ch (ch)}
         {#if chanMatch(c) || matcher.test(name)}
+          {@const where = elsewhere(ch)}
           <div
             class="row chan"
             class:on={inSel(ch)}
-            class:sel={sel === `ch:${ch}`}
+            class:any={plottedAnywhere(ch)}
+            class:sel={sel === `ch:${ch}` || picked.includes(ch)}
             role="treeitem"
-            aria-selected={sel === `ch:${ch}`}
+            aria-selected={sel === `ch:${ch}` || picked.includes(ch)}
             tabindex="0"
+            draggable="true"
             style="--d: {depth + 1}; --c: var(--trace-{(ch % 8) + 1})"
             data-ch={ch}
-            onclick={() => (sel = `ch:${ch}`)}
+            onclick={(e) => clickChan(e, ch)}
             ondblclick={() => toggleChannel(ch)}
+            ondragstart={(e) => dragChan(e, ch)}
             onkeydown={(e) => key(e, { kind: 'chan', ch })}
           >
-            <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}></button>
-            <span class="nm">{c.name}</span>{#if c.unit}<span class="unit">{c.unit}</span>{/if}
+            <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
+            <span class="nm">{c.name}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.unit}<span class="unit">{c.unit}</span>{/if}
           </div>
         {/if}
       {/each}
@@ -177,8 +245,38 @@
 {/snippet}
 
 <style>
+  .phtog {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+  }
+  .chv {
+    display: inline-grid;
+    transition: transform 0.12s;
+  }
+  .chv.shut {
+    transform: rotate(-90deg);
+  }
+  .chv :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+  .exbody {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
   .explorer {
     display: flex;
+    flex: 1;
     flex-direction: column;
     min-height: 0;
   }
@@ -199,11 +297,13 @@
     min-height: 28px;
     padding: 0 8px;
     border: 0;
-    outline: none;
     background: transparent;
   }
+  .exfilter input:focus-visible {
+    outline: none;
+  }
   .exfilter input[aria-invalid='true'] {
-    color: var(--danger, #ff6b78);
+    color: var(--danger);
   }
   .rx {
     margin-right: 3px;
@@ -246,10 +346,11 @@
     display: inline-flex;
     align-items: center;
     max-width: 100%;
+    min-height: 24px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 4px;
     background: var(--raised);
-    font-size: 12px;
+    font-size: 13px;
   }
   .ofile.on {
     border-color: var(--accent-line);
@@ -294,12 +395,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: 28px;
+    min-height: 30px;
     padding: 0 8px 0 calc(8px + var(--d) * 14px);
     border-radius: 8px;
-    font-size: 12px;
+    font-size: 13px;
     cursor: default;
-    outline: none;
   }
   .row:hover {
     background: var(--raised);
@@ -346,8 +446,39 @@
     margin-left: auto;
     min-height: 22px;
   }
+  .where {
+    margin-left: auto;
+    color: var(--fg-muted);
+    font-size: 11px;
+  }
+  .where + .unit {
+    margin-left: 8px;
+  }
+  .selbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .selbar .cap {
+    flex-basis: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .selbar .tbtn {
+    padding: 0 8px;
+  }
+  .selbar .spacer {
+    display: none;
+  }
   .box {
     flex: none;
+    display: inline-grid;
+    place-items: center;
     width: 14px;
     height: 14px;
     padding: 0;
@@ -355,9 +486,18 @@
     border-radius: 4px;
     background: transparent;
   }
+  .chan.on .nm {
+    font-weight: 600;
+  }
+  .chan.any .box,
   .chan.on .box {
     border-color: var(--c);
     background: var(--c);
+  }
+  .box :global(svg) {
+    width: 10px;
+    height: 10px;
+    color: var(--on-accent);
   }
   .exnone {
     margin: 4px 8px;

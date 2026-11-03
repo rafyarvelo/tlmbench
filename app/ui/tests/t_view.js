@@ -70,7 +70,7 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   await p.mouse.click(cb.x, cb.y);
   check('both cursors open Measure', await until(() => !document.getElementById('measure').hidden), await app('cursors'));
   check('Measure shows Δt and 1/Δt', await until(() => /Δt.*1\/Δt/.test(document.getElementById('measure').innerText.replace(/\s+/g, ' '))), await text('#measure'));
-  check('exact stats per plotted channel', await until(() => document.querySelectorAll('#measure .mchan').length === 6 && /Std dev/.test(document.getElementById('measure').innerText)), await text('#measure'));
+  check('exact stats per plotted channel', await until(() => document.querySelectorAll('#measure tr[data-mrow]').length === 6 && /Std dev/.test(document.getElementById('measure').innerText)), await text('#measure'));
   // drag cursor B
   const before = (await app('cursors')).B;
   await p.mouse.move(cb.x, cb.y);
@@ -84,6 +84,12 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   await until(() => window.__tlmApp.hoverT() !== null);
   await p.keyboard.press('a');
   check('A places cursor A at the pointer', (await app('cursors')).A === (await app('hoverT')), [await app('cursors'), await app('hoverT')]);
+  check('Measure shows tiles, a table in the channels\' decimals and RMS', await p.evaluate(() => {
+    const m = document.getElementById('measure');
+    return m.querySelectorAll('.mt').length === 4 && !!m.querySelector('.mt.hi') && /RMS/.test(m.innerText) && [...m.querySelectorAll('tr[data-mrow] td')].every((td) => !/\.\d{5,}/.test(td.textContent));
+  }), await text('#measure'));
+  await p.selectOption('#measure [data-mch]', '2');
+  check('the channel picker changes the stats', await until(() => document.querySelector('#measure [data-mch]').value === '2' && /Samples/.test(document.getElementById('measure').innerText)));
   await p.keyboard.press('Escape');
   check('Esc clears the cursors and closes Measure', (await app('cursors')).A === null && (await until(() => document.getElementById('measure').hidden)));
 
