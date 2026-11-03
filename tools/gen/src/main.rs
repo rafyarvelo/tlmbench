@@ -181,6 +181,7 @@ fn progress(label: &str, i: u64, n: u64, started: Instant) {
 fn write_tlm(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
     let desc = Descriptor {
         sequence: None,
+        files: Vec::new(),
         packets: None,
         schema: SCHEMA,
         name: Some("tlmbench-gen synthetic".into()),
@@ -253,10 +254,11 @@ fn packet_descriptor(a: &Args, t0: i64, compression: Compression) -> Descriptor 
         record_size: 4 * a.channels as u64,
         time: TimeSpec::Rate { rate_hz: a.rate as f64, t0_ns: t0 },
         fields,
+        files: Vec::new(),
         packets: Some(Packets {
             sync: Some("EB90".into()),
             header_size: 16,
-            length: LengthField { offset: 2, dtype: DType::U32, counts: Counts::Payload, adjust: 0 },
+            length: Some(LengthField { offset: 2, dtype: DType::U32, counts: Counts::Payload, adjust: 0 }),
             checksum: Checksum::Crc32,
             compression,
         }),

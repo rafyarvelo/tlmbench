@@ -518,6 +518,7 @@ mod tests {
     fn rate_file_reads_contiguous_f32() {
         let desc = Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -542,6 +543,7 @@ mod tests {
         v.value_offset = 1.0;
         let desc = Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: 1,
             name: Some("bench".into()),
@@ -576,6 +578,7 @@ mod tests {
         v.value_offset = 10.0;
         let desc = Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -610,6 +613,7 @@ mod tests {
     fn block_summaries_match_per_channel_ones() {
         let desc = Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -656,6 +660,7 @@ mod tests {
     fn decoded_chunks_read_like_the_fields() {
         let desc = Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -695,6 +700,7 @@ mod tests {
     fn a_native_one_field_file_is_not_chunked() {
         let desc = Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -712,6 +718,7 @@ mod tests {
     fn backwards_time_is_an_error() {
         let desc = Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -735,6 +742,7 @@ mod tests {
     fn truncated_header_is_an_error() {
         let desc = Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: 1,
             name: None,

@@ -40,6 +40,7 @@ fn reference_file_text_output() {
     let path = dir.path().join("rec.tlm");
     let desc = Descriptor {
         sequence: None,
+        files: Vec::new(),
         packets: None,
         schema: SCHEMA,
         name: None,

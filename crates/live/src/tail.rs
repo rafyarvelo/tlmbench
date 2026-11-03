@@ -337,6 +337,7 @@ impl CsvParser {
         }
         Descriptor {
             sequence: None,
+            files: Vec::new(),
             packets: None,
             schema: SCHEMA,
             name: Some("tailed CSV".into()),

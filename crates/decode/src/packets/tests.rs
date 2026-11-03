@@ -26,10 +26,11 @@ fn desc(compression: Compression, checksum: Checksum) -> Descriptor {
         sequence: None,
         time: TimeSpec::Field { field: "t".into(), unit: TimeUnit::Us, t0_ns: 0 },
         fields: vec![field("count", DType::U32, 4), field("t", DType::U64, 12), field("v", DType::F32, 20), w],
+        files: Vec::new(),
         packets: Some(Packets {
             sync: Some("EB90".into()),
             header_size: 12,
-            length: LengthField { offset: 2, dtype: DType::U16, counts: Counts::Payload, adjust: 0 },
+            length: Some(LengthField { offset: 2, dtype: DType::U16, counts: Counts::Payload, adjust: 0 }),
             checksum,
             compression,
         }),
@@ -150,4 +151,63 @@ fn backwards_time_is_an_error() {
         !tmp.path().join("cache/packets").exists()
             || fs::read_dir(tmp.path().join("cache/packets")).unwrap().count() == 0
     );
+}
+
+/// The TOML the prototype's descriptor form writes for the ESC logger: fixed 24-byte frames (sync, CRC-16, no length).
+const ESC: &str = r#"schema = 1
+name = "ESC telemetry"
+files = ["esc_bench_*.bin"]
+endian = "little"
+record_size = 20
+
+[time]
+source = "field"
+field = "timestamp_us"
+unit = "us"
+
+[[fields]]
+name = "seq"
+type = "u16"
+offset = 2
+
+[[fields]]
+name = "timestamp_us"
+type = "u32"
+offset = 4
+
+[[fields]]
+name = "battery_v"
+type = "u16"
+offset = 14
+unit = "V"
+scale = 0.001
+
+[packets]
+sync = "A55A"
+header_size = 2
+checksum = "crc16-ccitt"
+"#;
+
+#[test]
+fn fixed_frames_without_a_length_field() {
+    let tmp = tempfile::tempdir().unwrap();
+    let d = Descriptor::parse(ESC).unwrap();
+    assert_eq!(d.files, ["esc_bench_*.bin"]);
+    let p = d.packets.as_ref().unwrap();
+    let mut data = vec![0x00, 0x13]; // stray bytes before the first sync
+    for k in 0..50u32 {
+        let mut rec = vec![0u8; 20];
+        rec[0..2].copy_from_slice(&(k as u16).to_le_bytes());
+        rec[2..6].copy_from_slice(&(120_000_000 + k * 10_000).to_le_bytes());
+        rec[12..14].copy_from_slice(&(24_000 + k as u16).to_le_bytes());
+        // `encode_packet` puts the sync in the 2-byte header; the record follows it
+        data.extend(encode_packet(p, false, &[0, 0], &rec).unwrap());
+    }
+    data[2 + 24 * 10 + 9] ^= 1; // a bit flip in frame 10: its CRC fails
+    let f = open(tmp.path(), "esc_bench_0930.bin", &d, &data);
+    assert_eq!((f.info().samples, f.bad_packets), (49, 1));
+    let h = Held::default();
+    assert_eq!(f.info().t_first, Some(120_000_000_000));
+    assert_eq!((f.value_at(0, 9, &h), f.value_at(0, 10, &h)), (9.0, 11.0)); // frame 10 is gone
+    assert!((f.value_at(1, 0, &h) - 24.0).abs() < 1e-9);
 }

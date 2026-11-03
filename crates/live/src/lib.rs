@@ -697,6 +697,7 @@ mod tests_support {
         };
         Descriptor {
             sequence: Some("seq".into()),
+            files: Vec::new(),
             packets: None,
             schema: SCHEMA,
             name: Some("test".into()),

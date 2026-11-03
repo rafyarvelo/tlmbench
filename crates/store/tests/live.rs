@@ -36,6 +36,7 @@ fn descriptor(column: bool) -> Descriptor {
     };
     Descriptor {
         sequence: None,
+        files: Vec::new(),
         packets: None,
         schema: SCHEMA,
         name: None,

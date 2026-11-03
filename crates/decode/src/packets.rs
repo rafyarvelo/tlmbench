@@ -173,13 +173,13 @@ pub fn encode_packet(p: &Packets, big: bool, header: &[u8], payload: &[u8]) -> R
     let mut out = header[..hs].to_vec();
     let sync = p.sync_bytes()?;
     out[..sync.len()].copy_from_slice(&sync);
-    let len =
-        stored.len() as i64 - p.length.adjust + if p.length.counts == Counts::Packet { (hs + cks) as i64 } else { 0 };
-    let size = p.length.dtype.size() as usize;
-    let at = p.length.offset as usize;
-    for k in 0..size {
-        let shift = 8 * if big { size - 1 - k } else { k };
-        out[at + k] = (len >> shift) as u8;
+    if let Some(l) = &p.length {
+        let len = stored.len() as i64 - l.adjust + if l.counts == Counts::Packet { (hs + cks) as i64 } else { 0 };
+        let (size, at) = (l.dtype.size() as usize, l.offset as usize);
+        for k in 0..size {
+            let shift = 8 * if big { size - 1 - k } else { k };
+            out[at + k] = (len >> shift) as u8;
+        }
     }
     out.extend_from_slice(&stored);
     let c = checksum(p.checksum, &out);
@@ -205,10 +205,9 @@ struct Framing {
 }
 
 /// Finds the packets in `data` from `start`: their offsets and stored payload lengths, and how many were skipped.
-fn frame(data: &[u8], start: usize, p: &Packets, sync: &[u8], big: bool) -> Framing {
+fn frame(data: &[u8], start: usize, p: &Packets, record_size: u64, sync: &[u8], big: bool) -> Framing {
     let hs = p.header_size as usize;
     let cks = p.checksum.size() as usize;
-    let lo = p.length.offset as usize;
     let finder = (!sync.is_empty()).then(|| memchr::memmem::Finder::new(sync));
     let mut out = Framing::default();
     let mut pos = start;
@@ -222,10 +221,16 @@ fn frame(data: &[u8], start: usize, p: &Packets, sync: &[u8], big: bool) -> Fram
         if pos + hs > data.len() {
             break; // a partial packet at the end
         }
-        let raw = read_int(&data[pos + lo..], p.length.dtype, big).saturating_add(p.length.adjust);
-        let stored = match p.length.counts {
-            Counts::Payload => raw,
-            Counts::Packet => raw.saturating_sub((hs + cks) as i64),
+        // without a length field, each packet holds one record
+        let stored = match &p.length {
+            None => record_size as i64,
+            Some(l) => {
+                let raw = read_int(&data[pos + l.offset as usize..], l.dtype, big).saturating_add(l.adjust);
+                match l.counts {
+                    Counts::Payload => raw,
+                    Counts::Packet => raw.saturating_sub((hs + cks) as i64),
+                }
+            }
         };
         let end = (0..=MAX_PAYLOAD as i64).contains(&stored).then(|| pos + hs + cks + stored as usize);
         let good = match end {
@@ -386,7 +391,7 @@ impl PacketFile {
         let path = self.info.path.clone();
         let p = packets_of(&self.desc).clone();
         let sync = p.sync_bytes().map_err(|e| format_err(&path, e.to_string()))?;
-        let framing = frame(&self.bytes, self.desc.header_size as usize, &p, &sync, self.big());
+        let framing = frame(&self.bytes, self.desc.header_size as usize, &p, self.desc.record_size, &sync, self.big());
         let mut index = Vec::with_capacity(framing.packets.len());
         let mut bad = framing.bad;
         let (mut t_first, mut t_last) = (None, None::<i64>);

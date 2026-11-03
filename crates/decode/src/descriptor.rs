@@ -48,6 +48,9 @@ pub struct Descriptor {
     pub schema: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// The files this descriptor decodes, by name (`*` matches any text): `["esc_bench_*.bin"]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
     #[serde(default)]
     pub endian: Endian,
     #[serde(default)]
@@ -70,7 +73,8 @@ pub struct Descriptor {
 /// sync = "EB90"          # hex bytes each packet starts with (optional, but without it a damaged packet ends the
 ///                        # file: there is nothing to find the next one by)
 /// header_size = 8        # bytes before the payload, sync included
-/// length = { offset = 2, type = "u16", counts = "payload" }   # or counts = "packet" (header + payload + checksum)
+/// length = { offset = 2, type = "u16", counts = "payload" }   # or counts = "packet" (header + payload + checksum);
+///                        # without a length, each packet holds one record (fixed-size frames, uncompressed)
 /// checksum = "crc16-ccitt"   # none | sum8 | crc16-ccitt | crc32, after the payload, over header and payload
 /// compression = "zstd"   # none | zstd | lz4 (frame) | gzip, of the payload
 /// ```
@@ -83,7 +87,8 @@ pub struct Packets {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sync: Option<String>,
     pub header_size: u64,
-    pub length: LengthField,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length: Option<LengthField>,
     #[serde(default)]
     pub checksum: Checksum,
     #[serde(default)]
@@ -327,12 +332,19 @@ impl Descriptor {
                     p.header_size
                 ));
             }
-            let l = &p.length;
-            if l.dtype.is_float() || l.offset.checked_add(l.dtype.size()).is_none_or(|e| e > p.header_size) {
-                return bad(format!(
-                    "packets.length must be an integer field inside the {}-byte header",
-                    p.header_size
-                ));
+            match &p.length {
+                Some(l)
+                    if l.dtype.is_float() || l.offset.checked_add(l.dtype.size()).is_none_or(|e| e > p.header_size) =>
+                {
+                    return bad(format!(
+                        "packets.length must be an integer field inside the {}-byte header",
+                        p.header_size
+                    ));
+                }
+                None if p.compression != Compression::None => {
+                    return bad("packets.compression needs packets.length: compressed payloads vary in size".into());
+                }
+                _ => {}
             }
             extent += p.header_size;
         }
@@ -452,10 +464,12 @@ mod tests {
         let p = d.packets.as_ref().unwrap();
         assert_eq!(p.sync_bytes().unwrap(), [0xeb, 0x90]);
         assert_eq!(
-            (p.checksum, p.compression, p.length.counts),
+            (p.checksum, p.compression, p.length.as_ref().unwrap().counts),
             (Checksum::Crc16Ccitt, Compression::Zstd, Counts::Payload)
         );
         assert_eq!(Descriptor::parse(&d.to_toml()).unwrap(), d);
+        let with_files = Descriptor::parse(&EXAMPLE.replacen("endian", "files = [\"esc_*.bin\"]\nendian", 1)).unwrap();
+        assert_eq!(with_files.files, ["esc_*.bin"]);
         // 12 + 16 bytes: offset 26 + 2 fits, 27 doesn't
         assert!(Descriptor::parse(&(EXAMPLE.replacen("offset = 8", "offset = 26", 1) + PACKETS)).is_ok());
         let err = Descriptor::parse(&(EXAMPLE.replacen("offset = 8", "offset = 27", 1) + PACKETS)).unwrap_err();
@@ -464,6 +478,7 @@ mod tests {
             ("sync = \"EB90\"", "sync = \"EB9\"", "hex"),
             ("offset = 2, type = \"u16\"", "offset = 11, type = \"u16\"", "inside the 12-byte header"),
             ("\"zstd\"", "\"brotli\"", "unknown variant"),
+            ("length = { offset = 2, type = \"u16\" }\n", "", "needs packets.length"),
         ] {
             let err =
                 Descriptor::parse(&(EXAMPLE.to_owned() + &PACKETS.replacen(from, to, 1))).unwrap_err().to_string();
