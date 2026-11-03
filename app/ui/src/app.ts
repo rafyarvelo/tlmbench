@@ -15,6 +15,7 @@ import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialo
 import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
+import { bindTips } from './tips';
 import { applyTheme, setPanelOpen, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
@@ -941,7 +942,6 @@ function esc(s: string): string {
 function renderPanes(): void {
   renderChannels();
   renderOverviewHead();
-  applyTips();
   scheduleDraw();
 }
 
@@ -1083,7 +1083,6 @@ async function refreshMeasure(): Promise<void> {
     (chans.length ? `<div class="mpick">${pick}</div>` : '') +
     statsBody +
     `</details>`;
-  applyTips();
 }
 
 let resizeScheduled = false;
@@ -2149,10 +2148,7 @@ void getCurrentWebview().onDragDropEvent((e) => {
 });
 
 // tooltips: `data-tip` (CLAUDE.md); the native title for now
-function applyTips(): void {
-  for (const el of document.querySelectorAll<HTMLElement>('[data-tip]')) el.title = el.dataset.tip ?? '';
-}
-applyTips();
+bindTips();
 applyTheme();
 updateRange();
 void refreshMeasure();

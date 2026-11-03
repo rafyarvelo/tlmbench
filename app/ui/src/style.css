@@ -805,3 +805,18 @@ input[role='switch']:checked::after {
   background: var(--on-accent);
   transform: translateX(12px);
 }
+
+/* the floating tooltip (tips.ts) */
+.tip {
+  position: fixed;
+  z-index: 100;
+  max-width: 260px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}

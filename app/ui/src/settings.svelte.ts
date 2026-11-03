@@ -6,6 +6,7 @@ import type { Workspace } from './workspaces';
 
 export type Mode = 'box' | 'pan' | 'cursor';
 export type Theme = 'system' | 'light' | 'dark';
+export type Tooltips = 'short' | 'full' | 'off';
 export type ZoomSpeed = 'slow' | 'normal' | 'fast';
 /** What the left sidebar shows (empty: hidden). */
 export type LeftPanel = 'explorer' | 'settings' | '';
@@ -24,6 +25,9 @@ export interface Settings {
   leftWidth: number;
   measureWidth: number;
   panelsClosed: string[];
+  /** Tooltips (Short retires each after three showings; `tipsSeen` counts them by tip). */
+  tooltips: Tooltips;
+  tipsSeen: Record<string, number>;
   /** The start page shows at launch, and the recordings opened last (newest first). */
   showStart: boolean;
   recent: string[];
@@ -64,6 +68,8 @@ export const DEFAULTS: Settings = {
   leftWidth: 300,
   measureWidth: 260,
   panelsClosed: [],
+  tooltips: 'short',
+  tipsSeen: {},
   showStart: true,
   recent: [],
   exCategories: true,
@@ -116,7 +122,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'sidesSwapped', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
+const KEEP: (keyof Settings)[] = ['tipsSeen', 'recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'sidesSwapped', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

@@ -1,6 +1,7 @@
 <!-- Settings in the left sidebar: the everyday ones (Basic) or all of them, a search over every setting by name,
      explanation and choices, and each explanation behind an ⓘ. Changes apply and save at once. -->
 <script lang="ts">
+  import { resetTips } from '../tips';
   import { resetSettings, resetUiLayout, type Settings, setSetting, settings } from '../settings.svelte';
 
   interface Row {
@@ -20,6 +21,7 @@
     { key: 'dblFit', section: 'Mouse', label: 'Double-click fits the whole recording' },
     { key: 'theme', section: 'Display', basic: true, label: 'Theme', hint: 'Match system follows your light or dark setting.', options: [['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']] },
     { key: 'exCategories', section: 'Display', basic: true, label: 'Group channels into categories', hint: "Explorer groups a recording's channels by the start of their names (before the first _ or .)." },
+    { key: 'tooltips', section: 'Display', basic: true, label: 'Tooltips', hint: 'Short shows the first sentence and the shortcut, and each tip retires after three showings. Full always shows everything.', options: [['short', 'Short, then learned'], ['full', 'Full'], ['off', 'Off']] },
     { key: 'showStart', section: 'Display', label: 'Show the start page at launch', hint: 'Recent recordings and ways to open things, over your tabs when the app starts.' },
     { key: 'overviewTop', section: 'Display', basic: true, label: 'Overview above the panes' },
     { key: 'measureAuto', section: 'Display', basic: true, label: 'Open Measure when both cursors are placed', hint: 'It closes again when you clear the cursors, unless you opened it yourself.' },
@@ -64,7 +66,7 @@
   {:else}
     <p class="setnone">No setting matches “{q.trim()}”.</p>
   {/each}
-  <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div></section>
+  <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
   <footer><span>Saved as you change them</span><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
 </div>
 

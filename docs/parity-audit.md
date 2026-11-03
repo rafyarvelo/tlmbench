@@ -23,8 +23,8 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 99 ·
-Partial 43 · Different 36 · Missing 100** (278 rows; counts as of Nov 3). Of the missing rows, 34 belong to Phase 3 (the shell port
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 101 ·
+Partial 43 · Different 36 · Missing 98** (278 rows; counts as of Nov 3). Of the missing rows, 32 belong to Phase 3 (the shell port
 that is already due), 31 to Phase 4 and 35 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
@@ -286,8 +286,8 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Channels from several files | `1729` | — | Missing | 5 | |
 | Clicking a row | `1730` | — | Missing | 3 | |
 | New pane from a dragged channel | `1731` | — | Missing | 3 | |
-| Tooltips: Short and learn, Full, Off | `1732` | — | Missing | 3 | |
-| Learned tooltips: Reset | `1733` | — | Missing | 3 | |
+| Tooltips: Short and learn, Full, Off | `1732` | Settings → Tooltips (`tips.ts`) | Ported | 3 | Fixed Nov 3. |
+| Learned tooltips: Reset | `1733` | Settings → Reset tooltips | Ported | 3 | Fixed Nov 3. |
 | Quiet interface | `1734` | — | Missing | 3 | |
 | Show tips and extra controls | `1735` | — | Missing | 3 | |
 | Show performance details | `1736` | `shell/Settings.svelte:22` | Ported | 3 | |
@@ -370,6 +370,10 @@ file right-click menu, Show only these and Undo on Close all files. `t_channels`
 Start page and switches (Nov 3): the start page (with no file, and from the rail's logo over the tabs), recent
 recordings, "Show this page at launch", and switches in Settings and on the page. `t_start` covers them. The empty
 state's mode buttons still stay enabled with no file.
+
+Tooltips (Nov 3): one floating tip for every `data-tip` (700 ms, at once on keyboard focus, warm for 1.5 s), Short (first
+clause and shortcut, retired after three showings), Full or Off, and Reset tooltips. `t_tips` covers it. Look and feel
+item 44 is fixed except that the native `title` is no longer set at all.
 
 ## 9. Look and feel
 
