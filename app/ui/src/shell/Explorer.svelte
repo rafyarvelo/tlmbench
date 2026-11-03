@@ -65,7 +65,23 @@
   const closed = $derived(settings.panelsClosed.includes('explorer'));
   /** The channels the actions below act on: the picked ones, else the selected row. */
   const targets = $derived(picked.length > 1 ? picked : sel?.startsWith('ch:') ? [Number(sel.slice(3))] : []);
-  const shownChans = $derived(ui.channels.flatMap((c, ch) => (chanMatch(c) ? [ch] : [])));
+  /** Channels grouped by the start of their name (before the first _ or .): a prefix shared by two or more, else "other". */
+  const groups = $derived.by(() => {
+    const pre = (n: string) => n.split(/[_.]/)[0];
+    const count = new Map<string, number>();
+    ui.channels.forEach((c) => count.set(pre(c.name), (count.get(pre(c.name)) ?? 0) + 1));
+    const by = new Map<string, number[]>();
+    ui.channels.forEach((c, ch) => {
+      const g = (count.get(pre(c.name)) ?? 0) > 1 ? pre(c.name) : 'other';
+      by.set(g, [...(by.get(g) ?? []), ch]);
+    });
+    return [...by].map(([name, chs]) => ({ name, chs })).sort((a, b) => (a.name === 'other' ? 1 : b.name === 'other' ? -1 : 0));
+  });
+  const categorised = $derived(settings.exCategories && groups.length > 1);
+  /** The channel rows in the order they show. */
+  const shownChans = $derived(
+    categorised ? groups.filter((g) => !settings.exCatClosed.includes(g.name)).flatMap((g) => g.chs.filter((ch) => chanMatch(ui.channels[ch]))) : ui.channels.flatMap((c, ch) => (chanMatch(c) ? [ch] : [])),
+  );
   function clickChan(e: MouseEvent, ch: number) {
     const id = `ch:${ch}`;
     if (e.metaKey || e.ctrlKey) {
@@ -216,32 +232,56 @@
   </div>
   {#if open}
     <div id="chans" class="chans" role="group">
-      {#each ui.channels as c, ch (ch)}
-        {#if chanMatch(c) || matcher.test(name)}
-          {@const where = elsewhere(ch)}
-          <div
-            class="row chan"
-            class:on={inSel(ch)}
-            class:any={plottedAnywhere(ch)}
-            class:sel={sel === `ch:${ch}` || picked.includes(ch)}
-            role="treeitem"
-            aria-selected={sel === `ch:${ch}` || picked.includes(ch)}
-            tabindex="0"
-            draggable="true"
-            style="--d: {depth + 1}; --c: var(--trace-{(ch % 8) + 1})"
-            data-ch={ch}
-            onclick={(e) => clickChan(e, ch)}
-            ondblclick={() => toggleChannel(ch)}
-            ondragstart={(e) => dragChan(e, ch)}
-            onkeydown={(e) => key(e, { kind: 'chan', ch })}
-          >
-            <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
-            <span class="nm">{c.name}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.unit}<span class="unit">{c.unit}</span>{/if}
-          </div>
-        {/if}
-      {/each}
+      {#if categorised}
+        {#each groups as g (g.name)}
+          {@const shut = settings.exCatClosed.includes(g.name)}
+          {@const vis = g.chs.filter((ch) => chanMatch(ui.channels[ch]) || matcher.test(name))}
+          {#if vis.length}
+            <div class="row cat" role="treeitem" aria-selected="false" aria-expanded={!shut} tabindex="0" style="--d: {depth + 1}" data-cat={g.name}
+              onclick={() => setSetting('exCatClosed', shut ? settings.exCatClosed.filter((n) => n !== g.name) : [...settings.exCatClosed, g.name])}
+              onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), (e.currentTarget as HTMLElement).click())}>
+              <span class="chev" class:on={!shut}>›</span><span class="nm">{g.name}</span>
+              <span class="catact">
+                <button class="linkbtn" data-cat-act="add" data-tip="Plot the group in the selected pane" onclick={(e) => (e.stopPropagation(), addChannels(vis))}>Add</button>
+                <button class="linkbtn" data-cat-act="chart" onclick={(e) => (e.stopPropagation(), newPaneWith(vis))}>Chart</button>
+                <button class="linkbtn" data-cat-act="table" onclick={(e) => (e.stopPropagation(), newPaneWith(vis, 'table'))}>Table</button>
+              </span>
+              <span class="meta num" data-count>{vis.filter(plottedAnywhere).length} / {vis.length}</span>
+            </div>
+            {#if !shut}{#each vis as ch (ch)}{@render chanRow(ch, depth + 2)}{/each}{/if}
+          {/if}
+        {/each}
+      {:else}
+        {#each ui.channels as c, ch (ch)}
+          {#if chanMatch(c) || matcher.test(name)}{@render chanRow(ch, depth + 1)}{/if}
+        {/each}
+      {/if}
     </div>
   {/if}
+{/snippet}
+
+{#snippet chanRow(ch: number, depth: number)}
+  {@const c = ui.channels[ch]}
+  {@const where = elsewhere(ch)}
+  <div
+    class="row chan"
+    class:on={inSel(ch)}
+    class:any={plottedAnywhere(ch)}
+    class:sel={sel === `ch:${ch}` || picked.includes(ch)}
+    role="treeitem"
+    aria-selected={sel === `ch:${ch}` || picked.includes(ch)}
+    tabindex="0"
+    draggable="true"
+    style="--d: {depth}; --c: var(--trace-{(ch % 8) + 1})"
+    data-ch={ch}
+    onclick={(e) => clickChan(e, ch)}
+    ondblclick={() => toggleChannel(ch)}
+    ondragstart={(e) => dragChan(e, ch)}
+    onkeydown={(e) => key(e, { kind: 'chan', ch })}
+  >
+    <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
+    <span class="nm">{c.name}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.unit}<span class="unit">{c.unit}</span>{/if}
+  </div>
 {/snippet}
 
 <style>
@@ -446,8 +486,26 @@
     margin-left: auto;
     min-height: 22px;
   }
-  .where {
+  .row.cat {
+    font-weight: 600;
+  }
+  .catact {
+    display: none;
+    gap: 8px;
     margin-left: auto;
+  }
+  .row.cat:hover .catact,
+  .row.cat:focus-within .catact {
+    display: inline-flex;
+  }
+  .row.cat:hover .catact + .meta,
+  .row.cat:focus-within .catact + .meta {
+    margin-left: 8px;
+  }
+  .where {
+    flex: none;
+    margin-left: auto;
+    white-space: nowrap;
     color: var(--fg-muted);
     font-size: 11px;
   }

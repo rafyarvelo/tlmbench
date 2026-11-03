@@ -23,8 +23,8 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 94 ·
-Partial 41 · Different 37 · Missing 106** (278 rows; counts as of Nov 3). Of the missing rows, 40 belong to Phase 3 (the shell port
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 96 ·
+Partial 42 · Different 37 · Missing 103** (278 rows; counts as of Nov 3). Of the missing rows, 37 belong to Phase 3 (the shell port
 that is already due), 31 to Phase 4 and 35 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
@@ -103,8 +103,8 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | File right-click menu | Open, Open only this, Channel prefix…, Format descriptor…, Compare with…, Close all files (`9416-9445`) | Open, Close this file, Close all files (`Explorer.svelte`) | Partial | 3 (descriptor: 4; prefix, compare: 5) | Fixed Nov 3 except Open only this, Channel prefix… (5), Format descriptor… (4), Compare with… (5). |
 | Multi-select | Ctrl/Cmd-click adds, Shift-click a range, Ctrl+A all, Esc clears; files, channels or categories (`5826-5863`, `5899-5903`) | Ctrl/Cmd-click adds, Shift-click a range, Ctrl+A all channels, Esc clears; channels only | Partial | 3 | Fixed Nov 3 for channels; files and categories aren't multi-selectable. |
 | Selection bar | At Explorer's foot for several rows: Add to pane N, Chart, Table, Remove, Derive… (`5887-5898`) | At Explorer's foot: Add to pane N, Chart, Table, Remove (also for one selected channel) | Partial | 3 (Derive: 5) | Fixed Nov 3 except Derive… (5). |
-| Channel tree | File → category → channel; categories show "plotted / total" (`5779-5786`) | File → channel, flat (`shell/Explorer.svelte:150-170`) | Missing | 3 | The design's Explorer is file → category → channel. It doesn't say where categories come from for `.tlm` files. |
-| Category hover actions | Add the group to the pane, open in a new table, open in a new chart (`5783-5786`) | — | Missing | 3 | |
+| Channel tree | File → category → channel; categories show "plotted / total" (`5779-5786`) | File → category → channel; categories (the start of the name before the first `_` or `.`, shared by two or more channels, else "other") show "plotted / total" and fold shut (saved) | Partial | 3 | Fixed Nov 3 with name-prefix categories, which the owner approved as the default; moving a channel to another category and New category… (right-click) are missing. |
+| Category hover actions | Add the group to the pane, open in a new table, open in a new chart (`5783-5786`) | Add, Chart and Table on hover (`Explorer.svelte`) | Ported | 3 | Fixed Nov 3. |
 | Channel checkbox | 14 px swatch: filled with the channel's colour when plotted anywhere, a check when in the selected pane; "pane 1" says where else (`5790-5798`) | 14 px swatch filled with the channel's colour when plotted anywhere, a check in the selected pane; "pane N" says where else | Ported | 3 | Fixed Nov 3. |
 | Channel row text | Plotted channels in semibold; data rate on hover | Plotted channels in semibold; unit at the right; no data rate on hover | Partial | 3 | Semibold fixed Nov 3. |
 | Channel row actions | Remove from every pane, add to the pane, new chart, new table (`5795-5798`) | The selection bar's Add to pane N, Chart, Table and Remove act on the selected channel | Ported | 3 | Fixed Nov 3. They sit in the bar at Explorer's foot, not beside the row (quieter). |
@@ -278,7 +278,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Time labels | `1721` | — | Missing | 3 | |
 | Time format | `1722` | — | Missing | 3 | |
 | Time decimals | `1723` | — | Missing | 3 | |
-| Group channels into categories | `1724` | — | Missing | 3 | |
+| Group channels into categories | `1724` | Settings → Group channels into categories (Basic) | Ported | 3 | Fixed Nov 3. |
 | Overview above the panes | `1725` | `shell/Settings.svelte:20` | Ported | 3 | |
 | Left sidebar | `1726` | Not a setting; the rail toggles it (`settings.leftPanel`) | Partial | 3 | |
 | Measure panel | `1727` | Not a setting; the rail toggles it (`settings.measureOpen`) | Partial | 3 | |
@@ -364,8 +364,7 @@ Look and feel items 3 (padding aside), 4 (no ⇄ per panel yet), 27 and 29 are f
 reorder it, Missing in Stats, and the sidebar padding.
 
 Explorer's channels (Nov 3): the swatch checkbox, multi-select with the selection bar, dragging channels onto panes, the
-file right-click menu, Show only these and Undo on Close all files. `t_channels` covers them. Not done: channel
-categories (the design doesn't say where they come from for `.tlm` files), "Show files that can't be opened", Explorer's
+file right-click menu, Show only these and Undo on Close all files. `t_channels` covers them. Channel categories group by name prefix (Settings → Group channels into categories). Not done: moving a channel between categories, "Show files that can't be opened", Explorer's
 ⋯ and folder menus, Open only this, dragging onto pane edges.
 
 ## 9. Look and feel

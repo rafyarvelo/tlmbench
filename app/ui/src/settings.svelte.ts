@@ -24,6 +24,9 @@ export interface Settings {
   leftWidth: number;
   measureWidth: number;
   panelsClosed: string[];
+  /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
+  exCategories: boolean;
+  exCatClosed: string[];
   /** Explorer lists only the open files. */
   exOnlyOpen: boolean;
   sidesSwapped: boolean;
@@ -58,6 +61,8 @@ export const DEFAULTS: Settings = {
   leftWidth: 300,
   measureWidth: 260,
   panelsClosed: [],
+  exCategories: true,
+  exCatClosed: [],
   exOnlyOpen: false,
   sidesSwapped: false,
   measureOpen: false,

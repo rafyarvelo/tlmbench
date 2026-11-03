@@ -15,6 +15,21 @@ run('channels', async ({ p, check, text, visible, fake, paneCount, until, wait }
   await p.dblclick(`#explorer .row.file[data-path$="flight.tlm"]`);
   check('flight.tlm opens with three panes', await until(() => document.querySelectorAll('#explorer .row.chan').length === 6) && (await paneCount()) === 3);
 
+  // categories: channels grouped by the start of their names, with counts and hover actions
+  check('channels are grouped by name prefix', (await p.$$eval('#explorer .row.cat .nm', (e) => e.map((x) => x.textContent))).join() === 'accel,motor,other');
+  check('a category counts what is plotted', (await p.$$eval('#explorer .row.cat [data-count]', (e) => e.map((x) => x.textContent.trim()))).join() === '2 / 2,2 / 2,2 / 2', await p.$$eval('#explorer .row.cat [data-count]', (e) => e.map((x) => x.textContent)));
+  await p.click('#explorer .row.cat[data-cat="motor"] .nm');
+  check('clicking a category folds it, saved', (await p.$$('#explorer .row.chan')).length === 4 && (await p.evaluate(() => JSON.parse(localStorage.getItem('tlmbench.settings')).exCatClosed)).join() === 'motor');
+  await p.click('#explorer .row.cat[data-cat="motor"] .nm');
+  await p.hover('#explorer .row.cat[data-cat="other"]');
+  const np = await paneCount();
+  await p.click('#explorer .row.cat[data-cat="other"] [data-cat-act="chart"]');
+  check('a category\'s Chart opens the group in a new pane', (await paneCount()) === np + 1 && (await app('panes')).at(-1).join() === '2,3', await app('panes'));
+  await p.keyboard.press('ControlOrMeta+z').catch(() => {});
+  await p.click('#stack [data-pane="3"] [data-pmenu]');
+  await p.locator('.panemenu .mi', { hasText: /^Close pane$/ }).click();
+  check('back to three panes', (await paneCount()) === 3);
+
   // swatches
   check('a channel in the selected pane has a check', await p.isVisible(`${ch(0)} .box svg`));
   await p.click('#stack [data-pane="1"] .phead');

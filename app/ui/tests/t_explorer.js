@@ -46,7 +46,7 @@ run('explorer', async ({ p, check, text, visible, fake, paneCount, until, settin
   await p.fill('#explorer input[type=search]', 'esc');
   check('filter by file name', (await rows()).join() === 'flights,bench,esc_bench.csv', await rows());
   await p.fill('#explorer input[type=search]', 'motor');
-  check('filter by a channel of the open file', (await rows()).join() === 'flights,2026-10-12,flight.tlm,motor_rpm,motor_rpm_target', await rows());
+  check('filter by a channel of the open file', (await rows()).join() === 'flights,2026-10-12,flight.tlm,motor,motor_rpm,motor_rpm_target', await rows());
   await p.click('#explorer .rx');
   await p.fill('#explorer input[type=search]', '^accel_[xy]$');
   check('regex', (await p.$$eval('#explorer .row.chan .nm', (r) => r.map((x) => x.textContent))).join() === 'accel_x,accel_y');
@@ -60,7 +60,7 @@ run('explorer', async ({ p, check, text, visible, fake, paneCount, until, settin
   await p.click('#explorer .row.dir[data-path$="bench"]');
   check('a folder row toggles', (await rows()).includes('esc_bench.csv'));
   await p.click('#treeExpand');
-  check('Expand all', (await rows()).length === 12, await rows());
+  check('Expand all', (await rows()).length === 15, await rows());
 
   // Close all, and the folder after a reload
   await p.click('#closeAll');
