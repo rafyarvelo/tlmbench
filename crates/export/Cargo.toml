@@ -1,6 +1,6 @@
 [package]
 name = "tlmbench-export"
-description = "TelemetryBench data export: a recording's samples to CSV, Parquet and Arrow IPC, streamed chunk by chunk"
+description = "TelemetryBench data export: a recording's samples to CSV, Parquet, Arrow IPC, HDF5 and MAT v7.3, streamed chunk by chunk"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,6 +13,8 @@ arrow-array.workspace = true
 arrow-ipc.workspace = true
 arrow-schema.workspace = true
 parquet.workspace = true
+hdf5.workspace = true
+ndarray.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

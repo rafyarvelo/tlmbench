@@ -1,4 +1,4 @@
-//! Data export: a recording's samples written as CSV, Parquet or Arrow IPC, chunk by chunk, so memory stays flat
+//! Data export: a recording's samples written as CSV, Parquet, Arrow IPC, HDF5 or MAT v7.3, chunk by chunk, so memory stays flat
 //! however large the recording. The CLI's `convert` and the app's Export write through here.
 //!
 //! - **Wide** (the default): a time column, then a column per channel, one row per sample. A recording's channels
@@ -15,6 +15,7 @@
 
 mod columnar;
 mod csv;
+mod hdf;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -42,6 +43,8 @@ pub enum Format {
     Csv,
     Parquet,
     Arrow,
+    Hdf5,
+    Mat,
 }
 
 impl Format {
@@ -50,6 +53,8 @@ impl Format {
             Format::Csv => "csv",
             Format::Parquet => "parquet",
             Format::Arrow => "arrow",
+            Format::Hdf5 => "h5",
+            Format::Mat => "mat",
         }
     }
 }
@@ -167,6 +172,9 @@ pub fn export(rec: &dyn Recording, opts: &Options, out: &Path) -> Result<Written
     let end = opts.end.min(info.samples);
     let start = opts.start.min(end);
     let has_time = !matches!(info.time, TimeSource::Index);
+    if opts.layout == Layout::Long && matches!(opts.format, Format::Hdf5 | Format::Mat) {
+        return Err(Error::Write("the long layout is for CSV, Parquet and Arrow".into()));
+    }
     if opts.resample_hz.is_some() && !has_time {
         return Err(Error::Write("a recording without time can't be resampled".into()));
     }
@@ -195,6 +203,7 @@ pub fn export(rec: &dyn Recording, opts: &Options, out: &Path) -> Result<Written
         let mut sink: Box<dyn Sink> = match opts.format {
             Format::Csv => Box::new(csv::CsvSink::create(&tmp, &plan, opts)?),
             Format::Parquet | Format::Arrow => Box::new(columnar::ColumnarSink::create(&tmp, &plan, opts.format)?),
+            Format::Hdf5 | Format::Mat => Box::new(hdf::HdfSink::create(&tmp, &plan, opts.format == Format::Mat)?),
         };
         let mut rows = 0u64;
         let mut emit = |block: Block| -> Result<()> {

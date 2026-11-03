@@ -12,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # Build tools, Python 3.12 (Ubuntu 24.04's own) and the Tauri v2 Linux dependencies (WebKitGTK 4.1)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential pkg-config curl wget file xz-utils unzip ca-certificates git libssl-dev \
+      build-essential cmake pkg-config curl wget file xz-utils unzip ca-certificates git libssl-dev \
       python3.12 python3.12-venv python3.12-dev \
       libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev \
       libayatana-appindicator3-dev libxdo-dev \

@@ -106,7 +106,7 @@ impl<'a> ColumnarSink<'a> {
                 Writer::Parquet(ArrowWriter::try_new(file, schema.clone(), Some(props)).map_err(err)?)
             }
             Format::Arrow => Writer::Arrow(arrow_ipc::writer::FileWriter::try_new(file, &schema).map_err(err)?),
-            Format::Csv => unreachable!("CSV has its own writer"),
+            Format::Csv | Format::Hdf5 | Format::Mat => unreachable!("these have their own writers"),
         };
         Ok(Self { writer, schema, plan, path })
     }

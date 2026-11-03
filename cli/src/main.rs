@@ -61,7 +61,8 @@ enum Command {
         #[command(flatten)]
         common: Common,
     },
-    /// Write recordings as CSV, Parquet or Arrow IPC: one file per input in --out, plus <name>.channels.csv
+    /// Write recordings as CSV, Parquet, Arrow IPC, HDF5 or MAT v7.3: one file per input in --out, plus
+    /// <name>.channels.csv
     Convert {
         #[arg(required = true)]
         files: Vec<PathBuf>,
@@ -80,7 +81,7 @@ enum Command {
         /// holds its last value
         #[arg(long, conflicts_with = "layout")]
         resample: Option<String>,
-        /// wide: a column per channel; long: one row per sample and channel (time, channel, value)
+        /// wide: a column per channel; long (CSV, Parquet, Arrow): one row per sample and channel
         #[arg(long, value_enum, default_value_t = LayoutArg::Wide)]
         layout: LayoutArg,
         /// How times are written (auto: exact; seconds for relative times, ISO 8601 for dates in CSV,
@@ -136,6 +137,9 @@ enum ToFormat {
     Csv,
     Parquet,
     Arrow,
+    Hdf5,
+    /// MAT v7.3 (HDF5 underneath; opens in MATLAB with `load`)
+    Mat,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
@@ -515,6 +519,8 @@ fn convert(files: &[PathBuf], a: &ConvertArgs, jobs: usize, common: &Common) -> 
         ToFormat::Csv => Format::Csv,
         ToFormat::Parquet => Format::Parquet,
         ToFormat::Arrow => Format::Arrow,
+        ToFormat::Hdf5 => Format::Hdf5,
+        ToFormat::Mat => Format::Mat,
     };
     if !a.delimiter.is_ascii() {
         return Err(Fail(3, "--delimiter must be one ASCII character".into()));

@@ -35,6 +35,8 @@ parquet = { version = "60.1.0", default-features = false, features = ["arrow", "
 arrow-array = "60.1.0"
 arrow-schema = "60.1.0"
 arrow-ipc = "60.1.0"
+ndarray = "0.17.2"
+hdf5 = { package = "hdf5-metno", version = "0.15.1", features = ["static", "zlib"] }
 tempfile = "3.27.0"
 clap = { version = "4.6.7", features = ["derive"] }
 proptest = "1.12.0"

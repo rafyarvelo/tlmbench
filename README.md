@@ -62,7 +62,7 @@ app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in t
   tlmbench query stats flight.tlm -c amps          # exact stats over a span
   tlmbench record tcp://10.0.0.2:9000 --descriptor frames.toml   # record a live source into a session
   tlmbench record file:///logs/run.csv             # follow a growing CSV (only read)
-  tlmbench convert flight.tlm --to parquet --out out/ -c "motor_*,battery_v"   # also csv, arrow
+  tlmbench convert flight.tlm --to parquet --out out/ -c "motor_*,battery_v"   # also csv, arrow, hdf5, mat
   ```
 
 - **Read-only by design,** tested in CI against a read-only mount: nothing is written beside the data.

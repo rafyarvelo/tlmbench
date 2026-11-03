@@ -12,7 +12,7 @@ find "$dir" \( -name '*.csv' -o -name '*.parquet' \) -print0 | while IFS= read -
   "$bin" query values --cache "$c" --at 0 "$f" > /dev/null
   "$bin" query stats --cache "$c" "$f" > /dev/null
   "$bin" record "file://$f" --out "$c/rec" --idle-end 0.2 --json > /dev/null
-  for to in csv parquet arrow; do
+  for to in csv parquet arrow hdf5 mat; do
     "$bin" convert --cache "$c" --to "$to" --out "$c/convert/$to" --jobs 2 "$f" > /dev/null
   done
 done

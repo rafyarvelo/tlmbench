@@ -135,3 +135,40 @@ fn resampling_holds_the_last_value() {
     // and the app reads its own export back
     assert_eq!(open(&out, &cache).info().samples, 3);
 }
+
+#[test]
+fn hdf5_and_mat_read_back_exactly() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (data, desc) = scaled_file(tmp.path());
+    let cache = tmp.path().join("cache");
+    let src =
+        tlmbench_decode::open(&data, &OpenOptions { descriptor: Some(desc), cache_dir: Some(cache.clone()) }).unwrap();
+    let (times, values) = contents(src.as_ref());
+
+    let h5 = tmp.path().join("out.h5");
+    export(src.as_ref(), &Options::new(Format::Hdf5, vec![0, 1], 0, usize::MAX), &h5).unwrap();
+    let f = hdf5::File::open(&h5).unwrap();
+    assert_eq!(f.dataset("time_ns").unwrap().read_raw::<i64>().unwrap(), times);
+    assert_eq!(f.dataset("volts").unwrap().read_raw::<f64>().unwrap(), values[0]);
+    let unit: hdf5::types::VarLenUnicode = f.dataset("volts").unwrap().attr("unit").unwrap().read_scalar().unwrap();
+    assert_eq!(unit.as_str(), "V");
+    let temp: Vec<f64> = f.dataset("temp").unwrap().read_raw::<f32>().unwrap().iter().map(|&v| v as f64).collect();
+    assert!(same(&[temp], &values[1..]));
+
+    let mat = tmp.path().join("out.mat");
+    let mut o = Options::new(Format::Mat, vec![0, 1], 0, usize::MAX);
+    o.raw = true;
+    export(src.as_ref(), &o, &mat).unwrap();
+    let head = fs::read(&mat).unwrap();
+    assert!(head.starts_with(b"MATLAB 7.3 MAT-file"));
+    assert_eq!(&head[124..128], b"\x00\x02IM");
+    let f = hdf5::File::open(&mat).unwrap();
+    let volts = f.dataset("volts").unwrap();
+    assert_eq!(volts.shape(), [1, 150_000]);
+    let class: hdf5::types::FixedAscii<5> = volts.attr("MATLAB_class").unwrap().read_scalar().unwrap();
+    assert_eq!(class.as_str(), "int16");
+    let raw = volts.read_raw::<i16>().unwrap();
+    assert_eq!((raw[0], raw[1999], raw[2000]), (-1000, 999, -1000));
+    assert_eq!(f.dataset("time_ns").unwrap().read_raw::<i64>().unwrap(), times);
+    assert!(fs::read_dir(tmp.path()).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().starts_with('.')));
+}
