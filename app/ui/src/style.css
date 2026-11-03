@@ -96,6 +96,9 @@ html,
 body {
   height: 100%;
   margin: 0;
+  /* a desktop window, not a page: no scrolling past the content, no elastic bounce on a trackpad */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 button,

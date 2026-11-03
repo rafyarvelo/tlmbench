@@ -44,6 +44,10 @@ void main() {
   color = u_color;
 }`;
 
+/** A plot line's width in CSS pixels. The prototype's canvas lines are 1.25 nominally, and look a little heavier once the
+ * canvas has antialiased their edges; quads need the same weight. */
+export const LINE_WIDTH = 1.5;
+
 export interface Rect {
   x: number;
   y: number;
@@ -141,7 +145,7 @@ export class Renderer {
   }
 
   /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. `width` is in CSS pixels. */
-  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = 1.25): void {
+  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = LINE_WIDTH): void {
     if (!t.runs.length || rect.w <= 0 || rect.h <= 0) return;
     const gl = this.gl;
     const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);

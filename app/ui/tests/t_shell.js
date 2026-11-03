@@ -113,6 +113,7 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   check('left sidebar is 300 px wide', css.side === '300px', css.side);
   check('buttons use the UI font', css.btnFont);
   check('pane header 32 px, plot a fixed height (125 px for 4 rows), no plot fill', css.head === '32px' && css.plot === '125px' && css.plotFill === 'none', css);
+  check('the window does not scroll or bounce past its content', await p.evaluate(() => getComputedStyle(document.documentElement).overflow === 'hidden' && getComputedStyle(document.body).overscrollBehaviorY === 'none'));
   check('--danger is a token', css.danger !== '', css.danger);
   await p.keyboard.press('Tab');
   check('a focused control shows the accent ring', await p.evaluate(() => getComputedStyle(document.activeElement).outlineStyle === 'solid'));

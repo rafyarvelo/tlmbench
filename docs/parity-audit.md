@@ -401,7 +401,9 @@ Phase 3 needs the core or a decision; it is listed in `docs/follow-ups.md`.
 After review (Nov 3): a file's channels fold under it (chevron, ← →, Collapse all); a folder with no file open shows
 "No file open" with a Start page button, not the start page itself; plot lines are drawn as quads 1.25 CSS pixels wide, as
 the prototype's are (WebGL's own lines are one device pixel, half as wide on a Retina display). Software GL, as the UI
-tests use, keeps the thin lines because quads draw slowly there; `t_lines` forces each and compares them.
+tests use, keeps the thin lines because quads draw slowly there; `t_lines` forces each and compares them. The line width
+is 1.5 CSS pixels (`LINE_WIDTH` in `gl.ts`): the prototype's 1.25 looks heavier once its canvas has antialiased the edges. The
+page no longer scrolls or bounces past the app (`overflow: hidden`, `overscroll-behavior: none` on `html` and `body`).
 
 ## 9. Look and feel
 

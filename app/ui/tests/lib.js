@@ -33,7 +33,7 @@ function serve() {
 export async function open(opts = {}) {
   const server = await serve();
   const b = await chromium.launch();
-  const ctx = await b.newContext({ viewport: opts.viewport ?? { width: 1440, height: 900 }, colorScheme: opts.colorScheme ?? 'dark' });
+  const ctx = await b.newContext({ viewport: opts.viewport ?? { width: 1440, height: 900 }, deviceScaleFactor: opts.dpr ?? 1, colorScheme: opts.colorScheme ?? 'dark' });
   const p = await ctx.newPage();
   const files = opts.files ?? { [DEFAULT_FILE]: {} };
   const launch = opts.launch === undefined ? Object.keys(files)[0] ?? null : opts.launch;
