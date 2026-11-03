@@ -134,6 +134,7 @@ Index channels sit in their own linked group, since they can't share an axis wit
 - Accepted Time that goes backwards is an error naming the row or record, until the index can flag it as the design intends.
 - Accepted Packets and compression are new descriptor keys, not a separate file. An optional `[packets]` table gives the sync word, the length field (offset, type and what it counts), the checksum (none, sum8, crc16-ccitt or crc32), the payload's compression (none, zstd, lz4 or gzip), and an id field that picks one of several `[[packet_types]]`, each with its own fields. A first open scans the file once and keeps a packet index (offset, time, length) in the app cache, never beside the file; packets are decompressed on demand. The same keys decode a live stream.
 - Modified Parquet opens through the columnar cache, like CSV: the first open decodes every numeric column, row groups in parallel, keeping each column's type (f32 stays 4 bytes), and later opens read the cache through maps. Changed from reading plotted columns straight from the file: the pyramid build reads every column on open anyway. Packet files still decompress on demand, since a large compressed file would expand past the disk.
+- Proposed CSV files may start with `#` comment lines before the header; they are skipped. `convert --resample` writes its note there, so the app reads its own exports.
 
 ## Storage and indexing
 
