@@ -54,3 +54,36 @@ because shared runners are too noisy. To decide: a dedicated runner, a hosted tr
   Reading several per call (`recvmmsg` on Linux) would cut it; it is reported, not gated.
 - A tail polls every 20 ms, so a truncation in place loses what was written in the last moments before it (about
   20 ms). Watching the file (kqueue, inotify) would shorten that window; renaming rotations lose nothing.
+
+## Phase 4 (in progress): where it stands
+
+Decisions are in the design's Roadmap and Data ingestion decisions (Gate 4 = a format matrix plus a 10 GB compressed
+packet file; exports CSV, Parquet, Arrow, MAT/HDF5; `[packets]` keys; packet types open one recording each; records
+read as header then record). Done and pushed:
+
+- Parquet input through the column cache (`crates/decode/src/parquet.rs`), with a page-header check and a panic guard
+  against damaged files (`parquet_pages.rs`, fuzz target `parquet`).
+- `tlmbench convert` to CSV, Parquet, Arrow IPC, HDF5 and MAT v7.3 (`crates/export`): wide or long, `--resample`,
+  `--time`, `--raw`, channel globs, a span, `<name>.channels.csv`. The CSV reader skips leading `#` lines (Proposed).
+- Packet files: `[packets]` (sync, optional length, checksum, zstd/lz4/gzip), a packet index in the cache, packets
+  decoded on demand (`crates/decode/src/packets.rs`, fuzz target `packets`); `tlmbench-gen --format zstd,lz4,gzip`.
+- The descriptor form, drafted in the prototype (`t_descriptor`) for the owner's review; three Proposed decisions
+  (the form, `files = [...]` name patterns, packets without a length).
+
+Next, in order:
+
+1. `[[packet_types]]` (an id field picks the type): one recording per type, opened as if separate files on one clock
+   (store, CLI `info`/`convert` per type, the app's slots).
+2. Once the owner accepts the form: port it to the app (descriptor lookup by `files` pattern in the app cache and
+   `.tlmbench/decoders/`, the form on an unclaimed binary file, Open through the descriptor); the CLI finds
+   descriptors the same way when `--descriptor` is left out.
+3. The pane view switch (chart, table, both, values) and tables, and "Axis and scale…" (from Phase 3's list above).
+4. Workspace files (save/open a layout as JSON; design: Files, workspaces and sharing).
+5. The app's Export (visible range or selection → the `convert` writers; PNG/SVG of the view).
+6. `just gate4`: the format matrix (one recording in every format with identical per-channel checksums and views;
+   `convert` round trips) and the 10 GB zstd packet file (cached reopen, whole view < 1 s). The generator needs a
+   mode whose values every format holds exactly (e.g. multiples of 1/512, no NaN gaps for the i16 file).
+
+Known: Linux CI's `t_widgets` failed twice on "the size is kept" and then passed (not reproduced locally, even with
+4× CPU throttling). Live sources and `.tlm` headers refuse `[packets]` for now.
+
