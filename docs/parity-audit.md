@@ -23,8 +23,8 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 103 ·
-Partial 45 · Different 36 · Missing 94** (278 rows; counts as of Nov 3). Of the missing rows, 28 belong to Phase 3 (the shell port
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 107 ·
+Partial 46 · Different 35 · Missing 90** (278 rows; counts as of Nov 3). Of the missing rows, 24 belong to Phase 3 (the shell port
 that is already due), 31 to Phase 4 and 35 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
@@ -265,9 +265,9 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Panes mark the events of | `1694` | — | Missing | 5 | |
 | Tint table rows inside events | `1695` | — | Missing | 5 | |
 | Event categories | Name, colour, show, delete; + Add category (`1696-1698`, `renderCatRows 5568`) | — | Missing | 5 | |
-| When a file opens | Remember its last layout, Starter charts, Starter charts + tables, One table, One values pane, Nothing plotted (`1702`) | Always remembers; a new file gets one pane per channel up to 4, else the channels shared over 4 (`app.ts:952-958`, `979-988`) | Different | 3 | The prototype's default for a new file is one table of every channel. |
-| Files opened for the first time | `1703` | — | Missing | 3 | |
-| Forget remembered file layouts | `1704` | — | Missing | 3 | |
+| When a file opens | Remember its last layout, Starter charts, Starter charts + tables, One table, One values pane, Nothing plotted (`1702`) | Settings → When a file opens: Remember, Starter charts, Starter charts + tables, One table, One values pane, Nothing plotted | Ported | 3 | Fixed Nov 3. The default for a first-time file is Starter charts (the prototype's is one table); `fileOpenNew` changes it. |
+| Files opened for the first time | `1703` | Settings → Files opened for the first time | Ported | 3 | Fixed Nov 3. |
+| Forget remembered file layouts | `1704` | Settings → Layout → Forget layouts | Ported | 3 | Fixed Nov 3. |
 | Derived channels and import profiles: Manage… | `1705` | — | Missing | 5 | |
 | Channels (display settings list) | `1709`, `renderChannelSettings 10720` | — | Missing | 5 | |
 | Show the start page at launch | `1713` | Settings → Show the start page at launch; over the restored tabs at launch | Ported | 3 | Fixed Nov 3. |
@@ -284,11 +284,11 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Measure panel | `1727` | Not a setting; the rail toggles it (`settings.measureOpen`) | Partial | 3 | |
 | Open Measure when both cursors are placed | `1728` | `shell/Settings.svelte:21` | Ported | 3 | |
 | Channels from several files | `1729` | — | Missing | 5 | |
-| Clicking a row | `1730` | — | Missing | 3 | |
+| Clicking a row | `1730` | Settings → Clicking a row: Select first, Act at once (Explorer) | Ported | 3 | Fixed Nov 3. |
 | New pane from a dragged channel | `1731` | — | Missing | 3 | |
 | Tooltips: Short and learn, Full, Off | `1732` | Settings → Tooltips (`tips.ts`) | Ported | 3 | Fixed Nov 3. |
 | Learned tooltips: Reset | `1733` | Settings → Reset tooltips | Ported | 3 | Fixed Nov 3. |
-| Quiet interface | `1734` | — | Missing | 3 | |
+| Quiet interface | `1734` | Settings → Quiet interface: hides "pane N" badges, file sizes and category counts | Partial | 3 | Fixed Nov 3 for Explorer; chips, file numbers and grips aren't affected. |
 | Show tips and extra controls | `1735` | — | Missing | 3 | |
 | Show performance details | `1736` | `shell/Settings.svelte:22` | Ported | 3 | |
 | UI layout: Reset UI layout | `1737` | Settings → Layout | Ported | 3 | Fixed Nov 3. |
@@ -377,6 +377,9 @@ item 44 is fixed except that the native `title` is no longer set at all.
 
 Time format (Nov 3): Settings → Time format, Time decimals and Time labels, and the menu on the time range (Automatic,
 Clock, Seconds, Milliseconds, Minutes and seconds, Hours, Days). `t_time` covers it.
+
+File-open settings (Nov 3): When a file opens, Files opened for the first time, Forget layouts, Clicking a row (Act at
+once) and Quiet interface. `t_fileopen` covers them.
 
 ## 9. Look and feel
 

@@ -55,7 +55,7 @@
 
 {#if live.connect}<Connect />{/if}
 
-<div class="app" id="app" class:focus={ui.focus}>
+<div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI}>
   <Rail />
   <div class="col">
     <TopBar />

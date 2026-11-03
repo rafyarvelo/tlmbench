@@ -820,3 +820,8 @@ input[role='switch']:checked::after {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
   pointer-events: none;
 }
+
+/* Quiet interface: badges and counts wait until they matter */
+.quiet :is(.where, .meta, .catact + .meta) {
+  display: none;
+}

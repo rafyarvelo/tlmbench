@@ -8,6 +8,8 @@ import type { Workspace } from './workspaces';
 export type Mode = 'box' | 'pan' | 'cursor';
 export type Theme = 'system' | 'light' | 'dark';
 export type Tooltips = 'short' | 'full' | 'off';
+/** The panes a file opens with. */
+export type StarterPanes = 'starter' | 'starterboth' | 'table' | 'values' | 'none';
 export type TimeAxis = 'bottom' | 'every';
 export type ZoomSpeed = 'slow' | 'normal' | 'fast';
 /** What the left sidebar shows (empty: hidden). */
@@ -31,6 +33,13 @@ export interface Settings {
   timeFormat: TimeFormat;
   timeDecimals: string;
   timeAxis: TimeAxis;
+  /** When a file opens: its remembered panes ('remember') or a starter; and the starter for a file opened for the first time. */
+  fileOpen: 'remember' | StarterPanes;
+  fileOpenNew: StarterPanes;
+  /** Explorer rows: select first, or act at once. */
+  clickMode: 'select' | 'act';
+  /** Hides badges and counts until they matter. */
+  quietUI: boolean;
   /** Tooltips (Short retires each after three showings; `tipsSeen` counts them by tip). */
   tooltips: Tooltips;
   tipsSeen: Record<string, number>;
@@ -77,6 +86,10 @@ export const DEFAULTS: Settings = {
   timeFormat: 'auto',
   timeDecimals: 'auto',
   timeAxis: 'bottom',
+  fileOpen: 'remember',
+  fileOpenNew: 'starter',
+  clickMode: 'select',
+  quietUI: false,
   tooltips: 'short',
   tipsSeen: {},
   showStart: true,

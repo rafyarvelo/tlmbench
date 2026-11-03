@@ -16,7 +16,7 @@ import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTim
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { bindTips } from './tips';
-import { applyTheme, setPanelOpen, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
+import { applyTheme, type StarterPanes, setPanelOpen, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import {
@@ -995,6 +995,23 @@ function selectPane(i: number): void {
 }
 
 /** A new file's panes: one per channel up to four, else the channels shared out over four. */
+/** The panes a file opens with, by the starter chosen in Settings. */
+function startPanes(n: number, kind: StarterPanes): Pane[] {
+  const all = Array.from({ length: n }, (_, i) => i);
+  if (kind === 'none') return [];
+  if (kind === 'table') return [{ channels: all, mode: 'table' }];
+  if (kind === 'values') return [{ channels: all, mode: 'values' }];
+  const ps = defaultPanes(n);
+  return kind === 'starterboth' ? ps.map((p) => ({ ...p, mode: 'both' as const })) : ps;
+}
+
+/** A file's panes: those it was left with (when remembering and it has some that fit), else a starter. */
+function panesFor(path: string, n: number): Pane[] {
+  const saved = settings.layouts[path];
+  if (settings.fileOpen === 'remember' && saved?.every((p) => p.channels?.every((ch) => ch < n))) return copyPanes(saved);
+  return startPanes(n, settings.fileOpen === 'remember' ? settings.fileOpenNew : settings.fileOpen);
+}
+
 function defaultPanes(n: number): Pane[] {
   if (n <= 4) return Array.from({ length: n }, (_, i) => ({ channels: [i] }));
   const per = Math.ceil(n / 4);
@@ -1223,12 +1240,11 @@ async function openPath(path: string): Promise<void> {
       file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
       building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
     }
-    const saved = settings.layouts[file.info.path];
     const n = file.info.channels.length;
     tabData.set(key, {
       file,
       building,
-      panes: saved?.every((p) => p.channels?.every((ch) => ch < n)) ? copyPanes(saved) : defaultPanes(n),
+      panes: panesFor(file.info.path, n),
       sel: 0,
       t0: file.first,
       t1: file.last + 1n,
@@ -1270,7 +1286,7 @@ async function openLive(endpoint: string, descriptor: string): Promise<void> {
     tabData.set(key, {
       file,
       building: null,
-      panes: defaultPanes(o.info.channels.length),
+      panes: startPanes(o.info.channels.length, settings.fileOpenNew),
       sel: 0,
       t0: file.last - 30_000_000_000n,
       t1: file.last + 1n,

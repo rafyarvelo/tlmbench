@@ -90,7 +90,10 @@
     } else if (e.shiftKey && sel?.startsWith('ch:')) {
       const [a, b] = [shownChans.indexOf(Number(sel.slice(3))), shownChans.indexOf(ch)];
       if (a >= 0 && b >= 0) picked = shownChans.slice(Math.min(a, b), Math.max(a, b) + 1);
-    } else picked = [];
+    } else {
+      picked = [];
+      if (settings.clickMode === 'act') toggleChannel(ch);
+    }
     if (!e.shiftKey) sel = id;
   }
   function treeKey(e: KeyboardEvent) {
@@ -218,7 +221,7 @@
     style="--d: {depth}"
     data-path={path}
     data-tip={path}
-    onclick={() => (sel = path)}
+    onclick={() => ((sel = path), settings.clickMode === 'act' && actions.openPath(path))}
     ondblclick={() => actions.openPath(path)}
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}

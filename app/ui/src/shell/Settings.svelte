@@ -14,6 +14,7 @@
     /** A select's choices; none: a switch. */
     options?: [string, string][];
   }
+  const STARTERS: [string, string][] = [['starter', 'Starter charts'], ['starterboth', 'Starter charts + tables'], ['table', 'One table, every channel'], ['values', 'One values pane'], ['none', 'Nothing plotted']];
   const ROWS: Row[] = [
     { key: 'mode', section: 'Mouse', basic: true, label: 'Mouse mode', hint: 'What dragging across a chart does. Shift-drag or middle-drag always pans.', options: [['box', 'Box zoom'], ['pan', 'Pan'], ['cursor', 'Cursors']] },
     { key: 'zoomSpeed', section: 'Mouse', label: 'Zoom speed', hint: 'How far one wheel notch or trackpad swipe zooms.', options: [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']] },
@@ -23,6 +24,10 @@
     { key: 'theme', section: 'Display', basic: true, label: 'Theme', hint: 'Match system follows your light or dark setting.', options: [['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']] },
     { key: 'exCategories', section: 'Display', basic: true, label: 'Group channels into categories', hint: "Explorer groups a recording's channels by the start of their names (before the first _ or .)." },
     { key: 'tooltips', section: 'Display', basic: true, label: 'Tooltips', hint: 'Short shows the first sentence and the shortcut, and each tip retires after three showings. Full always shows everything.', options: [['short', 'Short, then learned'], ['full', 'Full'], ['off', 'Off']] },
+    { key: 'fileOpen', section: 'Files', basic: true, label: 'When a file opens', hint: 'Remember: the panes you had for that file last time (a file opened for the first time uses the choice below). The others always start from that choice.', options: [['remember', 'Remember its last layout'], ...STARTERS] },
+    { key: 'fileOpenNew', section: 'Files', basic: true, label: 'Files opened for the first time', hint: 'Starter charts: one chart per group of channels, up to four. Starter charts + tables: the same, each with its table below. One table: every channel in a single table. One values pane: the value of every channel at the pointer.', options: STARTERS },
+    { key: 'clickMode', section: 'Files', basic: true, label: 'Clicking a row', hint: 'Select first: one click selects a file or channel, double-click (or Enter) opens a file, the checkbox plots a channel. Act at once: one click opens or plots.', options: [['select', 'Select first'], ['act', 'Act at once']] },
+    { key: 'quietUI', section: 'Display', basic: true, label: 'Quiet interface', hint: 'Hides badges and counts until they matter: the panes a channel is in, file sizes and category counts.' },
     { key: 'showStart', section: 'Display', label: 'Show the start page at launch', hint: 'Recent recordings and ways to open things, over your tabs when the app starts.' },
     { key: 'timeFormat', section: 'Display', basic: true, label: 'Time format', hint: 'Used for axes, readouts, tables and cursors. Click the time range in the top bar to switch quickly.', options: TIME_FORMATS.map(([k, n, ex]) => [k, `${n} · ${ex}`] as [string, string]) },
     { key: 'timeDecimals', section: 'Display', label: 'Time decimals', options: [['auto', 'Automatic'], ...[0, 1, 2, 3, 4, 5, 6].map((n) => [String(n), String(n)] as [string, string])] },
@@ -70,7 +75,7 @@
   {:else}
     <p class="setnone">No setting matches “{q.trim()}”.</p>
   {/each}
-  <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
+  <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
   <footer><span>Saved as you change them</span><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
 </div>
 
