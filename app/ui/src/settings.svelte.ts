@@ -59,6 +59,8 @@ export interface Settings {
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
+  /** Explorer also lists the files the app can't open. */
+  exShowAll: boolean;
   /** Explorer lists only the open files. */
   exOnlyOpen: boolean;
   sidesSwapped: boolean;
@@ -111,6 +113,7 @@ export const DEFAULTS: Settings = {
   recent: [],
   exCategories: true,
   exCatClosed: [],
+  exShowAll: false,
   exOnlyOpen: false,
   sidesSwapped: false,
   measureOpen: false,

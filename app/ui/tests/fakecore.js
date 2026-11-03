@@ -142,6 +142,7 @@
     /** What Open folder returns, and folders that exist without recordings. */
     pickFolder: null,
     folders: [],
+    unopenable: [],
     /** Live sources by endpoint: a recording spec, plus `already` (seconds recorded when it connects). */
     sources: {},
     calls: [],
@@ -314,14 +315,14 @@
       const files = Object.keys(fake.files).filter((p) => p.startsWith(path.replace(/\/$/, '') + '/'));
       if (!files.length && !fake.folders.includes(path)) throw `${path} isn't a folder that can be read`;
       const root = { path, name: path.split('/').pop(), dir: true, bytes: 0, children: [] };
-      for (const f of files.sort()) {
+      for (const f of [...files, ...(fake.unopenable ?? []).filter((p) => p.startsWith(path.replace(/\/$/, '') + '/'))].sort()) {
         let node = root;
         const parts = f.slice(path.length + 1).split('/');
         parts.forEach((part, k) => {
           const p = node.path + '/' + part;
           let child = node.children.find((c) => c.path === p);
           if (!child) {
-            child = { path: p, name: part, dir: k < parts.length - 1, bytes: k < parts.length - 1 ? 0 : 1234567, children: [] };
+            child = { path: p, name: part, dir: k < parts.length - 1, bytes: k < parts.length - 1 ? 0 : 1234567, openable: !(fake.unopenable ?? []).includes(p), children: [] };
             node.children.push(child);
           }
           node = child;

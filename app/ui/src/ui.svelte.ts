@@ -8,6 +8,8 @@ export interface FolderEntry {
   name: string;
   dir: boolean;
   bytes: number;
+  /** A file the app can open (undefined: yes). Others are listed only when Explorer is asked to show them. */
+  openable?: boolean;
   children: FolderEntry[];
 }
 
@@ -54,6 +56,8 @@ export const actions = {
   open: () => {},
   openFolder: () => {},
   openPath: (_path: string) => {},
+  /** Opens a file and closes every other tab. */
+  openOnly: (_path: string) => {},
   closeFile: () => {},
   showTab: (_key: number) => {},
   closeTab: (_key: number) => {},

@@ -574,12 +574,14 @@ struct FolderEntry {
     name: String,
     dir: bool,
     bytes: u64,
+    /// Files: whether the app can open it (a recording format); the others are listed so Explorer can offer to show them.
+    openable: bool,
     /// Folders: what they hold, recordings and the folders that lead to some.
     children: Vec<FolderEntry>,
 }
 
-/// The recordings (CSV, TSV, TXT and .tlm files) under `path`, in their folders, sorted by name; folders without
-/// any, and hidden ones, are left out. Only reads the folder (Explorer's Open folder).
+/// The files under `path`, in their folders, sorted by name (recordings are `openable`: CSV, TSV, TXT, .tlm and
+/// Parquet); folders without any file, and hidden ones, are left out. Only reads the folder (Explorer's Open folder).
 #[tauri::command]
 async fn list_folder(path: String) -> Result<FolderEntry, String> {
     fn walk(p: &Path, depth: u32) -> Option<FolderEntry> {
@@ -587,11 +589,13 @@ async fn list_folder(path: String) -> Result<FolderEntry, String> {
         let meta = std::fs::metadata(p).ok()?;
         if !meta.is_dir() {
             let ext = p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
-            return matches!(ext.as_deref(), Some("csv" | "tsv" | "txt" | "tlm" | "parquet")).then(|| FolderEntry {
+            let openable = matches!(ext.as_deref(), Some("csv" | "tsv" | "txt" | "tlm" | "parquet"));
+            return Some(FolderEntry {
                 path: p.display().to_string(),
                 name,
                 dir: false,
                 bytes: meta.len(),
+                openable,
                 children: Vec::new(),
             });
         }
@@ -611,6 +615,7 @@ async fn list_folder(path: String) -> Result<FolderEntry, String> {
             name,
             dir: true,
             bytes: 0,
+            openable: false,
             children,
         })
     }

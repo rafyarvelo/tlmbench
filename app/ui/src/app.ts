@@ -2201,6 +2201,11 @@ Object.assign(actions, {
   open: () => void chooseFile(),
   openFolder: () => void chooseFolder(),
   openPath: (p: string) => void openPath(p),
+  openOnly: (p: string) =>
+    void (async () => {
+      await openPath(p);
+      for (const t of [...tabs.list].filter((t) => t.path !== p)) await closeTab(t.key);
+    })(),
   closeFile: () => void closeAll(),
   showTab: (key: number) => void showTab(key),
   closeTab: (key: number) =>

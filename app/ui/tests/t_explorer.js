@@ -19,7 +19,7 @@ run('explorer', async ({ p, check, text, visible, fake, paneCount, until, settin
   await p.click('#exFolder');
   check('Open folder lists it, its folders expanded', await until(() => document.querySelectorAll('#explorer .row.file').length === 3), await rows());
   check('folders then files, by name', (await rows()).join() === 'flights,2026-10-12,flight.tlm,hover.csv,bench,esc_bench.csv', await rows());
-  check('sizes beside files', /1\.2 MB/.test(await text('#explorer .row.file')));
+  check('no sizes beside files', !/MB|KB/.test(await text('#explorer .row.file')));
 
   // select first: a click selects and offers Open; double-click opens
   await p.click('#explorer .row.file[data-path$="hover.csv"]');
