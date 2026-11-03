@@ -4486,10 +4486,13 @@ dependencies = [
  "arrow-schema",
  "blake3",
  "bytemuck",
+ "crc32fast",
  "csv-core",
  "dirs",
+ "flate2",
  "lexical-core",
  "libc",
+ "lz4_flex",
  "memchr",
  "memmap2",
  "parquet",
@@ -4501,6 +4504,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tlmbench-core",
  "toml 1.1.8+spec-1.1.0",
+ "zstd",
 ]
 
 [[package]]

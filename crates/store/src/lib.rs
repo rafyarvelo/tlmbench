@@ -131,7 +131,8 @@ impl Store {
         // pyramids of every layout version: older ones are no longer read, and age out like any entry
         let versions = fs::read_dir(self.root.join("pyr")).into_iter().flatten().flatten().map(|e| e.path());
         let columns = COLUMN_CACHES.iter().map(|&k| (k, self.root.join(k)));
-        let dirs = columns.chain(versions.map(|d| ("pyramid", d)));
+        let packets = std::iter::once(("packets", self.root.join("packets")));
+        let dirs = columns.chain(packets).chain(versions.map(|d| ("pyramid", d)));
         for (kind, dir) in dirs {
             let Ok(rd) = fs::read_dir(&dir) else { continue };
             for e in rd.flatten() {
@@ -143,6 +144,8 @@ impl Store {
                 let building = kind == "pyramid" && !path.join("manifest.json").exists();
                 let fingerprint = match kind {
                     "pyramid" => pyr::fingerprint_of(&path),
+                    // a packet index is read into memory on open: removing it never disturbs a reader
+                    "packets" => None,
                     _ => Some(name.clone()),
                 };
                 out.push(Entry {
@@ -201,7 +204,7 @@ const COLUMN_CACHES: [&str; 2] = ["csv", "parquet"];
 /// One cache entry.
 #[derive(Clone, Debug, Serialize)]
 pub struct Entry {
-    /// "csv" or "parquet" (the column cache of that format), or "pyramid".
+    /// "csv" or "parquet" (the column cache of that format), "packets" (a packet index) or "pyramid".
     pub kind: &'static str,
     pub path: PathBuf,
     pub bytes: u64,

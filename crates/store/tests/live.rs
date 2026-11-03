@@ -36,6 +36,7 @@ fn descriptor(column: bool) -> Descriptor {
     };
     Descriptor {
         sequence: None,
+        packets: None,
         schema: SCHEMA,
         name: None,
         endian: Endian::Little,

@@ -1,5 +1,6 @@
 //! Synthetic recordings: sine + noise + spikes + gaps, the same for a given seed, as the reference fixed-width
-//! format (.tlm) and as CSV. Recordings are rebuilt from the seed, never stored in the repo.
+//! format (.tlm), as CSV, and as packet files (`packets`, `zstd`, `lz4`, `gzip`: `<name>.<format>.bin` with its
+//! descriptor beside it as `<name>.<format>.toml`). Recordings are rebuilt from the seed, never stored in the repo.
 //!
 //! Each channel is a sine (period 30 s × (channel + 1), amplitude 10) plus uniform noise of ±0.5, a ±25 spike
 //! about every 200k samples, and a gap about every 5M samples: a run of NaN for 0.1 s in .tlm (fixed rate), and
@@ -16,7 +17,9 @@ use std::time::Instant;
 
 use clap::{Parser, ValueEnum};
 use tlmbench_core::datetime::parse_iso;
-use tlmbench_decode::descriptor::{DType, Descriptor, Endian, Field, SCHEMA, TimeSpec};
+use tlmbench_decode::descriptor::{
+    Checksum, Compression, Counts, DType, Descriptor, Endian, Field, LengthField, Packets, SCHEMA, TimeSpec,
+};
 use tlmbench_decode::reference;
 
 #[derive(Parser, Debug)]
@@ -70,12 +73,32 @@ struct Args {
     verify: Option<PathBuf>,
     #[arg(long, requires = "verify")]
     expect: Option<u64>,
+    /// Packet files: records per packet
+    #[arg(long, default_value_t = 1000)]
+    per_packet: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum Format {
     Tlm,
     Csv,
+    /// Packets, uncompressed
+    Packets,
+    Zstd,
+    Lz4,
+    Gzip,
+}
+
+impl Format {
+    fn compression(self) -> Option<Compression> {
+        match self {
+            Format::Packets => Some(Compression::None),
+            Format::Zstd => Some(Compression::Zstd),
+            Format::Lz4 => Some(Compression::Lz4),
+            Format::Gzip => Some(Compression::Gzip),
+            Format::Tlm | Format::Csv => None,
+        }
+    }
 }
 
 fn parse_count(s: &str) -> Result<u64, String> {
@@ -158,6 +181,7 @@ fn progress(label: &str, i: u64, n: u64, started: Instant) {
 fn write_tlm(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
     let desc = Descriptor {
         sequence: None,
+        packets: None,
         schema: SCHEMA,
         name: Some("tlmbench-gen synthetic".into()),
         endian: Endian::Little,
@@ -193,6 +217,89 @@ fn write_tlm(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
             w.write_all(&v.to_le_bytes())?;
         }
         progress("tlm", i, a.samples, started);
+    }
+    w.flush()?;
+    eprintln!();
+    Ok(())
+}
+
+/// The descriptor of the packet files: a 16-byte header (sync `EB90`, the u32 payload length, 2 spare bytes, the
+/// u64 packet counter), records of an f32 per channel at the rate, a CRC-32 after each payload.
+fn packet_descriptor(a: &Args, t0: i64, compression: Compression) -> Descriptor {
+    let mut fields: Vec<Field> = (0..a.channels)
+        .map(|k| Field {
+            name: format!("signal_{k}"),
+            dtype: DType::F32,
+            offset: 16 + 4 * k as u64,
+            unit: Some("V".into()),
+            scale: 1.0,
+            value_offset: 0.0,
+        })
+        .collect();
+    fields.push(Field {
+        name: "packet".into(),
+        dtype: DType::U64,
+        offset: 8,
+        unit: None,
+        scale: 1.0,
+        value_offset: 0.0,
+    });
+    Descriptor {
+        sequence: None,
+        schema: SCHEMA,
+        name: Some(format!("tlmbench-gen packets ({compression:?})").to_lowercase()),
+        endian: Endian::Little,
+        header_size: 0,
+        record_size: 4 * a.channels as u64,
+        time: TimeSpec::Rate { rate_hz: a.rate as f64, t0_ns: t0 },
+        fields,
+        packets: Some(Packets {
+            sync: Some("EB90".into()),
+            header_size: 16,
+            length: LengthField { offset: 2, dtype: DType::U32, counts: Counts::Payload, adjust: 0 },
+            checksum: Checksum::Crc32,
+            compression,
+        }),
+    }
+}
+
+/// A packet file of the same signal as the .tlm (NaN gaps included), `--per-packet` records each.
+fn write_packets(path: &PathBuf, a: &Args, t0: i64, compression: Compression) -> io::Result<()> {
+    let desc = packet_descriptor(a, t0, compression);
+    std::fs::write(path.with_extension("toml"), desc.to_toml())?;
+    let p = desc.packets.as_ref().unwrap();
+    let mut w = BufWriter::with_capacity(8 << 20, File::create(path)?);
+    let mut sig = Signal::new(a.seed, a.channels, a.rate);
+    let mut vals = vec![0f32; a.channels];
+    let gap_len = (a.rate / 10).max(1);
+    let (mut gap_left, started) = (0u64, Instant::now());
+    let per = a.per_packet.max(1) as u64;
+    let mut payload = Vec::with_capacity(per as usize * 4 * a.channels);
+    let mut header = [0u8; 16];
+    let mut flush = |payload: &mut Vec<u8>, k: u64, w: &mut BufWriter<File>| -> io::Result<()> {
+        header[8..].copy_from_slice(&k.to_le_bytes());
+        let bytes = tlmbench_decode::packets::encode_packet(p, false, &header, payload).map_err(io::Error::other)?;
+        payload.clear();
+        w.write_all(&bytes)
+    };
+    for i in 0..a.samples {
+        if sig.sample(i, &mut vals) {
+            gap_left = gap_len;
+        }
+        if gap_left > 0 {
+            gap_left -= 1;
+            vals.fill(f32::NAN);
+        }
+        for v in &vals {
+            payload.extend_from_slice(&v.to_le_bytes());
+        }
+        if (i + 1) % per == 0 {
+            flush(&mut payload, i / per, &mut w)?;
+        }
+        progress("packets", i, a.samples, started);
+    }
+    if !payload.is_empty() {
+        flush(&mut payload, a.samples / per, &mut w)?;
     }
     w.flush()?;
     eprintln!();
@@ -328,10 +435,13 @@ fn main() -> io::Result<()> {
         let (path, started) = match f {
             Format::Tlm => (out.join(format!("{name}.{}", reference::EXTENSION)), Instant::now()),
             Format::Csv => (out.join(format!("{name}.csv")), Instant::now()),
+            f => (out.join(format!("{name}.{}.bin", format!("{f:?}").to_lowercase())), Instant::now()),
         };
-        match f {
-            Format::Tlm => write_tlm(&path, &a, t0)?,
-            Format::Csv => write_csv(&path, &a, t0)?,
+        match (f, f.compression()) {
+            (Format::Tlm, _) => write_tlm(&path, &a, t0)?,
+            (Format::Csv, _) => write_csv(&path, &a, t0)?,
+            (_, Some(c)) => write_packets(&path, &a, t0, c)?,
+            (_, None) => unreachable!("every other format is a packet file"),
         }
         let size = std::fs::metadata(&path)?.len();
         println!("{} ({:.1} MB, {:.1} s)", path.display(), size as f64 / 1e6, started.elapsed().as_secs_f64());

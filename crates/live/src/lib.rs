@@ -194,6 +194,11 @@ impl Source {
             (Endpoint::File(_), _) => None,
             (_, Some(d)) => {
                 d.validate().map_err(|e| invalid(e.to_string()))?;
+                if d.packets.is_some() {
+                    return Err(invalid(
+                        "live sources don't read [packets] framing yet: frames are fixed-width records".into(),
+                    ));
+                }
                 Some(d.clone())
             }
             (_, None) => return Err(invalid(format!("{endpoint} needs a descriptor for its frames"))),
@@ -692,6 +697,7 @@ mod tests_support {
         };
         Descriptor {
             sequence: Some("seq".into()),
+            packets: None,
             schema: SCHEMA,
             name: Some("test".into()),
             endian: Endian::Little,

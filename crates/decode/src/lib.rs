@@ -5,6 +5,8 @@
 //! - Fixed-width records: read in place from the memory-mapped file, laid out by a format [`descriptor`]. The
 //!   tlmbench [`reference`] format carries its descriptor in its header; other files take one with
 //!   `OpenOptions::descriptor`.
+//! - Packet files: a descriptor with `[packets]` frames records in packets, compressed or not; a packet index is
+//!   built once in the cache and packets are decompressed on demand (see [`packets`]).
 //!
 //! Nothing here writes next to the data: the only writes are cache files under the cache root.
 
@@ -14,6 +16,7 @@ pub mod csv;
 pub mod descriptor;
 mod error;
 pub mod fixed;
+pub mod packets;
 pub mod parquet;
 mod parquet_pages;
 pub mod reference;
@@ -36,6 +39,12 @@ pub struct OpenOptions {
 /// Opens a recording, choosing the decoder from the options and the file's first bytes.
 pub fn open(path: &Path, opts: &OpenOptions) -> Result<Box<dyn Recording>> {
     if let Some(desc) = &opts.descriptor {
+        let d = descriptor::Descriptor::load(desc)?;
+        if d.packets.is_some() {
+            let root = cache::cache_root(opts.cache_dir.as_deref());
+            let name = d.name.clone().unwrap_or_else(|| "packets".into());
+            return Ok(Box::new(packets::PacketFile::open(path, d, &name, &root)?));
+        }
         return Ok(Box::new(fixed::FixedWidth::open_with_descriptor(path, desc)?));
     }
     let head = bytes::read_head(path, 4096)?;

@@ -15,7 +15,7 @@ use tlmbench_core::{
 
 use crate::bytes::{self, Bytes, read_exact_at};
 use crate::descriptor::{DType, Descriptor, Endian, Field, TimeSpec};
-use crate::error::{Error, Result, format_err, io_err};
+use crate::error::{Result, format_err};
 use crate::reference;
 use crate::strided::{FieldTimes, Pod, Strided};
 
@@ -57,11 +57,7 @@ impl FixedWidth {
 
     /// Opens a fixed-width file laid out by a separate descriptor file.
     pub fn open_with_descriptor(path: &Path, descriptor: &Path) -> Result<Self> {
-        let text = std::fs::read_to_string(descriptor).map_err(io_err(descriptor))?;
-        let desc = Descriptor::parse(&text).map_err(|e| match e {
-            Error::Descriptor(msg) => Error::Descriptor(format!("{}: {msg}", descriptor.display())),
-            other => other,
-        })?;
+        let desc = Descriptor::load(descriptor)?;
         let bytes = bytes::map(path)?;
         let header_len = desc.header_size as usize;
         let name = desc.name.clone().unwrap_or_else(|| "fixed-width".into());
@@ -77,6 +73,12 @@ impl FixedWidth {
 
     fn new(path: &Path, bytes: Bytes, header_len: usize, desc: Descriptor, format: &str) -> Result<Self> {
         desc.validate().map_err(|e| format_err(path, e.to_string()))?;
+        if desc.packets.is_some() {
+            return Err(format_err(
+                path,
+                "a descriptor with [packets] lays out a packet file, not fixed-width records",
+            ));
+        }
         if header_len > bytes.len() {
             return Err(format_err(path, format!("{} bytes, shorter than its {header_len}-byte header", bytes.len())));
         }
@@ -470,7 +472,15 @@ fn gather_into<V: Pod>(records: &[u8], stride: usize, offset: usize, big: bool, 
 }
 
 /// [`gather_into`] for a field of type `dtype`.
-fn gather_tile(dtype: DType, records: &[u8], stride: usize, offset: usize, big: bool, words: &mut [u64], at: usize) {
+pub(crate) fn gather_tile(
+    dtype: DType,
+    records: &[u8],
+    stride: usize,
+    offset: usize,
+    big: bool,
+    words: &mut [u64],
+    at: usize,
+) {
     match dtype {
         DType::I8 => gather_into::<i8>(records, stride, offset, big, words, at),
         DType::I16 => gather_into::<i16>(records, stride, offset, big, words, at),
@@ -508,6 +518,7 @@ mod tests {
     fn rate_file_reads_contiguous_f32() {
         let desc = Descriptor {
             sequence: None,
+            packets: None,
             schema: 1,
             name: None,
             endian: Endian::Little,
@@ -531,6 +542,7 @@ mod tests {
         v.value_offset = 1.0;
         let desc = Descriptor {
             sequence: None,
+            packets: None,
             schema: 1,
             name: Some("bench".into()),
             endian: Endian::Big,
@@ -564,6 +576,7 @@ mod tests {
         v.value_offset = 10.0;
         let desc = Descriptor {
             sequence: None,
+            packets: None,
             schema: 1,
             name: None,
             endian: Endian::Big,
@@ -597,6 +610,7 @@ mod tests {
     fn block_summaries_match_per_channel_ones() {
         let desc = Descriptor {
             sequence: None,
+            packets: None,
             schema: 1,
             name: None,
             endian: Endian::Big,
@@ -642,6 +656,7 @@ mod tests {
     fn decoded_chunks_read_like_the_fields() {
         let desc = Descriptor {
             sequence: None,
+            packets: None,
             schema: 1,
             name: None,
             endian: Endian::Big,
@@ -680,6 +695,7 @@ mod tests {
     fn a_native_one_field_file_is_not_chunked() {
         let desc = Descriptor {
             sequence: None,
+            packets: None,
             schema: 1,
             name: None,
             endian: Endian::Little,
@@ -696,6 +712,7 @@ mod tests {
     fn backwards_time_is_an_error() {
         let desc = Descriptor {
             sequence: None,
+            packets: None,
             schema: 1,
             name: None,
             endian: Endian::Little,
@@ -718,6 +735,7 @@ mod tests {
     fn truncated_header_is_an_error() {
         let desc = Descriptor {
             sequence: None,
+            packets: None,
             schema: 1,
             name: None,
             endian: Endian::Little,

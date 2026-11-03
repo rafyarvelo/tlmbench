@@ -33,6 +33,7 @@ pub fn descriptor(channels: usize, rate: u64) -> Descriptor {
     fields.extend((0..channels).map(|k| field(format!("signal_{k}"), DType::F32, 8 + 4 * k as u64, Some("V"))));
     Descriptor {
         sequence: Some("seq".into()),
+        packets: None,
         schema: SCHEMA,
         name: Some("tlmbench-gen live sender".into()),
         endian: Endian::Little,

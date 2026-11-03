@@ -40,6 +40,7 @@ fn reference_file_text_output() {
     let path = dir.path().join("rec.tlm");
     let desc = Descriptor {
         sequence: None,
+        packets: None,
         schema: SCHEMA,
         name: None,
         endian: Endian::Little,

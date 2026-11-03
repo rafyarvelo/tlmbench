@@ -27,6 +27,7 @@ fn recording(dir: &Path, n: usize) -> PathBuf {
     };
     let desc = Descriptor {
         sequence: None,
+        packets: None,
         schema: SCHEMA,
         name: None,
         endian: Endian::Little,

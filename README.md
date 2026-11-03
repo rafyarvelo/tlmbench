@@ -50,8 +50,9 @@ app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in t
   scrub back, Jump to live) and shows the stream's health, while the session records to the app's Recordings folder
   (never beside the data) and reopens like any file.
 - **Formats:** CSV (delimiter, units and time column detected) and Parquet (typed columns), each converted once to
-  a column cache, and fixed-width binary records described by a TOML descriptor, including the self-describing `.tlm`
-  reference format.
+  a column cache; fixed-width binary records described by a TOML descriptor, including the self-describing `.tlm`
+  reference format; and packet files (sync word, length, checksum, zstd/lz4/gzip payloads) by the same descriptor,
+  indexed once and decompressed on demand (the CLI for now; the app gets them with the descriptor form).
 - **The CLI:**
 
   ```

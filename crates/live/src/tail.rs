@@ -337,6 +337,7 @@ impl CsvParser {
         }
         Descriptor {
             sequence: None,
+            packets: None,
             schema: SCHEMA,
             name: Some("tailed CSV".into()),
             endian: Endian::Little,
