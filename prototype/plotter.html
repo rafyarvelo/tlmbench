@@ -1478,6 +1478,25 @@ section[data-panel="channels"] { display: none !important; }
 .impcath[aria-expanded="false"] svg { transform: rotate(-90deg); }
 .impcath small { color: var(--fg-muted); font-weight: 400; }
 .impcat .linkbtn { font-size: 11.5px; margin-left: auto; }
+/* format descriptor dialog */
+.dscfields, .dschex, .dsctab, .dscview { flex: none; }
+.dscfields { border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.dscf { display: grid; grid-template-columns: 10px minmax(110px, 1.4fr) 76px 64px 70px 70px 70px 24px; gap: 6px; align-items: center; padding: 3px 6px; border-radius: 4px; font-size: 12px; }
+.dscf.head { color: var(--fg-muted); font-size: 11px; }
+.dscf.bad { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.dscf .sw { width: 10px; height: 10px; border-radius: 4px; }
+.dscf input, .dscf select { min-height: 24px; border-radius: 4px; border: 1px solid var(--border); background: var(--raised); color: var(--fg); padding: 0 6px; font: 12px var(--font-ui); min-width: 0; }
+.dscf input[type=number] { font-family: var(--font-data); }
+.dschex { font: 11.5px var(--font-data); display: flex; flex-direction: column; gap: 2px; overflow-x: auto; padding: 6px 8px; border-radius: 8px; background: var(--raised); border: 1px solid var(--border); }
+.dschex div { white-space: nowrap; }
+.dschex span { padding: 0 1px; border-radius: 4px; }
+.dschex .at { color: var(--fg-muted); margin-right: 8px; }
+.dsctab { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dsctab th { text-align: left; font-weight: 500; color: var(--fg-muted); font-size: 11px; padding: 2px 6px; }
+.dsctab td { font-family: var(--font-data); padding: 2px 6px; border-top: 1px solid var(--grid); white-space: nowrap; }
+.dsctab td.bad { color: var(--danger); }
+.dscerr { font-size: 12px; color: var(--danger); margin: 0; }
+.dsctoml { font: 11.5px var(--font-data); white-space: pre; overflow: auto; max-height: 220px; margin: 6px 0 0; padding: 8px; border-radius: 8px; background: var(--raised); border: 1px solid var(--border); }
 .impempty { padding: 8px 10px; color: var(--fg-muted); font-size: 12px; }
 @media (max-width: 720px) { .impbody { flex-direction: column; overflow-y: auto; } .impfiles { flex: none; border-right: 0; border-bottom: 1px solid var(--grid); } .impmain { overflow: visible; } .impcol { grid-template-columns: 22px 1fr 1fr; } }
 .ratechip { flex: none; border: 0; background: transparent; color: var(--fg-muted); font: 11px var(--font-data); padding: 1px 5px; border-radius: 4px; cursor: pointer; }
@@ -1986,6 +2005,8 @@ const FILES = [
   { key: 'bench', short: 'bench', name: 'esc_bench_1412.csv', folder: 'bench', dur: 840, clock: null, desc: 'ESC bench test · 8 channels · 14 min',
     keys: [[0, 1200], [60, 1200], [90, 3000], [240, 3000], [270, 5000], [420, 5000], [450, 7200], [600, 7200], [640, 1200], [840, 1200]], shocks: [], gaps: {},
     channels: ['motor_rpm', 'throttle_pct', 'current_a', 'battery_v', 'power_w', 'esc_temp_1', 'esc_temp_2', 'consumed_mah'] },
+  { key: 'escbin', short: 'escbin', name: 'esc_bench_0930.bin', folder: 'bench', dur: 600, clock: null, desc: 'binary · needs a format descriptor', binary: true,
+    keys: [[0, 1200], [40, 1200], [60, 3000], [300, 3000], [330, 5200], [540, 5200], [570, 1200], [600, 1200]], shocks: [], gaps: {}, rate: 100, channels: [] },
   { key: 'notes', name: 'run_notes.md', folder: 'flights/2026-10-12', unreadable: true, desc: 'not a recording' },
   { key: 'video', name: 'onboard_0412.mp4', folder: 'flights/2026-10-12', unreadable: true, desc: 'video, no decoder' },
   { key: 'cal', name: 'imu_calibration.pdf', folder: 'bench', unreadable: true, desc: 'not a recording' },
@@ -2299,7 +2320,7 @@ function renderFiles() {
     VIS.filter(f => f.folder === folder).forEach(f => {
       const dur = f.live ? '' : f.dur ? fmtDur(f.dur) : '';
       const isRef = f.open && f.slot === 1;
-      const badge = f.unreadable ? '' : f.open && settings.fileLabel !== 'number' ? (isRef && multiFile() ? `<span class="fbadge on" title="The primary file: time zero for this tab">primary</span>` : '') : f.open ? `<span class="fbadge on" title="${isRef ? 'File 1, the primary file: time zero and plain channel names' : `File ${f.slot}: channels named name·${f.slot}`}">${settings.fileLabel === 'number' ? (isRef ? '1 · primary' : 'file ' + f.slot) : (isRef ? 'primary' : 'open')}</span>` : (settings.quietUI !== false ? '' : `<span class="fbadge">cached</span>`);
+      const badge = f.unreadable ? '' : f.binary && !f.decoder && !decoderFor(f) ? '<span class="fbadge" title="Open it to describe its byte layout">no descriptor</span>' : f.open && settings.fileLabel !== 'number' ? (isRef && multiFile() ? `<span class="fbadge on" title="The primary file: time zero for this tab">primary</span>` : '') : f.open ? `<span class="fbadge on" title="${isRef ? 'File 1, the primary file: time zero and plain channel names' : `File ${f.slot}: channels named name·${f.slot}`}">${settings.fileLabel === 'number' ? (isRef ? '1 · primary' : 'file ' + f.slot) : (isRef ? 'primary' : 'open')}</span>` : (settings.quietUI !== false ? '' : `<span class="fbadge">cached</span>`);
       const activeRef = tabs[activeTab] && tabs[activeTab].ref;
       html += `<div class="fitem${f.open ? ' open' : ''}${f.key === activeRef ? ' active' : ''}${f.unreadable ? ' dim' : ''}${parts.length > 1 ? ' deep' : ''}" data-file="${f.key}" data-tip="${esc(f.name)} · ${esc(f.desc)}${dur ? ' · ' + dur : ''}${f.unreadable ? '' : (settings.clickMode === 'act' ? '. Click' : '. Double-click') + (f.open ? ' to show its tab' : ' to open it in a new tab')}">`
         + (f.open && !f.unreadable ? `<button class="fexp" data-fexp="${f.key}" aria-expanded="true" aria-label="Show or hide the channels of ${esc(f.name)}">${ICON.chev}</button>` : '')
@@ -2650,7 +2671,7 @@ function keepPane(p) { return !!(p && (p.ids.length || p.keepEmpty || p.mode ===
    Every toolbar and panel choice is a setting, saved in this browser (localStorage) as it changes.
    The Settings popover and the toolbar controls edit the same values. */
 const SETTINGS_KEY = 'plotter.settings';
-const SETTING_DEFAULTS = { theme: 'system', locked: false, cursorsWhenLocked: true, lockLayout: true, sortFilterWhenLocked: true, mode: 'box', dblFit: true, wheelZoom: true, eventsTables: true, eventCats: DEFAULT_CATS, panelLayout: { left: ['files', 'channels', 'events', 'checks', 'layouts', 'settings'], right: ['cursors', 'stats'] }, panelCollapsed: [], sessionLocation: 'cache', fileFilter: '', fileRegex: false, fileShowAll: false, overviewCh: 'auto', overviewTop: false, panelLeft: true, panelRight: false, railView: 'explorer', tableClickSort: false, groupChannels: true, timeFormat: 'auto', timeDecimals: 'auto', importProfiles: {}, importOverrides: {}, valueMaps: {}, measureAuto: true, showPerf: false, showHints: false, settingsView: 'basic', dropNewView: 'chart', fileLabel: 'prefix', clickMode: 'select', tipMode: 'short', tipUses: {}, quietUI: true, layoutV: 0, sideWidthLeft: 0, sideWidthRight: 0, startPage: true, drawRaw: '0', limits: {}, chdisp: {}, eventRules: [], liveRecDir: '~/.recordings', fileOpen: 'remember', fileOpenNew: 'table', fileLayouts: {}, fileOpenNewV: 2, zoomSpeed: 'normal', paneEventsFrom: 'pane', timeAxis: 'auto', customWidgets: [], fileAliases: {}, exOnlyOpen: false, fileRecipes: {}, recipes: [], recipesSeeded: false, checkSets: [], fileChecks: {}, layoutChecks: {}, checksSeeded: false, rulesMerged: false };
+const SETTING_DEFAULTS = { theme: 'system', locked: false, cursorsWhenLocked: true, lockLayout: true, sortFilterWhenLocked: true, mode: 'box', dblFit: true, wheelZoom: true, eventsTables: true, eventCats: DEFAULT_CATS, panelLayout: { left: ['files', 'channels', 'events', 'checks', 'layouts', 'settings'], right: ['cursors', 'stats'] }, panelCollapsed: [], sessionLocation: 'cache', fileFilter: '', fileRegex: false, fileShowAll: false, overviewCh: 'auto', overviewTop: false, panelLeft: true, panelRight: false, railView: 'explorer', tableClickSort: false, groupChannels: true, timeFormat: 'auto', timeDecimals: 'auto', importProfiles: {}, importOverrides: {}, valueMaps: {}, measureAuto: true, showPerf: false, showHints: false, settingsView: 'basic', dropNewView: 'chart', fileLabel: 'prefix', clickMode: 'select', tipMode: 'short', tipUses: {}, quietUI: true, layoutV: 0, sideWidthLeft: 0, sideWidthRight: 0, startPage: true, drawRaw: '0', limits: {}, chdisp: {}, eventRules: [], liveRecDir: '~/.recordings', fileOpen: 'remember', fileOpenNew: 'table', fileLayouts: {}, fileOpenNewV: 2, zoomSpeed: 'normal', paneEventsFrom: 'pane', timeAxis: 'auto', customWidgets: [], decoders: [], fileAliases: {}, exOnlyOpen: false, fileRecipes: {}, recipes: [], recipesSeeded: false, checkSets: [], fileChecks: {}, layoutChecks: {}, checksSeeded: false, rulesMerged: false };
 const settings = (() => {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (_) { saved = {}; }
@@ -3132,6 +3153,8 @@ function openFileTab(key) {
   const fl = FILES.find(f => f.key === key);
   if (!fl || fl.unreadable) return;
   if (fl.local && !fl.imported) { importLocal([fl]); return; }
+  // a binary file opens through a format descriptor: one that claims its name, else the form
+  if (fl.binary && !fl.decoder) { const d = decoderFor(fl); if (d) applyDecoder(fl, d); else { openDescDlg(fl); return; } }
   if (fl.live) { const k = tabs.findIndex(t => t.live === fl.live); if (k >= 0) { if (k !== activeTab) activateTab(k); else renderFiles(); } return; }
   const k = tabs.findIndex(t => t.ref === key);
   if (k >= 0 && fl.open) { if (k !== activeTab) activateTab(k); else { renderFiles(); } return; }
@@ -9412,6 +9435,7 @@ function treeContextMenu(e) {
       [pending ? 'Import…' : fl.open ? 'Show its tab' : 'Open', () => openFileTab(fl.key)],
       ['Open only this', () => openOnly(fl.key), !others],
       ['Channel prefix…', () => renameFilePrefix(fl), pending],
+      ...(fl.binary ? [['Format descriptor…', () => openDescDlg(fl, decoders().find(d => d.id === fl.decoder))]] : []),
       ...((() => { const t = tabs[activeTab], r = (t && t.ref && FILES.find(f => f.key === t.ref && f.open)) || fileInSlot(1); return r && r !== fl && !fl.live ? [[`Compare with ${r.name}`, () => compareFiles(r, fl), !canCompare(r, fl)]] : []; })()),
       ...(fl.open ? [['Close', () => closeFile(fl.key)]] : []),
       ...(fl.open && fl.slot !== 1 ? [['Make primary', () => makeReference(fl.key)]] : []),
@@ -9444,6 +9468,310 @@ function readLocalFiles(list) {
 }
 function readLocalFile(f) { readLocalFiles([f]); }
 function openImportDialog(fileName, text, size) { startImport([{ name: fileName, size, text }]); }
+/* ---------- Format descriptors ----------
+   A binary file opens through a format descriptor: the byte layout of its records, as TOML (the
+   same file the CLI and the app's decoders read, and that a live stream of that logger uses).
+   Opening a binary file no descriptor claims opens this form on the file's own bytes: pick a
+   descriptor you have, or describe the layout (framing, time, fields) and watch the preview decode
+   it. "Use for files named" says which files it claims; it's saved with your decoders (app cache)
+   and Share… writes it to .tlmbench/decoders/ for everyone with the folder. */
+const DSC_TYPES = { i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, i64: 8, u64: 8, f32: 4, f64: 8 };
+const DSC_TUNITS = [['ns', 'ns'], ['us', 'µs'], ['ms', 'ms'], ['s', 's']];
+const DSC_CHECKS = [['none', 'None'], ['sum8', 'Sum (8-bit)'], ['crc16-ccitt', 'CRC-16/CCITT'], ['crc32', 'CRC-32']];
+const DSC_COMP = [['none', 'None'], ['zstd', 'zstd'], ['lz4', 'LZ4'], ['gzip', 'gzip']];
+// your decoders to start with: the ESC bench logger's frames (from its live connection), claiming no files yet
+const DSC_SEEDS = [{
+  id: 'esc_telemetry', name: 'ESC telemetry', files: [], endian: 'little', header_size: 0,
+  framing: 'packets', packets: { sync: 'A55A', header_size: 2, length: null, checksum: 'crc16-ccitt', compression: 'none' },
+  time: { source: 'field', field: 'timestamp_us', unit: 'us' },
+  fields: [
+    { name: 'seq', type: 'u16', offset: 2 }, { name: 'timestamp_us', type: 'u32', offset: 4 },
+    { name: 'motor_rpm', type: 'u16', offset: 8, unit: 'rpm' }, { name: 'throttle_pct', type: 'u8', offset: 10, unit: '%', scale: 0.5 },
+    { name: 'status', type: 'u8', offset: 11 }, { name: 'current_a', type: 'i16', offset: 12, unit: 'A', scale: 0.01 },
+    { name: 'battery_v', type: 'u16', offset: 14, unit: 'V', scale: 0.001 }, { name: 'esc_temp_1', type: 'i8', offset: 16, unit: '°C' },
+    { name: 'esc_temp_2', type: 'i8', offset: 17, unit: '°C' }],
+  record_size: 20,
+}];
+const decoders = () => DSC_SEEDS.filter(s => !(settings.decoders || []).some(d => d.id === s.id)).concat(settings.decoders || []);
+const globRe = g => new RegExp('^' + g.split('*').map(x => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
+// esc_bench_0930.bin → esc_bench_*.bin: files from the same logger
+const namePattern = fl => fl.name.replace(/\d+/g, '*').replace(/\*+/g, '*');
+const decoderFor = fl => decoders().find(d => (d.files || []).some(g => globRe(g).test(fl.name)));
+const crc16 = b => { let c = 0xffff; for (const x of b) { c ^= x << 8; for (let k = 0; k < 8; k++) c = c & 0x8000 ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff; } return c; };
+const crc32 = b => { let c = ~0; for (const x of b) { c ^= x; for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1; } return ~c >>> 0; };
+const checksumOf = (kind, b) => kind === 'sum8' ? b.reduce((a, x) => (a + x) & 0xff, 0) : kind === 'crc16-ccitt' ? crc16(b) : kind === 'crc32' ? crc32(b) : 0;
+const CHECK_SIZE = { none: 0, sum8: 1, 'crc16-ccitt': 2, crc32: 4 };
+// The bytes of a binary file in the sample folder: what the logger wrote (24-byte frames: sync,
+// counter, µs clock, the ESC's readings, two spare bytes, CRC-16), whatever descriptor you try.
+function binBytes(fl, frames = 64) {
+  if (fl._bytes) return fl._bytes;
+  const out = new Uint8Array(frames * 24), dv = new DataView(out.buffer), rng = mulberry32(hash(fl.name));
+  for (let k = 0; k < frames; k++) {
+    const o = k * 24, t = k * 0.01, rpm = 1200 + Math.round(1800 * Math.min(1, t / 0.3) + rng() * 40);
+    out[o] = 0xA5; out[o + 1] = 0x5A; dv.setUint16(o + 2, k, true); dv.setUint32(o + 4, 120000000 + k * 10000, true);
+    dv.setUint16(o + 8, rpm, true); out[o + 10] = Math.round((30 + 10 * Math.min(1, t / 0.3)) * 2); out[o + 11] = 0x1E;
+    dv.setInt16(o + 12, Math.round((4.2 + rpm / 900 + rng() * 0.2) * 100), true); dv.setUint16(o + 14, Math.round((24.6 - rpm / 4000) * 1000), true);
+    out[o + 16] = 41 + (k >> 4); out[o + 17] = 39 + (k >> 4);
+    dv.setUint16(o + 22, crc16(out.subarray(o, o + 22)), true);
+  }
+  return (fl._bytes = out);
+}
+const hexOk = s => /^([0-9a-f]{2}){1,8}$/i.test(String(s || '').replace(/^0x/i, '').replace(/[\s_]/g, ''));
+const hexBytes = s => { const h = String(s || '').replace(/^0x/i, '').replace(/[\s_]/g, ''); return hexOk(h) ? h.match(/../g).map(x => parseInt(x, 16)) : []; };
+// The record each field must fit: the record, or in a packet file the packet header then the record.
+const dscExtent = d => (+d.record_size || 0) + (d.framing === 'packets' ? +d.packets.header_size || 0 : 0);
+// Problems with a descriptor, the way the decoder words them; empty when it can be used.
+function dscProblems(d) {
+  const out = [], ext = dscExtent(d), names = new Set();
+  if (!(+d.record_size >= 1 && +d.record_size <= 1048576)) out.push('Record size must be between 1 and 1048576 bytes.');
+  if (!d.fields.length) out.push('Add at least one field.');
+  d.fields.forEach((f, i) => {
+    if (!String(f.name || '').trim()) out.push(`Field ${i + 1} needs a name.`);
+    else if (names.has(f.name)) out.push(`${f.name} appears twice.`); else names.add(f.name);
+    if (!(+f.offset >= 0) || +f.offset + DSC_TYPES[f.type] > ext) out.push(`${f.name || `Field ${i + 1}`} (${f.type} at offset ${f.offset}) runs past the ${ext}-byte ${d.framing === 'packets' ? 'packet header and record' : 'record'}.`);
+    if (f.scale === 0) out.push(`${f.name}: scale can't be 0.`);
+  });
+  if (d.time.source === 'field') {
+    const tf = d.fields.find(f => f.name === d.time.field);
+    if (!tf) out.push('Pick the field that holds the time.'); else if (/^f/.test(tf.type)) out.push(`The time field ${tf.name} must be an integer type.`);
+  }
+  if (d.time.source === 'rate' && !(+d.time.rate_hz > 0)) out.push('The sample rate must be a positive number.');
+  if (d.framing === 'packets') {
+    const p = d.packets;
+    if (p.sync && !hexOk(p.sync)) out.push('The sync word must be 1 to 8 bytes of hex, like A55A.');
+    if (hexBytes(p.sync).length > +p.header_size) out.push('The packet header must hold the sync word.');
+    if (p.length && (+p.length.offset + DSC_TYPES[p.length.type] > +p.header_size || /^f/.test(p.length.type))) out.push(`The length field must be an integer inside the ${p.header_size}-byte header.`);
+    if (!p.length && p.compression !== 'none') out.push('A compressed payload needs a length field.');
+  }
+  return out;
+}
+// Decodes the first records of `bytes` with `d`: rows of { off, values, time, ok }, or why it can't.
+function dscDecode(d, bytes, max = 8) {
+  const le = d.endian !== 'big', dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length), rows = [];
+  const read = (b, o, t) => { const v = new DataView(b.buffer, b.byteOffset, b.length); return { i8: () => v.getInt8(o), u8: () => v.getUint8(o), i16: () => v.getInt16(o, le), u16: () => v.getUint16(o, le), i32: () => v.getInt32(o, le), u32: () => v.getUint32(o, le), i64: () => Number(v.getBigInt64(o, le)), u64: () => Number(v.getBigUint64(o, le)), f32: () => v.getFloat32(o, le), f64: () => v.getFloat64(o, le) }[t](); };
+  const rec = (b, off, ok) => ({ off, ok, values: d.fields.map(f => +f.offset + DSC_TYPES[f.type] <= b.length ? read(b, +f.offset, f.type) * (f.scale ?? 1) + (f.value_offset || 0) : NaN) });
+  if (d.framing !== 'packets') {
+    const rs = +d.record_size;
+    for (let o = +d.header_size || 0; o + rs <= bytes.length && rows.length < max; o += rs) rows.push(rec(bytes.subarray(o, o + rs), o, null));
+    return { rows, stride: rs, start: +d.header_size || 0 };
+  }
+  const p = d.packets, sync = hexBytes(p.sync), hs = +p.header_size, cks = CHECK_SIZE[p.checksum];
+  let o = +d.header_size || 0, skipped = 0, first = null;
+  while (o < bytes.length && rows.length < max) {
+    if (sync.length) { let k = o; while (k + sync.length <= bytes.length && !sync.every((x, j) => bytes[k + j] === x)) k++; if (k + sync.length > bytes.length) break; skipped += k - o; o = k; }
+    if (o + hs > bytes.length) break;
+    let stored = +d.record_size;
+    if (p.length) { stored = read(bytes, o + +p.length.offset, p.length.type) + (+p.length.adjust || 0); if (p.length.counts === 'packet') stored -= hs + cks; }
+    if (p.compression !== 'none') return { rows, error: 'The preview reads uncompressed payloads; the app decompresses these.' };
+    const end = o + hs + stored + cks;
+    if (stored < 0 || end > bytes.length) { if (!sync.length) break; o++; skipped++; continue; }
+    const body = bytes.subarray(o, o + hs + stored), stored_ck = cks ? read(bytes, o + hs + stored, { 1: 'u8', 2: 'u16', 4: 'u32' }[cks]) : null;
+    const ok = cks ? stored_ck === checksumOf(p.checksum, body) : null;
+    if (first == null) first = o;
+    const header = bytes.subarray(o, o + hs), rs = +d.record_size;
+    for (let r = 0; r + rs <= stored && rows.length < max; r += rs) {
+      const b = new Uint8Array(hs + rs); b.set(header); b.set(bytes.subarray(o + hs + r, o + hs + r + rs), hs);
+      rows.push(rec(b, o, ok));
+    }
+    o = end;
+  }
+  return { rows, stride: rows.length > 1 ? rows[1].off - rows[0].off : dscExtent(d) + cks, start: first ?? 0, skipped };
+}
+// A sync word and frame length that repeat from the start of the file, if any: what "Find frames" proposes.
+function dscFindFrames(bytes) {
+  for (let w = 2; w >= 1; w--) for (let stride = 4; stride <= 256; stride++) {
+    if (stride * 8 > bytes.length) break;
+    const head = bytes.subarray(0, w);
+    if (head.every(x => x === 0)) continue;
+    let ok = true; for (let k = 1; k < 8 && ok; k++) ok = head.every((x, j) => bytes[k * stride + j] === x);
+    if (ok) return { sync: [...head].map(x => x.toString(16).padStart(2, '0').toUpperCase()).join(''), stride };
+  }
+  return null;
+}
+// The descriptor as the TOML the decoders read (`tlmbench validate` checks it).
+function dscToml(d) {
+  const q = s => JSON.stringify(String(s));
+  const num = v => Number.isInteger(+v) ? String(+v) : String(+v);
+  let t = `schema = 1\nname = ${q(d.name)}\n`;
+  if ((d.files || []).length) t += `files = [${d.files.map(q).join(', ')}]\n`;
+  t += `endian = ${q(d.endian)}\n`;
+  if (+d.header_size) t += `header_size = ${num(d.header_size)}\n`;
+  t += `record_size = ${num(d.record_size)}\n\n[time]\nsource = ${q(d.time.source)}\n`;
+  if (d.time.source === 'rate') t += `rate_hz = ${num(d.time.rate_hz)}\n`;
+  if (d.time.source === 'field') t += `field = ${q(d.time.field)}\nunit = ${q(d.time.unit)}\n`;
+  d.fields.forEach(f => {
+    t += `\n[[fields]]\nname = ${q(f.name)}\ntype = ${q(f.type)}\noffset = ${num(f.offset)}\n`;
+    if (f.unit) t += `unit = ${q(f.unit)}\n`;
+    if ((f.scale ?? 1) !== 1) t += `scale = ${num(f.scale)}\n`;
+    if (f.value_offset) t += `value_offset = ${num(f.value_offset)}\n`;
+  });
+  if (d.framing === 'packets') {
+    const p = d.packets;
+    t += `\n[packets]\n${p.sync ? `sync = ${q(p.sync.toUpperCase())}\n` : ''}header_size = ${num(p.header_size)}\n`;
+    if (p.length) t += `length = { offset = ${num(p.length.offset)}, type = ${q(p.length.type)}${p.length.counts === 'packet' ? ', counts = "packet"' : ''}${+p.length.adjust ? `, adjust = ${num(p.length.adjust)}` : ''} }\n`;
+    if (p.checksum !== 'none') t += `checksum = ${q(p.checksum)}\n`;
+    if (p.compression !== 'none') t += `compression = ${q(p.compression)}\n`;
+  }
+  return t;
+}
+const dscFile = d => `.tlmbench/decoders/${String(d.name || 'decoder').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'decoder'}.toml`;
+let dscForm = null;
+function openDescDlg(fl, base) {
+  closeTabMenu(); closeAddMenu();
+  const start = base || decoderFor(fl);
+  const blank = { id: null, name: fl.name.replace(/\.[^.]+$/, '').replace(/[_-]?\d+$/, '') || 'New format', files: [namePattern(fl)], endian: 'little', header_size: 0,
+    framing: 'records', packets: { sync: '', header_size: 2, length: null, checksum: 'none', compression: 'none' }, time: { source: 'rate', rate_hz: 100, field: '', unit: 'us' }, fields: [{ name: 'value', type: 'u16', offset: 0 }], record_size: 2 };
+  dscForm = { fl, d: JSON.parse(JSON.stringify(start || blank)), pick: start ? start.id : '', autoSize: !start, found: null, shared: false };
+  renderDescDlg();
+  $('liveDlg').hidden = false;
+}
+function renderDescDlg() {
+  const F = dscForm, d = F.d, fl = F.fl, dlg = $('liveDlg'), bytes = binBytes(fl);
+  if (F.autoSize) { const need = Math.max(1, ...d.fields.map(f => +f.offset + DSC_TYPES[f.type] - (d.framing === 'packets' ? +d.packets.header_size : 0))); d.record_size = need; }
+  const probs = dscProblems(d), dec = probs.length ? null : dscDecode(d, bytes), mainTop = (dlg.querySelector('.impmain') || {}).scrollTop || 0;
+  const field = (label, ctrl, hint) => `<label class="lvf"><span>${label}</span>${ctrl}${hint ? `<small>${hint}</small>` : ''}</label>`;
+  const opts = (list, cur) => list.map(([v, t]) => `<option value="${esc(String(v))}"${String(cur) === String(v) ? ' selected' : ''}>${esc(t)}</option>`).join('');
+  const inp = (key, val, extra = '') => `<input class="sel" data-ds="${key}" value="${esc(String(val ?? ''))}" autocomplete="off" spellcheck="false" ${extra}>`;
+  const color = i => `var(${PALETTE[i % PALETTE.length]})`;
+  const pk = d.packets, packets = d.framing === 'packets';
+  // the bytes of the first records, each field's bytes tinted in its colour (rows of 16 to 32 bytes)
+  const stride = dec ? dec.stride : dscExtent(d) || 24;
+  const hexRow = (off, len) => {
+    const span = [...bytes.subarray(off, off + len)].map((x, j0) => {
+      const j = (off + j0 - (dec ? dec.start : 0)) % stride, fi = d.fields.findIndex(f => j >= +f.offset && j < +f.offset + DSC_TYPES[f.type]);
+      const isSync = packets && j < hexBytes(pk.sync).length;
+      const st = fi >= 0 ? ` style="background: color-mix(in srgb, ${color(fi)} 30%, transparent)" title="${esc(d.fields[fi].name)}"` : isSync ? ' style="text-decoration: underline" title="sync"' : '';
+      return `<span${st}>${x.toString(16).padStart(2, '0').toUpperCase()}</span>`;
+    }).join(' ');
+    return `<div><span class="at">${off.toString(16).padStart(6, '0')}</span>${span}</div>`;
+  };
+  const hexLen = Math.max(16, Math.min(32, stride)), at0 = dec && dec.rows.length ? dec.rows[0].off : 0;
+  const hex = hexRow(at0, hexLen) + hexRow(at0 + hexLen, hexLen);
+  const tUnit = { ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1 }[d.time.unit] || 1, ti = d.fields.findIndex(f => f.name === d.time.field);
+  const shown = d.fields.map((f, i) => i).filter(i => !(d.time.source === 'field' && i === ti));
+  const fmtV = v => !isFinite(v) ? '—' : Math.abs(v) >= 1e6 || Number.isInteger(v) ? String(v) : (+v.toFixed(4)).toString();
+  const timeOf = (r, k) => d.time.source === 'field' ? fmtV(r.values[ti] * tUnit) + ' s' : d.time.source === 'rate' ? fmtV(k / (+d.time.rate_hz || 1)) + ' s' : String(k);
+  const table = dec && dec.rows.length ? `<table class="dsctab"><thead><tr><th>Time</th>${shown.map(i => `<th>${esc(d.fields[i].name)}${d.fields[i].unit ? ` (${esc(d.fields[i].unit)})` : ''}</th>`).join('')}${packets && pk.checksum !== 'none' ? '<th>Check</th>' : ''}</tr></thead><tbody>${dec.rows.map((r, k) => `<tr><td>${timeOf(r, k)}</td>${shown.map(i => `<td>${fmtV(r.values[i])}</td>`).join('')}${packets && pk.checksum !== 'none' ? `<td class="${r.ok ? '' : 'bad'}">${r.ok ? 'ok' : 'bad'}</td>` : ''}</tr>`).join('')}</tbody></table>`
+    : `<p class="dscerr">${esc(dec && dec.error ? dec.error : dec ? 'No whole record found in the first bytes: check the framing.' : probs[0])}</p>`;
+  const badChecks = dec && packets && pk.checksum !== 'none' ? dec.rows.filter(r => !r.ok).length : 0;
+  const fieldRows = d.fields.map((f, i) => {
+    const bad = probs.some(p => p.startsWith(`${f.name} (`) || p.startsWith(`${f.name} appears`));
+    return `<div class="dscf${bad ? ' bad' : ''}" data-fi="${i}"><span class="sw" style="background: ${color(i)}"></span>
+      <input data-ff="name" value="${esc(f.name || '')}" aria-label="Field ${i + 1} name" spellcheck="false">
+      <select data-ff="type" aria-label="${esc(f.name)} type">${opts(Object.keys(DSC_TYPES).map(t => [t, t]), f.type)}</select>
+      <input data-ff="offset" type="number" min="0" step="1" value="${f.offset}" aria-label="${esc(f.name)} byte offset">
+      <input data-ff="unit" value="${esc(f.unit || '')}" placeholder="unit" aria-label="${esc(f.name)} unit" spellcheck="false">
+      <input data-ff="scale" type="number" step="any" value="${f.scale ?? 1}" aria-label="${esc(f.name)} scale">
+      <input data-ff="value_offset" type="number" step="any" value="${f.value_offset || 0}" aria-label="${esc(f.name)} value offset">
+      <button class="ib" data-fdel aria-label="Remove ${esc(f.name)}" data-tip="Remove this field">×</button></div>`;
+  }).join('');
+  const all = decoders();
+  dlg.className = 'slotdlg livedlg impdlg dscdlg';
+  dlg.innerHTML = `<header><b>Describe ${esc(fl.name)}</b><span class="spacer"></span><button class="pclose" data-x aria-label="Close">×</button></header>
+    <div class="impbody"><div class="impmain">
+      <p class="lvnote">${esc(fl.name)} isn't a format tlmbench reads on its own. Describe its byte layout once: the descriptor decodes every file it names, and the logger's live stream.</p>
+      <div class="improw">${field('Descriptor', `<select class="sel" data-dpick>${opts([['', 'New descriptor']].concat(all.map(x => [x.id, `${x.name}${(x.files || []).length ? ' · ' + x.files.join(', ') : ''}`])), F.pick)}</select>`)}
+        ${field('Name', inp('name', d.name))}${field('Use for files named', inp('files', (d.files || []).join(', ')), '* matches any text; separate patterns with commas')}</div>
+      <h4>Framing</h4>
+      <div class="improw">${field('Records', `<select class="sel" data-ds="framing">${opts([['records', 'Fixed-width records'], ['packets', 'Packets']], d.framing)}</select>`)}
+        ${field('Byte order', `<select class="sel" data-ds="endian">${opts([['little', 'Little-endian'], ['big', 'Big-endian']], d.endian)}</select>`)}
+        ${field('File header', inp('header_size', d.header_size, 'type="number" min="0" step="1"'), 'bytes before the first record')}
+        ${field('Record size', inp('record_size', d.record_size, `type="number" min="1" step="1"${F.autoSize ? ' data-tip="Follows the fields; type a size to fix it"' : ''}`), F.autoSize ? 'from the fields' : 'bytes')}</div>
+      ${packets ? `<div class="improw">${field('Sync word', inp('p.sync', pk.sync, 'placeholder="hex, e.g. A55A"'))}${field('Packet header', inp('p.header_size', pk.header_size, 'type="number" min="0" step="1"'), 'bytes before the payload, sync included')}
+        ${field('Length field', `<select class="sel" data-ds="p.lenmode">${opts([['none', 'None: one record per packet'], ['payload', 'Counts the payload'], ['packet', 'Counts the whole packet']], pk.length ? pk.length.counts || 'payload' : 'none')}</select>`)}
+        ${pk.length ? field('Length at', `<span class="lvf inl">${inp('p.len.offset', pk.length.offset, 'type="number" min="0" step="1" style="width: 70px"')}<select class="sel" data-ds="p.len.type">${opts(['u8', 'u16', 'u32', 'u64'].map(t => [t, t]), pk.length.type)}</select></span>`) : ''}</div>
+      <div class="improw">${field('Checksum', `<select class="sel" data-ds="p.checksum">${opts(DSC_CHECKS, pk.checksum)}</select>`, 'after the payload, over the header and payload')}${field('Compression', `<select class="sel" data-ds="p.compression">${opts(DSC_COMP, pk.compression)}</select>`, 'of the payload')}</div>
+      <p class="lvnote">Field offsets count from the start of each packet: the header, then the record. Header fields such as a packet counter read like any other field.</p>` : ''}
+      <div class="impbar sm"><button class="linkbtn" data-dfind>Find frames</button><span class="muted" data-dfound>${F.found === false ? 'No repeating sync word found in the first bytes.' : F.found ? `Sync ${F.found.sync} every ${F.found.stride} bytes: applied.` : 'Looks for a sync word repeating at a fixed spacing.'}</span></div>
+      <h4>Time</h4>
+      <div class="improw">${field('Time from', `<select class="sel" data-ds="t.source">${opts([['rate', 'A fixed sample rate'], ['field', 'A field (a counter or clock)'], ['index', 'Nothing: use sample numbers']], d.time.source)}</select>`)}
+        ${d.time.source === 'rate' ? field('Sample rate (Hz)', inp('t.rate_hz', d.time.rate_hz, 'type="number" min="0" step="any"')) : ''}
+        ${d.time.source === 'field' ? field('Field', `<select class="sel" data-ds="t.field">${opts([['', 'Pick a field']].concat(d.fields.map(f => [f.name, f.name])), d.time.field)}</select>`) + field('Unit', `<select class="sel" data-ds="t.unit">${opts(DSC_TUNITS, d.time.unit)}</select>`) : ''}</div>
+      <h4>Fields <small>${d.fields.length} · shown value = raw × scale + offset</small></h4>
+      <div class="dscfields"><div class="dscf head"><span></span><span>Name</span><span>Type</span><span>Offset</span><span>Unit</span><span>Scale</span><span>Offset</span><span></span></div>${fieldRows}</div>
+      <div class="impbar sm"><button class="tbtn" data-fadd>+ Add field</button></div>
+      <h4>Preview <small>${esc(fl.name)}${dec ? ` · ${dec.skipped ? `${dec.skipped} bytes skipped to the first sync · ` : ''}${badChecks ? `${badChecks} bad checksum${badChecks === 1 ? '' : 's'}` : packets && pk.checksum !== 'none' ? 'checksums ok' : 'first records'}` : ''}</small></h4>
+      <div class="dschex" aria-label="First bytes of the file">${hex}</div>
+      ${table}
+      ${probs.length > 1 ? `<ul class="dscerr">${probs.slice(1).map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+      <details class="dscview"${F.tomlOpen ? ' open' : ''}><summary class="lvnote">TOML (${esc(dscFile(d).split('/').pop())})</summary><pre class="dsctoml" data-dtoml>${esc(dscToml(d))}</pre></details>
+    </div></div>
+    <footer><button class="tbtn" data-dshare${probs.length ? ' disabled' : ''} data-tip="Write it to ${esc(dscFile(d))} so everyone with the folder decodes these files">Share…</button><span class="spacer"></span><button class="tbtn" data-x>Cancel</button><button class="tbtn" data-dsave${probs.length ? ' disabled' : ''}>Save</button><button class="tbtn primary" data-dopen${probs.length ? ' disabled' : ''}>Open</button></footer>`;
+  const M = dlg.querySelector('.impmain'); if (M) M.scrollTop = mainTop;
+  bindDescDlg(dlg);
+}
+function bindDescDlg(dlg) {
+  const F = dscForm, d = F.d, again = () => renderDescDlg();
+  dlg.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { dlg.hidden = true; });
+  dlg.querySelector('details.dscview').ontoggle = e => { F.tomlOpen = e.target.open; };
+  // a descriptor that claims no files yet is offered for this file's name pattern
+  dlg.querySelector('[data-dpick]').onchange = e => { const x = decoders().find(y => y.id === e.target.value); if (x) { F.d = JSON.parse(JSON.stringify(x)); F.pick = x.id; F.autoSize = false; if (!(F.d.files || []).length) F.d.files = [namePattern(F.fl)]; } else { F.pick = ''; F.d.id = null; } again(); };
+  dlg.querySelectorAll('[data-ds]').forEach(x => x.onchange = () => {
+    const k = x.dataset.ds, v = x.value;
+    if (k === 'name') d.name = v.trim();
+    else if (k === 'files') d.files = v.split(',').map(s => s.trim()).filter(Boolean);
+    else if (k === 'framing' || k === 'endian') d[k] = v;
+    else if (k === 'header_size') d.header_size = Math.max(0, Math.round(+v || 0));
+    else if (k === 'record_size') { d.record_size = Math.max(1, Math.round(+v || 1)); F.autoSize = false; }
+    else if (k === 'p.sync') d.packets.sync = v.trim().toUpperCase();
+    else if (k === 'p.header_size') d.packets.header_size = Math.max(0, Math.round(+v || 0));
+    else if (k === 'p.lenmode') d.packets.length = v === 'none' ? null : Object.assign({ offset: hexBytes(d.packets.sync).length, type: 'u16' }, d.packets.length || {}, { counts: v });
+    else if (k === 'p.len.offset') d.packets.length.offset = Math.max(0, Math.round(+v || 0));
+    else if (k === 'p.len.type') d.packets.length.type = v;
+    else if (k === 'p.checksum' || k === 'p.compression') d.packets[k.slice(2)] = v;
+    else if (k === 't.source') { d.time.source = v; if (v === 'field' && !d.time.field) d.time.field = (d.fields.find(f => /time|^t$|_us$|_ms$|_ns$/i.test(f.name) && !/^f/.test(f.type)) || {}).name || ''; }
+    else if (k === 't.rate_hz') d.time.rate_hz = +v;
+    else if (k === 't.field' || k === 't.unit') d.time[k.slice(2)] = v;
+    again();
+  });
+  dlg.querySelectorAll('[data-fi]').forEach(row => {
+    const f = d.fields[+row.dataset.fi];
+    row.querySelectorAll('[data-ff]').forEach(x => x.onchange = () => {
+      const k = x.dataset.ff;
+      if (k === 'name') { if (d.time.field === f.name) d.time.field = x.value.trim(); f.name = x.value.trim(); }
+      else if (k === 'type') f.type = x.value;
+      else if (k === 'offset') f.offset = Math.max(0, Math.round(+x.value || 0));
+      else if (k === 'unit') { if (x.value.trim()) f.unit = x.value.trim(); else delete f.unit; }
+      else if (k === 'scale') f.scale = +x.value;
+      else f.value_offset = +x.value || 0;
+      again();
+    });
+    row.querySelector('[data-fdel]').onclick = () => { d.fields.splice(+row.dataset.fi, 1); again(); };
+  });
+  dlg.querySelector('[data-fadd]').onclick = () => {
+    const end = Math.max(d.framing === 'packets' ? +d.packets.header_size : 0, ...d.fields.map(f => +f.offset + DSC_TYPES[f.type]));
+    let n = d.fields.length + 1; while (d.fields.some(f => f.name === `field_${n}`)) n++;
+    d.fields.push({ name: `field_${n}`, type: 'u16', offset: end });
+    if (!F.autoSize && end + 2 > dscExtent(d)) F.autoSize = true;
+    again();
+    const last = dlg.querySelector('.dscf:last-child [data-ff="name"]'); if (last) { last.focus(); last.select(); }
+  };
+  dlg.querySelector('[data-dfind]').onclick = () => {
+    const f = dscFindFrames(binBytes(F.fl));
+    F.found = f || false;
+    if (f) { d.framing = 'packets'; d.packets.sync = f.sync; d.packets.header_size = Math.max(+d.packets.header_size, f.sync.length / 2); F.autoSize = false; d.record_size = f.stride - d.packets.header_size - CHECK_SIZE[d.packets.checksum]; }
+    again();
+  };
+  const save = () => {
+    const all = (settings.decoders || []).slice(), id = d.id || F.pick || 'd' + Date.now().toString(36), rec = Object.assign({}, JSON.parse(JSON.stringify(d)), { id });
+    const k = all.findIndex(x => x.id === id); if (k >= 0) all[k] = rec; else all.push(rec);
+    saveSetting('decoders', all); d.id = id; F.pick = id; return rec;
+  };
+  dlg.querySelector('[data-dsave]').onclick = () => { save(); again(); };
+  dlg.querySelector('[data-dshare]').onclick = () => { const rec = save(); shareDialog('Share a format descriptor', [[dscFile(rec), dscToml(rec)]], 'Writes the descriptor into the folder: everyone with the folder (or its git repository) decodes these files the same way.'); };
+  dlg.querySelector('[data-dopen]').onclick = () => {
+    const rec = save(), fl = F.fl;
+    if (!(rec.files || []).some(g => globRe(g).test(fl.name))) { rec.files = (rec.files || []).concat(fl.name); save(); }
+    dlg.hidden = true;
+    applyDecoder(fl, rec); renderFiles(); openFileTab(fl.key);
+  };
+}
+// A binary file read through `d`: its channels are the descriptor's fields (the time field aside).
+function applyDecoder(fl, d) {
+  fl.decoder = d.id;
+  fl.channels = d.fields.filter(f => !(d.time.source === 'field' && f.name === d.time.field)).map(f => f.name).filter(n => BASE_DEFS.some(c => c.id === n));
+  fl.desc = `${d.name} · ${fl.channels.length} channels`;
+}
 /* Open folder: the browser's folder picker gives a read-only snapshot of a folder you choose. Its CSV,
    TSV and TXT files appear in Explorer under the folder's name and import when you open them; nothing
    is ever written to the folder. (The app uses a native picker, remembers recent folders and watches
@@ -11413,6 +11741,8 @@ function boot() {
   bindUI();
   bindTree();
   loadTanStack().then(() => { if (state.panes.some(p => p.ids.length && paneMode(p) !== 'chart')) rebuild(); });
+  // binary files that a saved descriptor claims read through it from the start (a session may reopen them)
+  FILES.filter(f => f.binary).forEach(f => { const d = decoderFor(f); if (d) applyDecoder(f, d); });
   tabs = [];
   // with the start page at launch nothing opens behind it: the saved session waits in Recent sessions
   // until you click it, as in the app; without the start page the last session reopens straight away

@@ -17,6 +17,7 @@ It prints PASS or FAIL per test with the checks that failed, then a summary, and
 | t_files | tabs per file, open strip, another file's channels in expressions, Show only these, Compare, channel prefixes and numbers, Close all + undo |
 | t_import | the CSV dialog, time and rate, When it opens, several files, profiles coming back, re-import, odd headers |
 | t_folder | Open folder (read-only), import on open, Import all |
+| t_descriptor | format descriptors: a binary file with none opens the form on its bytes; Find frames, the preview (hex by field, decoded rows, checksums), problems as the decoder words them, + Add field, the TOML, Share…, Open, and the descriptor claiming the file after a reload |
 | t_derived | the expression engine, filters (lowpass, highpass, bandpass, median) and interp(), Derive…, recipes in import profiles, remove + undo, persistence, the Spectrum view |
 | t_filters | the filter strip, Whole file, stepping, Apply to charts, Save as rule, missing values and Missing when, Ignore outliers |
 | t_tables | sort, column select → chart, hide + Columns (a name scrolls to its column, and the table and list stay put when Columns closes), Autofit columns in view, box zoom and its dead zone, Back, Fit, focus mode |
