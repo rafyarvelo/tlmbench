@@ -26,7 +26,7 @@ function niceStep(span: number, maxTicks: number): number {
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0');
 
-export type TimeFormat = 'auto' | 'clock' | 's' | 'ms' | 'minsec' | 'h' | 'd';
+export type TimeFormat = 'auto' | 'clock' | 's' | 'ms' | 'minsec' | 'h' | 'd' | 'wk' | 'yr';
 /** The formats Settings and the range menu offer: the key, its name and an example. */
 export const TIME_FORMATS: [TimeFormat, string, string][] = [
   ['auto', 'Automatic', 'clock, dates or seconds, from the file'],
@@ -36,6 +36,8 @@ export const TIME_FORMATS: [TimeFormat, string, string][] = [
   ['minsec', 'Minutes and seconds', '41:12.380'],
   ['h', 'Hours', '0.69 h'],
   ['d', 'Days', '0.03 d'],
+  ['wk', 'Weeks', '2.5 wk'],
+  ['yr', 'Years', '1.25 yr'],
 ];
 
 const timeFmt = { mode: 'auto' as TimeFormat, decimals: null as number | null, origin: () => 0n };
@@ -59,6 +61,10 @@ function fromStart(rel: bigint, stepNs: number): string {
       return `${neg}${(a / 3.6e12).toFixed(Math.max(1, d - 1))} h`;
     case 'd':
       return `${neg}${(a / 86.4e12).toFixed(Math.max(1, d - 1))} d`;
+    case 'wk':
+      return `${neg}${(a / 604.8e12).toFixed(Math.max(1, d - 1))} wk`;
+    case 'yr':
+      return `${neg}${(a / 31557.6e12).toFixed(Math.max(1, d - 1))} yr`;
     default: {
       // clock and minutes-and-seconds: round first, so 59.97 s at one decimal is 1:00.0, not 0:60.0
       const q = 10 ** d;

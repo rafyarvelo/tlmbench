@@ -9,6 +9,8 @@ page.
 
 ## Lead
 
+*This lead describes the app at the audit. Most of Phase 3 has been ported since: see "Fixed since the audit" below and the status counts.*
+
 The app has the prototype's skeleton: the rail, the slim top bar with tabs, Explorer, the pane stack with its ⋯ and
 view menus, Measure, the overview, Play and Live. Most of what fills that skeleton is missing or simplified. That
 includes controls the design puts in the Phase 3 shell port: the lock, focus mode, the time-format menu, keyboard
@@ -23,9 +25,9 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 121 ·
-Partial 41 · Different 32 · Missing 84** (278 rows; counts as of Nov 3). Of the missing rows, 18 belong to Phase 3 (the shell port
-that is already due), 31 to Phase 4 and 35 to Phase 5. A row tagged with several phases counts under its first.
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 160 ·
+Partial 34 · Different 16 · Missing 72** (282 rows; counts as of Nov 3). Of the missing rows, 5 belong to Phase 3 (the shell port
+that was due), 31 to Phase 4 and 34 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
 looks or behaves otherwise; this includes app-only items. **Missing** is absent from the app. Phase is the roadmap
@@ -43,19 +45,19 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | --- | --- | --- | --- | --- | --- |
 | Rail views | Logo, Explorer, Events, Rules & checks, Layouts, Measure, Live, Settings (`6547-6558`) | Logo, Explorer, Measure, Live, Settings (`shell/Rail.svelte:21-28`) | Partial | 3 (Events, checks: 5; Layouts: 4) | Events, Rules & checks and Layouts are missing. |
 | Rail logo | Button that opens the start page (`6551`, `6599`) | Button that opens the start page (`shell/Rail.svelte`) | Ported | 3 | Fixed Nov 3. |
-| Settings position in rail | Under Live, with the other views; a spacer below (`6560`) | Pinned to the bottom of the rail (`shell/Rail.svelte:26-27`) | Different | 3 | Compare `proto_main_dark.png` with `app_main_dark.png`. |
-| Rail Live button | Brings the live tab forward if there is one, else opens Connect. A dot shows while streaming (`6600-6604`) | Toggles the Connect dialog (`shell/Rail.svelte:25`) | Partial | 3 | No streaming dot, no jump to the live tab. |
+| Settings position in rail | Under Live, with the other views; a spacer below (`6560`) | Under Live, a spacer below | Ported | 3 | Fixed Nov 3. |
+| Rail Live button | Brings the live tab forward if there is one, else opens Connect. A dot shows while streaming (`6600-6604`) | Brings the live tab forward if there is one, else opens Connect; a pulsing dot while a source streams | Ported | 3 | Fixed Nov 3. |
 | Rail toggles | Clicking the active view hides the sidebar (`6654-6666`) | Same (`shell/Rail.svelte:8`) | Ported | 3 | |
 | Rail active marker | Accent-soft fill and a 2 px accent bar at the left edge | Same (`shell/Rail.svelte:75-88`) | Ported | 3 | |
 | Ctrl+B / Ctrl+Alt+B | Left sidebar / Measure (`6796-6798`) | Same (`App.svelte:22-27`) | Ported | 3 | |
 | Measure auto-open | Opens when both cursors are placed, closes on clear unless opened by hand (`6672-6682`) | Same (`ui.svelte.ts:46`, `shell/Rail.svelte:10-18`) | Ported | 3 | |
 | Top bar order | Tabs · range · modes, Clear, Back, Fit, Play · all-panes view, Lock, Events · clear channels, remove panes · ⋯ (`6568-6588`) | Tabs · range · modes, Clear (only with cursors), Back, Fit, Play, ⋯ (`shell/TopBar.svelte:85-165`) | Partial | 3 (all-panes view: 4; Events: 5) | Groups 2 and 3 are missing; see the rows below. |
 | Time range text | Mono, 3 decimals (`00:00:00.000`), a button that opens the time-format menu (`6590-6597`) | Mono, a button that opens the time-format menu; decimals follow the zoom | Partial | 3 | Fixed Nov 3: the button and menu; the decimals are auto (3 in the prototype). |
-| Span text | Human duration: "2.00 h visible", "6.00 min visible" | Clock: "00:03:20.0 visible", "10.000 s visible" | Different | 3 | |
-| Pointer time | "pointer 01:13:08.5" in the range bar | "00:02:00.6" with no label (`shell/TopBar.svelte:152`) | Different | 3 | |
+| Span text | Human duration: "2.00 h visible", "6.00 min visible" | "3.33 min visible" (h, min, s, ms) | Ported | 3 | Fixed Nov 3. |
+| Pointer time | "pointer 01:13:08.5" in the range bar | "pointer 00:02:00.6" | Ported | 3 | Fixed Nov 3. |
 | Mouse modes | Box zoom, Pan, Cursors as icons (`1558-1562`) | Same (`shell/TopBar.svelte:154-158`) | Ported | 3 | |
 | Clear cursors button | Always on the bar (`1563`) | Always on the bar, disabled with no cursors | Ported | 3 | Fixed Nov 3. |
-| Back | Backspace; no forward (`1565`, `6974`) | Alt+← and Alt+→ forward (`shell/TopBar.svelte:162`, `app.ts:585-600`) | Different | 3 | The app follows the design's table (Alt+←/→); the prototype uses Backspace. |
+| Back | Backspace; no forward (`1565`, `6974`) | Alt+← and Backspace; Alt+→ forward | Ported | 3 | Fixed Nov 3: Backspace added to the design's Alt+←/→. |
 | Fit | F and the button, glides (`1564`, `5488`) | Same (`app.ts:580`) | Ported | 3 | |
 | Play back button | Toggles the transport (`6579`) | Same (`shell/TopBar.svelte:164`) | Ported | 3 | |
 | All panes as charts, tables or both | Segmented control (`1568-1572`, `setAllModes 5058`) | — | Missing | 4 | The follow-ups list the pane view switch under Phase 4. |
@@ -65,21 +67,21 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | ⋯ menu | Grouped as View (Lock, Event markers, Clear cursors), All panes (three views, New pane, Remove every channel, Remove every pane), Export (Export data…, Save the view as an image…, Export to HTML…) and Window (Collapse all sidebar panels, Switch theme T, Focus mode Ctrl+., Settings…). Items already on the bar are left out (`6686-6727`) | Open recording…, View (Lock, Clear cursors, Overview above), All panes (New pane, Remove every channel, Remove every pane), Window (Switch theme, Focus mode, Show performance details, Settings…) | Partial | 3 (Export: 4; HTML: 5) | Fixed Nov 3 except: Export group (4; HTML: 5), Event markers (5), the three pane views (4), Collapse all sidebar panels. |
 | Narrow top bar | Bar icons move into ⋯ when they don't fit (`6714-6716`) | Under 900 px Clear, Back, Fit, Play and Lock move into ⋯ (a Bar group) | Ported | 3 | Fixed Nov 3. |
 | Note under the top bar | Warn dot, text, Undo, ×, goes after 12 s (`3542-3547`) | Same (`App.svelte:40-56`, `stack.svelte.ts:252`) | Ported | 3 | |
-| Transport and live strip placement | Inside the main column, above the panes (`1625-1626`) | Full width under the top bar, above both sidebars (`App.svelte:38-39`) | Different | 3 | See `proto_play.png` and `app_play.png`. |
+| Transport and live strip placement | Inside the main column, above the panes (`1625-1626`) | Inside the main column, above the panes | Ported | 3 | Fixed Nov 3. |
 | Sidebar panels | Each section is a panel with a title bar: click to collapse, drag to reorder or move to the other side, ⇄ to send it across (`6258-6371`) | Explorer and each Measure panel collapse from their titles (saved); ⇄ swaps Explorer's and Measure's sides | Partial | 3 | Fixed Nov 3 except dragging a panel to reorder it or move it alone. |
 | Collapse all sidebar panels | ⋯ → Window (`6283-6294`) | ⋯ → Window (Expand all when all are collapsed) | Ported | 3 | Fixed Nov 3. |
 | Sidebar resize | Drag the inner edge (200 px to half the window, keeping 420 px of plots); double-click resets; saved (`6747-6779`) | Drag the inner edge, 200 px to half the window keeping 420 px of plots; double-click resets; saved (`App.svelte` `grip`) | Ported | 3 | Fixed Nov 3, for both sidebars. |
 | Reset UI layout | Settings button (`6297-6303`) | Settings → Layout → Reset UI layout | Ported | 3 | Fixed Nov 3. |
 | Status bar | State dot and text, memory, load, query, draw, points (`1662-1669`) | One string: points, kind, round trip (`App.svelte:76-78`) | Partial | 3 | |
 | Start page | Open folder…, Open recording…, Connect live source…, recent sessions, recent recordings, live sources with saved connections, layouts in the folder, "Show this page at launch" (`7039-7212`) | Open folder…, Open recording…, Connect live source…, the last folder, recent recordings, "Show this page at launch" (`shell/StartPage.svelte`); with no file it fills the stack, else it opens over the tabs | Partial | 3 | Fixed Nov 3 except recent sessions, live sources with saved connections and layouts in the folder. |
-| No file open | In the stack: "No file open", a line of help, Start page button (`3773`) | Centred "Open a recording / Drop a CSV or .tlm file here, or press ⌘O" (`App.svelte:69-72`), plus a note in Explorer | Different | 3 | The app's mode buttons stay enabled with no file (`app_empty.png`). |
+| No file open | In the stack: "No file open", a line of help, Start page button (`3773`) | The start page fills the stack; the mode buttons are disabled with no file | Ported | 3 | Fixed Nov 3: the start page stands in for the prototype's "No file open" line. |
 | No panes in a tab | "No channels plotted", a line of help, a large + Add pane (`3777-3784`) | "No channels plotted", a line of help and a + Add pane button | Ported | 3 | Fixed Nov 3. |
 | Focus mode | Ctrl/Cmd+. hides everything but the panes and range; Esc or "Exit focus" leaves (`6389-6397`) | Ctrl/Cmd+. or ⋯ → Focus mode hides the rail, tabs, buttons, sidebars and status bar; Esc or Exit focus leaves | Ported | 3 | Fixed Nov 3. |
 | Lock toast | "The view is locked. Unlock" when a gesture is refused (`1769`, `lockedHint 5526`) | The note under the top bar: "The view is locked." with Unlock | Ported | 3 | Fixed Nov 3. It's the note, not a separate toast. |
 | Theme toggle | T, and the ⋯ item (`5565`) | T and ⋯ → Switch theme | Ported | 3 | Fixed Nov 3. |
 | Window title | "• TelemetryBench" while a layout has unsaved changes (`3578`) | Not set | Missing | 4 | |
 | Scrim behind dialogs | rgba(3,5,8,.45), fades in over 220 ms (`233`) | Same (`style.css` `.scrim`) | Ported | 3 | Fixed Nov 3. |
-| Narrow window | Under 980 px the sidebars wrap onto their own full-width rows (`85`) | Sidebar stays 260 px beside the panes | Different | 3 | `proto_narrow.png`, `app_narrow.png`. |
+| Narrow window | Under 980 px the sidebars wrap onto their own full-width rows (`85`) | Under 980 px the sidebars take rows of their own above and below the panes | Ported | 3 | Fixed Nov 3. |
 | Drop a file on the window | Opens the CSV import dialog | Opens the first dropped path (`app.ts:2031-2035`) | Different | 4 | The app has no import step; see section 8. |
 
 ## 2. Explorer
@@ -89,18 +91,18 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Panel title row | Collapse chevron and "EXPLORER", then icons: add the shown channels to the selected pane, new derived channel, categories on/off, a separator, Expand all, Collapse all, ⇄ (`6467-6503`) | "EXPLORER", then Open folder, Open recording, Expand all, Collapse all (`shell/Explorer.svelte:72-78`) | Different | 3 (derive, categories: 5) | The app has file-opening icons where the prototype has channel actions. |
 | Folder menu | "recordings ▾" button: Open folder…, per folder Import all N files… and Remove from Explorer, Expand all folders, Collapse all folders, Import profiles and recipes…, Close all files (`6512-6517`) | The folder icon opens the picker (`shell/Explorer.svelte:74`) | Partial | 3 (import, recipes: 5) | `proto_folder_menu.png`. |
 | Filter | Beside the folder menu, regex `.*` toggle inside, placeholder "Filter" (`6524-6530`) | Full width under the title, regex toggle inside, "Filter files and channels" (`shell/Explorer.svelte:79-82`) | Ported | 3 | |
-| What the filter matches | Path, or channel name, unit or group (`5715`) | File name, or channel name (`shell/Explorer.svelte:41-42`) | Partial | 3 | Units and groups aren't searched. |
-| Explorer ⋯ | Add all N channels to pane N, Open them in a new chart, Open them in a new table, Recipes and profiles… (`6518-6522`) | — | Missing | 3 (recipes: 5) | `proto_explorer_more.png`. |
+| What the filter matches | Path, or channel name, unit or group (`5715`) | Name, unit or category | Ported | 3 | Fixed Nov 3. |
+| Explorer ⋯ | Add all N channels to pane N, Open them in a new chart, Open them in a new table, Recipes and profiles… (`6518-6522`) | Add all N channels to pane N, Open them in a new chart, a new table, categories, files that can't be opened, swap sides (`Explorer.svelte`) | Ported | 3 (recipes: 5) | Fixed Nov 3. |
 | Open-files strip | "OPEN · n", Show only these (toggle), Close all, file chips with × (`2284-2297`) | "OPEN · n", Show only these (setting), Close all, chips with × | Ported | 3 | Fixed Nov 3. |
 | Close all files with Undo | Undo restores the files and tabs (`closeTabs 3260`) | Undo reopens the files (not layout tabs) and brings the front one back (`app.ts` `closeAll`) | Ported | 3 | Fixed Nov 3. |
 | Folder tree | Folders expand and collapse, kept (`2303`) | Same, kept in settings (`shell/Explorer.svelte:44-50`) | Ported | 3 | |
 | `.tlmbench` entry | First row, with an "N shared views" badge (`2303-2330`) | — | Missing | 4 | In the follow-ups' Phase 4 list. |
 | File badges | "no descriptor" on binary files nothing decodes (`2323`), a check badge "✗ 2" (5), LIVE on live files | None | Missing | 4 (checks: 5) | |
-| File size | Not shown (the design: "Rows show only what matters: the data rate of imported files") | Size in MB on every file (`shell/Explorer.svelte:144`) | Different | 3 | |
-| Show files that can't be opened | Switch with "(N hidden)" (`1599`, `2307`) | — | Missing | 3 | |
-| Selected file row | Select first: actions beside the name (open, open only this) (`2335`) | Select first: an "Open" button (`shell/Explorer.svelte:140-142`) | Partial | 3 | |
+| File size | Not shown (the design: "Rows show only what matters: the data rate of imported files") | Not shown | Ported | 3 | Fixed Nov 3. |
+| Show files that can't be opened | Switch with "(N hidden)" (`1599`, `2307`) | Explorer ⋯ → Show files that can't be opened (N hidden); dimmed, they don't open (`list_folder` reports `openable`) | Ported | 3 | Fixed Nov 3. |
+| Selected file row | Select first: actions beside the name (open, open only this) (`2335`) | Select first: Open and Only this beside the name | Ported | 3 | Fixed Nov 3. |
 | Open a file | Double-click or Enter | Same (`shell/Explorer.svelte:136-137`) | Ported | 3 | |
-| File right-click menu | Open, Open only this, Channel prefix…, Format descriptor…, Compare with…, Close all files (`9416-9445`) | Open, Close this file, Close all files (`Explorer.svelte`) | Partial | 3 (descriptor: 4; prefix, compare: 5) | Fixed Nov 3 except Open only this, Channel prefix… (5), Format descriptor… (4), Compare with… (5). |
+| File right-click menu | Open, Open only this, Channel prefix…, Format descriptor…, Compare with…, Close all files (`9416-9445`) | Open, Open only this, Close this file, Close all files | Partial | 3 (descriptor: 4; prefix, compare: 5) | Fixed Nov 3 except Channel prefix… (5), Format descriptor… (4), Compare with… (5). |
 | Multi-select | Ctrl/Cmd-click adds, Shift-click a range, Ctrl+A all, Esc clears; files, channels or categories (`5826-5863`, `5899-5903`) | Ctrl/Cmd-click adds, Shift-click a range, Ctrl+A all channels, Esc clears; channels only | Partial | 3 | Fixed Nov 3 for channels; files and categories aren't multi-selectable. |
 | Selection bar | At Explorer's foot for several rows: Add to pane N, Chart, Table, Remove, Derive… (`5887-5898`) | At Explorer's foot: Add to pane N, Chart, Table, Remove (also for one selected channel) | Partial | 3 (Derive: 5) | Fixed Nov 3 except Derive… (5). |
 | Channel tree | File → category → channel; categories show "plotted / total" (`5779-5786`) | File → category → channel; categories (the start of the name before the first `_` or `.`, shared by two or more channels, else "other") show "plotted / total" and fold shut (saved) | Partial | 3 | Fixed Nov 3 with name-prefix categories, which the owner approved as the default; moving a channel to another category and New category… (right-click) are missing. |
@@ -110,21 +112,21 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Channel row actions | Remove from every pane, add to the pane, new chart, new table (`5795-5798`) | The selection bar's Add to pane N, Chart, Table and Remove act on the selected channel | Ported | 3 | Fixed Nov 3. They sit in the bar at Explorer's foot, not beside the row (quieter). |
 | Click and double-click | Click selects, checkbox plots, double-click plots (`5938-5940`) | Same (`shell/Explorer.svelte:158-163`) | Ported | 3 | |
 | Drag a channel | To a pane, a pane's edge, between rows or onto empty space; a selection drags together; onto a category header to move it (`5941-5950`, `startDrag 5687`) | Rows drag (a picked set together) onto a pane, or onto empty space below the panes for a new pane | Partial | 3 | Fixed Nov 3 except pane edges, between rows and category headers. |
-| Channel right-click | Move ACCEL_X to [category], New category…, Missing values and display…, Value labels…, Derive…, Mark when…, Add check… (`9416-9440`) | One item: Gap factor… (`app.ts:1871-1881`) | Different | 3 (display: 5; derive, mark, check: 5) | `proto_chan_menu.png`. The design's gap-factor decision puts Gap factor in this menu. |
+| Channel right-click | Move ACCEL_X to [category], New category…, Missing values and display…, Value labels…, Derive…, Mark when…, Add check… (`9416-9440`) | Move to a category…, Gap factor… | Partial | 3 (display: 5; derive, mark, check: 5) | Fixed Nov 3: Move to a category… (kept per file). Missing values and display, Value labels, Derive, Mark when and Add check are Phase 5. |
 | Gap factor dialog | — | Per channel, default 4×, Reset (`app.ts:1883-1929`) | Different | 2 | App only; it's in the design's Storage decisions but not in the prototype. |
 | Derived and missing badges | ƒ glyph, "⌀ 312" (`5793`) | — | Missing | 5 | |
-| Panes bar | "Panes + New / Clear / Remove all", shown with Show tips (`1596`) | — | Missing | 3 | |
-| Add all to a target | "Add all N to (pane, new table, new chart, new chart + table)" (`1589-1595`, `fillAddTarget 5722`) | — | Missing | 3 | In the quiet UI, reached from Explorer's ⋯. |
+| Panes bar | "Panes + New / Clear / Remove all", shown with Show tips (`1596`) | In Explorer ⋯ (add, new chart, new table) and the top bar's ⋯ → All panes (New pane, Remove every channel, Remove every pane) | Ported | 3 | Fixed Nov 3, in menus (the quiet-UI rule), not as a bar. |
+| Add all to a target | "Add all N to (pane, new table, new chart, new chart + table)" (`1589-1595`, `fillAddTarget 5722`) | Explorer ⋯: Add all N channels to pane N, in a new chart, in a new table | Ported | 3 | Fixed Nov 3. |
 | Empty Explorer | — | "No recording open. Open a folder or a recording, or drop a CSV or .tlm file on the window." (`shell/Explorer.svelte:121-123`) | Different | 3 | App only; the prototype always has a folder. |
 
 ## 3. Pane stack
 
 | Item | Prototype | App | Status | Phase | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Rows, columns, stacks | A row holds up to 3 columns (`MAX_PER_ROW 2719`) | Same model, up to 4 (`stack.svelte.ts:39`) | Different | 3 | |
+| Rows, columns, stacks | A row holds up to 3 columns (`MAX_PER_ROW 2719`) | A row holds up to 3 columns | Ported | 3 | Fixed Nov 3. |
 | Pane height | Fixed by row count: 150, 125 or 105 px plots (`paneHeight 3758`) | Same: 150 px up to 3 rows, 125 for 4, 105 for more; they shrink (not scroll) when the window is too short; table and values panes fill (`PaneStack.svelte`) | Ported | 3 | Fixed Nov 3. The chart height grip is still missing. |
 | Chart height grip | Drag under a chart to resize, side-by-side panes follow, double-click resets, arrows step (`3838`, `5183-5200`) | Drag under a chart, side-by-side panes follow, double-click resets, ↑ ↓ step; saved with the layout (`PaneStack.svelte`) | Ported | 3 | Fixed Nov 3. |
-| Pane number | Drag handle; a grip shows on hover; accent when selected; tooltip (`3864-3871`) | Muted number, draggable (`shell/PaneStack.svelte:110-120`) | Partial | 3 | |
+| Pane number | Drag handle; a grip shows on hover; accent when selected; tooltip (`3864-3871`) | Accent when selected, a grip on hover, draggable | Ported | 3 | Fixed Nov 3. |
 | Moving a pane | Onto a pane's left or right edge (beside), top or bottom (new row), middle (merge), or a gap between rows; Alt copies (`movePane 2898`, `bindPaneDrop 3914`, `makeGap 3981`) | Onto a pane's left or right edge (beside), top or bottom (a row of its own), middle (merge); Alt copies (`dropPane`) | Ported | 3 | Fixed Nov 3. |
 | Insert between rows | "+" in the gap between rows (`3791`) | "+" in the gap between rows (hover the left gutter) | Ported | 3 | Fixed Nov 3. |
 | Selection | Click a header selects; accent bar at the left | Same | Ported | 3 | |
@@ -132,8 +134,8 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Chips | Swatch, name, unit, "· L"/"· R" when two units share a pane, value while pointing, × on hover, drag to move or reorder (Alt copies), click opens the channel editor (`3822-3858`) | Colour dash, name, unit, "· L"/"· R", value while pointing, × on hover, drag to reorder (onto a chip) or move (onto a pane; Alt copies) | Partial | 3 (editor: 5) | Fixed Nov 3 except clicking a chip (the channel editor, Phase 5) and the swatch. |
 | Chip overflow | A "+N" button lists every channel with live values when the header overflows (`5064-5203`, `openChanPop 5130`) | "+N" when the header can't fit the chips; lists every channel with its value | Ported | 3 | Fixed Nov 3. |
 | Coarse marker | Drawing level per chart with Show performance details | "coarse" pill while the exact view is on its way (`shell/PaneStack.svelte:127-129`) | Different | 2 | App only, for the pyramid's coarse-to-exact view. |
-| View button | Current view's icon and a chevron (`3832`) | A generic layout icon (`shell/PaneStack.svelte:130-146`) | Different | 3 | |
-| View menu | Chart, Table, Chart and table, Chart and values, Values, Gauges, Checks, XY plot, Spectrum, each with an icon and a hint (`11020-11034`) | Chart, Table, Chart and table, Values, no icons (`shell/PaneStack.svelte:33-38`, `186-201`) | Partial | 3 (cv, gauges, checks, XY, spectrum: 5) | The check mark was unsized and drew about 150 px wide; fixed Nov 3 (14 px). |
+| View button | Current view's icon and a chevron (`3832`) | The current view's icon and a chevron | Ported | 3 | Fixed Nov 3. |
+| View menu | Chart, Table, Chart and table, Chart and values, Values, Gauges, Checks, XY plot, Spectrum, each with an icon and a hint (`11020-11034`) | Chart, Table, Chart and table, Values, each with an icon and a hint | Partial | 3 (cv, gauges, checks, XY, spectrum: 5) | Fixed Nov 3 for the four views; Chart and values, Gauges, Checks, XY and Spectrum are Phase 5. |
 | ⋯ pane menu | Event markers in this pane, Axis and scale…, Close others, Close panes below, Close pane, Duplicate, Split right, Split down, Add a pane below (`2824-2848`) | Same without Event markers (`shell/PaneStack.svelte:43-53`) | Partial | 5 | Only the Phase 5 item is missing. |
 | Close with Undo | Close pane, others and below are undoable (`2797-2812`) | Same (`stack.svelte.ts:159`) | Ported | 3 | |
 | Duplicate | Below, or beside with Shift-click; Ctrl/Cmd+D (`2872`, `6790`) | Below (⋯ → Duplicate), or beside (⋯ → Duplicate beside; Ctrl/Cmd+Shift+D beside) | Ported | 3 | Fixed Nov 3. |
@@ -142,7 +144,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Empty pane | "Empty pane"; "Drag a channel here, or select this pane and click a channel." (`3816`) | "Empty pane. Drag a channel here, or select this pane and click a channel." | Ported | 3 | Fixed Nov 3. |
 | Chart view | uPlot per pane | WebGL, one canvas for all panes (`app.ts:619`) | Ported | 1 | Different engine by design. |
 | Chart and table | Chart above, table below, table height grip | Same (`shell/PaneStack.svelte:175-176`, `shell/Table.svelte:165-187`) | Ported | 4 | |
-| Values view | Tiles with "at cursor A · 00:32:57.3" (or pointer or end of view) above them, decimals from the channel, "no limits", "Click to set limits"; the pane shrinks to fit (`3835`, `tileHtml`) | Tiles with name, value and unit (`shell/PaneStack.svelte:159-171`); values at raw precision (`0.340868`), no "where" line; the pane keeps its full height | Partial | 3 (limits: 5) | `proto_pane_value.png`, `app_pane_values.png`. |
+| Values view | Tiles with "at cursor A · 00:32:57.3" (or pointer or end of view) above them, decimals from the channel, "no limits", "Click to set limits"; the pane shrinks to fit (`3835`, `tileHtml`) | Tiles with a line above them ("at cursor A · time", the pointer, or the end of the view), decimals from the channel; the pane shrinks to fit | Partial | 3 (limits: 5) | Fixed Nov 3 except "no limits" / "Click to set limits" (Phase 5). |
 | Chart and values | `3839` | — | Missing | 5 | |
 | Gauges | `8067-8508` | — | Missing | 5 | |
 | Checks view | `11465` | — | Missing | 5 | |
@@ -159,11 +161,11 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Item | Prototype | App | Status | Phase | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Y axes | A unit's axis on the left, a second unit on the right | Same (`axes.ts`) | Ported | 2 | |
-| Time labels | Bottom chart, or every chart (Settings › Time labels) (`1721`) | Settings → Time labels: bottom chart only or every chart | Partial | 3 | Fixed Nov 3 except Automatic (every chart on a phone). |
+| Time labels | Bottom chart, or every chart (Settings › Time labels) (`1721`) | Settings → Time labels: bottom chart only or every chart | Ported | 3 | Fixed Nov 3: bottom chart, every chart, or Automatic (every chart on a narrow window). |
 | Axis and scale… | Left and right axis: range (fit, ignore outliers, include zero, fixed), decimals, label, log; Reset axes, Done (`10750`) | Same fields (`shell/AxisDialog.svelte`) | Ported | 4 | Title "Pane 1 axes" against "Pane 1 settings · axes". Reset axes is a bordered button and Done is filled (fixed Nov 3). |
 | Ignore outliers clipping | Spikes clipped and marked | Same (`app.ts:741`) | Ported | 4 | |
 | Cursors | Click in Cursors mode (A, then B), drag either | Same (`app.ts:1711-1736`, `nearCursor 1684`) | Ported | 2 | |
-| A and B keys | Over a table row (`4810`) | Over a plot (`app.ts:1972`) | Different | 3 | Each has half of what the design asks for (plot and table row). |
+| A and B keys | Over a table row (`4810`) | Over a plot, and over a table row (at that row's time) | Ported | 3 | Fixed Nov 3. |
 | Cursor flags | A and B flags at the top of each pane | Same (`app.ts:817`) | Ported | 2 | |
 | Esc clears cursors | `6944` | `app.ts:1967` | Ported | 2 | |
 | Measure: cursors | Tiles: A, B, Δt (highlighted), 1/Δt; a table of Channel, A, B, Δ (`1642-1650`, `fillInspector 6153`) | Tiles A, B, Δt (highlighted), 1/Δt; a table of Channel, A, B, Δ in each channel's decimals (`app.ts` `refreshMeasure`) | Ported | 3 | Fixed Nov 3. |
@@ -177,16 +179,16 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Gaps | Missing values become gaps everywhere (channel settings) | Lines break at time jumps over the gap factor (`app.ts:219`) | Different | 2 (missing values: 5) | |
 | Table filter on charts | Matches shaded with a tick; Apply to charts hides rows with hatching and a chip (`5255-5365`) | — | Missing | 4 | |
 | Table rows band | The rows a table shows are a shaded band on the charts (`tableWins 4308`) | — | Missing | 4 | In the follow-ups. |
-| Box zoom | ≥ 4 px zooms; the box turns solid when release will zoom; a box too small fades with "Drag wider to zoom" the first 3 times (`5460-5476`) | ≥ 4 px zooms with a glide (`app.ts:1771-1779`) | Partial | 3 | No armed state, fade or hint. |
-| Maximum zoom note | "Maximum zoom" at the pointer (`zoomNote 5384`) | — | Missing | 3 | |
+| Box zoom | ≥ 4 px zooms; the box turns solid when release will zoom; a box too small fades with "Drag wider to zoom" the first 3 times (`5460-5476`) | ≥ 4 px zooms; the box turns solid when release will zoom; a box too small says "Drag wider to zoom" the first 3 times | Ported | 3 | Fixed Nov 3. |
+| Maximum zoom note | "Maximum zoom" at the pointer (`zoomNote 5384`) | "Maximum zoom" at the pointer | Ported | 3 | Fixed Nov 3. |
 | Pan | Pan mode, Shift- or middle-drag, ← → keys (`6936-6937`) | Pan mode, Shift- or middle-drag, ← → keys (`app.ts:1718`, `panBy`) | Ported | 3 | Fixed Nov 3. |
-| Wheel zoom | At the pointer, speed from settings; off makes Ctrl+wheel zoom (`5407-5450`) | At the pointer, speed from settings; horizontal wheel pans (`app.ts:1788-1810`) | Partial | 3 | No "Scroll wheel zooms" setting. |
+| Wheel zoom | At the pointer, speed from settings; off makes Ctrl+wheel zoom (`5407-5450`) | At the pointer, speed from settings; Settings → Scroll wheel zooms (off: the wheel pans, Ctrl+wheel zooms); horizontal wheel pans | Ported | 3 | Fixed Nov 3. |
 | Keyboard zoom | + − ↑ ↓ (`6938-6939`) | ← → pan 15%, + − ↑ ↓ zoom 0.7× / 1.43× (`app.ts` `panBy`, `zoomBy`) | Ported | 3 | Fixed Nov 3. |
 | Double-click fits | Setting dblFit | Same (`app.ts:1783`) | Ported | 3 | |
 | Glide | Fit, box zoom, Back glide; reduced motion respected (`glideView 5208`) | Same (`app.ts:556-578`) | Ported | 3 | |
 | Draw every sample | Setting: Automatic, up to 100k, up to 1M, Always (`1720`) | Decided by the core | Missing | 3 | |
-| Time format and decimals | Ten formats and fixed decimals (`1722-1723`, `fmtTime 2523`) | Seven formats (Automatic, Clock, Seconds, Milliseconds, Minutes and seconds, Hours, Days) and fixed decimals (`axes.ts` `timeLabel`) | Partial | 3 | Fixed Nov 3 except Weeks, Years, Samples and Wall clock. |
-| Channel colours | The least-used palette colour, first among its pane (`assignColor 2748`) | Fixed by channel index: `--trace-(ch % 8 + 1)` (`app.ts:175`) | Different | 3 | Two channels in one pane can share a colour in the app. |
+| Time format and decimals | Ten formats and fixed decimals (`1722-1723`, `fmtTime 2523`) | Nine formats (Automatic, Clock, Seconds, Milliseconds, Minutes and seconds, Hours, Days, Weeks, Years) and fixed decimals | Partial | 3 | Fixed Nov 3 except Samples and Wall clock. |
+| Channel colours | The least-used palette colour, first among its pane (`assignColor 2748`) | The least-used palette colour, and not one already in its pane (`stack.svelte.ts` `assignColors`) | Ported | 3 | Fixed Nov 3. |
 | Building hatch | — | Hatching and progress while the pyramid builds (`app.ts:789`) | Different | 2 | App only. |
 | Channel editor | Display (name shown, colour, decimals, unit label, scale, offset, missing values, valid range, Missing when), Limits, Value labels (`10643`) | — | Missing | 5 | The design doesn't phase display settings; they sit with missing values. |
 | Y zoom | — | — | Missing | 3 | Neither has it; the design's table lists Shift+scroll and dragging the y axis. |
@@ -226,8 +228,8 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | --- | --- | --- | --- | --- | --- |
 | Analyze | Default mode | Same | Ported | 3 | |
 | Space plays and pauses | `8628` | `app.ts:1958-1962` | Ported | 3 | |
-| Transport layout | Row 1: play, time, speed, windows, Following, A–B loop, Stop at…, ×; row 2: a full-width scrubber (`8585-8640`) | One row: play, time, scrubber, end time, speed, windows, Following, Loop A–B, × (`shell/Transport.svelte`) | Different | 3 | |
-| Playhead time | "00:32:57.3 / 02:00:00" | "53.784 s" with the end time apart ("00:03:20.0") | Different | 3 | |
+| Transport layout | Row 1: play, time, speed, windows, Following, A–B loop, Stop at…, ×; row 2: a full-width scrubber (`8585-8640`) | Row 1: play, time "t / end", speed, windows, Following, Loop A–B, ×; row 2: a full-width scrubber | Ported | 3 | Fixed Nov 3. |
+| Playhead time | "00:32:57.3 / 02:00:00" | "00:32:57.3 / 02:00:00" | Ported | 3 | Fixed Nov 3. |
 | Speed | ¼× to 1 day/s; the default plays the file in ≤ 3 min (`8514`, `8522`) | Same list and rule (`play.svelte.ts:5`, `app.ts:445`) | Ported | 3 | |
 | Window presets | 10 s, 1 min, 10 min, 1 h | Same (`play.svelte.ts:7`) | Ported | 3 | |
 | Follow | Following / a view you choose holds it | Same | Ported | 3 | |
@@ -238,8 +240,8 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Sources | Popover: a card per source with a state pill, Pause/Resume, Stop/Remove/Reconnect; + Add source; Stream health (total rate, UI updates, sample → pixel, history in memory, dropped, CRC errors); Recording (file, size) (`7662-7800`) | Panel under the strip: source, rate, recorded, dropped, missing, buffer, recording file, error, Stop recording (`shell/LiveStrip.svelte:41-56`) | Partial | 3 | + Add source is deferred in the follow-ups. |
 | Trigger | Oscilloscope trigger on a level or edge; single or repeat; Disarm (`7543-7634`) | — | Missing | 3 | The design calls triggers v1 without a phase. |
 | Connect dialog | Two columns: source kinds with descriptions (File playback, Serial port, UDP, TCP, Tail a file), then Name, per-kind fields, Record while streaming, Save recordings to, Save this connection on the start page; footer "Opens in a new live tab" (`7238-7348`) | One column: Serial / TCP / UDP / Growing file tabs, the fields, a descriptor, "Recorded to the Recordings folder" (`shell/Connect.svelte`) | Partial | 3 | `proto_connect.png`, `app_connect.png`. The app has no name, recording switch, folder or saved connections. |
-| Live tab marker | Pulsing dot on a live tab (`991`) | — | Missing | 3 | |
-| Live rail dot | `6604` | — | Missing | 3 | |
+| Live tab marker | Pulsing dot on a live tab (`991`) | A pulsing dot on a live tab | Ported | 3 | Fixed Nov 3. |
+| Live rail dot | `6604` | A pulsing dot on the rail's Live while a source streams | Ported | 3 | Fixed Nov 3. |
 
 ## 7. Settings
 
@@ -255,13 +257,13 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Footer | "Saved in this browser as you change them", Reset to defaults | "Saved as you change them", Reset to defaults (`shell/Settings.svelte:63`) | Ported | 3 | |
 | Lock the time view | `1676` | `shell/Settings.svelte` | Ported | 3 | Fixed Nov 3. |
 | Cursors still work while locked | `1677` | `shell/Settings.svelte` | Ported | 3 | Fixed Nov 3. |
-| Also lock the layout | `1678` | — | Missing | 3 | |
+| Also lock the layout | `1678` | Settings → Also lock the layout | Ported | 3 | Fixed Nov 3. |
 | Table sort and filter still work while locked | `1679` | — | Missing | 4 | |
 | Click a column header to sort | `1683` | — | Missing | 4 | |
 | Mouse mode | `1687` | `shell/Settings.svelte:16` | Ported | 3 | |
 | Double-click fits the whole recording | `1688` | `shell/Settings.svelte:18` | Ported | 3 | |
 | Zoom speed | `1689` | `shell/Settings.svelte:17` | Ported | 3 | |
-| Scroll wheel zooms the charts | `1690` | — | Missing | 3 | |
+| Scroll wheel zooms the charts | `1690` | Settings | Ported | 3 | Fixed Nov 3. |
 | Panes mark the events of | `1694` | — | Missing | 5 | |
 | Tint table rows inside events | `1695` | — | Missing | 5 | |
 | Event categories | Name, colour, show, delete; + Add category (`1696-1698`, `renderCatRows 5568`) | — | Missing | 5 | |
@@ -272,7 +274,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Channels (display settings list) | `1709`, `renderChannelSettings 10720` | — | Missing | 5 | |
 | Show the start page at launch | `1713` | Settings → Show the start page at launch; over the restored tabs at launch | Ported | 3 | Fixed Nov 3. |
 | Record live sessions to | `1714` | — | Missing | 3 | The app records to a fixed Recordings folder. |
-| Session status, Reset session | `1715` | — | Missing | 3 | |
+| Session status, Reset session | `1715` | Settings → Layout → Reset session | Partial | 3 | Fixed Nov 3: Reset session. There is no per-folder session status. |
 | Theme | `1719` | `shell/Settings.svelte:19` | Ported | 3 | |
 | Draw every sample | `1720` | — | Missing | 3 | |
 | Time labels | `1721` | Settings → Time labels | Ported | 3 | Fixed Nov 3 (Automatic for phones isn't offered). |
@@ -280,16 +282,16 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Time decimals | `1723` | Settings → Time decimals | Ported | 3 | Fixed Nov 3. |
 | Group channels into categories | `1724` | Settings → Group channels into categories (Basic) | Ported | 3 | Fixed Nov 3. |
 | Overview above the panes | `1725` | `shell/Settings.svelte:20` | Ported | 3 | |
-| Left sidebar | `1726` | Not a setting; the rail toggles it (`settings.leftPanel`) | Partial | 3 | |
-| Measure panel | `1727` | Not a setting; the rail toggles it (`settings.measureOpen`) | Partial | 3 | |
+| Left sidebar | `1726` | Settings → Left sidebar (Explorer, Settings, Hidden) | Ported | 3 | Fixed Nov 3. |
+| Measure panel | `1727` | Settings → Measure panel | Ported | 3 | Fixed Nov 3. |
 | Open Measure when both cursors are placed | `1728` | `shell/Settings.svelte:21` | Ported | 3 | |
 | Channels from several files | `1729` | — | Missing | 5 | |
 | Clicking a row | `1730` | Settings → Clicking a row: Select first, Act at once (Explorer) | Ported | 3 | Fixed Nov 3. |
-| New pane from a dragged channel | `1731` | — | Missing | 3 | |
+| New pane from a dragged channel | `1731` | Settings; a chip dropped on empty space makes a new pane (a chart, or the view it came from) | Ported | 3 | Fixed Nov 3. |
 | Tooltips: Short and learn, Full, Off | `1732` | Settings → Tooltips (`tips.ts`) | Ported | 3 | Fixed Nov 3. |
 | Learned tooltips: Reset | `1733` | Settings → Reset tooltips | Ported | 3 | Fixed Nov 3. |
-| Quiet interface | `1734` | Settings → Quiet interface: hides "pane N" badges, file sizes and category counts | Partial | 3 | Fixed Nov 3 for Explorer; chips, file numbers and grips aren't affected. |
-| Show tips and extra controls | `1735` | — | Missing | 3 | |
+| Quiet interface | `1734` | Hides "pane N" badges and category counts in Explorer | Partial | 3 | Fixed Nov 3 for Explorer; chips, file numbers and grips aren't affected. |
+| Show tips and extra controls | `1735` | Settings → hides the how-to notes | Ported | 3 | Fixed Nov 3 for the notes that exist (Measure's hint). |
 | Show performance details | `1736` | `shell/Settings.svelte:22` | Ported | 3 | |
 | UI layout: Reset UI layout | `1737` | Settings → Layout | Ported | 3 | Fixed Nov 3. |
 
@@ -300,7 +302,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Tab contents | File or layout icon, name, slot badges, check badge, dirty dot, lock on read-only, live dot, ⌄, × (`renderTabs 3301`) | File or layout icon, name, dirty dot, ⌄, × (`shell/TopBar.svelte:87-133`) | Partial | 4 (slots, checks: 5) | |
 | Tab width | Up to 220 px; 206 px for "synthetic_flight.bin" | 146 px for "flight.tlm" | Ported | 3 | Same styles; the names differ. |
 | Tab drag to reorder | `moveTab 3291` | `shell/TopBar.svelte:100-108` | Ported | 3 | |
-| Tab keys | Ctrl+PageUp/PageDown switch, Ctrl+Shift+PageUp/PageDown move, Delete closes, Enter/Space shows (`3340-3348`, `3644`) | Enter/Space shows (`shell/TopBar.svelte:97`) | Partial | 3 | |
+| Tab keys | Ctrl+PageUp/PageDown switch, Ctrl+Shift+PageUp/PageDown move, Delete closes, Enter/Space shows (`3340-3348`, `3644`) | Ctrl+PageUp/PageDown switch, Ctrl+Shift+PageUp/PageDown move, Delete closes, Enter/Space shows | Ported | 3 | Fixed Nov 3. |
 | Middle-click closes a tab | `3308` | `shell/TopBar.svelte:98` | Ported | 3 | |
 | Tab overflow | ‹ › scroll buttons when tabs don't fit | ‹ › scroll buttons beside the tab strip; the front tab kept in sight | Ported | 3 | Fixed Nov 3. |
 | Tab menu header | Name and × (`1743`) | None | Missing | 4 | `proto_tab_menu.png`, `app_tab_menu.png`. |
@@ -312,7 +314,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Share with this folder… | Writes `.tlmview.json` with slots, alignment, time range (`1752`, `shareView 3231`) | Writes `.tlmbench/views/` with the layout, file and time range; Update shared copy… (`shell/TopBar.svelte:197-204`, `app.ts:1542`) | Ported | 4 | |
 | Export file… | — | Tab menu item (`shell/TopBar.svelte:205`, `app.ts:1567`) | Different | 4 | App only. |
 | Delete layout | With Undo (`deleteLayout 3441`) | With Undo (`app.ts:1448-1458`) | Ported | 4 | |
-| Close tab, others, all | Undoable; live sources stop (`closeTabs 3260`) | Not undoable (`app.ts:1338`) | Partial | 3 | |
+| Close tab, others, all | Undoable; live sources stop (`closeTabs 3260`) | Close tab and close others have Undo (the files reopen); close all has Undo | Ported | 3 | Fixed Nov 3. |
 | + menu | "New tab" header and ×; Empty layout…; your layouts with delete; shared layouts with "1 file · ready · a.chen" or "needs file 2" in warn; Starters (`openAddMenu 3420-3460`) | Empty layout…; your layouts ("N panes", delete); shared layouts ("by …"); a note (`shell/TopBar.svelte:219-275`) | Partial | 4 (needs and slots: 5) | `proto_add_menu.png`, `app_add_menu.png`. |
 | Built-in starter layouts | Starters group | — | Missing | 4 | |
 | Slot picker | Which file fills each slot before a layout opens (`askForSlot 3218`, `openLayout 3465`) | — | Missing | 5 | |
@@ -387,6 +389,14 @@ top bar (Bar group in ⋯) and scrolling tabs. `t_height`, `t_chips` and `t_narr
 Pane drops and the overview (Nov 3): dropping a pane's number on another pane's edges or middle, the "+" between rows,
 the Add pane ▾ menu, Duplicate beside, the empty-pane and no-panes states, and the overview's channel picker, range,
 switch and gestures. `t_zones` and `t_overview` cover them.
+
+Phase 3 leftovers (Nov 3): the rail (Settings under Live, a streaming dot), the span and pointer in words, the
+transport and live strip in the main column, sidebars wrapping under 980 px, Explorer's folder and ⋯ menus, files that
+can't be opened, Open only this, categories of your own, channel colours by least use, pane numbers, the view button's
+icon, the values pane's "where" line, three panes at most in a row, A and B over a table row, the zoom hints, the
+wheel and layout-lock settings, tab keys with Undo on closing, Left sidebar and Measure panel as settings, Reset
+session, and Weeks and Years. `t_leftovers`, `t_leftovers2`, `t_exmenus` and `t_colors` cover them. What's left of
+Phase 3 needs the core or a decision; it is listed in `docs/follow-ups.md`.
 
 ## 9. Look and feel
 
@@ -483,23 +493,23 @@ style, and the axis tick font.
 | B, P, C | Modes | Modes | Ported |
 | F | Fit | Fit | Ported |
 | Esc | Clear cursors, close menus, leave focus mode | Clear cursors, close menus, leave focus mode | Ported |
-| Backspace | Back | — | Different (the app uses Alt+←) |
+| Backspace | Back | Back | Ported |
 | Alt+← / Alt+→ | — | Back / forward | Different (the app follows the design) |
 | ← → | Pan 15% | Pan 15% | Ported |
 | + − ↑ ↓ | Zoom 0.7× / 1.43× | Zoom 0.7× / 1.43× | Ported |
 | L | Lock | Lock | Ported |
 | T | Theme | Theme | Ported |
 | E | Event markers | — | Missing |
-| A, B | Over a table row | Over a plot | Different |
+| A, B | Over a table row | Over a plot and over a table row | Ported |
 | Space | Play / pause | Play / pause | Ported |
 | Ctrl+B, Ctrl+Alt+B | Sidebars | Sidebars | Ported |
 | Ctrl/Cmd+. | Focus mode | Focus mode | Ported |
 | Ctrl/Cmd+D | Duplicate pane (Shift: beside) | Duplicate pane (Shift: beside) | Ported |
 | Ctrl/Cmd+Shift+N | New pane below the selected one | New pane below the selected one | Ported |
 | Ctrl/Cmd+S | Save layout | Save layout (a file tab asks for a name) | Ported |
-| Ctrl+PageUp / PageDown | Switch tabs | — | Missing |
-| Ctrl+Shift+PageUp / PageDown | Move the tab | — | Missing |
-| Delete on a tab | Close it | — | Missing |
+| Ctrl+PageUp / PageDown | Switch tabs | Switch tabs | Ported |
+| Ctrl+Shift+PageUp / PageDown | Move the tab | Move the tab | Ported |
+| Delete on a tab | Close it | Close it | Ported |
 | Ctrl/Cmd+A in Explorer | Select all rows of a kind | — | Missing |
 | Enter in Explorer | Open the file; with several rows, the primary action | Open the file, toggle the channel | Partial |
 | ⌘O | — | Open recording… | Different (app only) |

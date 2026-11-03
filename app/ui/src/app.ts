@@ -389,6 +389,7 @@ async function requestResting(): Promise<void> {
   const f = state.file;
   const chans = [...new Set(stack.panes.filter((p) => p.mode === 'values').flatMap((p) => p.channels))];
   const mine = ++restingWanted;
+  setValuesAt();
   if (!f || !chans.length) {
     if (Object.keys(stack.resting).length) stack.resting = {};
     return;
@@ -986,7 +987,18 @@ function renderOverviewHead(): void {
   slot.append(wrap);
 }
 
+/** Words for where values are read: under the pointer, at cursor A, or at the end of the view. */
+function setValuesAt(): void {
+  const f = state.file;
+  const span = Number(state.t1 - state.t0);
+  if (!f) ui.valuesAt = '';
+  else if (state.hoverT != null) ui.valuesAt = `at the pointer · ${readoutTime(state.hoverT, span)}`;
+  else if (state.A != null) ui.valuesAt = `at cursor A · ${readoutTime(state.A, span)}`;
+  else ui.valuesAt = `at the end of the view · ${readoutTime(state.t1 > f.last ? f.last : state.t1, span)}`;
+}
+
 function updateChips(): void {
+  setValuesAt();
   const values: Record<number, string> = {};
   state.hover.forEach((s, ch) => (values[ch] = fmtCh(state.file?.id ?? null, ch, s.v)));
   if (JSON.stringify(values) !== JSON.stringify(stack.values)) stack.values = values;
@@ -2199,6 +2211,9 @@ window.addEventListener('keydown', (e) => {
   if (e.altKey && e.key === 'ArrowRight') return forward();
   if (e.key === 'Escape') return clearCursors();
   if (!state.file) return;
+  // A and B over a table row place the cursors at that row's time
+  const row = (k === 'a' || k === 'b') && state.file ? document.querySelector<HTMLElement>('[data-row][data-t]:hover') : null;
+  if (row) return placeCursor(k === 'a' ? 'A' : 'B', BigInt(row.dataset.t!));
   // A and B over a plot place the cursors there; elsewhere B is Box zoom
   const hit = lastPointer && paneAt(lastPointer);
   if ((k === 'a' || k === 'b') && hit && state.hoverT != null) return placeCursor(k === 'a' ? 'A' : 'B', state.hoverT);

@@ -12,19 +12,7 @@
   <button class="pb play" data-pplay aria-label={play.running ? 'Pause' : 'Play'} data-tip="Play or pause (Space)" onclick={playActions.toggle}
     >{@html play.running ? ICON.pause : ICON.play}</button
   >
-  <span class="ptime num" data-ptime>{duration(play.t * 1e9)}</span>
-  <input
-    class="pscrub"
-    type="range"
-    min="0"
-    max="1000"
-    step="1"
-    data-pscrub
-    aria-label="Playhead"
-    value={Math.round((1000 * play.t) / Math.max(1e-9, play.end))}
-    oninput={(e) => playActions.seek((Number(e.currentTarget.value) / 1000) * play.end)}
-  />
-  <span class="pend num muted">{duration(play.end * 1e9)}</span>
+  <span class="ptime num" data-ptime>{duration(play.t * 1e9)}<span class="muted"> / {duration(play.end * 1e9)}</span></span>
   <select class="sel pspeed" data-pspeed aria-label="Speed" value={String(play.speed)} onchange={(e) => (play.speed = Number(e.currentTarget.value))}>
     {#each SPEEDS as s (s)}<option value={String(s)}>{speedLabel(s)}</option>{/each}
   </select>
@@ -41,15 +29,26 @@
   >
   <span class="spacer"></span>
   <button class="pb" data-pclose aria-label="Close the transport" data-tip="Close (the view stays)" onclick={playActions.close}>{@html ICON.close}</button>
+  <input
+    class="pscrub"
+    type="range"
+    min="0"
+    max="1000"
+    step="1"
+    data-pscrub
+    aria-label="Playhead"
+    value={Math.round((1000 * play.t) / Math.max(1e-9, play.end))}
+    oninput={(e) => playActions.seek((Number(e.currentTarget.value) / 1000) * play.end)}
+  />
 </div>
 
 <style>
   .pstrip {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    min-height: 40px;
-    padding: 0 10px 0 14px;
+    gap: 4px 10px;
+    padding: 4px 10px 6px 14px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     font-size: 12px;
@@ -80,12 +79,10 @@
     min-width: 92px;
     font-size: 13px;
   }
-  .pend {
-    font-size: 11.5px;
-  }
   .pscrub {
-    flex: 1;
-    min-width: 120px;
+    flex: 1 0 100%;
+    order: 10;
+    margin: 0;
     accent-color: var(--accent);
   }
   .pspeed {

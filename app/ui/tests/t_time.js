@@ -6,7 +6,7 @@ run('time', async ({ p, check, text, settingsLS, until, wait, visible }) => {
   const range = () => text('#rangeTxt');
   check('Automatic: a clock', /^\d\d:\d\d:\d\d\.\d → \d\d:\d\d:\d\d\.\d$/.test(await range()), await range());
   await p.click('#rangeTxt');
-  check('clicking the range opens the formats', (await p.$$('.timemenu [data-tf]')).length === 7);
+  check('clicking the range opens the formats', (await p.$$('.timemenu [data-tf]')).length === 9);
   await p.click('.timemenu [data-tf="s"]');
   check('Seconds counts from the start', await until(() => /^0\.\d+ s → \d+\.\d+ s$/.test(document.getElementById('rangeTxt').textContent)), await range());
   check('and it is saved', (await settingsLS()).timeFormat === 's');

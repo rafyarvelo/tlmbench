@@ -32,6 +32,7 @@
     axisKey,
     colorIdx,
   } from '../stack.svelte';
+  import { settings } from '../settings.svelte';
   import { ui } from '../ui.svelte';
   import AxisDialog from './AxisDialog.svelte';
   import Table from './Table.svelte';
@@ -45,6 +46,7 @@
     { mode: 'both', label: 'Chart and table', hint: 'The chart with its table below' },
     { mode: 'values', label: 'Values', hint: 'Value tiles at the pointer, cursor A or the end of the view' },
   ] as const;
+  const VIEW_ICON = { chart: ICON.vchart, table: ICON.view, both: ICON.vboth, values: ICON.vvalues } as const;
   const viewName = (i: number) => VIEWS.find((v) => v.mode === (stack.panes[i]?.mode ?? 'chart'))!.label;
   /** A channel dragged from Explorer: the pane it would land in (-1: a new pane). */
   let chanOver = $state<number | null>(null);
@@ -105,7 +107,13 @@
     e.stopPropagation();
     chanOver = null;
     const c = chipOf(e);
-    if (c) moveChannel(c.ch, c.from, to, before, e.altKey);
+    if (!c) return;
+    if (to < 0) {
+      // onto empty space: a new pane, a chart or the view it came from; the channel leaves the old one unless Alt copies
+      const mode = settings.dropNewView === 'same' ? stack.panes[c.from]?.mode : undefined;
+      if (!e.altKey) removeChannel(c.ch, c.from);
+      newPaneWith([c.ch], mode);
+    } else moveChannel(c.ch, c.from, to, before, e.altKey);
   }
   /** Panes whose header can't show every chip: how many are folded into "+N", and the open list. */
   let folded = $state<Record<number, number>>({});
@@ -201,12 +209,12 @@
 
 <div id="stack" class="stack" class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length === 4 ? 125 : 105}px">
   {#each rows() as row, r (r)}
-    <div class="prow" class:grow={row.some((k) => stack.panes[k].mode === 'table' || stack.panes[k].mode === 'values')}>
+    <div class="prow" class:grow={row.some((k) => stack.panes[k].mode === 'table')}>
       {#each columns(row) as col, c (c)}
         <div class="pcol">
           {#each col as i (i)}
             {@const p = stack.panes[i]}
-            <section class="pane" class:grow={p.mode === 'table' || p.mode === 'values'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => zoneAt?.i === i && (zoneAt = null)} ondrop={(e) => paneDrop(e, i)} role="presentation">
+            <section class="pane" class:grow={p.mode === 'table'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => zoneAt?.i === i && (zoneAt = null)} ondrop={(e) => paneDrop(e, i)} role="presentation">
               <div
                 class="phead"
                 use:fitChips={i}
@@ -267,7 +275,7 @@
                     const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     menu = null;
                     views = views?.i === i ? null : { i, x: Math.min(b.right - 250, window.innerWidth - 270), y: b.bottom + 4 };
-                  }}>{@html ICON.view}</button
+                  }}>{@html VIEW_ICON[p.mode ?? 'chart']}<span class="vchev">{@html ICON.chevron}</span></button
                 >
                 <button
                   class="pmore"
@@ -283,6 +291,7 @@
               </div>
               {#if p.mode === 'values'}
                 <div class="tiles" data-tiles>
+                  <div class="twhere" data-where-line>{ui.valuesAt}</div>
                   {#each p.channels as ch (ch)}
                     {@const info = ui.channels[ch]}
                     <div class="tile" style="--c: var(--trace-{colorIdx(ch) + 1})" data-tile={ch}>
@@ -349,7 +358,7 @@
           const i = views!.i;
           views = null;
           setMode(i, v.mode);
-        }}><span class="nm">{v.label}<small>{v.hint}</small></span>{#if on}{@html ICON.check}{/if}</button
+        }}>{@html VIEW_ICON[v.mode]}<span class="nm">{v.label}<small>{v.hint}</small></span>{#if on}{@html ICON.check}{/if}</button
       >
     {/each}
   </div>
@@ -531,11 +540,21 @@
   .pnum {
     cursor: grab;
   }
+  .pane.sel .pnum,
+  .pnum:hover {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .pnum:hover::before {
+    content: '⋮';
+    margin-right: 1px;
+  }
   .pmore {
     display: inline-grid;
     place-items: center;
-    width: 26px;
-    height: 22px;
+    min-width: 26px;
+    height: 26px;
+    gap: 2px;
     padding: 0;
     border: 0;
     border-radius: 4px;
@@ -555,6 +574,20 @@
   .pane.sel .pmore,
   .pmore:focus-visible {
     visibility: visible;
+  }
+  .twhere {
+    flex: 1 0 100%;
+    color: var(--fg-muted);
+    font-size: 11.5px;
+  }
+  .vchev :global(svg) {
+    width: 9px;
+    height: 9px;
+  }
+  .viewmenu .mi > :global(svg) {
+    width: 16px;
+    height: 16px;
+    color: var(--fg-muted);
   }
   .tiles {
     display: flex;

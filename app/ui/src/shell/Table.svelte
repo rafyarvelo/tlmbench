@@ -245,6 +245,7 @@
               role="row"
               tabindex="-1"
               data-row={r}
+              data-t={x ? String(x.t) : undefined}
               onclick={(e) => click(e, r)}
               ondblclick={() => dblclick(r)}
               onkeydown={(e) => e.key === 'Enter' && click(e as unknown as MouseEvent, r)}

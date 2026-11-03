@@ -37,7 +37,7 @@
     { key: 'showStart', section: 'Display', label: 'Show the start page at launch', hint: 'Recent recordings and ways to open things, over your tabs when the app starts.' },
     { key: 'timeFormat', section: 'Display', basic: true, label: 'Time format', hint: 'Used for axes, readouts, tables and cursors. Click the time range in the top bar to switch quickly.', options: TIME_FORMATS.map(([k, n, ex]) => [k, `${n} · ${ex}`] as [string, string]) },
     { key: 'timeDecimals', section: 'Display', label: 'Time decimals', options: [['auto', 'Automatic'], ...[0, 1, 2, 3, 4, 5, 6].map((n) => [String(n), String(n)] as [string, string])] },
-    { key: 'timeAxis', section: 'Display', label: 'Time labels', hint: 'Which charts show the time axis labels. Charts share one time axis.', options: [['bottom', 'Bottom chart only'], ['every', 'Every chart']] },
+    { key: 'timeAxis', section: 'Display', label: 'Time labels', hint: 'Which charts show the time axis labels. Charts share one time axis.', options: [['auto', 'Automatic (every chart on a narrow window)'], ['bottom', 'Bottom chart only'], ['every', 'Every chart']] },
     { key: 'overviewTop', section: 'Display', basic: true, label: 'Overview above the panes' },
     { key: 'measureAuto', section: 'Display', basic: true, label: 'Open Measure when both cursors are placed', hint: 'It closes again when you clear the cursors, unless you opened it yourself.' },
     { key: 'showPerf', section: 'Display', label: 'Show performance details', hint: 'A status bar with the last view: points drawn, how they were reduced, and the round trip.' },

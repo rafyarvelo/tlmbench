@@ -102,3 +102,15 @@ Next, in order:
 Known: Linux CI's `t_widgets` failed twice on "the size is kept" and then passed (not reproduced locally, even with
 4× CPU throttling). Live sources and `.tlm` headers refuse `[packets]` for now.
 
+## Phase 3 shell port: what is left
+
+The app's UI port of the prototype's shell is done except these (rows in `docs/parity-audit.md`):
+
+- Needs the core: Draw every sample (the core decides today), the live strip's session name and PAUSED/STOPPED, Trigger,
+  + Add source, the Connect dialog's Name and recording switch, Record live sessions to, Measure's Missing (count and
+  duration).
+- Needs a decision: the Overview as a min/max band per channel with a midline (it draws each channel's trace
+  scaled to its own range today), per-folder sessions, Samples and Wall clock time formats, dragging a panel to
+  reorder it or move it alone, selecting several files in Explorer, the status bar's memory and load figures.
+- Phase 4 and 5 rows that touch the shell (the `.tlmbench` entry, the Layouts sidebar, Export in ⋯, the tab menu's
+  header and status, event markers) stay with their phases.

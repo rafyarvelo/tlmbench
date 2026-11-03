@@ -28,6 +28,8 @@ export const ui = $state({
   canBack: false,
   /** The start page is open over the panes (it is also what shows with no file). */
   start: false,
+  /** What a values pane's tiles are read at: the pointer, cursor A or the end of the view. */
+  valuesAt: '',
   /** Focus mode: only the panes and the range show. */
   focus: false,
   /** The open file's id, the time view and the cursors (exact ns as decimal strings), for table panes. */

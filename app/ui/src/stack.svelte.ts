@@ -39,7 +39,7 @@ export interface Pane {
 }
 
 /** Columns a row holds at most. */
-export const MAX_PER_ROW = 4;
+export const MAX_PER_ROW = 3;
 
 export const stack = $state({
   panes: [] as Pane[],
@@ -98,7 +98,7 @@ export function columns(row: number[]): number[][] {
 
 /** Whether pane `i` is the bottom of its column in the last row: its plot carries the time labels. */
 export function labelled(i: number): boolean {
-  if (settings.timeAxis === 'every') return hasChart(i);
+  if (settings.timeAxis === 'every' || (settings.timeAxis === 'auto' && window.innerWidth < 700)) return hasChart(i);
   const rs = rows();
   const last = rs[rs.length - 1] ?? [];
   return columns(last).some((c) => c[c.length - 1] === i);

@@ -158,7 +158,7 @@
         }}
         ondragend={() => (dragTab = null)}
       >
-        {@html t.ws ? ICON.layout : ICON.file}<span class="nm">{t.name}</span>{#if t.dirty}<span class="dirty" data-dirty aria-label="unsaved changes" data-tip="Unsaved changes: Save layout (⌘S) or Revert changes in the tab menu"></span>{/if}
+        {@html t.ws ? ICON.layout : ICON.file}<span class="nm">{t.name}</span>{#if t.live}<span class="livedot" data-live-tab aria-label="live"></span>{/if}{#if t.dirty}<span class="dirty" data-dirty aria-label="unsaved changes" data-tip="Unsaved changes: Save layout (⌘S) or Revert changes in the tab menu"></span>{/if}
         <span
           class="tm"
           role="button"
@@ -392,6 +392,19 @@
   }
   .wstabs::-webkit-scrollbar {
     display: none;
+  }
+  .livedot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--danger);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.35;
+    }
   }
   .tscroll {
     min-width: 22px;

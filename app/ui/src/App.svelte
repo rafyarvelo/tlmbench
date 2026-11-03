@@ -63,8 +63,6 @@
   <div class="col">
     <TopBar />
     {#if ui.focus}<button class="tbtn exitfocus" id="focusExit" data-tip="Show the sidebars and toolbar again (Esc)" onclick={() => actions.toggleFocus(false)}>Exit focus</button>{/if}
-    {#if play.open}<Transport />{/if}
-    {#if live.on}<LiveStrip />{/if}
     {#if ui.note}
       <div class="wsnote" id="wsNote" role="status">
         <span class="dot"></span><span class="txt">{ui.note}</span>
@@ -89,6 +87,9 @@
       </aside>
       <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" data-grip="left" hidden={!settings.leftPanel} onpointerdown={(e) => grip(e, 'left')} ondblclick={() => setSetting('leftWidth', 300)}></div>
       <main id="center" class="center" data-mode={settings.mode}>
+        {#if play.open || live.on}
+          <div class="strips">{#if play.open}<Transport />{/if}{#if live.on}<LiveStrip />{/if}</div>
+        {/if}
         <div id="ovTop" class="ovslot"></div>
         <PaneStack />
         <AddPane />
@@ -203,6 +204,9 @@
   }
   .sdot.busy {
     background: var(--warn);
+  }
+  .strips {
+    margin: -8px -12px 8px;
   }
   .exwrap {
     display: flex;

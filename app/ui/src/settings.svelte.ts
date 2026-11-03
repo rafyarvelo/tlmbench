@@ -10,7 +10,7 @@ export type Theme = 'system' | 'light' | 'dark';
 export type Tooltips = 'short' | 'full' | 'off';
 /** The panes a file opens with. */
 export type StarterPanes = 'starter' | 'starterboth' | 'table' | 'values' | 'none';
-export type TimeAxis = 'bottom' | 'every';
+export type TimeAxis = 'auto' | 'bottom' | 'every';
 export type ZoomSpeed = 'slow' | 'normal' | 'fast';
 /** What the left sidebar shows (empty: hidden). */
 export type LeftPanel = 'explorer' | 'settings' | '';
@@ -103,7 +103,7 @@ export const DEFAULTS: Settings = {
   panelsClosed: [],
   timeFormat: 'auto',
   timeDecimals: 'auto',
-  timeAxis: 'bottom',
+  timeAxis: 'auto',
   fileOpen: 'remember',
   fileOpenNew: 'starter',
   clickMode: 'select',

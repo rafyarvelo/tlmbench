@@ -24,6 +24,13 @@ run('chips', async ({ p, check, wait, until, text, visible }) => {
   await p.keyboard.up('Alt');
   check('Alt copies it', JSON.stringify((await app('panes'))[0]) === '[1,2]' && (await app('panes'))[1].includes(2), await app('panes'));
 
+  // onto empty space: a new pane (the same view with the setting)
+  const n0 = (await app('panes')).length;
+  await p.dragAndDrop(chip(1, 3), '#stack', { force: true, targetPosition: { x: 400, y: await p.evaluate(() => document.getElementById('stack').getBoundingClientRect().height - 4) } });
+  check('a chip dropped on empty space makes a new pane', (await app('panes')).length === n0 + 1 && !(await app('panes'))[1].includes(3) && JSON.stringify((await app('panes')).at(-1)) === '[3]', await app('panes'));
+
+  await p.click('#stack [data-pane="0"] .phead');
+
   // two units in one pane: L and R
   check('two units: the chips say which side', (await p.$$eval('#stack [data-pane="0"] [data-side]', (e) => e.map((x) => x.textContent.replace(/\s+/g, ' ').trim()))).join() === '· L,· R', await text('#stack [data-pane="0"] .phead'));
 
