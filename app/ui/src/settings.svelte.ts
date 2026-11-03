@@ -27,7 +27,7 @@ export interface Settings {
   folder: string;
   exExpanded: string[];
   /** The tabs open when the app last closed (their files, then layouts shown on them) and the one in front. */
-  session: { files: string[]; active: string | null; ws?: { path: string; name: string; at: number }[]; activeWs?: string };
+  session: { files: string[]; active: string | null; ws?: { path: string; name: string; at: number; shared?: string }[]; activeWs?: string };
   /** Your layouts (workspaces), this computer only. */
   workspaces: Workspace[];
   /** Each file's panes (their channel numbers and where they sit), by file path. */

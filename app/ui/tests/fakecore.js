@@ -145,6 +145,11 @@
     /** Live sources by endpoint: a recording spec, plus `already` (seconds recorded when it connects). */
     sources: {},
     calls: [],
+    /** Shared views by folder and file, folders that can't be written, what Save… dialogs return, exports written. */
+    views: {},
+    readOnly: [],
+    savePick: null,
+    exported: [],
     /** Rows each `rows` call returned. */
     rowsAsked: [],
     /** The precision each `view` asked for. */
@@ -287,6 +292,23 @@
       return o.live.health();
     },
     'plugin:dialog|open': ({ options }) => (options?.directory ? fake.pickFolder : fake.pick),
+    'plugin:dialog|save': () => fake.savePick,
+    // shared views: `views` is folder → file name → the view (a string: a file that isn't JSON)
+    shared_views({ folder }) {
+      const vs = fake.views[folder] ?? {};
+      return Object.keys(vs)
+        .sort()
+        .map((file) => (typeof vs[file] === 'string' ? { file, view: null, error: 'expected value at line 1 column 1' } : { file, view: vs[file], error: null }));
+    },
+    share_view({ folder, file, view }) {
+      if (fake.readOnly.includes(folder)) throw `can't write to ${folder}/.tlmbench/views: Read-only file system (os error 30)`;
+      (fake.views[folder] ??= {})[file] = { ...view, by: 'tester' };
+      return `${folder}/.tlmbench/views/${file}`;
+    },
+    export_view({ path, view }) {
+      fake.exported.push({ path, view });
+      return null;
+    },
     list_folder({ path }) {
       // a folder's tree from the paths of `fake.files` under it (the core lists the disk)
       const files = Object.keys(fake.files).filter((p) => p.startsWith(path.replace(/\/$/, '') + '/'));

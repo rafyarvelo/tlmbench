@@ -10,6 +10,8 @@ export interface TabInfo {
   live?: boolean;
   /** A workspace tab: the name of the layout it shows (`name` too), on the file at `path`. */
   ws?: string;
+  /** A shared view's tab: its file in the folder's `.tlmbench/views/` (read-only; Save as… makes it yours). */
+  shared?: string;
   /** Its panes differ from the layout as saved. */
   dirty?: boolean;
 }

@@ -1,5 +1,7 @@
 // What the shell shows about the app's state: app.ts writes it, the components render it.
 
+import type { Workspace } from './workspaces';
+
 /** A listed folder or recording (the app's `list_folder`). */
 export interface FolderEntry {
   path: string;
@@ -33,8 +35,11 @@ export const ui = $state({
   perf: '',
   /** A message for the person (an error, or what an edit did), shown under the top bar until closed. */
   note: '',
-  /** Undoes what the note says was done. */
+  /** Undoes what the note says was done (or, with `noteAction`, does what that names). */
   undo: null as null | (() => void),
+  noteAction: 'Undo',
+  /** The views shared in Explorer's folder (`.tlmbench/views/`): each file's layout, or why it can't be read. */
+  shared: [] as { file: string; ws: Workspace | null; error: string | null }[],
 });
 
 /** Measure shows when opened by hand, or by itself when both cursors are placed. */
@@ -69,6 +74,11 @@ export const actions = {
   deleteWs: (_name: string) => {},
   openWs: (_name: string) => {},
   newWs: (_name: string): string | null => null,
+  /** Shared views: list the folder's again, open one, share tab `key`'s layout under a name, export it to a file. */
+  loadShared: () => {},
+  openShared: (_file: string) => {},
+  share: (_key: number, _name: string): string | null => null,
+  exportWs: (_key: number) => {},
   /** What a pane's axis shows now, in its units (null before it's drawn). */
   axisRange: (_i: number, _key: 'u0' | 'u1'): [number, number] | null => null,
 };

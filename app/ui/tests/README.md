@@ -1,7 +1,7 @@
 # The app's UI tests
 
 The built UI (`app/ui/dist`) in headless Chromium, with `fakecore.js` answering the Tauri commands the UI calls
-(`launch`, `open`, `close`, `view`, `values_at`, `stats`, `rows`, `list_folder`, `live_connect`, `live_state`, `live_stop`, the file
+(`launch`, `open`, `close`, `view`, `values_at`, `stats`, `rows`, `shared_views`, `share_view`, `export_view`, `list_folder`, `live_connect`, `live_state`, `live_stop`, the file
 and folder dialogs and drag and drop) from synthetic
 recordings. Tests check behaviour and state, not pixels; check visual changes with a screenshot.
 
@@ -11,6 +11,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 
 | Test | Covers |
 | --- | --- |
+| t_shared | shared views in the + menu (one that can't be read greyed), opening one (its file, layout and time range; read-only: Revert, Save as… makes your copy), Share with this folder… (file by path in the folder, time range, who), Export file… when the folder can't be written, a file outside the folder refused, the shared tab after a reload |
 | t_workspaces | Save as… in a tab's menu (a name needed, unique; the tab then shows the layout, saved by channel name), unsaved changes marked without touching the file's layout, Save layout, Revert changes, ⌘S; the + menu (an empty layout, your layouts, opening one on the file in front with its missing channels named, Delete with Undo); a file tab sharing a file a workspace tab shows, the file kept open while a tab shows it; workspace tabs and their order after a reload |
 | t_wire | the wire format: the fake core encodes the core's golden batch byte for byte, and `wire.ts` decodes it (Node, no browser) |
 | t_tabs | a tab per open file, each keeping its panes, view and cursors; reordering by drag; middle-click, × and the tab menu (close, close others, close all) closing tabs and their files; the tabs after a reload |

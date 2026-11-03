@@ -10,7 +10,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { tick } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
 import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
@@ -37,7 +37,7 @@ import {
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
-import { fromWorkspace, toWorkspace, type Workspace } from './workspaces';
+import { fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
 
 interface ChannelInfo {
   name: string;
@@ -1362,7 +1362,7 @@ function saveSession(): void {
   const files = [...new Set(tabs.list.filter((t) => !t.live).map((t) => t.path))];
   const session: Settings['session'] = { files, active: active && files.includes(active) ? active : null };
   const kept = tabs.list.filter((t) => !t.live);
-  const ws = kept.flatMap((t, at) => (t.ws ? [{ path: t.path, name: t.ws, at }] : []));
+  const ws = kept.flatMap((t, at) => (t.ws ? [{ path: t.path, name: t.ws, at, ...(t.shared ? { shared: t.shared } : {}) }] : []));
   if (ws.length) session.ws = ws;
   if (front?.ws) session.activeWs = front.ws;
   setSetting('session', session);
@@ -1401,20 +1401,20 @@ function nameError(name: string, own?: string): string | null {
 }
 
 /** Brings tab `key` to the front, then runs `f` there. */
-async function atTab(key: number, f: () => void): Promise<void> {
+async function atTab(key: number, f: () => void | Promise<void>): Promise<void> {
   if (key !== tabs.active) await showTab(key);
-  if (key === tabs.active) f();
+  if (key === tabs.active) await f();
 }
 
 /** Save as…: a layout of tab `key`'s panes, which the tab then shows. */
 function saveAs(key: number, raw: string): string | null {
   const name = raw.trim();
   const t = tabs.list.find((x) => x.key === key);
-  const err = t ? nameError(name, t.ws) : 'That tab is closed.';
+  const err = t ? nameError(name, t.shared ? undefined : t.ws) : 'That tab is closed.';
   if (err || !t) return err;
   void atTab(key, () => {
     storeWs(toWorkspace(name, stack.panes, channelNames()));
-    Object.assign(t, { ws: name, name, dirty: false });
+    Object.assign(t, { ws: name, name, dirty: false, shared: undefined });
     wsBase.set(key, wsSnapshot());
     saveSession();
     note(`Saved layout "${name}".`);
@@ -1424,7 +1424,7 @@ function saveAs(key: number, raw: string): string | null {
 
 function saveWs(key: number): void {
   const t = tabs.list.find((x) => x.key === key);
-  if (!t?.ws) return;
+  if (!t?.ws || t.shared) return;
   void atTab(key, () => {
     storeWs(toWorkspace(t.ws!, stack.panes, channelNames()));
     wsBase.set(key, wsSnapshot());
@@ -1434,7 +1434,7 @@ function saveWs(key: number): void {
 
 function revertWs(key: number): void {
   const t = tabs.list.find((x) => x.key === key);
-  const ws = t?.ws ? findWs(t.ws) : null;
+  const ws = t?.shared ? ui.shared.find((v) => v.file === t.shared)?.ws : t?.ws ? findWs(t.ws) : null;
   if (!t || !ws) return;
   void atTab(key, () => {
     stack.panes = fromWorkspace(ws, channelNames()).panes;
@@ -1451,34 +1451,134 @@ function deleteWs(name: string): void {
   const [gone] = settings.workspaces.splice(at, 1);
   saveSettings();
   void (async () => {
-    for (const t of tabs.list.filter((t) => t.ws === name)) await closeTab(t.key);
+    for (const t of tabs.list.filter((t) => t.ws === name && !t.shared)) await closeTab(t.key);
     note(`Deleted layout "${name}".`, () => storeWs(gone, at));
   })();
 }
 
 /** Opens layout `name` in a tab of its own on the file in front (or brings its tab forward). */
 async function openWs(name: string): Promise<void> {
-  const open = tabs.list.find((t) => t.ws === name);
+  const open = tabs.list.find((t) => t.ws === name && !t.shared);
   if (open) return showTab(open.key);
   const ws = findWs(name);
+  if (ws) await openLayout(ws);
+}
+
+/** Shows `ws` in a new tab on the file in front; a shared view's (`shared`) also sets its time range. */
+async function openLayout(ws: Workspace, shared?: string): Promise<void> {
   const f = state.file;
-  if (!ws) return;
   if (!f || live.on) {
-    note(`Open a recording first: "${name}" shows on the file in front.`);
+    note(`Open a recording first: "${ws.name}" shows on the file in front.`);
     return;
   }
   stashTab();
   const cur = tabData.get(tabs.active)!;
   const { panes, missing } = fromWorkspace(ws, channelNames());
   const key = nextTab++;
-  tabData.set(key, { ...cur, panes, sel: 0, history: [], future: [], play: null, live: null });
-  tabs.list.push({ key, path: f.info.path, name, ws: name });
+  const at = (s: number) => f.first + BigInt(Math.round(s * 1e9));
+  const view = shared && ws.view && ws.view[1] > ws.view[0] ? { t0: at(ws.view[0]), t1: at(ws.view[1]) } : {};
+  tabData.set(key, { ...cur, panes, sel: 0, history: [], future: [], play: null, live: null, ...view });
+  tabs.list.push({ key, path: f.info.path, name: ws.name, ws: ws.name, shared });
   await showTab(key);
   wsBase.set(key, wsSnapshot());
   if (missing.length) {
     const list = missing.slice(0, 3).join(', ') + (missing.length > 3 ? ', …' : '');
-    note(`${nameOf(f.info.path)} has no ${missing.length === 1 ? 'channel' : 'channels'} ${list}: ${missing.length === 1 ? 'it stays' : 'they stay'} out of "${name}".`);
+    note(`${nameOf(f.info.path)} has no ${missing.length === 1 ? 'channel' : 'channels'} ${list}: ${missing.length === 1 ? 'it stays' : 'they stay'} out of "${ws.name}".`);
   }
+}
+
+// ---------- shared views: `.tlmbench/views/` in Explorer's folder ----------
+
+const sep = (path: string) => (path.includes('\\') && !path.includes('/') ? '\\' : '/');
+
+/** The folder's shared views, read again (the + menu does this as it opens). */
+async function loadShared(): Promise<void> {
+  const folder = settings.folder;
+  if (!folder) {
+    ui.shared = [];
+    return;
+  }
+  const got = await invoke<{ file: string; view: unknown; error: string | null }[]>('shared_views', { folder });
+  if (folder !== settings.folder) return;
+  ui.shared = got.map((v) => {
+    const ok = isWorkspace(v.view);
+    return { file: v.file, ws: ok ? (v.view as Workspace) : null, error: ok ? null : (v.error ?? 'not a layout') };
+  });
+}
+
+/** Opens a shared view: its primary file (from the folder), then the layout on it with its time range. */
+async function openShared(file: string): Promise<void> {
+  const open = tabs.list.find((t) => t.shared === file);
+  if (open) return showTab(open.key);
+  const ws = ui.shared.find((v) => v.file === file)?.ws;
+  if (!ws) return;
+  const primary = ws.files?.find((f) => f.slot === 1);
+  if (primary) {
+    const s = sep(settings.folder);
+    const path = settings.folder.replace(/[\\/]$/, '') + s + primary.path.split('/').join(s);
+    await openPath(path);
+    if (state.file?.info.path !== path) return;
+  }
+  await openLayout(ws, file);
+}
+
+/** Tab `key`'s layout as a shared view: its file relative to the folder and the time range in view. */
+function sharedView(name: string): Workspace | string {
+  const f = state.file;
+  const folder = settings.folder.replace(/[\\/]$/, '');
+  if (!f) return 'Open a recording first.';
+  const s = sep(folder);
+  if (!folder || !f.info.path.startsWith(folder + s)) return `Share writes into the folder Explorer shows, and ${nameOf(f.info.path)} isn't in it.`;
+  const secs = (t: bigint) => Number(t - f.first) / 1e9;
+  return {
+    ...toWorkspace(name, stack.panes, channelNames()),
+    files: [{ path: f.info.path.slice(folder.length + 1).split(s).join('/'), slot: 1 }],
+    view: [secs(state.t0), secs(state.t1)],
+  };
+}
+
+/** Share…: writes tab `key`'s layout to the folder's `.tlmbench/views/`; a folder that can't be written offers
+ * Export file… instead. */
+function share(key: number, raw: string): string | null {
+  const name = raw.trim();
+  if (!name) return 'Give the view a name.';
+  if (!settings.folder) return 'Open a folder first: a view is shared with the folder Explorer shows.';
+  void atTab(key, async () => {
+    const view = sharedView(name);
+    if (typeof view === 'string') return note(view);
+    const file = viewFile(name);
+    try {
+      await invoke('share_view', { folder: settings.folder, file, view });
+      note(`Shared as .tlmbench/views/${file}. Anyone who opens this folder sees it under "Shared in this folder".`);
+      const t = frontTab();
+      if (t?.shared === file) {
+        wsBase.set(t.key, wsSnapshot());
+        t.dirty = false;
+      }
+      void loadShared();
+    } catch (e) {
+      note(`Couldn't share "${name}": ${e}`, () => exportWs(key, name), 'Export file…');
+    }
+  });
+  return null;
+}
+
+/** Export file…: tab `key`'s layout (with its file and time range) as a .tlmview.json where the person chooses. */
+function exportWs(key: number, name?: string): void {
+  void atTab(key, async () => {
+    const t = frontTab();
+    const n = name ?? t?.ws ?? nameOf(t?.path ?? 'view').replace(/\.[^.]*$/, '');
+    const view = sharedView(n);
+    const ws = typeof view === 'string' ? toWorkspace(n, stack.panes, channelNames()) : view;
+    const path = await saveDialog({ defaultPath: viewFile(n), filters: [{ name: 'TelemetryBench view', extensions: ['json'] }] });
+    if (!path) return;
+    try {
+      await invoke('export_view', { path, view: ws });
+      note(`Exported "${n}" to ${nameOf(path)}.`);
+    } catch (e) {
+      note(`Couldn't export "${n}": ${e}`);
+    }
+  });
 }
 
 /** A new, empty layout, opened in a tab. */
@@ -1902,6 +2002,10 @@ Object.assign(actions, {
   deleteWs,
   openWs: (name: string) => void openWs(name),
   newWs,
+  loadShared: () => void loadShared().catch((e) => note(`Couldn't read the folder's shared views: ${e}`)),
+  openShared: (file: string) => void openShared(file),
+  share,
+  exportWs: (key: number) => exportWs(key),
   axisRange: (i: number, key: AxisKey): [number, number] | null => {
     const y = paneY[i]?.[key];
     if (!y) return null;
@@ -2020,11 +2124,13 @@ else if (launch.gate === '1' && launch.file) {
   // the tabs open when the app last closed, then a file it was asked to open (in front)
   const { files, active, ws, activeWs } = settings.session;
   for (const f of files) await openPath(f);
+  if (ws?.some((w) => w.shared)) await loadShared().catch(() => {});
   for (const w of ws ?? []) {
     await openPath(w.path);
-    await openWs(w.name);
+    if (w.shared) await openShared(w.shared);
+    else await openWs(w.name);
     // back where it was among the tabs
-    const k = tabs.list.findIndex((t) => t.ws === w.name);
+    const k = tabs.list.findIndex((t) => t.ws === w.name && t.shared === w.shared);
     if (k >= 0 && k !== w.at) tabs.list.splice(w.at, 0, ...tabs.list.splice(k, 1));
   }
   const front = launch.file ?? active;

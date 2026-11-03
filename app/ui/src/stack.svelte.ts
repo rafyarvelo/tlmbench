@@ -248,10 +248,11 @@ export function toggleChannel(ch: number): void {
 }
 
 let noteTimer = 0;
-/** A message under the top bar, with Undo when given; it goes after 12 s. */
-export function note(text: string, undo?: () => void): void {
+/** A message under the top bar, with Undo (or another `action`) when given; it goes after 12 s. */
+export function note(text: string, undo?: () => void, action = 'Undo'): void {
   ui.note = text;
   ui.undo = undo ?? null;
+  ui.noteAction = action;
   clearTimeout(noteTimer);
   noteTimer = window.setTimeout(() => {
     if (ui.note === text) {

@@ -484,6 +484,88 @@ async fn stats(
     .map_err(|e| e.to_string())
 }
 
+/// A view shared in a folder (`.tlmbench/views/<file>`): its file name and its contents, or why it can't be read.
+#[derive(Serialize)]
+struct SharedView {
+    file: String,
+    view: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
+/// Where a folder's shared views live.
+fn views_dir(folder: &str) -> std::path::PathBuf {
+    Path::new(folder).join(".tlmbench").join("views")
+}
+
+/// The views shared in `folder`, by file name (none when it has no `.tlmbench/views/`). Only reads.
+#[tauri::command]
+async fn shared_views(folder: String) -> Result<Vec<SharedView>, String> {
+    spawn_blocking(move || {
+        let Ok(dir) = std::fs::read_dir(views_dir(&folder)) else { return Vec::new() };
+        let mut out: Vec<SharedView> = dir
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|f| f.ends_with(".tlmview.json"))
+            .map(|file| {
+                let read = std::fs::read_to_string(views_dir(&folder).join(&file))
+                    .map_err(|e| e.to_string())
+                    .and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()));
+                let (view, error) = match read {
+                    Ok(v) => (Some(v), None),
+                    Err(e) => (None, Some(e)),
+                };
+                SharedView { file, view, error }
+            })
+            .collect();
+        out.sort_by(|a, b| a.file.cmp(&b.file));
+        out
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Who shares a view: the account name.
+fn user_name() -> Option<String> {
+    ["USER", "USERNAME"].iter().find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+}
+
+/// Share…: writes `view` (with `by` set to the account name) to `folder/.tlmbench/views/<file>`, the one write into a
+/// folder besides exports, and only when asked. `file` is a bare `*.tlmview.json` name.
+#[tauri::command]
+async fn share_view(folder: String, file: String, mut view: serde_json::Value) -> Result<String, String> {
+    let bare = Path::new(&file).file_name().is_some_and(|n| n == file.as_str());
+    if !bare || !file.ends_with(".tlmview.json") {
+        return Err(format!("{file:?} isn't a view file name"));
+    }
+    if let (Some(o), Some(by)) = (view.as_object_mut(), user_name()) {
+        o.insert("by".into(), by.into());
+    }
+    spawn_blocking(move || {
+        let dir = views_dir(&folder);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("can't write to {}: {e}", dir.display()))?;
+        let path = dir.join(&file);
+        let text = serde_json::to_string_pretty(&view).map_err(|e| e.to_string())? + "\n";
+        std::fs::write(&path, text).map_err(|e| format!("can't write {}: {e}", path.display()))?;
+        Ok(path.display().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Export file…: writes a view to a `.json` file the person chose in the save dialog.
+#[tauri::command]
+async fn export_view(path: String, view: serde_json::Value) -> Result<(), String> {
+    if !path.ends_with(".json") {
+        return Err(format!("{path} isn't a .json file"));
+    }
+    spawn_blocking(move || {
+        let text = serde_json::to_string_pretty(&view).map_err(|e| e.to_string())? + "\n";
+        std::fs::write(&path, text).map_err(|e| format!("can't write {path}: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// A file or folder in a listed folder.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -606,6 +688,9 @@ fn main() {
             stats,
             rows,
             list_folder,
+            shared_views,
+            share_view,
+            export_view,
             live_connect,
             live_state,
             live_stop,
@@ -643,5 +728,33 @@ mod tests {
         // past the end: no rows, the count still given
         let out = encode_rows(rec.as_ref(), &[0], t(2), t(8), 100, 10);
         assert_eq!((u64::from_le_bytes(out[16..24].try_into().unwrap()), out.len()), (6, 32));
+    }
+}
+
+#[cfg(test)]
+mod view_tests {
+    use super::*;
+    use tauri::async_runtime::block_on as rt;
+
+    #[test]
+    fn share_then_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().display().to_string();
+        assert!(rt(shared_views(folder.clone())).unwrap().is_empty());
+        let view = serde_json::json!({ "schema": 1, "name": "Review", "panes": [] });
+        let path = rt(share_view(folder.clone(), "review.tlmview.json".into(), view)).unwrap();
+        assert!(path.ends_with("review.tlmview.json"));
+        std::fs::write(views_dir(&folder).join("bad.tlmview.json"), "{").unwrap();
+        let got = rt(shared_views(folder.clone())).unwrap();
+        assert_eq!(
+            got.iter().map(|v| v.file.as_str()).collect::<Vec<_>>(),
+            ["bad.tlmview.json", "review.tlmview.json"]
+        );
+        assert!(got[0].view.is_none() && got[0].error.is_some());
+        assert_eq!(got[1].view.as_ref().unwrap()["name"], "Review");
+        // only bare view names
+        for bad in ["../x.tlmview.json", "x.json", "a/b.tlmview.json"] {
+            assert!(rt(share_view(folder.clone(), bad.into(), serde_json::json!({}))).is_err(), "{bad}");
+        }
     }
 }

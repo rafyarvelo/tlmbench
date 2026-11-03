@@ -48,7 +48,7 @@
               ui.note = '';
               ui.undo = null;
               undo?.();
-            }}>Undo</button
+            }}>{ui.noteAction}</button
           >
         {/if}
         <button class="ibtn" aria-label="Dismiss" onclick={() => ((ui.note = ''), (ui.undo = null))}>{@html ICON.close}</button>

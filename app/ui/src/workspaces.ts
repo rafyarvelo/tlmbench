@@ -21,8 +21,15 @@ export interface Workspace {
   name: string;
   /** Who shared it (shared views only). */
   by?: string;
+  /** A shared view's files, by path relative to its folder (slot 1 is the primary file). */
+  files?: { path: string; slot: number }[];
+  /** A shared view's time range: seconds from the primary file's first sample. */
+  view?: [number, number];
   panes: WsPane[];
 }
+
+/** A shared view's file name for a layout name: `flight-review.tlmview.json`. */
+export const viewFile = (name: string) => `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'view'}.tlmview.json`;
 
 /** A layout of `panes` over a recording whose channels are `names`. */
 export function toWorkspace(name: string, panes: Pane[], names: string[]): Workspace {

@@ -15,9 +15,9 @@
   ];
   let more = $state(false);
   /** The tab whose menu is open, and where; `naming` while Save as… asks for a name. */
-  let tabMenu = $state<null | { key: number; x: number; y: number; naming?: boolean }>(null);
+  let tabMenu = $state<null | { key: number; x: number; y: number; naming?: 'saveas' | 'share' }>(null);
   /** The + menu: your layouts, and a new empty one (`naming`). */
-  let addMenu = $state<null | { x: number; y: number; naming?: boolean }>(null);
+  let addMenu = $state<null | { x: number; y: number; naming?: 'new' }>(null);
   let wsName = $state('');
   let wsErr = $state('');
   const menuTab = $derived(tabMenu ? tabs.list.find((t) => t.key === tabMenu!.key) : undefined);
@@ -61,7 +61,7 @@
       else if (t && !t.live) {
         const el = document.querySelector(`[data-tab="${t.key}"]`)?.getBoundingClientRect();
         openTabMenu(t.key, el?.left ?? 8, (el?.bottom ?? 40) + 4);
-        tabMenu!.naming = true;
+        tabMenu!.naming = 'saveas';
         startNaming('');
       }
       return;
@@ -142,6 +142,7 @@
         const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
         tabMenu = null;
         addMenu = addMenu ? null : { x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 };
+        if (addMenu) actions.loadShared();
       }}>{@html ICON.plus}</button
     >
   </div>
@@ -165,24 +166,45 @@
   {#if tabMenu}
     <div class="menu tabmenu" role="menu" style="left: {tabMenu.x}px; top: {tabMenu.y}px">
       {#if tabMenu.naming}
-        <form class="wsname" onsubmit={(e) => nameSubmit(e, (n) => actions.saveAs(tabMenu!.key, n))}>
-          <label for="wsName">Save as a layout named</label>
+        <form class="wsname" onsubmit={(e) => nameSubmit(e, (n) => (tabMenu!.naming === 'share' ? actions.share : actions.saveAs)(tabMenu!.key, n))}>
+          <label for="wsName">{tabMenu.naming === 'share' ? 'Share with this folder as' : 'Save as a layout named'}</label>
           <!-- svelte-ignore a11y_autofocus -->
           <input id="wsName" class="sel" maxlength="60" autocomplete="off" spellcheck="false" autofocus bind:value={wsName} oninput={() => (wsErr = '')} />
           {#if wsErr}<span class="wserr" role="alert">{wsErr}</span>{/if}
-          <div class="wsbtns"><button class="btn" type="button" onclick={() => (tabMenu = null)}>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+          {#if tabMenu.naming === 'share'}<span class="wshint">Writes .tlmbench/views/ in {settings.folder || 'the folder'}: the layout, the file and the time range in view.</span>{/if}
+          <div class="wsbtns">
+            <button class="btn" type="button" onclick={() => (tabMenu = null)}>Cancel</button><button class="btn primary" type="submit"
+              >{tabMenu.naming === 'share' ? 'Share' : 'Save'}</button
+            >
+          </div>
         </form>
       {:else}
-        {#if menuTab?.ws}
+        {#if menuTab?.ws && !menuTab.shared}
           <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
         {/if}
         {#if !menuTab?.live}
-          <button class="mi" role="menuitem" data-ws="saveas" onclick={() => (startNaming(menuTab?.ws ? `${menuTab.ws} copy` : ''), (tabMenu!.naming = true))}
-            ><span class="nm">Save as…</span></button
+          <button
+            class="mi"
+            role="menuitem"
+            data-ws="saveas"
+            onclick={() => (startNaming(menuTab?.ws ? (menuTab.shared ? menuTab.ws : `${menuTab.ws} copy`) : ''), (tabMenu!.naming = 'saveas'))}
+            ><span class="nm">Save as…</span>{#if menuTab?.shared}<span class="hint">your copy</span>{/if}</button
           >
         {/if}
         {#if menuTab?.ws}
           <button class="mi" role="menuitem" data-ws="revert" disabled={!menuTab.dirty} onclick={() => tabAct(actions.revertWs)}><span class="nm">Revert changes</span></button>
+        {/if}
+        {#if !menuTab?.live}
+          <button
+            class="mi"
+            role="menuitem"
+            data-ws="share"
+            data-tip="Writes a .tlmview.json into the folder's .tlmbench/views/ with the layout, the file (by its path in the folder) and the time range. Anyone who opens the folder sees it."
+            onclick={() => (startNaming(menuTab?.ws ?? ''), (tabMenu!.naming = 'share'))}><span class="nm">{menuTab?.shared ? 'Update shared copy…' : 'Share with this folder…'}</span></button
+          >
+          <button class="mi" role="menuitem" data-ws="export" onclick={() => tabAct(actions.exportWs)}><span class="nm">Export file…</span></button>
+        {/if}
+        {#if menuTab?.ws && !menuTab.shared}
           <button class="mi" role="menuitem" data-ws="delete" onclick={() => tabAct(() => actions.deleteWs(menuTab!.ws!))}><span class="nm">Delete layout</span></button>
         {/if}
         {#if !menuTab?.live}<div class="msep"></div>{/if}
@@ -205,7 +227,7 @@
           <div class="wsbtns"><button class="btn" type="button" onclick={() => (addMenu = null)}>Cancel</button><button class="btn primary" type="submit">Create</button></div>
         </form>
       {:else}
-        <button class="mi" role="menuitem" data-wsnew disabled={!ui.file} onclick={() => (startNaming(''), (addMenu!.naming = true))}>{@html ICON.plus}<span class="nm">Empty layout…</span></button>
+        <button class="mi" role="menuitem" data-wsnew disabled={!ui.file} onclick={() => (startNaming(''), (addMenu!.naming = 'new'))}>{@html ICON.plus}<span class="nm">Empty layout…</span></button>
         <div class="mgrp">Your layouts · this computer</div>
         {#each settings.workspaces as w (w.name)}
           {@const open = tabs.list.some((t) => t.ws === w.name)}
@@ -226,6 +248,26 @@
           </div>
         {:else}
           <p class="mnote">None yet. Use Save as… in a tab's menu.</p>
+        {/each}
+        <div class="mgrp">Shared in this folder · .tlmbench/</div>
+        {#each ui.shared as v (v.file)}
+          {@const open = tabs.list.some((t) => t.shared === v.file)}
+          <button
+            class="mi"
+            role="menuitem"
+            data-shopen={v.file}
+            disabled={!v.ws}
+            data-tip={v.error ? `${v.file} can't be read: ${v.error}` : `${v.file}: opens its file with the layout and time range it was shared with`}
+            onclick={() => {
+              addMenu = null;
+              actions.openShared(v.file);
+            }}
+            >{@html ICON.folder}<span class="nm">{v.ws?.name ?? v.file}</span><span class="hint"
+              >{v.error ? "can't be read" : open ? 'open in a tab' : v.ws?.by ? `by ${v.ws.by}` : ''}</span
+            ></button
+          >
+        {:else}
+          <p class="mnote">{settings.folder ? 'Nothing shared here yet.' : 'Open a folder to see the views shared in it.'}</p>
         {/each}
         <p class="mnote">A layout says which channels sit in which panes, by name, so it works on any recording that has them. It opens on the file in front.</p>
       {/if}
@@ -357,6 +399,9 @@
   .wsname .sel {
     color: var(--fg);
     font-size: 13px;
+  }
+  .wshint {
+    font-size: 11.5px;
   }
   .wserr {
     color: var(--warn);
