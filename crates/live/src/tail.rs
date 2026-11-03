@@ -10,7 +10,7 @@
 //! the recording's next part, read from its top, its schema found again. A row cut short by the rotation is left out
 //! and counted; so is anything written and truncated away between two reads (at most about 20 ms of it).
 
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,17 +28,40 @@ const TICK: Duration = Duration::from_millis(20);
 /// Read at most this much at a time, so records reach the ring while a large file is still being read.
 const READ: usize = 8 << 20;
 
-/// What identifies a file on disk: a replaced file has a new identity.
-fn identity(m: &fs::Metadata) -> (u64, u64) {
+/// What identifies a file on disk: a replaced file has a new identity. Windows has no inode in `Metadata`, and a
+/// file's creation time carries over to one renamed into its place (file tunneling), so there it is the volume serial
+/// and file index of an open handle.
+#[cfg(unix)]
+fn identity(file: &File) -> io::Result<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let m = file.metadata()?;
+    Ok((m.dev(), m.ino()))
+}
+
+#[cfg(windows)]
+fn identity(file: &File) -> io::Result<(u64, u64)> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle};
+    // SAFETY: a plain-data struct the call fills in, for a handle that stays open for the call
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok((u64::from(info.dwVolumeSerialNumber), (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow)))
+}
+
+/// The identity and length of the file now at `path` (None while there is none).
+fn at_path(path: &Path) -> Option<((u64, u64), u64)> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        (m.dev(), m.ino())
+        let m = std::fs::metadata(path).ok()?;
+        Some(((m.dev(), m.ino()), m.len()))
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        let t = m.created().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).unwrap_or_default();
-        (0, t.as_nanos() as u64)
+        let f = File::open(path).ok()?;
+        Some((identity(&f).ok()?, f.metadata().ok()?.len()))
     }
 }
 
@@ -59,7 +82,7 @@ pub(crate) fn follow(path: &Path, ring: &mut Ring, stop: &AtomicBool, opts: &Opt
         let Some(open) = &mut cur else {
             match File::open(path) {
                 Ok(file) => {
-                    let id = identity(&file.metadata()?);
+                    let id = identity(&file)?;
                     cur = Some(Open { file, id, offset: 0, parser: Parser::new(path) });
                     idle_since = Instant::now();
                 }
@@ -82,14 +105,14 @@ pub(crate) fn follow(path: &Path, ring: &mut Ring, stop: &AtomicBool, opts: &Opt
             continue;
         }
         // at the end of what was written: rotated (shorter, or another file now at the path), or waiting
-        let now = fs::metadata(path).ok();
-        let rotated = match &now {
+        let now = at_path(path);
+        let rotated = match now {
             None => false, // gone for a moment while being replaced: keep the old file until a new one appears
-            Some(m) => identity(m) != open.id || m.len() < open.offset,
+            Some((id, len)) => id != open.id || len < open.offset,
         };
         if rotated {
             open.parser.finish(ring, false);
-            if now.as_ref().is_some_and(|m| identity(m) == open.id) {
+            if now.is_some_and(|(id, _)| id == open.id) {
                 open.file.seek(SeekFrom::Start(0))?; // truncated in place: read it again from the top
                 (open.offset, open.parser) = (0, Parser::new(path));
             } else {
