@@ -86,7 +86,11 @@ Next, in order:
    tables: sort and filter in Rust (a row-id list the table pages through), the Columns list, Autofit, pinned
    columns, copy as CSV, and the rows on screen as a band on the charts. "Axis and scale…" is done (a unit's axis
    each, left and right; range, decimals, label, log).
-4. Workspace files (save/open a layout as JSON; design: Files, workspaces and sharing).
+4. Workspaces (design: Files, workspaces and sharing). Done: your layouts in app data, by channel name (the
+   `.tlmview.json` shape): Save as… / Save layout / Revert / Delete (Undo) in a tab's menu, ⌘S, the + menu (empty
+   layout, your layouts), workspace tabs on the file in front, restored with the session. Left: shared views
+   (`.tlmbench/views/` read in the + menu, Share… writing one, Export file… when the folder is read-only), the
+   Layouts sidebar, and slots once tabs hold several files (a layout then asks for a file per empty slot).
 5. The app's Export (visible range or selection → the `convert` writers; PNG/SVG of the view).
 6. `just gate4`: the format matrix (one recording in every format with identical per-channel checksums and views;
    `convert` round trips) and the 10 GB zstd packet file (cached reopen, whole view < 1 s). The generator needs a

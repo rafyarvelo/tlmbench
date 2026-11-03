@@ -1,4 +1,6 @@
-<!-- The top bar: tabs · time range · mouse mode, Clear, Back, Fit · ⋯ with the rest. -->
+<!-- The top bar: tabs and + (open a saved layout) · time range · mouse mode, Clear, Back, Fit · ⋯ with the rest. A
+     tab's ⌄ menu saves its layout (Save as… turns a file tab into a workspace tab), reverts or deletes it, and closes
+     tabs. -->
 <script lang="ts">
   import { ICON } from '../icons';
   import { type Mode, setSetting, settings } from '../settings.svelte';
@@ -12,8 +14,23 @@
     ['cursor', 'Cursors', 'Click to place cursors A and B (C)'],
   ];
   let more = $state(false);
-  /** The tab whose menu is open, and where. */
-  let tabMenu = $state<null | { key: number; x: number; y: number }>(null);
+  /** The tab whose menu is open, and where; `naming` while Save as… asks for a name. */
+  let tabMenu = $state<null | { key: number; x: number; y: number; naming?: boolean }>(null);
+  /** The + menu: your layouts, and a new empty one (`naming`). */
+  let addMenu = $state<null | { x: number; y: number; naming?: boolean }>(null);
+  let wsName = $state('');
+  let wsErr = $state('');
+  const menuTab = $derived(tabMenu ? tabs.list.find((t) => t.key === tabMenu!.key) : undefined);
+  function nameSubmit(e: SubmitEvent, f: (name: string) => string | null) {
+    e.preventDefault();
+    const err = f(wsName);
+    if (err) wsErr = err;
+    else tabMenu = addMenu = null;
+  }
+  function startNaming(name: string) {
+    wsName = name;
+    wsErr = '';
+  }
   let dragTab = $state<number | null>(null);
   /** Runs a tab menu item on the menu's tab, closing the menu first. */
   function tabAct(f: (key: number) => void) {
@@ -22,7 +39,8 @@
     if (key != null) f(key);
   }
   function openTabMenu(key: number, x: number, y: number) {
-    tabMenu = { key, x: Math.min(x, window.innerWidth - 220), y };
+    addMenu = null;
+    tabMenu = { key, x: Math.min(x, window.innerWidth - 260), y };
   }
   let moreBtn: HTMLButtonElement | undefined = $state();
   const pick = (f: () => void) => () => {
@@ -32,10 +50,24 @@
   function outside(e: PointerEvent) {
     if (more && !(e.target as HTMLElement).closest('.moremenu, #b-more')) more = false;
     if (tabMenu && !(e.target as HTMLElement).closest('.tabmenu, .tm')) tabMenu = null;
+    if (addMenu && !(e.target as HTMLElement).closest('.addmenu, #wsTabNew')) addMenu = null;
   }
   function key(e: KeyboardEvent) {
-    if (tabMenu && e.key === 'Escape') {
-      tabMenu = null;
+    // ⌘S saves the layout in front (a file tab asks for a name)
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && tabs.active >= 0) {
+      e.preventDefault();
+      const t = tabs.list.find((t) => t.key === tabs.active);
+      if (t?.ws) actions.saveWs(t.key);
+      else if (t && !t.live) {
+        const el = document.querySelector(`[data-tab="${t.key}"]`)?.getBoundingClientRect();
+        openTabMenu(t.key, el?.left ?? 8, (el?.bottom ?? 40) + 4);
+        tabMenu!.naming = true;
+        startNaming('');
+      }
+      return;
+    }
+    if ((tabMenu || addMenu) && e.key === 'Escape') {
+      tabMenu = addMenu = null;
       e.stopPropagation();
       return;
     }
@@ -75,7 +107,7 @@
         }}
         ondragend={() => (dragTab = null)}
       >
-        {@html ICON.file}<span class="nm">{t.name}</span>
+        {@html t.ws ? ICON.layout : ICON.file}<span class="nm">{t.name}</span>{#if t.dirty}<span class="dirty" data-dirty aria-label="unsaved changes" data-tip="Unsaved changes: Save layout (⌘S) or Revert changes in the tab menu"></span>{/if}
         <span
           class="tm"
           role="button"
@@ -99,6 +131,19 @@
         >
       </div>
     {/each}
+    <button
+      class="tnew"
+      id="wsTabNew"
+      aria-label="New tab"
+      aria-haspopup="menu"
+      aria-expanded={!!addMenu}
+      data-tip="Open one of your layouts in a new tab, or start an empty one"
+      onclick={(e) => {
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        tabMenu = null;
+        addMenu = addMenu ? null : { x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 };
+      }}>{@html ICON.plus}</button
+    >
   </div>
   <div class="rangebar">
     <span class="num" id="rangeTxt">{ui.range}</span>
@@ -119,11 +164,71 @@
   <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.more}</button>
   {#if tabMenu}
     <div class="menu tabmenu" role="menu" style="left: {tabMenu.x}px; top: {tabMenu.y}px">
-      <button class="mi" role="menuitem" onclick={() => tabAct(actions.closeTab)}><span class="nm">Close tab</span></button>
+      {#if tabMenu.naming}
+        <form class="wsname" onsubmit={(e) => nameSubmit(e, (n) => actions.saveAs(tabMenu!.key, n))}>
+          <label for="wsName">Save as a layout named</label>
+          <!-- svelte-ignore a11y_autofocus -->
+          <input id="wsName" class="sel" maxlength="60" autocomplete="off" spellcheck="false" autofocus bind:value={wsName} oninput={() => (wsErr = '')} />
+          {#if wsErr}<span class="wserr" role="alert">{wsErr}</span>{/if}
+          <div class="wsbtns"><button class="btn" type="button" onclick={() => (tabMenu = null)}>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+        </form>
+      {:else}
+        {#if menuTab?.ws}
+          <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
+        {/if}
+        {#if !menuTab?.live}
+          <button class="mi" role="menuitem" data-ws="saveas" onclick={() => (startNaming(menuTab?.ws ? `${menuTab.ws} copy` : ''), (tabMenu!.naming = true))}
+            ><span class="nm">Save as…</span></button
+          >
+        {/if}
+        {#if menuTab?.ws}
+          <button class="mi" role="menuitem" data-ws="revert" disabled={!menuTab.dirty} onclick={() => tabAct(actions.revertWs)}><span class="nm">Revert changes</span></button>
+          <button class="mi" role="menuitem" data-ws="delete" onclick={() => tabAct(() => actions.deleteWs(menuTab!.ws!))}><span class="nm">Delete layout</span></button>
+        {/if}
+        {#if !menuTab?.live}<div class="msep"></div>{/if}
+        <button class="mi" role="menuitem" onclick={() => tabAct(actions.closeTab)}><span class="nm">Close tab</span></button>
       <button class="mi" role="menuitem" disabled={tabs.list.length < 2} onclick={() => tabAct(actions.closeOtherTabs)}
         ><span class="nm">Close other tabs</span></button
       >
       <button class="mi" role="menuitem" onclick={() => tabAct(() => actions.closeFile())}><span class="nm">Close all tabs</span></button>
+      {/if}
+    </div>
+  {/if}
+  {#if addMenu}
+    <div class="menu addmenu" role="menu" aria-label="New tab" style="left: {addMenu.x}px; top: {addMenu.y}px">
+      {#if addMenu.naming}
+        <form class="wsname" onsubmit={(e) => nameSubmit(e, actions.newWs)}>
+          <label for="wsName">Name of the new layout</label>
+          <!-- svelte-ignore a11y_autofocus -->
+          <input id="wsName" class="sel" maxlength="60" autocomplete="off" spellcheck="false" autofocus bind:value={wsName} oninput={() => (wsErr = '')} />
+          {#if wsErr}<span class="wserr" role="alert">{wsErr}</span>{/if}
+          <div class="wsbtns"><button class="btn" type="button" onclick={() => (addMenu = null)}>Cancel</button><button class="btn primary" type="submit">Create</button></div>
+        </form>
+      {:else}
+        <button class="mi" role="menuitem" data-wsnew disabled={!ui.file} onclick={() => (startNaming(''), (addMenu!.naming = true))}>{@html ICON.plus}<span class="nm">Empty layout…</span></button>
+        <div class="mgrp">Your layouts · this computer</div>
+        {#each settings.workspaces as w (w.name)}
+          {@const open = tabs.list.some((t) => t.ws === w.name)}
+          <div class="lyrow">
+            <button
+              class="mi"
+              role="menuitem"
+              data-wsopen={w.name}
+              disabled={!ui.file && !open}
+              onclick={() => {
+                addMenu = null;
+                actions.openWs(w.name);
+              }}>{@html ICON.layout}<span class="nm">{w.name}</span><span class="hint">{open ? 'open in a tab' : `${w.panes.length} ${w.panes.length === 1 ? 'pane' : 'panes'}`}</span></button
+            >
+            <button class="lydel" data-wsdel={w.name} aria-label="Delete layout {w.name}" data-tip="Delete this layout (you can undo)" onclick={() => actions.deleteWs(w.name)}
+              >{@html ICON.trash}</button
+            >
+          </div>
+        {:else}
+          <p class="mnote">None yet. Use Save as… in a tab's menu.</p>
+        {/each}
+        <p class="mnote">A layout says which channels sit in which panes, by name, so it works on any recording that has them. It opens on the file in front.</p>
+      {/if}
     </div>
   {/if}
   {#if more}
@@ -201,7 +306,111 @@
   }
   .tabmenu {
     position: fixed;
-    min-width: 200px;
+    min-width: 220px;
+  }
+  .addmenu {
+    width: 300px;
+  }
+  .addmenu .mi :global(svg) {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--fg-muted);
+  }
+  .tnew {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    align-self: center;
+    width: 26px;
+    height: 26px;
+    margin: 0 4px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg-muted);
+  }
+  .tnew :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+  .tnew:hover {
+    background: var(--raised);
+    color: var(--fg);
+  }
+  .dirty {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .wsname {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    font-size: 12px;
+    color: var(--fg-muted);
+  }
+  .wsname .sel {
+    color: var(--fg);
+    font-size: 13px;
+  }
+  .wserr {
+    color: var(--warn);
+    font-size: 11.5px;
+  }
+  .wsbtns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .lyrow {
+    display: flex;
+    align-items: center;
+  }
+  .lyrow .mi {
+    flex: 1;
+    min-width: 0;
+  }
+  .lydel {
+    display: inline-grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg-muted);
+    visibility: hidden;
+  }
+  .lydel :global(svg) {
+    width: 13px;
+    height: 13px;
+  }
+  .lyrow:hover .lydel,
+  .lydel:focus-visible {
+    visibility: visible;
+  }
+  .lydel:hover {
+    background: var(--raised);
+    color: var(--fg);
+  }
+  .mnote {
+    margin: 4px 8px 6px;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+  }
+  .msep {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--grid);
+  }
+  .mi:disabled {
+    opacity: 0.45;
   }
   .wstab :global(svg) {
     flex: none;

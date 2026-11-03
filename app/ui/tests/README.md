@@ -11,6 +11,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 
 | Test | Covers |
 | --- | --- |
+| t_workspaces | Save as… in a tab's menu (a name needed, unique; the tab then shows the layout, saved by channel name), unsaved changes marked without touching the file's layout, Save layout, Revert changes, ⌘S; the + menu (an empty layout, your layouts, opening one on the file in front with its missing channels named, Delete with Undo); a file tab sharing a file a workspace tab shows, the file kept open while a tab shows it; workspace tabs and their order after a reload |
 | t_wire | the wire format: the fake core encodes the core's golden batch byte for byte, and `wire.ts` decodes it (Node, no browser) |
 | t_tabs | a tab per open file, each keeping its panes, view and cursors; reordering by drag; middle-click, × and the tab menu (close, close others, close all) closing tabs and their files; the tabs after a reload |
 | t_view | panes and the channel list, wheel and box zoom, Fit and Back, hover readouts, cursors and Measure, settings after a reload |

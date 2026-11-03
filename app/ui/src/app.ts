@@ -15,7 +15,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
-import { applyTheme, type Mode, onSetting, saveSettings, setSetting, settings } from './settings.svelte';
+import { applyTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import {
@@ -37,6 +37,7 @@ import {
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
+import { fromWorkspace, toWorkspace, type Workspace } from './workspaces';
 
 interface ChannelInfo {
   name: string;
@@ -120,8 +121,11 @@ const renderer = new Renderer($<HTMLCanvasElement>('gl'));
 
 // ---------- state ----------
 
+/** An open file: its id in the core, what it holds, and its first and last sample times. */
+type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint };
+
 const state = {
-  file: null as null | { id: number; info: RecordingInfo; first: bigint; last: bigint },
+  file: null as null | OpenFile,
   t0: 0n,
   t1: 1n,
   history: [] as [bigint, bigint][],
@@ -946,7 +950,8 @@ function updateChips(): void {
 }
 
 function saveLayout(): void {
-  if (!state.file) return;
+  // a workspace tab's edits are its unsaved changes, not the file's layout
+  if (!state.file || frontTab()?.ws) return;
   settings.layouts[state.file.info.path] = stack.panes.map((p) => ({ ...p, channels: [...p.channels] }));
   saveSettings();
 }
@@ -954,6 +959,7 @@ function saveLayout(): void {
 /** After an edit of the panes, once they are on the page (their plots are measured). */
 async function layoutChanged(): Promise<void> {
   saveLayout();
+  markDirty();
   await tick();
   renderPanes();
   overviewChanged();
@@ -1051,7 +1057,7 @@ function scheduleResize(): void {
 
 // ---------- opening ----------
 
-// ---------- tabs: one per open file ----------
+// ---------- tabs: one per open file, and workspace tabs on them ----------
 
 /** A tab's state while another tab is in front (the one in front lives in `state` and `stack`). */
 interface TabData {
@@ -1148,23 +1154,39 @@ async function showTab(key: number): Promise<void> {
 
 /** Opens `path` in a tab of its own (or brings its tab to the front). */
 async function openPath(path: string): Promise<void> {
-  const open = tabs.list.find((t) => t.path === path);
+  const open = tabs.list.find((t) => t.path === path && !t.ws);
   if (open) return showTab(open.key);
+  // a file a workspace tab shows is open already: its file tab shares it
+  const shown = tabs.list.find((t) => t.path === path && !t.live);
+  const again = shown ? fileOf(shown.key) : null;
   try {
     const key = nextTab++;
-    const progress = new Channel<Progress>();
-    progress.onmessage = (p) => onProgress(key, p);
-    const o = await invoke<Opened>('open', { path, progress });
-    if (!o.range) {
-      void invoke('close', { file: o.id });
-      throw new Error('it has no samples');
+    let file: OpenFile;
+    let building: TabData['building'];
+    if (again && shown) {
+      file = again;
+      building = shown.key === tabs.active ? state.building : (tabData.get(shown.key)?.building ?? null);
+    } else {
+      const progress = new Channel<Progress>();
+      // progress is the file's, for every tab on it; any that comes before the reply waits for its id
+      let id: number | null = null;
+      let early: Progress | null = null;
+      progress.onmessage = (p) => (id == null ? (early = p) : onProgress(id, p));
+      const o = await invoke<Opened>('open', { path, progress });
+      id = o.id;
+      if (early) onProgress(id, early);
+      if (!o.range) {
+        void invoke('close', { file: o.id });
+        throw new Error('it has no samples');
+      }
+      file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
+      building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
     }
-    const file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
-    const saved = settings.layouts[o.info.path];
-    const n = o.info.channels.length;
+    const saved = settings.layouts[file.info.path];
+    const n = file.info.channels.length;
     tabData.set(key, {
       file,
-      building: o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null },
+      building,
       panes: saved?.every((p) => p.channels?.every((ch) => ch < n)) ? copyPanes(saved) : defaultPanes(n),
       sel: 0,
       t0: file.first,
@@ -1177,7 +1199,7 @@ async function openPath(path: string): Promise<void> {
       play: null,
       live: null,
     });
-    tabs.list.push({ key, path: o.info.path, name: nameOf(o.info.path) });
+    tabs.list.push({ key, path: file.info.path, name: nameOf(file.info.path) });
     ui.note = '';
     ui.undo = null;
     await showTab(key);
@@ -1317,10 +1339,12 @@ async function closeTab(key: number): Promise<void> {
   const i = tabs.list.findIndex((t) => t.key === key);
   if (i < 0) return;
   const front = key === tabs.active;
-  const file = front ? state.file : tabData.get(key)?.file;
-  if (file) void invoke('close', { file: file.id });
+  const file = fileOf(key);
+  const shared = tabs.list.some((t) => t.key !== key && fileOf(t.key)?.id === file?.id);
+  if (file && !shared) void invoke('close', { file: file.id });
   tabs.list.splice(i, 1);
   tabData.delete(key);
+  wsBase.delete(key);
   if (front) {
     tabs.active = -1;
     live.on = false;
@@ -1333,26 +1357,155 @@ async function closeTab(key: number): Promise<void> {
 
 /** The open tabs, to reopen after a restart. */
 function saveSession(): void {
-  const active = tabs.list.find((t) => t.key === tabs.active)?.path ?? null;
-  const files = tabs.list.filter((t) => !t.live).map((t) => t.path);
-  setSetting('session', { files, active: active && files.includes(active) ? active : null });
+  const front = frontTab();
+  const active = front?.path ?? null;
+  const files = [...new Set(tabs.list.filter((t) => !t.live).map((t) => t.path))];
+  const session: Settings['session'] = { files, active: active && files.includes(active) ? active : null };
+  const kept = tabs.list.filter((t) => !t.live);
+  const ws = kept.flatMap((t, at) => (t.ws ? [{ path: t.path, name: t.ws, at }] : []));
+  if (ws.length) session.ws = ws;
+  if (front?.ws) session.activeWs = front.ws;
+  setSetting('session', session);
+}
+
+// ---------- Workspaces: saved layouts, each shown in a tab of its own on the file in front ----------
+
+const frontTab = () => tabs.list.find((t) => t.key === tabs.active);
+/** The file tab `key` shows. */
+const fileOf = (key: number) => (key === tabs.active ? state.file : tabData.get(key)?.file) ?? null;
+const channelNames = () => state.file?.info.channels.map((c) => c.name) ?? [];
+const findWs = (name: string) => settings.workspaces.find((w) => w.name === name);
+/** The front tab's panes as a layout's, to compare with the layout as loaded or saved. */
+const wsSnapshot = () => JSON.stringify(toWorkspace('', stack.panes, channelNames()).panes);
+/** Each workspace tab's panes as loaded or last saved. */
+const wsBase = new Map<number, string>();
+
+function markDirty(): void {
+  const t = frontTab();
+  if (!t?.ws) return;
+  const dirty = wsSnapshot() !== wsBase.get(t.key);
+  if (!!t.dirty !== dirty) t.dirty = dirty;
+}
+
+function storeWs(ws: Workspace, at?: number): void {
+  const i = settings.workspaces.findIndex((w) => w.name === ws.name);
+  if (i >= 0) settings.workspaces[i] = ws;
+  else settings.workspaces.splice(at ?? settings.workspaces.length, 0, ws);
+  saveSettings();
+}
+
+function nameError(name: string, own?: string): string | null {
+  if (!name) return 'Give the layout a name.';
+  if (name !== own && findWs(name)) return `There is already a layout called "${name}".`;
+  return null;
+}
+
+/** Brings tab `key` to the front, then runs `f` there. */
+async function atTab(key: number, f: () => void): Promise<void> {
+  if (key !== tabs.active) await showTab(key);
+  if (key === tabs.active) f();
+}
+
+/** Save as…: a layout of tab `key`'s panes, which the tab then shows. */
+function saveAs(key: number, raw: string): string | null {
+  const name = raw.trim();
+  const t = tabs.list.find((x) => x.key === key);
+  const err = t ? nameError(name, t.ws) : 'That tab is closed.';
+  if (err || !t) return err;
+  void atTab(key, () => {
+    storeWs(toWorkspace(name, stack.panes, channelNames()));
+    Object.assign(t, { ws: name, name, dirty: false });
+    wsBase.set(key, wsSnapshot());
+    saveSession();
+    note(`Saved layout "${name}".`);
+  });
+  return null;
+}
+
+function saveWs(key: number): void {
+  const t = tabs.list.find((x) => x.key === key);
+  if (!t?.ws) return;
+  void atTab(key, () => {
+    storeWs(toWorkspace(t.ws!, stack.panes, channelNames()));
+    wsBase.set(key, wsSnapshot());
+    t.dirty = false;
+  });
+}
+
+function revertWs(key: number): void {
+  const t = tabs.list.find((x) => x.key === key);
+  const ws = t?.ws ? findWs(t.ws) : null;
+  if (!t || !ws) return;
+  void atTab(key, () => {
+    stack.panes = fromWorkspace(ws, channelNames()).panes;
+    stack.sel = 0;
+    normalize();
+    void layoutChanged();
+  });
+}
+
+/** Deletes one of your layouts and closes its tabs, with Undo. */
+function deleteWs(name: string): void {
+  const at = settings.workspaces.findIndex((w) => w.name === name);
+  if (at < 0) return;
+  const [gone] = settings.workspaces.splice(at, 1);
+  saveSettings();
+  void (async () => {
+    for (const t of tabs.list.filter((t) => t.ws === name)) await closeTab(t.key);
+    note(`Deleted layout "${name}".`, () => storeWs(gone, at));
+  })();
+}
+
+/** Opens layout `name` in a tab of its own on the file in front (or brings its tab forward). */
+async function openWs(name: string): Promise<void> {
+  const open = tabs.list.find((t) => t.ws === name);
+  if (open) return showTab(open.key);
+  const ws = findWs(name);
+  const f = state.file;
+  if (!ws) return;
+  if (!f || live.on) {
+    note(`Open a recording first: "${name}" shows on the file in front.`);
+    return;
+  }
+  stashTab();
+  const cur = tabData.get(tabs.active)!;
+  const { panes, missing } = fromWorkspace(ws, channelNames());
+  const key = nextTab++;
+  tabData.set(key, { ...cur, panes, sel: 0, history: [], future: [], play: null, live: null });
+  tabs.list.push({ key, path: f.info.path, name, ws: name });
+  await showTab(key);
+  wsBase.set(key, wsSnapshot());
+  if (missing.length) {
+    const list = missing.slice(0, 3).join(', ') + (missing.length > 3 ? ', …' : '');
+    note(`${nameOf(f.info.path)} has no ${missing.length === 1 ? 'channel' : 'channels'} ${list}: ${missing.length === 1 ? 'it stays' : 'they stay'} out of "${name}".`);
+  }
+}
+
+/** A new, empty layout, opened in a tab. */
+function newWs(raw: string): string | null {
+  const name = raw.trim();
+  const err = nameError(name);
+  if (err) return err;
+  storeWs({ schema: 1, name, panes: [{ channels: [] }] });
+  void openWs(name);
+  return null;
 }
 
 let progressRefresh = 0;
-function onProgress(key: number, p: Progress): void {
+function onProgress(file: number, p: Progress): void {
   if (p.error) {
-    note(`Couldn't read ${tabs.list.find((t) => t.key === key)?.name ?? 'a file'} to the end: ${p.error}`);
+    const t = tabs.list.find((t) => fileOf(t.key)?.id === file);
+    note(`Couldn't read ${t ? nameOf(t.path) : 'a file'} to the end: ${p.error}`);
     return;
   }
   const done = p.done >= p.total;
   const building = done ? null : { done: p.done, total: p.total, until: p.builtUntil != null ? BigInt(p.builtUntil) : null };
-  // a tab behind keeps its progress for when it comes to the front
-  if (key !== tabs.active) {
-    const d = tabData.get(key);
-    if (d) d.building = building;
-    return;
+  // tabs behind keep their file's progress for when they come to the front
+  for (const t of tabs.list) {
+    const d = tabData.get(t.key);
+    if (t.key !== tabs.active && d?.file.id === file) d.building = building;
   }
-  if (!state.file) return;
+  if (state.file?.id !== file) return;
   state.building = building;
   if (!done) ui.perf = `Reading ${Math.floor((100 * p.done) / Math.max(1, p.total))}%`;
   // new summaries: fill in the panes (at most four times a second)
@@ -1729,6 +1882,10 @@ Object.assign(actions, {
   closeFile: () => void closeAll(),
   showTab: (key: number) => void showTab(key),
   closeTab: (key: number) => void closeTab(key),
+  closePath: (path: string) =>
+    void (async () => {
+      for (const t of tabs.list.filter((t) => t.path === path)) await closeTab(t.key);
+    })(),
   closeOtherTabs: (key: number) => void Promise.all(tabs.list.filter((t) => t.key !== key).map((t) => closeTab(t.key))),
   saveSession,
   pickFile: async (ext: string[]) => {
@@ -1739,6 +1896,12 @@ Object.assign(actions, {
   back,
   clearCursors,
   placeCursor,
+  saveAs,
+  saveWs,
+  revertWs,
+  deleteWs,
+  openWs: (name: string) => void openWs(name),
+  newWs,
   axisRange: (i: number, key: AxisKey): [number, number] | null => {
     const y = paneY[i]?.[key];
     if (!y) return null;
@@ -1855,9 +2018,18 @@ else if (launch.gate === '1' && launch.file) {
   await runGate(gateApi);
 } else {
   // the tabs open when the app last closed, then a file it was asked to open (in front)
-  const { files, active } = settings.session;
+  const { files, active, ws, activeWs } = settings.session;
   for (const f of files) await openPath(f);
+  for (const w of ws ?? []) {
+    await openPath(w.path);
+    await openWs(w.name);
+    // back where it was among the tabs
+    const k = tabs.list.findIndex((t) => t.ws === w.name);
+    if (k >= 0 && k !== w.at) tabs.list.splice(w.at, 0, ...tabs.list.splice(k, 1));
+  }
   const front = launch.file ?? active;
-  if (front) await openPath(front);
+  const wsFront = !launch.file && activeWs ? tabs.list.find((t) => t.ws === activeWs) : null;
+  if (wsFront) await showTab(wsFront.key);
+  else if (front) await openPath(front);
   ui.note = '';
 }

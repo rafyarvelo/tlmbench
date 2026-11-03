@@ -49,6 +49,8 @@ export const actions = {
   showTab: (_key: number) => {},
   closeTab: (_key: number) => {},
   closeOtherTabs: (_key: number) => {},
+  /** Closes a file: every tab showing it. */
+  closePath: (_path: string) => {},
   saveSession: () => {},
   /** The native file picker for these extensions; null when cancelled. */
   pickFile: async (_ext: string[]): Promise<string | null> => null,
@@ -59,6 +61,14 @@ export const actions = {
   placeCursor: (_which: 'A' | 'B', _t: bigint) => {},
   /** Centres the time view on a time, keeping its span. */
   centreOn: (_t: bigint) => {},
+  /** Workspaces: Save as… (a layout of tab `key`, which then shows it; an error to show, or null), Save layout,
+   * Revert changes, Delete layout, open one in a tab (on the file in front), and a new empty one. */
+  saveAs: (_key: number, _name: string): string | null => null,
+  saveWs: (_key: number) => {},
+  revertWs: (_key: number) => {},
+  deleteWs: (_name: string) => {},
+  openWs: (_name: string) => {},
+  newWs: (_name: string): string | null => null,
   /** What a pane's axis shows now, in its units (null before it's drawn). */
   axisRange: (_i: number, _key: 'u0' | 'u1'): [number, number] | null => null,
 };

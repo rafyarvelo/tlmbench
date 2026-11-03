@@ -1,4 +1,5 @@
-// Tabs: one per open file (a file tab: its panes, view, cursors and history, kept while another tab is in front).
+// Tabs: a file tab per open file, and workspace tabs showing a saved layout on a file (each keeps its panes, view,
+// cursors and history while another tab is in front).
 // The strip shows `tabs.list`; app.ts keeps each tab's state and switches between them (`actions` in ui.svelte.ts).
 
 export interface TabInfo {
@@ -7,6 +8,10 @@ export interface TabInfo {
   name: string;
   /** A live source's tab (its file grows); `path` is the source's endpoint. */
   live?: boolean;
+  /** A workspace tab: the name of the layout it shows (`name` too), on the file at `path`. */
+  ws?: string;
+  /** Its panes differ from the layout as saved. */
+  dirty?: boolean;
 }
 
 export const tabs = $state({

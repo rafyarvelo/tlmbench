@@ -2,6 +2,7 @@
 // Components and app.ts read `settings` directly; changes go through `setSetting` so they are saved and applied.
 
 import type { Pane } from './stack.svelte';
+import type { Workspace } from './workspaces';
 
 export type Mode = 'box' | 'pan' | 'cursor';
 export type Theme = 'system' | 'light' | 'dark';
@@ -25,8 +26,10 @@ export interface Settings {
   /** The folder Explorer lists, and its folders (and open files) shown expanded. */
   folder: string;
   exExpanded: string[];
-  /** The tabs open when the app last closed (their files), and the one in front. */
-  session: { files: string[]; active: string | null };
+  /** The tabs open when the app last closed (their files, then layouts shown on them) and the one in front. */
+  session: { files: string[]; active: string | null; ws?: { path: string; name: string; at: number }[]; activeWs?: string };
+  /** Your layouts (workspaces), this computer only. */
+  workspaces: Workspace[];
   /** Each file's panes (their channel numbers and where they sit), by file path. */
   layouts: Record<string, Pane[]>;
   /** Gap factors set by hand, by file path and channel number (the rest use the default). */
@@ -48,6 +51,7 @@ export const DEFAULTS: Settings = {
   exExpanded: [],
   session: { files: [], active: null },
   layouts: {},
+  workspaces: [],
   gapFactors: {},
 };
 
@@ -85,7 +89,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['layouts', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
+const KEEP: (keyof Settings)[] = ['layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

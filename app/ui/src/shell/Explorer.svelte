@@ -31,6 +31,13 @@
 
   const isOpen = (path: string) => path === ui.path;
   const inTab = (path: string) => tabs.list.some((t) => t.path === path);
+  /** The open files, each with the tab a click brings forward (its file tab, else a layout shown on it). */
+  const openFiles = $derived(
+    [...new Set(tabs.list.map((t) => t.path))].map((path) => {
+      const on = tabs.list.filter((t) => t.path === path);
+      return { path, name: path.split(/[\\/]/).pop() ?? path, tab: on.find((t) => !t.ws) ?? on[0], front: on.some((t) => t.key === tabs.active) };
+    }),
+  );
   /** A file shows when its name, or (the open one) one of its channels, matches. */
   const chanMatch = (ch: { name: string }) => matcher.test(ch.name);
   const fileShown = (f: FolderEntry) => matcher.test(f.name) || (isOpen(f.path) && ui.channels.some(chanMatch));
@@ -78,16 +85,16 @@
 
   {#if tabs.list.length}
     <div class="openstrip">
-      <span class="cap">Open · {tabs.list.length}</span><span class="spacer"></span>
+      <span class="cap">Open · {openFiles.length}</span><span class="spacer"></span>
       <button class="linkbtn" id="closeAll" onclick={actions.closeFile}>Close all</button>
     </div>
     <div class="openfiles" id="openFiles">
-      {#each tabs.list as t (t.key)}
-        <span class="ofile" class:on={t.key === tabs.active} data-tip={t.path}>
-          <button class="ofnm" onclick={() => actions.showTab(t.key)}>{t.name}</button><button
+      {#each openFiles as f (f.path)}
+        <span class="ofile" class:on={f.front} data-tip={f.path}>
+          <button class="ofnm" onclick={() => actions.showTab(f.tab.key)}>{f.name}</button><button
             class="ofx"
-            aria-label="Close {t.name}"
-            onclick={() => actions.closeTab(t.key)}>{@html ICON.close}</button
+            aria-label="Close {f.name}"
+            onclick={() => actions.closePath(f.path)}>{@html ICON.close}</button
           >
         </span>
       {/each}
