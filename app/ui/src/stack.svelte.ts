@@ -4,8 +4,12 @@
 
 import { ui } from './ui.svelte';
 
+/** How a pane shows its channels: the chart (the default, left out of saved layouts) or value tiles. */
+export type PaneMode = 'chart' | 'values';
+
 export interface Pane {
   channels: number[];
+  mode?: PaneMode;
   beside?: boolean;
   under?: boolean;
 }
@@ -18,6 +22,8 @@ export const stack = $state({
   sel: 0,
   /** Each channel's value at the pointer, shown in its chips. */
   values: {} as Record<number, string>,
+  /** Each channel's value when the pointer is off the charts: at cursor A, else at the end of the view. */
+  resting: {} as Record<number, string>,
   /** Panes drawn from summaries for now (labelled "coarse" until the exact view comes). */
   coarse: [] as boolean[],
 });
@@ -63,6 +69,7 @@ export function normalize(): void {
     if (p.under && p.beside) p.beside = false;
     if (p.beside && cols >= MAX_PER_ROW) p.beside = false;
     cols = p.under ? cols : p.beside ? cols + 1 : 1;
+    if (p.mode === 'chart') delete p.mode;
     if (!p.under) delete p.under;
     if (!p.beside) delete p.beside;
   });
@@ -110,7 +117,8 @@ export const canSplitRight = (i: number) => columns(rowOf(i)).length < MAX_PER_R
 export function duplicate(i: number, beside = false): void {
   const p = stack.panes[i];
   edit(() => {
-    stack.panes.splice(i + 1, 0, beside ? { channels: [...p.channels], beside: true } : { channels: [...p.channels], under: p.under });
+    const again = { channels: [...p.channels], mode: p.mode };
+    stack.panes.splice(i + 1, 0, beside ? { ...again, beside: true } : { ...again, under: p.under });
     stack.sel = i + 1;
   });
 }
@@ -152,8 +160,15 @@ export function movePane(from: number, to: number): void {
   edit(() => {
     const [p] = stack.panes.splice(from, 1);
     const at = to > from ? to - 1 : to;
-    stack.panes.splice(at, 0, { channels: p.channels });
+    stack.panes.splice(at, 0, { channels: p.channels, mode: p.mode });
     stack.sel = at;
+  });
+}
+
+export function setMode(i: number, mode: PaneMode): void {
+  edit(() => {
+    stack.panes[i].mode = mode;
+    stack.sel = i;
   });
 }
 

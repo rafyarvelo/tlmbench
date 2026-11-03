@@ -262,7 +262,8 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const generation = ++state.generation;
   const want = precision ?? (state.exactMs > 150 ? 'coarse' : 'exact');
   const inView = samplesInView();
-  const entries = panes().map((chans, i) => entry(i, chans, state.t0, state.t1, widthPx(i)));
+  // a values pane has no plot to ask for
+  const entries = panes().flatMap((chans, i) => (stack.panes[i].mode === 'values' ? [] : [entry(i, chans, state.t0, state.t1, widthPx(i))]));
   const r = ovRect();
   const withOv = state.ovStale && !!r;
   if (withOv && r) {
@@ -324,6 +325,7 @@ async function requestHover(t: bigint | null): Promise<void> {
     state.hover.clear();
     updateChips();
     scheduleDraw();
+    void requestResting();
     return;
   }
   hoverInflight = true;
@@ -338,6 +340,22 @@ async function requestHover(t: bigint | null): Promise<void> {
     hoverInflight = false;
     if (hoverWanted !== t) void requestHover(hoverWanted);
   }
+}
+
+// value tiles off the charts: cursor A, else the end of the view
+let restingWanted = 0;
+async function requestResting(): Promise<void> {
+  const f = state.file;
+  const chans = [...new Set(stack.panes.filter((p) => p.mode === 'values').flatMap((p) => p.channels))];
+  const mine = ++restingWanted;
+  if (!f || !chans.length) {
+    if (Object.keys(stack.resting).length) stack.resting = {};
+    return;
+  }
+  const t = state.A ?? (state.t1 > f.last ? f.last : state.t1);
+  const got = await invoke<Nearest[]>('values_at', { file: f.id, channels: chans, t: t.toString() });
+  if (mine !== restingWanted) return;
+  stack.resting = Object.fromEntries(got.map((n) => [n.channel, value(n.value)]));
 }
 
 // ---------- view ----------
@@ -368,6 +386,7 @@ function setView(t0: bigint, t1: bigint, remember = false): void {
   updateRange();
   scheduleDraw();
   void requestView();
+  if (state.hoverT == null) void requestResting();
 }
 
 // ---------- Play: a playhead moves through the file and the view follows it ----------
@@ -578,6 +597,7 @@ function draw(): void {
   let complete = stack.panes.length > 0;
 
   panes().forEach((chans, i) => {
+    if (stack.panes[i].mode === 'values') return;
     const r = plotRect(i);
     const main = state.layers[i];
     // the pane's value range: what its traces hold in view
@@ -831,6 +851,7 @@ async function layoutChanged(): Promise<void> {
   renderPanes();
   overviewChanged();
   if (state.A != null && state.B != null) void refreshMeasure();
+  void requestResting();
 }
 
 function selectPane(i: number): void {
@@ -1293,6 +1314,7 @@ function paneAt(e: { clientX: number; clientY: number }): { i: number; r: Rect; 
   const y = e.clientY - c.top;
   for (let i = 0; i < stack.panes.length; i++) {
     const r = plotRect(i);
+    if (r.w <= 0) continue;
     const inX = x >= r.x - PAD.left && x <= r.x + r.w + PAD.right;
     if (inX && y >= r.y - 4 && y <= r.y + r.h + 4) return { i, r, x };
   }
@@ -1315,6 +1337,7 @@ function placeCursor(which: 'A' | 'B', t: bigint): void {
   state[which] = t;
   scheduleDraw();
   void refreshMeasure();
+  if (which === 'A' && state.hoverT == null) void requestResting();
 }
 
 type Drag =
@@ -1698,6 +1721,7 @@ export const gateApi = {
   building: () => state.building && { done: state.building.done, total: state.building.total },
   panes: () => panes().map((p) => [...p]),
   layout: () => stack.panes.map((p) => (p.beside ? 'beside' : p.under ? 'under' : 'row')),
+  modes: () => stack.panes.map((p) => p.mode ?? 'chart'),
   sel: () => stack.sel,
   mode: () => settings.mode,
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),

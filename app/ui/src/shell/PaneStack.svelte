@@ -16,6 +16,7 @@
     labelled,
     movePane,
     rows,
+    setMode,
     splitDown,
     splitRight,
     stack,
@@ -23,6 +24,11 @@
   import { ui } from '../ui.svelte';
 
   let menu = $state<null | { i: number; x: number; y: number }>(null);
+  let views = $state<null | { i: number; x: number; y: number }>(null);
+  const VIEWS = [
+    { mode: 'chart', label: 'Chart', hint: 'Channels over time' },
+    { mode: 'values', label: 'Values', hint: 'Value tiles at the pointer, cursor A or the end of the view' },
+  ] as const;
   let dragging = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
 
@@ -43,10 +49,11 @@
   }
   function outside(e: PointerEvent) {
     if (menu && !(e.target as HTMLElement).closest('.panemenu, [data-pmenu]')) menu = null;
+    if (views && !(e.target as HTMLElement).closest('.viewmenu, [data-vmenu]')) views = null;
   }
   function key(e: KeyboardEvent) {
-    if (menu && e.key === 'Escape') {
-      menu = null;
+    if ((menu || views) && e.key === 'Escape') {
+      menu = views = null;
       e.stopPropagation();
     }
   }
@@ -115,6 +122,18 @@
                 {/if}
                 <button
                   class="pmore"
+                  data-vmenu
+                  aria-haspopup="menu"
+                  aria-label="View of pane {i + 1}: {p.mode === 'values' ? 'Values' : 'Chart'}"
+                  data-tip="View: {p.mode === 'values' ? 'values' : 'chart'}. Click to change"
+                  onclick={(e) => {
+                    const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    menu = null;
+                    views = views?.i === i ? null : { i, x: Math.min(b.right - 250, window.innerWidth - 270), y: b.bottom + 4 };
+                  }}>{@html ICON.view}</button
+                >
+                <button
+                  class="pmore"
                   data-pmenu
                   aria-haspopup="menu"
                   aria-label="More for pane {i + 1}"
@@ -125,7 +144,22 @@
                   }}>{@html ICON.more}</button
                 >
               </div>
-              <div class="plot" style="--pb: {labelled(i) ? PAD.timeLabels : 4}px"></div>
+              {#if p.mode === 'values'}
+                <div class="tiles" data-tiles>
+                  {#each p.channels as ch (ch)}
+                    {@const info = ui.channels[ch]}
+                    <div class="tile" style="--c: var(--trace-{(ch % 8) + 1})" data-tile={ch}>
+                      <span class="tname">{info?.name ?? ch}</span>
+                      <span class="tval">{stack.values[ch] ?? stack.resting[ch] ?? '–'}</span>
+                      {#if info?.unit}<span class="tunit">{info.unit}</span>{/if}
+                    </div>
+                  {:else}
+                    <span class="mnote">Tick channels on the left to show them here</span>
+                  {/each}
+                </div>
+              {:else}
+                <div class="plot" style="--pb: {labelled(i) ? PAD.timeLabels : 4}px"></div>
+              {/if}
             </section>
           {/each}
         </div>
@@ -133,6 +167,25 @@
     </div>
   {/each}
 </div>
+
+{#if views}
+  <div class="menu viewmenu" role="menu" aria-label="View of pane {views.i + 1}" style="left: {views.x}px; top: {views.y}px">
+    {#each VIEWS as v (v.mode)}
+      {@const on = (stack.panes[views.i]?.mode ?? 'chart') === v.mode}
+      <button
+        class="mi"
+        role="menuitemradio"
+        aria-checked={on}
+        data-vm={v.mode}
+        onclick={() => {
+          const i = views!.i;
+          views = null;
+          setMode(i, v.mode);
+        }}><span class="nm">{v.label}<small>{v.hint}</small></span>{#if on}{@html ICON.check}{/if}</button
+      >
+    {/each}
+  </div>
+{/if}
 
 {#if menu}
   <div class="menu panemenu" role="menu" aria-label="Pane {menu.i + 1}" style="left: {menu.x}px; top: {menu.y}px">
@@ -204,7 +257,45 @@
   .pmore:focus-visible {
     visibility: visible;
   }
-  .panemenu {
+  .tiles {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 8px;
+    min-height: 0;
+    padding: 8px;
+    overflow: auto;
+  }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    min-width: 120px;
+    padding: 8px 12px;
+    border: 1px solid var(--grid);
+    border-left: 3px solid var(--c);
+    border-radius: 8px;
+  }
+  .tname {
+    font-size: 11.5px;
+    color: var(--fg-muted);
+  }
+  .tval {
+    font-family: var(--font-data);
+    font-size: 26px;
+  }
+  .tunit {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--fg-muted);
+  }
+  .viewmenu small {
+    display: block;
+    font-size: 11px;
+    color: var(--fg-muted);
+  }
+  .panemenu,
+  .viewmenu {
     min-width: 210px;
   }
   .msep {

@@ -17,6 +17,8 @@ export const ICON = {
   clear: s('<path d="M8 3v8M16 3v8M8 21v-2M16 21v-2"/><path d="M9 12l6 6M15 12l-6 6"/>'),
   back: s('<path d="M9 14L4 9l5-5M4 9h11a5 5 0 010 10h-3"/>'),
   fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+  view: s('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+  check: s('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"'),
   more: s('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>', 'fill="currentColor"'),
   file: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'),
   chevron: s('<path d="M6 9l6 6 6-6"/>', 'fill="none" stroke="currentColor" stroke-width="2.4"'),
