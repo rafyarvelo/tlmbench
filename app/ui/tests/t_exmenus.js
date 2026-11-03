@@ -14,6 +14,11 @@ run('exmenus', async ({ p, check, text, visible, fake, paneCount, until, setting
   await until(() => document.querySelectorAll('#explorer .row.file').length >= 2);
   check('files the app cannot open stay out of the list', !(await rows()).includes('notes.json'), await rows());
 
+  check('a folder with no file open says "No file open", not the start page', (await visible('#noFile')) && !(await p.isVisible('#startPage >> visible=true')) && /No file open/.test(await text('#noFile')), await text('#empty'));
+  await p.click('#noFileStart');
+  check('and its Start page button opens the start page', await p.isVisible('#startPage >> visible=true'));
+  await p.keyboard.press('Escape');
+  check('Esc closes it, back to "No file open"', await visible('#noFile'));
   await p.click('#exMore');
   check('⋯ says how many are hidden', /Show files that can't be opened \(1 hidden\)/.test(await text('.exmenu')), await text('.exmenu'));
   await p.click('.exmenu [data-ex="showall"]');
@@ -36,6 +41,15 @@ run('exmenus', async ({ p, check, text, visible, fake, paneCount, until, setting
   check('a selected file offers Only this', await visible('#explorer .row.file.sel .tbtn[data-tip]'));
   await p.dblclick('#explorer .row.file[data-path$="flight.tlm"]');
   await until(() => document.querySelectorAll('#explorer .row.chan').length === 6);
+  await p.click('[data-file-chev]');
+  check('a file\'s channels fold away under it', (await p.$$('#explorer .row.chan')).length === 0 && (await settingsLS()).exFilesShut.length === 1);
+  await p.click('[data-file-chev]');
+  check('and come back', (await p.$$('#explorer .row.chan')).length === 6);
+  await p.focus('#explorer .row.file.open');
+  await p.keyboard.press('ArrowLeft');
+  check('← on the file folds them too', (await p.$$('#explorer .row.chan')).length === 0);
+  await p.keyboard.press('ArrowRight');
+  check('→ shows them', (await p.$$('#explorer .row.chan')).length === 6);
   await p.fill('#explorer .exfilter input', 'rpm');
   const n = await paneCount();
   await p.click('#exMore');

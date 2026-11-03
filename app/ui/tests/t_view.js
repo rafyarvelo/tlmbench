@@ -49,7 +49,7 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   await wait(100);
   check('Back returns', span(await app('view')) === span(z), await app('view'));
   await p.click('#b-fit');
-  await wait(500);
+  for (let k = 0; k < 30 && span(await app('view')) !== span(full); k++) await wait(100);
   check('Fit shows the whole file', span(await app('view')) === span(full), await app('view'));
 
   // hover: a time line and every chip's value

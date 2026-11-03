@@ -50,7 +50,13 @@ run('playback', async ({ p, check, fake, plotAt, until, wait }) => {
   // a view you choose stops following; the playhead keeps going; Follow comes back
   await p.click('#playStrip [data-pplay]');
   await p.click('#b-fit');
-  await wait(400);
+  // a glide takes about 300 ms of frames, more where drawing is slow: wait for the view to settle
+  for (let k = 0, last = ''; k < 40; k++) {
+    const v = JSON.stringify(await app('view'));
+    if (v === last) break;
+    last = v;
+    await wait(200);
+  }
   check('choosing a view stops following', /Follow playhead/.test(await p.textContent('#playStrip [data-pfollow]')));
   const held = await app('view');
   const t1 = (await st()).t;

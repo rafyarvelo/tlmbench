@@ -6,6 +6,7 @@
   import PaneStack from './shell/PaneStack.svelte';
   import Rail from './shell/Rail.svelte';
   import Settings from './shell/Settings.svelte';
+  import NoFile from './shell/NoFile.svelte';
   import StartPage from './shell/StartPage.svelte';
   import TopBar from './shell/TopBar.svelte';
   import Transport from './shell/Transport.svelte';
@@ -96,7 +97,7 @@
         <div id="ovBottom" class="ovslot"></div>
         <canvas id="gl" class="layer"></canvas>
         <canvas id="overlay" class="layer"></canvas>
-        <div id="empty" class="empty"><StartPage /></div>
+        <div id="empty" class="empty">{#if ui.folder && !ui.start}<NoFile />{:else}<StartPage />{/if}</div>
         {#if ui.start && ui.file}<StartPage overlay />{/if}
       </main>
       <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize Measure" data-grip="measure" hidden={!shown} onpointerdown={(e) => grip(e, 'measure')} ondblclick={() => setSetting('measureWidth', 260)}></div>

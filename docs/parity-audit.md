@@ -398,6 +398,11 @@ wheel and layout-lock settings, tab keys with Undo on closing, Left sidebar and 
 session, and Weeks and Years. `t_leftovers`, `t_leftovers2`, `t_exmenus` and `t_colors` cover them. What's left of
 Phase 3 needs the core or a decision; it is listed in `docs/follow-ups.md`.
 
+After review (Nov 3): a file's channels fold under it (chevron, ← →, Collapse all); a folder with no file open shows
+"No file open" with a Start page button, not the start page itself; plot lines are drawn as quads 1.25 CSS pixels wide, as
+the prototype's are (WebGL's own lines are one device pixel, half as wide on a Retina display). Software GL, as the UI
+tests use, keeps the thin lines because quads draw slowly there; `t_lines` forces each and compares them.
+
 ## 9. Look and feel
 
 The audit's screenshots were kept in a scratch folder and are gone; `app/ui/tests/shots.js` regenerates the app's (below, `docs/images/`). The pairs were named `proto_<view>.png` and `app_<view>.png`. The pairs are:

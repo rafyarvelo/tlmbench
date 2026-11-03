@@ -36,8 +36,9 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_overview | the overview: what it shows (a pane or a pinned channel), its range, the Show on top switch, Box, Cursors and wheel gestures |
 | t_leftovers | Settings under Live in the rail; the span in words; the wheel setting; Also lock the layout; Backspace; Ctrl+PageUp/Down, Ctrl+Shift+PageUp and Delete on tabs with Undo; the sidebars wrapping under 980 px; "Drag wider to zoom" |
 | t_leftovers2 | the view button's icon, the values pane's "where" line and its height, three panes at most in a row, B over a table row, the transport in the main column |
-| t_exmenus | Explorer's folder and ⋯ menus, files that can't be opened, the filter matching units and categories, Only this, Remove the folder |
+| t_exmenus | "No file open" with a folder, a file's channels folding (chevron, ← →), Explorer's folder and ⋯ menus, files that can't be opened, the filter matching units and categories, Only this, Remove the folder |
 | t_colors | channel colours (the least-used, not the channel number) and moving a channel to a category of your own |
+| t_lines | plot lines drawn as quads cover clearly more pixels than one-pixel lines (forced, since software GL defaults to thin ones) |
 | t_modes | a pane's view menu (chart, table, chart and table, values), value tiles at the pointer, else cursor A, else the end of the view, the view saved with the layout and kept by Duplicate |
 | t_axes | a pane's units an axis each (left, right, room on the right of every plot); "Axis and scale…" in the ⋯ menu: range (fixed starting from what's shown, include zero, ignore outliers), decimals, label, log scale; kept with the pane and after a reload; Reset axes; none for a table pane |
 | t_tables | table panes (Table, Chart and table): a row per sample in view, read a window at a time as it scrolls and moving with the view; a row click placing cursor A (Shift: B), double-click centring the view, Go to A; column widths and the table's height under a chart saved with the layout |

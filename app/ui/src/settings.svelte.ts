@@ -61,6 +61,8 @@ export interface Settings {
   exCatClosed: string[];
   /** Channels moved to a category of your own, by file path and channel name. */
   catOverride: Record<string, string>;
+  /** Open files whose channels are folded away in Explorer. */
+  exFilesShut: string[];
   /** Explorer also lists the files the app can't open. */
   exShowAll: boolean;
   /** Explorer lists only the open files. */
@@ -116,6 +118,7 @@ export const DEFAULTS: Settings = {
   exCategories: true,
   exCatClosed: [],
   catOverride: {},
+  exFilesShut: [],
   exShowAll: false,
   exOnlyOpen: false,
   sidesSwapped: false,

@@ -2185,7 +2185,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'Escape' && closePopup()) return;
-  if (e.key === 'Escape' && ui.start && state.file) return void (ui.start = false);
+  if (e.key === 'Escape' && ui.start) return void (ui.start = false);
   if (e.key === ' ' && state.file && !(e.target as HTMLElement).closest('input, select, textarea, button')) {
     e.preventDefault();
     togglePlay();

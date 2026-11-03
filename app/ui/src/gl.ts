@@ -4,13 +4,36 @@
 // plot stack and the overview; each trace draws into its pane's rectangle.
 
 const VERT = `#version 300 es
-in float a_x;
-in float a_y;
+// A line is drawn as a quad per segment (WebGL's own lines are always one device pixel wide): instance k joins
+// point k (a_x0, a_y0) to point k + 1 (a_x1, a_y1), and the quad is u_w device pixels wide. u_points draws single
+// points as squares instead.
+in float a_x0;
+in float a_y0;
+in float a_x1;
+in float a_y1;
 uniform vec2 u_x;
 uniform vec2 u_y;
+uniform vec2 u_vp;
+uniform float u_w;
+uniform bool u_points;
 void main() {
-  gl_Position = vec4(a_x * u_x.x + u_x.y, a_y * u_y.x + u_y.y, 0.0, 1.0);
-  gl_PointSize = 2.0;
+  vec2 p0 = vec2(a_x0 * u_x.x + u_x.y, a_y0 * u_y.x + u_y.y);
+  if (u_points) {
+    gl_Position = vec4(p0, 0.0, 1.0);
+    gl_PointSize = max(2.0, u_w * 1.6);
+    return;
+  }
+  vec2 p1 = vec2(a_x1 * u_x.x + u_x.y, a_y1 * u_y.x + u_y.y);
+  vec2 d = (p1 - p0) * u_vp * 0.5;
+  float len = length(d);
+  d = len > 1e-4 ? d / len : vec2(1.0, 0.0);
+  vec2 n = vec2(-d.y, d.x);
+  float side = (gl_VertexID & 1) == 0 ? -1.0 : 1.0;
+  vec2 base = gl_VertexID < 2 ? p0 : p1;
+  // half a width out sideways, and half a width along the line so joints between segments overlap
+  float along = gl_VertexID < 2 ? -1.0 : 1.0;
+  vec2 off = (n * side + d * along) * (u_w * 0.5);
+  gl_Position = vec4(base + off * 2.0 / u_vp, 0.0, 1.0);
 }`;
 
 const FRAG = `#version 300 es
@@ -50,6 +73,12 @@ export class Renderer {
   private uX: WebGLUniformLocation;
   private uY: WebGLUniformLocation;
   private uColor: WebGLUniformLocation;
+  private uVp: WebGLUniformLocation;
+  private uW: WebGLUniformLocation;
+  private uPoints: WebGLUniformLocation;
+  /** Lines as quads (a width of CSS pixels), or WebGL's own one-pixel lines: software GL (headless test browsers) draws quads slowly. */
+  quads: boolean;
+  private loc: Record<'a_x0' | 'a_y0' | 'a_x1' | 'a_y1', number>;
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true });
@@ -58,7 +87,15 @@ export class Renderer {
     this.prog = link(gl, VERT, FRAG);
     this.uX = gl.getUniformLocation(this.prog, 'u_x')!;
     this.uY = gl.getUniformLocation(this.prog, 'u_y')!;
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const soft = /swiftshader|llvmpipe|software/i.test(String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : ''));
+    const force = (window as unknown as { __tlmLines?: string }).__tlmLines;
+    this.quads = force ? force === 'quads' : !soft;
     this.uColor = gl.getUniformLocation(this.prog, 'u_color')!;
+    this.uVp = gl.getUniformLocation(this.prog, 'u_vp')!;
+    this.uW = gl.getUniformLocation(this.prog, 'u_w')!;
+    this.uPoints = gl.getUniformLocation(this.prog, 'u_points')!;
+    this.loc = Object.fromEntries((['a_x0', 'a_y0', 'a_x1', 'a_y1'] as const).map((n) => [n, gl.getAttribLocation(this.prog, n)])) as Renderer['loc'];
   }
 
   /** Matches the drawing buffer to the canvas's size in device pixels, and clears it. */
@@ -80,15 +117,9 @@ export class Renderer {
     const gl = this.gl;
     const t = reuse ?? { vao: gl.createVertexArray()!, bufs: [gl.createBuffer()!, gl.createBuffer()!], runs: [] };
     gl.bindVertexArray(t.vao);
-    for (const [k, data, name] of [
-      [0, x, 'a_x'],
-      [1, y, 'a_y'],
-    ] as const) {
-      const loc = gl.getAttribLocation(this.prog, name);
+    for (const [k, data] of [[0, x], [1, y]] as const) {
       gl.bindBuffer(gl.ARRAY_BUFFER, t.bufs[k]);
       gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, 0);
     }
     gl.bindVertexArray(null);
     t.runs = [];
@@ -109,8 +140,8 @@ export class Renderer {
     t.bufs.forEach((b) => this.gl.deleteBuffer(b));
   }
 
-  /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. */
-  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect): void {
+  /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. `width` is in CSS pixels. */
+  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = 1.25): void {
     if (!t.runs.length || rect.w <= 0 || rect.h <= 0) return;
     const gl = this.gl;
     const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
@@ -122,9 +153,42 @@ export class Renderer {
     gl.useProgram(this.prog);
     gl.uniform2f(this.uX, x.a, x.b);
     gl.uniform2f(this.uY, y.a, y.b);
+    gl.uniform2f(this.uVp, vw, vh);
+    gl.uniform1f(this.uW, width * dpr);
     gl.uniform4f(this.uColor, ...rgba);
     gl.bindVertexArray(t.vao);
-    for (const [start, count] of t.runs) gl.drawArrays(count === 1 ? gl.POINTS : gl.LINE_STRIP, start, count);
+    const { a_x0, a_y0, a_x1, a_y1 } = this.loc;
+    // each attribute reads one buffer at a run's first point (the second pair one point on), once per instance
+    const point = (loc: number, buf: WebGLBuffer, at: number, divisor: number) => {
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, at * 4);
+      gl.vertexAttribDivisor(loc, divisor);
+    };
+    for (const [start, count] of t.runs) {
+      if (count > 1 && !this.quads) {
+        gl.uniform1i(this.uPoints, 1);
+        point(a_x0, t.bufs[0], start, 0);
+        point(a_y0, t.bufs[1], start, 0);
+        point(a_x1, t.bufs[0], start, 0);
+        point(a_y1, t.bufs[1], start, 0);
+        gl.drawArrays(gl.LINE_STRIP, 0, count);
+      } else if (count === 1) {
+        gl.uniform1i(this.uPoints, 1);
+        point(a_x0, t.bufs[0], start, 0);
+        point(a_y0, t.bufs[1], start, 0);
+        point(a_x1, t.bufs[0], start, 0);
+        point(a_y1, t.bufs[1], start, 0);
+        gl.drawArrays(gl.POINTS, 0, 1);
+      } else {
+        gl.uniform1i(this.uPoints, 0);
+        point(a_x0, t.bufs[0], start, 1);
+        point(a_y0, t.bufs[1], start, 1);
+        point(a_x1, t.bufs[0], start + 1, 1);
+        point(a_y1, t.bufs[1], start + 1, 1);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count - 1);
+      }
+    }
     gl.bindVertexArray(null);
     gl.disable(gl.SCISSOR_TEST);
   }

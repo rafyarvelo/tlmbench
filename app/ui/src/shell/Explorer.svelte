@@ -72,6 +72,12 @@
     }
     return out;
   }
+  /** A file's channels are folded away (a filter shows them anyway). */
+  const fileShut = (path: string) => !q.trim() && settings.exFilesShut.includes(path);
+  function toggleFile(path: string) {
+    const rest = settings.exFilesShut.filter((p) => p !== path);
+    setSetting('exFilesShut', settings.exFilesShut.includes(path) ? rest : [...rest, path]);
+  }
   const closed = $derived(settings.panelsClosed.includes('explorer'));
   const catOf = (name: string) => groups.find((g) => g.chs.some((ch) => ui.channels[ch]?.name === name))?.name ?? '';
   let fold = $state<null | { x: number; y: number }>(null);
@@ -137,6 +143,11 @@
   const inSel = (ch: number) => stack.panes[stack.sel]?.channels.includes(ch) ?? false;
 
   function key(e: KeyboardEvent, row: { kind: 'file'; path: string } | { kind: 'chan'; ch: number }) {
+    if (row.kind === 'file' && isOpen(row.path) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      if ((e.key === 'ArrowLeft') !== fileShut(row.path)) toggleFile(row.path);
+      return;
+    }
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
     if (row.kind === 'file') actions.openPath(row.path);
@@ -151,8 +162,8 @@
     <button class="ibtn" id="exFolder" aria-label="Open folder" data-tip="Open a folder of recordings (only read)" onclick={actions.openFolder}>{@html ICON.folder}</button>
     <button class="ibtn" id="exOpen" aria-label="Open recording" data-tip="Open a CSV or .tlm file (⌘O)" onclick={actions.open}>{@html ICON.open}</button>
     <button class="ibtn" id="exAddShown" aria-label="Add the shown channels" disabled={!ui.file || !shownChans.length} data-tip="Plot the channels shown below in the selected pane" onclick={() => addChannels(shownChans)}>{@html ICON.plus}</button>
-    <button class="ibtn" id="treeExpand" aria-label="Expand all" data-tip="Expand all" onclick={() => setSetting('exExpanded', allDirs(ui.folder))}>{@html ICON.expand}</button>
-    <button class="ibtn" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all" onclick={() => setSetting('exExpanded', [])}>{@html ICON.collapse}</button>
+    <button class="ibtn" id="treeExpand" aria-label="Expand all" data-tip="Expand all" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
+    <button class="ibtn" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all" onclick={() => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path)))}>{@html ICON.collapse}</button>
   </div>
   <div class="exbody" hidden={closed}>
   <div class="exrow">
@@ -222,8 +233,8 @@
   <div class="menu exmenu" role="menu" style="left: {fold.x}px; top: {fold.y}px">
     <button class="mi" role="menuitem" data-ex="open-folder" onclick={off(actions.openFolder)}><span class="nm">Open folder…</span></button>
     <button class="mi" role="menuitem" data-ex="open-file" onclick={off(actions.open)}><span class="nm">Open recording…</span><kbd>⌘O</kbd></button>
-    <button class="mi" role="menuitem" data-ex="expand" disabled={!ui.folder} onclick={off(() => setSetting('exExpanded', allDirs(ui.folder)))}><span class="nm">Expand all folders</span></button>
-    <button class="mi" role="menuitem" data-ex="collapse" disabled={!ui.folder} onclick={off(() => setSetting('exExpanded', []))}><span class="nm">Collapse all folders</span></button>
+    <button class="mi" role="menuitem" data-ex="expand" disabled={!ui.folder} onclick={off(() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])))}><span class="nm">Expand all folders</span></button>
+    <button class="mi" role="menuitem" data-ex="collapse" disabled={!ui.folder} onclick={off(() => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path))))}><span class="nm">Collapse all folders</span></button>
     <button class="mi" role="menuitem" data-ex="remove" disabled={!ui.folder} onclick={off(() => { setSetting('folder', ''); ui.folder = null; })}><span class="nm">Remove the folder from Explorer</span></button>
     <button class="mi" role="menuitem" data-ex="closeall" disabled={!tabs.list.length} onclick={off(actions.closeFile)}><span class="nm">Close all files</span></button>
   </div>
@@ -271,13 +282,13 @@
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {@html ICON.file}<span class="nm">{name}</span>{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>›</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open && listedPath(path)}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
     {/if}
   </div>
-  {#if open}
+  {#if open && !fileShut(path)}
     <div id="chans" class="chans" role="group">
       {#if categorised}
         {#each groups as g (g.name)}
@@ -548,6 +559,13 @@
   .row.cat:hover .catact + .meta,
   .row.cat:focus-within .catact + .meta {
     margin-left: 8px;
+  }
+  .fchev {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
   }
   .row.cant {
     opacity: 0.5;
