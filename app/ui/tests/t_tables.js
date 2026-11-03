@@ -55,10 +55,14 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   await p.mouse.move(r1.x, r1.y);
   for (let k = 0; k < 6; k++) await p.mouse.wheel(0, -200);
   check('zooming in leaves fewer rows', await until(() => Number(document.querySelector('[data-table] [data-tstat]').textContent.replace(/\D/g, '')) < 200000), await rowsInView());
-  const n = await rowsInView();
-  const vz = await app('view');
-  const expect = Math.ceil(Number(BigInt(vz.t1) - T0) / 1e6) - Math.ceil(Number(BigInt(vz.t0) - T0) / 1e6);
-  check('the rows are the samples in [t0, t1)', n === expect, [n, expect]);
+  // once the zoom settles, the rows are the samples in [t0, t1)
+  const rowsMatch = () => {
+    const v = window.__tlmApp.view();
+    const T0 = 1767225600000000000n;
+    const lower = (t) => Math.ceil(Number(BigInt(t) - T0) / 1e6);
+    return Number(document.querySelector('[data-table] [data-tstat]').textContent.replace(/\D/g, '')) === lower(v.t1) - lower(v.t0);
+  };
+  check('the rows are the samples in [t0, t1)', await until(rowsMatch), [await rowsInView(), await app('view')]);
 
   // Go to A brings A's row into sight
   await p.$eval(`${T} .tscroll`, (e) => (e.scrollTop = 0));
