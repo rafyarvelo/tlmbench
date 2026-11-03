@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/decode", "crates/store", "crates/live", "cli", "tools/gen", "app/src-tauri"]
+members = ["crates/core", "crates/decode", "crates/store", "crates/live", "crates/export", "cli", "tools/gen", "app/src-tauri"]
 exclude = ["crates/decode/fuzz"]
 
 [workspace.package]
@@ -15,6 +15,7 @@ tlmbench-core = { path = "crates/core" }
 tlmbench-decode = { path = "crates/decode" }
 tlmbench-store = { path = "crates/store" }
 tlmbench-live = { path = "crates/live" }
+tlmbench-export = { path = "crates/export" }
 rayon = "1.12.0"
 rtrb = "0.4.1"
 serialport = { version = "4.10.1", default-features = false }
@@ -33,6 +34,7 @@ toml = "1.1.8"
 parquet = { version = "60.1.0", default-features = false, features = ["arrow", "snap", "zstd", "lz4", "flate2-zlib-rs", "brotli"] }
 arrow-array = "60.1.0"
 arrow-schema = "60.1.0"
+arrow-ipc = "60.1.0"
 tempfile = "3.27.0"
 clap = { version = "4.6.7", features = ["derive"] }
 proptest = "1.12.0"

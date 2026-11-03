@@ -1,9 +1,9 @@
-//! `tlmbench`: the command line over the same core as the desktop app. It has `info`, `cache`, `query` and
-//! `record`; convert, check, export html, validate, derive and config export land in later phases.
+//! `tlmbench`: the command line over the same core as the desktop app. It has `info`, `cache`, `query`, `record`
+//! and `convert`; check, export html, validate, derive and config export land in later phases.
 //!
 //! It reads recordings and never writes beside them: the only writes are cache entries under the cache root
-//! (`--cache`, `$TLMBENCH_CACHE`, or the OS cache dir shared with the app), and `record`'s session folders (`--out`,
-//! `$TLMBENCH_RECORDINGS`, or the app's Recordings folder).
+//! (`--cache`, `$TLMBENCH_CACHE`, or the OS cache dir shared with the app), `record`'s session folders (`--out`,
+//! `$TLMBENCH_RECORDINGS`, or the app's Recordings folder), and `convert`'s files (`--out`).
 //!
 //! Exit codes: 0 done; 2 a file couldn't be read; 3 a configuration error (a bad descriptor or argument).
 
@@ -61,6 +61,50 @@ enum Command {
         #[command(flatten)]
         common: Common,
     },
+    /// Write recordings as CSV, Parquet or Arrow IPC: one file per input in --out, plus <name>.channels.csv
+    Convert {
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Output format
+        #[arg(long, value_enum)]
+        to: ToFormat,
+        /// Folder for the output files (created if missing)
+        #[arg(long)]
+        out: PathBuf,
+        /// Channels by name, `*` matching any text (repeat, or separate with commas; default: all)
+        #[arg(long = "channels", short = 'c', value_delimiter = ',')]
+        channels: Vec<String>,
+        #[command(flatten)]
+        span: Span,
+        /// One row per step of this rate instead of per sample (`100Hz`, `2kHz`, or a number in Hz); each channel
+        /// holds its last value
+        #[arg(long, conflicts_with = "layout")]
+        resample: Option<String>,
+        /// wide: a column per channel; long: one row per sample and channel (time, channel, value)
+        #[arg(long, value_enum, default_value_t = LayoutArg::Wide)]
+        layout: LayoutArg,
+        /// How times are written (auto: exact; seconds for relative times, ISO 8601 for dates in CSV,
+        /// nanoseconds in Parquet and Arrow)
+        #[arg(long, value_enum, default_value_t = TimeArg::Auto)]
+        time: TimeArg,
+        /// Stored values in their own type, without scale and offset
+        #[arg(long)]
+        raw: bool,
+        /// CSV: the field delimiter
+        #[arg(long, default_value_t = ',')]
+        delimiter: char,
+        /// CSV: units in a second header row instead of `name [unit]`
+        #[arg(long)]
+        units_row: bool,
+        /// Files converted at once
+        #[arg(long, default_value_t = 1)]
+        jobs: usize,
+        /// One JSON object per file written
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        common: Common,
+    },
     /// Record a live source into a new session folder until it ends (or --seconds pass); prints its stream health
     Record {
         /// tcp://host:port (connects to it), udp://host:port (listens on it), serial://port?baud=rate (a serial port,
@@ -85,6 +129,27 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+enum ToFormat {
+    Csv,
+    Parquet,
+    Arrow,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+enum LayoutArg {
+    Wide,
+    Long,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+enum TimeArg {
+    Auto,
+    Seconds,
+    Iso,
+    Ns,
 }
 
 #[derive(Subcommand, Debug)]
@@ -179,6 +244,25 @@ fn main() -> ExitCode {
         Command::Info { files, json, common } => info(&files, json, &common),
         Command::Cache { action, common } => cache(action, &common),
         Command::Query { what, common } => query(what, &common),
+        Command::Convert {
+            files,
+            to,
+            out,
+            channels,
+            span,
+            resample,
+            layout,
+            time,
+            raw,
+            delimiter,
+            units_row,
+            jobs,
+            json,
+            common,
+        } => {
+            let c = ConvertArgs { to, out, channels, span, resample, layout, time, raw, delimiter, units_row, json };
+            convert(&files, &c, jobs, &common)
+        }
         Command::Record { endpoint, descriptor, out, seconds, idle_end, ring_mb, json } => {
             record(endpoint, descriptor.as_deref(), out, seconds, idle_end, ring_mb, json)
         }
@@ -399,6 +483,163 @@ fn query(what: Query, common: &Common) -> Result<(), Fail> {
         }
     }
     out.flush().map_err(|e| Fail(2, e.to_string()))
+}
+
+#[derive(Debug)]
+struct ConvertArgs {
+    to: ToFormat,
+    out: PathBuf,
+    channels: Vec<String>,
+    span: Span,
+    resample: Option<String>,
+    layout: LayoutArg,
+    time: TimeArg,
+    raw: bool,
+    delimiter: char,
+    units_row: bool,
+    json: bool,
+}
+
+#[derive(Serialize)]
+struct ConvertJson<'a> {
+    input: &'a std::path::Path,
+    output: &'a std::path::Path,
+    channels_file: &'a std::path::Path,
+    rows: u64,
+    bytes: u64,
+}
+
+fn convert(files: &[PathBuf], a: &ConvertArgs, jobs: usize, common: &Common) -> Result<(), Fail> {
+    use tlmbench_export::{Format, Layout, Options, TimeFormat};
+    let format = match a.to {
+        ToFormat::Csv => Format::Csv,
+        ToFormat::Parquet => Format::Parquet,
+        ToFormat::Arrow => Format::Arrow,
+    };
+    if !a.delimiter.is_ascii() {
+        return Err(Fail(3, "--delimiter must be one ASCII character".into()));
+    }
+    let resample = a.resample.as_deref().map(rate_arg).transpose()?;
+    // every output is named after its input: two inputs of one name would overwrite each other
+    let mut names = std::collections::HashSet::new();
+    let outputs: Vec<PathBuf> = files
+        .iter()
+        .map(|f| {
+            let stem = f.file_stem().unwrap_or_default().to_string_lossy();
+            let out = a.out.join(format!("{stem}.{}", format.extension()));
+            if !names.insert(out.clone()) {
+                return Err(Fail(3, format!("two inputs would both write {}", out.display())));
+            }
+            if std::fs::canonicalize(&out).ok().is_some_and(|o| std::fs::canonicalize(f).is_ok_and(|i| i == o)) {
+                return Err(Fail(3, format!("{} would overwrite its input", out.display())));
+            }
+            Ok(out)
+        })
+        .collect::<Result<_, _>>()?;
+    std::fs::create_dir_all(&a.out).map_err(|e| Fail(2, format!("{}: {e}", a.out.display())))?;
+    let store = store(common);
+    let one = |input: &PathBuf, output: &PathBuf| -> Result<String, Fail> {
+        let o = store.open(input, common.descriptor.as_deref())?;
+        let rec = o.recording();
+        let chans = select(&o, &a.channels)?;
+        let (t0, t1) = span_of(&o, &a.span)?;
+        let mut opts = Options::new(format, chans, rec.lower_bound(t0), rec.lower_bound(t1));
+        opts.layout = match a.layout {
+            LayoutArg::Wide => Layout::Wide,
+            LayoutArg::Long => Layout::Long,
+        };
+        opts.time = match a.time {
+            TimeArg::Auto => TimeFormat::Auto,
+            TimeArg::Seconds => TimeFormat::Seconds,
+            TimeArg::Iso => TimeFormat::Iso,
+            TimeArg::Ns => TimeFormat::Ns,
+        };
+        opts.resample_hz = resample;
+        opts.raw = a.raw;
+        opts.delimiter = a.delimiter as u8;
+        opts.units_row = a.units_row;
+        opts.rate_hz = match rec.info().time {
+            TimeSource::Rate { hz } => Some(hz),
+            _ => o.median_interval_ns().filter(|&m| m > 0).map(|m| 1e9 / m as f64),
+        };
+        let w = tlmbench_export::export(rec, &opts, output).map_err(|e| Fail(2, e.to_string()))?;
+        Ok(if a.json {
+            let j = ConvertJson { input, output: &w.path, channels_file: &w.manifest, rows: w.rows, bytes: w.bytes };
+            serde_json::to_string(&j).unwrap()
+        } else {
+            format!("{} → {} ({} rows, {})", input.display(), w.path.display(), group(w.rows as usize), size(w.bytes))
+        })
+    };
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let worst = std::sync::Mutex::new(None::<u8>);
+    std::thread::scope(|s| {
+        for _ in 0..jobs.clamp(1, files.len().max(1)) {
+            s.spawn(|| {
+                loop {
+                    let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(input) = files.get(k) else { break };
+                    match one(input, &outputs[k]) {
+                        Ok(line) => println!("{line}"),
+                        Err(Fail(code, msg)) => {
+                            eprintln!("tlmbench: {msg}");
+                            let mut w = worst.lock().unwrap();
+                            *w = (*w).max(Some(code));
+                        }
+                    }
+                }
+            });
+        }
+    });
+    worst.into_inner().unwrap().map_or(Ok(()), |code| Err(Fail(code, String::new())))
+}
+
+/// A rate: `100Hz`, `2kHz`, `0.5 Hz` or a plain number of Hz.
+fn rate_arg(s: &str) -> Result<f64, Fail> {
+    let t = s.trim().to_ascii_lowercase();
+    let (num, mul) = match t.strip_suffix("khz") {
+        Some(n) => (n, 1e3),
+        None => (t.strip_suffix("hz").unwrap_or(&t), 1.0),
+    };
+    num.trim()
+        .parse::<f64>()
+        .ok()
+        .map(|v| v * mul)
+        .filter(|v| *v > 0.0 && v.is_finite())
+        .ok_or_else(|| Fail(3, format!("{s:?} is not a rate (100Hz, 2kHz, or a number in Hz)")))
+}
+
+/// Channels whose names match any of `patterns` (`*` matches any text), in the recording's order; all when none
+/// are given. A pattern that matches nothing is an error.
+fn select(o: &Opened, patterns: &[String]) -> Result<Vec<usize>, Fail> {
+    let chans = &o.recording().info().channels;
+    let patterns: Vec<&str> = patterns.iter().map(|p| p.trim()).filter(|p| !p.is_empty()).collect();
+    if patterns.is_empty() {
+        return Ok((0..chans.len()).collect());
+    }
+    if let Some(p) = patterns.iter().find(|p| !chans.iter().any(|c| glob(p, &c.name))) {
+        return Err(Fail(3, format!("no channel matches {p:?} in {}", o.recording().info().path.display())));
+    }
+    Ok((0..chans.len()).filter(|&i| patterns.iter().any(|p| glob(p, &chans[i].name))).collect())
+}
+
+/// Whether `name` matches `pattern`, where `*` matches any text.
+fn glob(pattern: &str, name: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == name;
+    }
+    let (first, last) = (parts[0], parts[parts.len() - 1]);
+    if !name.starts_with(first) || !name[first.len()..].ends_with(last) || name.len() < first.len() + last.len() {
+        return false;
+    }
+    let mut rest = &name[first.len()..name.len() - last.len()];
+    for p in &parts[1..parts.len() - 1] {
+        match rest.find(p) {
+            Some(i) => rest = &rest[i + p.len()..],
+            None => return false,
+        }
+    }
+    true
 }
 
 /// Channel numbers from names or numbers; all when none are given.

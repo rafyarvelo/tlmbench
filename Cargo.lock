@@ -4305,6 +4305,7 @@ dependencies = [
  "tempfile",
  "tlmbench-core",
  "tlmbench-decode",
+ "tlmbench-export",
  "tlmbench-live",
  "tlmbench-store",
 ]
@@ -4358,6 +4359,20 @@ dependencies = [
  "thiserror 2.0.21",
  "tlmbench-core",
  "toml 1.1.8+spec-1.1.0",
+]
+
+[[package]]
+name = "tlmbench-export"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-ipc",
+ "arrow-schema",
+ "parquet",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tlmbench-core",
+ "tlmbench-decode",
 ]
 
 [[package]]

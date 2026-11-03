@@ -6,10 +6,69 @@ pub trait Value: Copy + PartialOrd + Send + Sync + 'static {
     fn to_f32(self) -> f32;
     /// Exact for every type except 64-bit integers past 2^53.
     fn to_f64(self) -> f64;
+    /// Values of this type as a [`Column`].
+    fn column(values: Vec<Self>) -> Column;
+}
+
+/// A run of one channel's samples in their stored type (what exports write).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Column {
+    I8(Vec<i8>),
+    I16(Vec<i16>),
+    I32(Vec<i32>),
+    I64(Vec<i64>),
+    U8(Vec<u8>),
+    U16(Vec<u16>),
+    U32(Vec<u32>),
+    U64(Vec<u64>),
+    F32(Vec<f32>),
+    F64(Vec<f64>),
+}
+
+impl Column {
+    pub fn len(&self) -> usize {
+        match self {
+            Column::I8(v) => v.len(),
+            Column::I16(v) => v.len(),
+            Column::I32(v) => v.len(),
+            Column::I64(v) => v.len(),
+            Column::U8(v) => v.len(),
+            Column::U16(v) => v.len(),
+            Column::U32(v) => v.len(),
+            Column::U64(v) => v.len(),
+            Column::F32(v) => v.len(),
+            Column::F64(v) => v.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Value `i` as f64 (exact except for 64-bit integers past 2^53).
+    pub fn get_f64(&self, i: usize) -> f64 {
+        match self {
+            Column::I8(v) => v[i].to_f64(),
+            Column::I16(v) => v[i].to_f64(),
+            Column::I32(v) => v[i].to_f64(),
+            Column::I64(v) => v[i].to_f64(),
+            Column::U8(v) => v[i].to_f64(),
+            Column::U16(v) => v[i].to_f64(),
+            Column::U32(v) => v[i].to_f64(),
+            Column::U64(v) => v[i].to_f64(),
+            Column::F32(v) => v[i].to_f64(),
+            Column::F64(v) => v[i],
+        }
+    }
+
+    /// Every value as f64, times `scale` plus `offset` (shown values).
+    pub fn to_f64(&self, scale: f64, offset: f64) -> Vec<f64> {
+        (0..self.len()).map(|i| self.get_f64(i) * scale + offset).collect()
+    }
 }
 
 macro_rules! int_value {
-    ($($t:ty),*) => {$(
+    ($($t:ty => $c:ident),*) => {$(
         impl Value for $t {
             #[inline]
             fn is_nan(self) -> bool {
@@ -23,11 +82,14 @@ macro_rules! int_value {
             fn to_f64(self) -> f64 {
                 self as f64
             }
+            fn column(values: Vec<Self>) -> Column {
+                Column::$c(values)
+            }
         }
     )*};
 }
 
-int_value!(i8, i16, i32, i64, u8, u16, u32, u64);
+int_value!(i8 => I8, i16 => I16, i32 => I32, i64 => I64, u8 => U8, u16 => U16, u32 => U32, u64 => U64);
 
 impl Value for f32 {
     #[inline]
@@ -41,6 +103,9 @@ impl Value for f32 {
     #[inline]
     fn to_f64(self) -> f64 {
         self as f64
+    }
+    fn column(values: Vec<Self>) -> Column {
+        Column::F32(values)
     }
 }
 
@@ -56,6 +121,9 @@ impl Value for f64 {
     #[inline]
     fn to_f64(self) -> f64 {
         self
+    }
+    fn column(values: Vec<Self>) -> Column {
+        Column::F64(values)
     }
 }
 

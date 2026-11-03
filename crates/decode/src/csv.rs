@@ -90,7 +90,7 @@ pub fn looks_like_csv(path: &Path, head: &[u8]) -> bool {
     if matches!(ext.as_deref(), Some("csv" | "tsv")) {
         return true;
     }
-    let line = head.split(|&c| c == b'\n').next().unwrap_or_default();
+    let line = head[comment_lines(head)..].split(|&c| c == b'\n').next().unwrap_or_default();
     !head.contains(&0) && line.iter().any(|c| matches!(c, b',' | b';' | b'\t'))
 }
 
@@ -298,8 +298,22 @@ pub(crate) fn split_unit(name: &str) -> (&str, Option<String>) {
     (n, None)
 }
 
-/// Reads the header and the first rows to decide the schema.
-pub fn scan(bytes: &[u8]) -> Result<Schema> {
+/// Bytes taken by `#` comment lines before the header (exports note a resampled grid there).
+fn comment_lines(bytes: &[u8]) -> usize {
+    let mut at = 0;
+    while bytes[at..].starts_with(b"#") {
+        match memchr::memchr(b'\n', &bytes[at..]) {
+            Some(i) => at += i + 1,
+            None => return bytes.len(),
+        }
+    }
+    at
+}
+
+/// Reads the header and the first rows to decide the schema. `#` comment lines before the header are skipped.
+pub fn scan(all: &[u8]) -> Result<Schema> {
+    let skip = comment_lines(all);
+    let bytes = &all[skip..];
     let first_line = bytes.split(|&c| c == b'\n').next().unwrap_or_default();
     let count = |d: u8| first_line.iter().filter(|&&c| c == d).count();
     let delimiter = b",;\t".iter().copied().max_by_key(|&d| (count(d), d == b',')).unwrap();
@@ -320,7 +334,7 @@ pub fn scan(bytes: &[u8]) -> Result<Schema> {
             Column { name, unit, kind: Kind::Number }
         })
         .collect();
-    let data_start = rec.pos;
+    let data_start = skip + rec.pos;
 
     // sample rows: per column, how many values are present, numeric, ISO times
     let mut stats = vec![(0usize, 0usize, 0usize); columns.len()];
@@ -364,7 +378,7 @@ pub fn scan(bytes: &[u8]) -> Result<Schema> {
         columns[index].kind = Kind::Time;
     }
     // quotes in the sampled rows only: the rest of the file is checked chunk by chunk as it is parsed
-    let quoted = memchr::memchr(b'"', &bytes[data_start..rec.pos.max(data_start)]).is_some();
+    let quoted = memchr::memchr(b'"', &all[data_start..(skip + rec.pos).max(data_start)]).is_some();
     Ok(Schema { delimiter, data_start, columns, time, quoted })
 }
 
@@ -464,6 +478,13 @@ pub fn parse_all(bytes: &[u8]) -> Result<(Schema, Rows)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comment_lines_before_the_header_are_skipped() {
+        let (schema, rows) = parse_all(b"# resampled to 2 Hz\n# second note\nt,v\n0,1\n0.5,2\n").unwrap();
+        assert_eq!(schema.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["t", "v"]);
+        assert_eq!(rows.rows, 2);
+    }
     use proptest::prelude::Just;
 
     #[test]

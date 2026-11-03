@@ -8,7 +8,7 @@ use serde::Serialize;
 use crate::chunks::{Chunk, Held};
 use crate::gaps::GapIndex;
 use crate::pyramid::{self, Pyramid, Stats, Summary};
-use crate::{Samples, TimeIndex, Times, Timestamp, Trace, Value, Viewport};
+use crate::{Column, Samples, TimeIndex, Times, Timestamp, Trace, Value, Viewport};
 
 /// Where a recording's sample times come from.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -150,6 +150,15 @@ pub trait Recording: Send + Sync + Debug {
     /// Shown value of sample `i`, read through `held`.
     fn value_at(&self, channel: usize, i: usize, held: &Held) -> f64;
 
+    /// Stored values of samples `start..end` of channel `channel` (before scale and offset), in their own type.
+    fn read(&self, channel: usize, start: usize, end: usize) -> Column;
+
+    /// Times of samples `start..end`.
+    fn read_times(&self, start: usize, end: usize) -> Vec<Timestamp>;
+
+    /// Channel `channel`'s scale and offset: shown = stored × scale + offset.
+    fn scale_offset(&self, channel: usize) -> (f64, f64);
+
     /// See [`Channels::chunked`].
     fn chunked(&self, channel: usize) -> bool;
 
@@ -258,6 +267,35 @@ impl<C: Channels> Recording for C {
         }
         let (scale, offset) = self.transform(channel);
         self.dispatch_held(channel, held, Op(i)) * scale + offset
+    }
+
+    fn read(&self, channel: usize, start: usize, end: usize) -> Column {
+        struct Op(usize, usize);
+        impl ChannelOp for Op {
+            type Out = Column;
+            fn run<T: Times + ?Sized, S: Samples + ?Sized>(self, _: &T, values: &S) -> Column {
+                match values.slice(self.0, self.1) {
+                    Some(s) => Value::column(s.to_vec()),
+                    None => Value::column(values.range(self.0, self.1).collect()),
+                }
+            }
+        }
+        self.dispatch(channel, Op(start, end))
+    }
+
+    fn read_times(&self, start: usize, end: usize) -> Vec<Timestamp> {
+        struct Op(usize, usize);
+        impl TimesOp for Op {
+            type Out = Vec<Timestamp>;
+            fn run<T: Times + ?Sized>(self, times: &T) -> Vec<Timestamp> {
+                (self.0..self.1).map(|i| times.at(i)).collect()
+            }
+        }
+        self.dispatch_times(Op(start, end))
+    }
+
+    fn scale_offset(&self, channel: usize) -> (f64, f64) {
+        self.transform(channel)
     }
 
     fn chunked(&self, channel: usize) -> bool {

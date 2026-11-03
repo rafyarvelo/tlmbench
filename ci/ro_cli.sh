@@ -12,6 +12,9 @@ find "$dir" \( -name '*.csv' -o -name '*.parquet' \) -print0 | while IFS= read -
   "$bin" query values --cache "$c" --at 0 "$f" > /dev/null
   "$bin" query stats --cache "$c" "$f" > /dev/null
   "$bin" record "file://$f" --out "$c/rec" --idle-end 0.2 --json > /dev/null
+  for to in csv parquet arrow; do
+    "$bin" convert --cache "$c" --to "$to" --out "$c/convert/$to" --jobs 2 "$f" > /dev/null
+  done
 done
 # record: a session folder goes only where --out says (nothing is sent here, so it records nothing)
 printf 'schema = 1\nrecord_size = 8\nsequence = "seq"\n[time]\nsource = "rate"\nrate_hz = 1000.0\n[[fields]]\nname = "seq"\ntype = "u32"\noffset = 0\n[[fields]]\nname = "v"\ntype = "f32"\noffset = 4\n' > "$c/live.toml"
