@@ -30,6 +30,7 @@
     stack,
     units,
     axisKey,
+    colorIdx,
   } from '../stack.svelte';
   import { ui } from '../ui.svelte';
   import AxisDialog from './AxisDialog.svelte';
@@ -230,7 +231,7 @@
                   <span
                     class="chip"
                     data-ch={ch}
-                    style="--c: var(--trace-{(ch % 8) + 1})"
+                    style="--c: var(--trace-{colorIdx(ch) + 1})"
                     draggable="true"
                     role="presentation"
                     ondragstart={(e) => {
@@ -284,7 +285,7 @@
                 <div class="tiles" data-tiles>
                   {#each p.channels as ch (ch)}
                     {@const info = ui.channels[ch]}
-                    <div class="tile" style="--c: var(--trace-{(ch % 8) + 1})" data-tile={ch}>
+                    <div class="tile" style="--c: var(--trace-{colorIdx(ch) + 1})" data-tile={ch}>
                       <span class="tname">{info?.name ?? ch}</span>
                       <span class="tval">{stack.values[ch] ?? stack.resting[ch] ?? '–'}</span>
                       {#if info?.unit}<span class="tunit">{info.unit}</span>{/if}
@@ -362,7 +363,7 @@
   <div class="menu chanlist" role="menu" aria-label="Channels in pane {chanList.i + 1}" style="left: {chanList.x}px; top: {chanList.y}px">
     {#each stack.panes[chanList.i].channels as ch (ch)}
       {@const info = ui.channels[ch]}
-      <div class="mi" role="menuitem" tabindex="-1" style="--c: var(--trace-{(ch % 8) + 1})"><span class="sw8" style="background: var(--c)"></span><span class="nm">{info?.name ?? ch}</span>{#if info?.unit}<span class="hint">{info.unit}</span>{/if}<span class="hint num">{stack.values[ch] ?? stack.resting[ch] ?? ''}</span></div>
+      <div class="mi" role="menuitem" tabindex="-1" style="--c: var(--trace-{colorIdx(ch) + 1})"><span class="sw8" style="background: var(--c)"></span><span class="nm">{info?.name ?? ch}</span>{#if info?.unit}<span class="hint">{info.unit}</span>{/if}<span class="hint num">{stack.values[ch] ?? stack.resting[ch] ?? ''}</span></div>
     {/each}
   </div>
 {/if}

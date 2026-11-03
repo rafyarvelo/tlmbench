@@ -104,6 +104,34 @@ export function labelled(i: number): boolean {
   return columns(last).some((c) => c[c.length - 1] === i);
 }
 
+/** The palette slot (0–7) each plotted channel has, by `file:channel`: the least-used one, and not one already in its pane. */
+export const colors: Record<string, number> = $state({});
+
+/** The palette slot of channel `ch` (its number's, until it is plotted and assigned one). */
+export const colorIdx = (ch: number): number => colors[`${ui.view.file}:${ch}`] ?? ch % 8;
+
+/** Gives every plotted channel without one a palette slot. */
+export function assignColors(): void {
+  const file = ui.view.file;
+  if (file == null) return;
+  const used = new Array<number>(8).fill(0);
+  for (const p of stack.panes) for (const ch of p.channels) if (colors[`${file}:${ch}`] != null) used[colors[`${file}:${ch}`]]++;
+  for (const p of stack.panes) {
+    for (const ch of p.channels) {
+      const k = `${file}:${ch}`;
+      if (colors[k] != null) continue;
+      const here = new Set(p.channels.map((c) => colors[`${file}:${c}`]));
+      let best = 0;
+      for (let c = 1; c < 8; c++) {
+        const [a, b] = [used[best] + (here.has(best) ? 100 : 0), used[c] + (here.has(c) ? 100 : 0)];
+        if (b < a) best = c;
+      }
+      colors[k] = best;
+      used[best]++;
+    }
+  }
+}
+
 /** Keeps the flags consistent: the first pane starts a row, nothing is both beside and under, rows stay narrow. */
 export function normalize(): void {
   let cols = 0;
@@ -117,6 +145,7 @@ export function normalize(): void {
     if (!p.beside) delete p.beside;
   });
   stack.sel = Math.max(0, Math.min(stack.sel, stack.panes.length - 1));
+  assignColors();
 }
 
 function edit(f: () => void): void {

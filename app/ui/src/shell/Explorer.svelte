@@ -4,9 +4,10 @@
      or collapses everything; the filter matches files and channels (a regex with .*); the open-files strip closes
      them. The folder is only read. -->
 <script lang="ts">
+  import { groupChannels } from '../groups';
   import { ICON } from '../icons';
   import { setPanelOpen, setSetting, settings } from '../settings.svelte';
-  import { addChannels, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
+  import { addChannels, colorIdx, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui } from '../ui.svelte';
 
@@ -85,18 +86,7 @@
   };
   /** The channels the actions below act on: the picked ones, else the selected row. */
   const targets = $derived(picked.length > 1 ? picked : sel?.startsWith('ch:') ? [Number(sel.slice(3))] : []);
-  /** Channels grouped by the start of their name (before the first _ or .): a prefix shared by two or more, else "other". */
-  const groups = $derived.by(() => {
-    const pre = (n: string) => n.split(/[_.]/)[0];
-    const count = new Map<string, number>();
-    ui.channels.forEach((c) => count.set(pre(c.name), (count.get(pre(c.name)) ?? 0) + 1));
-    const by = new Map<string, number[]>();
-    ui.channels.forEach((c, ch) => {
-      const g = (count.get(pre(c.name)) ?? 0) > 1 ? pre(c.name) : 'other';
-      by.set(g, [...(by.get(g) ?? []), ch]);
-    });
-    return [...by].map(([name, chs]) => ({ name, chs })).sort((a, b) => (a.name === 'other' ? 1 : b.name === 'other' ? -1 : 0));
-  });
+  const groups = $derived(groupChannels(ui.path, ui.channels));
   const categorised = $derived(settings.exCategories && groups.length > 1);
   /** The channel rows in the order they show. */
   const shownChans = $derived(
@@ -329,7 +319,7 @@
     aria-selected={sel === `ch:${ch}` || picked.includes(ch)}
     tabindex="0"
     draggable="true"
-    style="--d: {depth}; --c: var(--trace-{(ch % 8) + 1})"
+    style="--d: {depth}; --c: var(--trace-{colorIdx(ch) + 1})"
     data-ch={ch}
     onclick={(e) => clickChan(e, ch)}
     ondblclick={() => toggleChannel(ch)}

@@ -9,7 +9,7 @@
   import { timeLabel } from '../axes';
   import { live } from '../live.svelte';
   import { settings } from '../settings.svelte';
-  import { fmtCh, learnDecimals, setTable, stack } from '../stack.svelte';
+  import { colorIdx, fmtCh, learnDecimals, setTable, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
 
@@ -213,7 +213,7 @@
         <div class="thead" role="row">
           {#each headers as { h, col } (col.id)}
             <span class="tth" class:num={col.ch != null} role="columnheader" style="width: {h.getSize()}px" data-col={col.id}>
-              {#if col.ch != null}<i style="background: var(--trace-{(col.ch % 8) + 1})"></i>{/if}
+              {#if col.ch != null}<i style="background: var(--trace-{colorIdx(col.ch) + 1})"></i>{/if}
               <span class="tlab">{col.label}{#if col.unit}&nbsp;<span class="tunit">{col.unit}</span>{/if}</span>
               <span
                 class="trsz"

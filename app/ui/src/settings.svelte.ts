@@ -59,6 +59,8 @@ export interface Settings {
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
+  /** Channels moved to a category of your own, by file path and channel name. */
+  catOverride: Record<string, string>;
   /** Explorer also lists the files the app can't open. */
   exShowAll: boolean;
   /** Explorer lists only the open files. */
@@ -113,6 +115,7 @@ export const DEFAULTS: Settings = {
   recent: [],
   exCategories: true,
   exCatClosed: [],
+  catOverride: {},
   exShowAll: false,
   exOnlyOpen: false,
   sidesSwapped: false,
@@ -162,7 +165,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['tipsSeen', 'recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'sidesSwapped', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'sidesSwapped', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

@@ -15,12 +15,15 @@ import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialo
 import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
+import { groupChannels, overrideKey } from './groups';
 import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, setPanelOpen, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import {
   addPaneBelow,
+  assignColors,
+  colorIdx,
   duplicate,
   fmtCh,
   learnDecimals,
@@ -178,7 +181,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   tokenCache = null;
   renderPanes();
 });
-const colorOf = (ch: number) => tokens()[`--trace-${(ch % 8) + 1}`];
+const colorOf = (ch: number) => tokens()[`--trace-${colorIdx(ch) + 1}`];
 function rgba(hex: string, a = 1): Rgba {
   const h = hex.replace('#', '');
   const n = parseInt(h.length === 3 ? [...h].map((c) => c + c).join('') : h, 16);
@@ -630,6 +633,7 @@ function syncView(): void {
   const [t0, t1] = [state.t0.toString(), state.t1.toString()];
   const [A, B] = [state.A?.toString() ?? null, state.B?.toString() ?? null];
   if (v.file !== file || v.t0 !== t0 || v.t1 !== t1 || v.A !== A || v.B !== B) ui.view = { file, t0, t1, A, B };
+  if (v.file !== file) assignColors();
 }
 
 // ---------- drawing ----------
@@ -2055,9 +2059,42 @@ function channelMenu(ch: number, x: number, y: number): void {
   const el = document.createElement('div');
   el.className = 'menu';
   el.setAttribute('role', 'menu');
-  el.innerHTML = `<div class="mgrp">${esc(f.info.channels[ch].name)}</div><button class="mi" role="menuitem" data-gap><span class="nm">Gap factor…</span><span class="hint num">${gapFactor(ch)}×</span></button>`;
+  el.innerHTML = `<div class="mgrp">${esc(f.info.channels[ch].name)}</div><button class="mi" role="menuitem" data-cat><span class="nm">Move to a category…</span><span class="hint">${esc(groupChannels(f.info.path, f.info.channels).find((g) => g.chs.includes(ch))?.name ?? '')}</span></button><button class="mi" role="menuitem" data-gap><span class="nm">Gap factor…</span><span class="hint num">${gapFactor(ch)}×</span></button>`;
   el.querySelector('[data-gap]')!.addEventListener('click', () => gapDialog(ch, x, y));
+  el.querySelector('[data-cat]')!.addEventListener('click', () => categoryDialog(ch, x, y));
   place(el, x, y);
+}
+
+/** Moves channel `ch` to a category of your own (a name; empty puts it back where its name says). */
+function categoryDialog(ch: number, x: number, y: number): void {
+  const f = state.file;
+  if (!f) return;
+  const c = f.info.channels[ch];
+  const key = overrideKey(f.info.path, c.name);
+  const cats = groupChannels(f.info.path, f.info.channels).map((g) => g.name);
+  const el = document.createElement('div');
+  el.className = 'dlg';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', `Category of ${c.name}`);
+  el.innerHTML =
+    `<header><b>Category</b><span class="dsub">${esc(c.name)}</span></header>` +
+    `<div class="dbody"><p>Pick one or type a new name. It's kept for this file.</p>` +
+    `<label class="dfield"><input class="num" type="text" list="catlist" data-cat-input value="${esc(settings.catOverride[key] ?? '')}" placeholder="a category" style="width:180px"><datalist id="catlist">${cats.map((n) => `<option value="${esc(n)}">`).join('')}</datalist></label></div>` +
+    `<footer><button class="linkbtn" data-reset>Use the default</button><span class="spacer"></span><button class="btn" data-cancel>Cancel</button><button class="btn primary" data-apply>Move</button></footer>`;
+  const input = el.querySelector('input')!;
+  const apply = (name: string) => {
+    const next = { ...settings.catOverride };
+    if (name.trim()) next[key] = name.trim();
+    else delete next[key];
+    setSetting('catOverride', next);
+    closePopup();
+  };
+  el.querySelector('[data-apply]')!.addEventListener('click', () => apply(input.value));
+  el.querySelector('[data-reset]')!.addEventListener('click', () => apply(''));
+  el.querySelector('[data-cancel]')!.addEventListener('click', () => closePopup());
+  input.addEventListener('keydown', (e) => e.key === 'Enter' && apply(input.value));
+  place(el, x, y);
+  input.focus();
 }
 
 /** Sets how far apart samples of channel `ch` must be to break its line, in median intervals. */
