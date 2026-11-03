@@ -13,8 +13,10 @@
     columns,
     duplicate,
     hasBelow,
+    hasChart,
     labelled,
     movePane,
+    rightPad,
     rows,
     setMode,
     splitDown,
@@ -22,10 +24,12 @@
     stack,
   } from '../stack.svelte';
   import { ui } from '../ui.svelte';
+  import AxisDialog from './AxisDialog.svelte';
   import Table from './Table.svelte';
 
   let menu = $state<null | { i: number; x: number; y: number }>(null);
   let views = $state<null | { i: number; x: number; y: number }>(null);
+  let axes = $state<null | { i: number; x: number; y: number }>(null);
   const VIEWS = [
     { mode: 'chart', label: 'Chart', hint: 'Channels over time' },
     { mode: 'table', label: 'Table', hint: 'The samples in view, one row each' },
@@ -37,6 +41,7 @@
   let dropAt = $state<number | null>(null);
 
   const items = (i: number) => [
+    ...(hasChart(i) ? [{ label: 'Axis and scale…', run: () => (axes = { ...menuAt!, i }) }, { sep: true }] : []),
     { label: 'Close others', run: () => closeOthers(i), off: stack.panes.length < 2 },
     { label: 'Close panes below', run: () => closeBelow(i), off: !hasBelow(i) },
     { label: 'Close pane', run: () => closePane(i) },
@@ -47,17 +52,21 @@
     { label: 'Add a pane below', run: () => addPaneBelow(i) },
   ];
 
+  let menuAt: { x: number; y: number } | null = null;
   function open(i: number, x: number, y: number) {
     stack.sel = i;
     menu = { i, x: Math.min(x, window.innerWidth - 230), y: Math.min(y, window.innerHeight - 300) };
+    // the axes dialog opens where the menu was
+    menuAt = { x: Math.min(menu.x, window.innerWidth - 400), y: Math.min(menu.y, window.innerHeight - 460) };
   }
   function outside(e: PointerEvent) {
     if (menu && !(e.target as HTMLElement).closest('.panemenu, [data-pmenu]')) menu = null;
     if (views && !(e.target as HTMLElement).closest('.viewmenu, [data-vmenu]')) views = null;
+    if (axes && !(e.target as HTMLElement).closest('.axdlg, .panemenu')) axes = null;
   }
   function key(e: KeyboardEvent) {
-    if ((menu || views) && e.key === 'Escape') {
-      menu = views = null;
+    if ((menu || views || axes) && e.key === 'Escape') {
+      menu = views = axes = null;
       e.stopPropagation();
     }
   }
@@ -164,7 +173,7 @@
               {:else if p.mode === 'table'}
                 <Table {i} />
               {:else}
-                <div class="plot" style="--pb: {labelled(i) ? PAD.timeLabels : 4}px"></div>
+                <div class="plot" style="--pb: {labelled(i) ? PAD.timeLabels : 4}px; --pr: {rightPad()}px"></div>
                 {#if p.mode === 'both'}<Table {i} height={p.tableH ?? 210} />{/if}
               {/if}
             </section>
@@ -192,6 +201,10 @@
       >
     {/each}
   </div>
+{/if}
+
+{#if axes && stack.panes[axes.i]}
+  <AxisDialog i={axes.i} x={axes.x} y={axes.y} onclose={() => (axes = null)} />
 {/if}
 
 {#if menu}

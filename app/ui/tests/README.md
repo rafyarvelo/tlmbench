@@ -21,6 +21,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_panes | the pane ⋯ menu and right-click: close (pane, others, below) with Undo, duplicate, split right into columns and down within one, add below; dragging a pane's number; time labels under each column; the layout after a reload |
 | t_shell | the rail and left sidebar (Ctrl+B), Settings (Basic/All, search, ⓘ, apply and save, Reset to defaults), mouse modes, the ⋯ menu, the status bar, Measure docking by hand and by itself, the note when a file can't be opened |
 | t_modes | a pane's view menu (chart, table, chart and table, values), value tiles at the pointer, else cursor A, else the end of the view, the view saved with the layout and kept by Duplicate |
+| t_axes | a pane's units an axis each (left, right, room on the right of every plot); "Axis and scale…" in the ⋯ menu: range (fixed starting from what's shown, include zero, ignore outliers), decimals, label, log scale; kept with the pane and after a reload; Reset axes; none for a table pane |
 | t_tables | table panes (Table, Chart and table): a row per sample in view, read a window at a time as it scrolls and moving with the view; a row click placing cursor A (Shift: B), double-click centring the view, Go to A; column widths and the table's height under a chart saved with the layout |
 
 Each test uses `lib.js`: `run(name, async h => { ... }, opts)`. `h.check(label, condition, got)` records a result;

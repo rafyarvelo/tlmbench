@@ -81,11 +81,46 @@ function numberLabel(v: number, step: number): string {
   return v.toFixed(digits);
 }
 
+/** A value axis as drawn: its range (in log10 units for a log axis), decimals and label. */
+export interface YAxis {
+  min: number;
+  max: number;
+  log?: boolean;
+  dec?: number;
+  label?: string;
+}
+
 export interface AxesView {
   t0: bigint;
   t1: bigint;
-  yMin: number;
-  yMax: number;
+  left: YAxis;
+  /** A second unit's axis, labelled on the right. */
+  right?: YAxis;
+}
+
+/** A value axis's ticks: positions in the axis's units (log10 for a log axis) and their labels. */
+function yTicks(ax: YAxis, h: number): [number, string][] {
+  if (!(Number.isFinite(ax.min) && Number.isFinite(ax.max) && ax.max > ax.min)) return [];
+  const label = (v: number, step: number) => (ax.dec != null ? v.toFixed(ax.dec) : numberLabel(v, step));
+  if (ax.log && ax.max - ax.min >= 1) {
+    // whole decades, every k-th when there are many
+    const k = Math.ceil((ax.max - ax.min) / Math.max(2, h / 28));
+    const out: [number, string][] = [];
+    for (let e = Math.ceil(ax.min / k) * k; e <= ax.max; e += k) out.push([e, ax.dec != null ? (10 ** e).toFixed(ax.dec) : value(10 ** e)]);
+    return out;
+  }
+  if (ax.log) {
+    // under a decade: linear steps between the ends
+    const [lo, hi] = [10 ** ax.min, 10 ** ax.max];
+    const step = niceStep(hi - lo, Math.max(2, h / 28));
+    const out: [number, string][] = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) if (v > 0) out.push([Math.log10(v), label(v, step)]);
+    return out;
+  }
+  const step = niceStep(ax.max - ax.min, Math.max(2, h / 28));
+  const out: [number, string][] = [];
+  for (let v = Math.ceil(ax.min / step) * step; v <= ax.max; v += step) out.push([v, label(v, step)]);
+  return out;
 }
 
 export interface AxesStyle {
@@ -123,18 +158,30 @@ export function drawAxes(ctx: CanvasRenderingContext2D, r: Rect, view: AxesView,
     if (s.timeLabels) ctx.fillText(timeLabel(t, step), x, r.y + r.h + 6);
   }
 
-  if (Number.isFinite(view.yMin) && Number.isFinite(view.yMax) && view.yMax > view.yMin) {
-    const ystep = niceStep(view.yMax - view.yMin, Math.max(2, r.h / 28));
+  const yAt = (ax: YAxis, v: number) => Math.round(r.y + r.h - ((v - ax.min) / (ax.max - ax.min)) * r.h) + 0.5;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'right';
+  for (const [v, text] of yTicks(view.left, r.h)) {
+    const y = yAt(view.left, v);
+    ctx.beginPath();
+    ctx.moveTo(r.x, y);
+    ctx.lineTo(r.x + r.w, y);
+    ctx.stroke();
+    ctx.fillText(text, r.x - 8, y);
+  }
+  if (view.right) {
+    ctx.textAlign = 'left';
+    for (const [v, text] of yTicks(view.right, r.h)) ctx.fillText(text, r.x + r.w + 8, yAt(view.right, v));
+  }
+  // axis labels sit inside the plot's top corners, so plot areas stay aligned across panes
+  ctx.textBaseline = 'top';
+  if (view.left.label) {
+    ctx.textAlign = 'left';
+    ctx.fillText(view.left.label, r.x + 6, r.y + 4);
+  }
+  if (view.right?.label) {
     ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    for (let v = Math.ceil(view.yMin / ystep) * ystep; v <= view.yMax; v += ystep) {
-      const y = Math.round(r.y + r.h - ((v - view.yMin) / (view.yMax - view.yMin)) * r.h) + 0.5;
-      ctx.beginPath();
-      ctx.moveTo(r.x, y);
-      ctx.lineTo(r.x + r.w, y);
-      ctx.stroke();
-      ctx.fillText(numberLabel(v, ystep), r.x - 8, y);
-    }
+    ctx.fillText(view.right.label, r.x + r.w - 6, r.y + 4);
   }
   ctx.restore();
 }

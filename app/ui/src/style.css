@@ -313,7 +313,7 @@ input.sel {
 .plot::before {
   content: '';
   position: absolute;
-  inset: 4px 14px var(--pb, 4px) 52px;
+  inset: 4px var(--pr, 14px) var(--pb, 4px) 52px;
   border-radius: 4px;
   background: var(--plot-bg);
 }

@@ -59,4 +59,6 @@ export const actions = {
   placeCursor: (_which: 'A' | 'B', _t: bigint) => {},
   /** Centres the time view on a time, keeping its span. */
   centreOn: (_t: bigint) => {},
+  /** What a pane's axis shows now, in its units (null before it's drawn). */
+  axisRange: (_i: number, _key: 'u0' | 'u1'): [number, number] | null => null,
 };

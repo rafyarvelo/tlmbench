@@ -12,13 +12,28 @@ import { tick } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
-import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value } from './axes';
+import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, value, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { applyTheme, type Mode, onSetting, saveSettings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
-import { addPaneBelow, labelled, normalize, note, onStackChange, type Pane, stack } from './stack.svelte';
+import {
+  addPaneBelow,
+  type AxisKey,
+  axisKey,
+  axisOf,
+  type AxisSettings,
+  hasChart,
+  labelled,
+  normalize,
+  note,
+  onStackChange,
+  type Pane,
+  rightPad,
+  stack,
+  units,
+} from './stack.svelte';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
@@ -92,7 +107,8 @@ interface Layer {
   xScaleNs: number;
   /** Samples after this time weren't summarized when it was drawn (null: all were). */
   builtUntil: bigint | null;
-  traces: Map<number, { gl: GlTrace; yMin: number; yMax: number; coarse: boolean; points: number }>;
+  /** Each channel's trace; `y` holds log10 values when it was uploaded for a log axis (`log`). */
+  traces: Map<number, { gl: GlTrace; x: Float32Array; y: Float32Array; log: boolean; yMin: number; yMax: number; coarse: boolean; points: number }>;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -175,7 +191,7 @@ function rectIn(el: Element, inset: { l: number; r: number; t: number; b: number
 function plotRect(i: number): Rect {
   const el = stackEl.querySelector(`[data-pane="${i}"] .plot`);
   if (!el) return { x: 0, y: 0, w: 0, h: 0 };
-  return rectIn(el, { l: PAD.left, r: PAD.right, t: 4, b: labelled(i) ? PAD.timeLabels : 4 });
+  return rectIn(el, { l: PAD.left, r: rightPad(), t: 4, b: labelled(i) ? PAD.timeLabels : 4 });
 }
 
 function ovRect(): Rect | null {
@@ -201,8 +217,7 @@ const gapFactor = (ch: number): number => (state.file && settings.gapFactors[sta
 /** Each pane's channels. */
 const panes = (): number[][] => stack.panes.map((p) => p.channels);
 const plotted = () => [...new Set(panes().flat())];
-/** Whether pane `i` draws a chart (a table or values pane doesn't). */
-const hasPlot = (i: number) => !['values', 'table'].includes(stack.panes[i]?.mode ?? 'chart');
+const hasPlot = hasChart;
 
 function samplesInView(): number {
   const f = state.file;
@@ -217,15 +232,26 @@ const xAt = (r: Rect, t: bigint) => r.x + (Number(t - state.t0) / Number(state.t
 
 // ---------- queries ----------
 
-function upload(layer: Layer | null, reply: Reply): Layer {
+/** Puts a reply's traces on the GPU; channels `logOf` names are uploaded as log10 values (non-positive ones as gaps). */
+function upload(layer: Layer | null, reply: Reply, logOf: (ch: number) => boolean = () => false): Layer {
   const next: Layer = { originNs: reply.originNs, xScaleNs: reply.xScaleNs, builtUntil: reply.builtUntil, traces: new Map() };
   for (const t of reply.traces) {
     const old = layer?.traces.get(t.channel);
     layer?.traces.delete(t.channel);
+    const log = logOf(t.channel);
+    let [y, yMin, yMax] = [t.y, t.yMin, t.yMax];
+    if (log) {
+      y = t.y.map((v) => (v > 0 ? Math.log10(v) : NaN));
+      yMax = t.yMax > 0 ? Math.log10(t.yMax) : NaN;
+      yMin = t.yMin > 0 ? Math.log10(t.yMin) : y.reduce((a, v) => (v < a ? v : a), Infinity);
+    }
     next.traces.set(t.channel, {
-      gl: renderer.upload(t.x, t.y, old?.gl),
-      yMin: t.yMin,
-      yMax: t.yMax,
+      gl: renderer.upload(t.x, y, old?.gl),
+      x: t.x,
+      y,
+      log,
+      yMin,
+      yMax,
       coarse: t.coarse,
       points: t.x.length,
     });
@@ -291,7 +317,7 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
       state.drawnGeneration = generation;
       state.layers = stack.panes.map((_, i) => {
         const reply = batch.entries.get(i);
-        return reply ? upload(state.layers[i] ?? null, reply) : (state.layers[i] ?? null);
+        return reply ? upload(state.layers[i] ?? null, reply, (ch) => !!axisOf(i, axisKey(i, ch)).log) : (state.layers[i] ?? null);
       });
       const points = traces.reduce((a, t) => a + t.x.length, 0);
       const kind = traces.some((t) => t.kind === 'm4') ? 'M4' : 'raw';
@@ -612,36 +638,43 @@ function draw(): void {
     if (!hasPlot(i)) return;
     const r = plotRect(i);
     const main = state.layers[i];
-    // the pane's value range: what its traces hold in view
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const ch of chans) {
-      const t = main?.traces.get(ch);
-      if (!t) {
-        complete = false;
-        continue;
+    // each axis's range: what its traces hold in view, or what its settings say
+    const keys: AxisKey[] = units(i).length > 1 ? ['u0', 'u1'] : ['u0'];
+    const keyOf = new Map(chans.map((ch) => [ch, keys.length > 1 ? axisKey(i, ch) : 'u0']));
+    const ranges = {} as Record<AxisKey, YAxis>;
+    for (const key of keys) {
+      const ax = axisOf(i, key);
+      const ts = [];
+      for (const ch of chans) {
+        if (keyOf.get(ch) !== key) continue;
+        const t = main?.traces.get(ch);
+        // a trace uploaded before its axis turned log (or back) waits for the next reply
+        if (!t || t.log !== !!ax.log) {
+          complete = false;
+          continue;
+        }
+        coarse ||= t.coarse;
+        ts.push(t);
       }
-      coarse ||= t.coarse;
-      if (Number.isFinite(t.yMin)) lo = Math.min(lo, t.yMin);
-      if (Number.isFinite(t.yMax)) hi = Math.max(hi, t.yMax);
+      ranges[key] = { ...axisRange(ax, ts), log: ax.log, dec: ax.dec, label: ax.label };
     }
-    if (!(hi >= lo)) [lo, hi] = [-1, 1];
-    const padY = (hi - lo) * 0.06 || Math.abs(hi) * 0.06 || 1;
-    const [yMin, yMax] = [lo - padY, hi + padY];
-    paneY[i] = { yMin, yMax };
-    drawAxes(ctx, r, { t0: state.t0, t1: state.t1, yMin, yMax }, { ...style, timeLabels: labelled(i) });
+    paneY[i] = ranges;
+    drawAxes(ctx, r, { t0: state.t0, t1: state.t1, left: ranges.u0, right: ranges.u1 }, { ...style, timeLabels: labelled(i) });
     if (main && span > 0) {
       const x: Axis = { a: (2 * main.xScaleNs) / span, b: (2 * Number(main.originNs - state.t0)) / span - 1 };
-      const y: Axis = { a: 2 / (yMax - yMin), b: (-2 * yMin) / (yMax - yMin) - 1 };
       for (const ch of chans) {
         const t = main.traces.get(ch);
-        if (t) renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r);
+        const yr = ranges[keyOf.get(ch)!];
+        if (!t || t.log !== !!yr.log) continue;
+        const y: Axis = { a: 2 / (yr.max - yr.min), b: (-2 * yr.min) / (yr.max - yr.min) - 1 };
+        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r);
       }
+      for (const key of keys) if (axisOf(i, key).range === 'robust') drawClipped(ctx, r, main, chans.filter((ch) => keyOf.get(ch) === key), ranges[key], tk);
     }
     drawBuilding(ctx, r, i === 0);
     drawCursors(ctx, r, tk);
     drawPlayhead(ctx, r, tk);
-    drawHover(ctx, r, chans, { yMin, yMax }, tk);
+    drawHover(ctx, r, i, chans, tk);
     if (state.box?.pane === i) {
       const [a, b] = [Math.min(state.box.x0, state.box.x1), Math.max(state.box.x0, state.box.x1)];
       ctx.fillStyle = css(tk['--accent'], b - a >= 4 ? 0.16 : 0.07);
@@ -665,7 +698,66 @@ function draw(): void {
   state.onPaint?.({ coarse, complete });
 }
 
-const paneY: { yMin: number; yMax: number }[] = [];
+/** Each pane's axes as last drawn. */
+const paneY: Record<AxisKey, YAxis>[] = [];
+
+type DrawnTrace = { y: Float32Array; yMin: number; yMax: number };
+
+/** An axis's range in drawn units (log10 for a log axis): its fixed range, or its traces' with some room. */
+function axisRange(ax: AxisSettings, ts: DrawnTrace[]): { min: number; max: number } {
+  const t = (v: number) => (ax.log ? Math.log10(v) : v);
+  if (ax.range === 'fixed' && ax.min != null && ax.max != null && ax.max > ax.min && (!ax.log || ax.min > 0)) return { min: t(ax.min), max: t(ax.max) };
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const tr of ts) {
+    if (Number.isFinite(tr.yMin)) lo = Math.min(lo, tr.yMin);
+    if (Number.isFinite(tr.yMax)) hi = Math.max(hi, tr.yMax);
+  }
+  if (ax.range === 'robust') [lo, hi] = robust(ts) ?? [lo, hi];
+  if (!(hi >= lo)) return ax.log ? { min: 0, max: 1 } : { min: -1, max: 1 };
+  const zero = ax.range === 'zero' && !ax.log;
+  if (zero) [lo, hi] = [Math.min(0, lo), Math.max(0, hi)];
+  const pad = (hi - lo) * 0.06 || Math.abs(hi) * 0.06 || (ax.log ? 0.1 : 1);
+  return { min: zero && lo === 0 ? 0 : lo - pad, max: zero && hi === 0 ? 0 : hi + pad };
+}
+
+/** The 0.1st and 99.9th percentiles of what the traces hold (null when there are too few points). */
+function robust(ts: DrawnTrace[]): [number, number] | null {
+  const n = ts.reduce((a, t) => a + t.y.length, 0);
+  // a sample of at most 100k points is plenty for the percentiles
+  const stride = Math.max(1, Math.floor(n / 100_000));
+  const vals: number[] = [];
+  for (const t of ts) for (let k = 0; k < t.y.length; k += stride) if (Number.isFinite(t.y[k])) vals.push(t.y[k]);
+  if (vals.length < 20) return null;
+  const sorted = Float64Array.from(vals).sort();
+  return [sorted[Math.floor((sorted.length - 1) * 0.001)], sorted[Math.ceil((sorted.length - 1) * 0.999)]];
+}
+
+/** Ignore outliers: what's beyond the axis's range is clipped, marked with a small triangle at the edge. */
+function drawClipped(ctx: CanvasRenderingContext2D, r: Rect, layer: Layer, chans: number[], ax: YAxis, tk: Record<string, string>): void {
+  const span = Number(state.t1 - state.t0);
+  const origin = Number(layer.originNs - state.t0);
+  ctx.fillStyle = css(tk['--warn'], 0.9);
+  let lastX = -Infinity;
+  for (const ch of chans) {
+    const t = layer.traces.get(ch);
+    if (!t) continue;
+    for (let k = 0; k < t.y.length; k++) {
+      const v = t.y[k];
+      if (!(v > ax.max || v < ax.min)) continue;
+      const x = r.x + ((origin + t.x[k] * layer.xScaleNs) / span) * r.w;
+      if (x < r.x || x > r.x + r.w || x - lastX < 5) continue;
+      lastX = x;
+      const up = v > ax.max;
+      const y = up ? r.y + 1 : r.y + r.h - 1;
+      ctx.beginPath();
+      ctx.moveTo(x - 3.5, up ? y + 6 : y - 6);
+      ctx.lineTo(x + 3.5, up ? y + 6 : y - 6);
+      ctx.lineTo(x, y);
+      ctx.fill();
+    }
+  }
+}
 
 /** A coarse view replaced sooner than this isn't labelled. */
 const COARSE_LABEL_AFTER_MS = 300;
@@ -745,7 +837,7 @@ function drawCursors(ctx: CanvasRenderingContext2D, r: Rect, tk: Record<string, 
 }
 
 /** The pointer's time across the pane, and a dot on each channel's nearest real sample. */
-function drawHover(ctx: CanvasRenderingContext2D, r: Rect, chans: number[], y: { yMin: number; yMax: number }, tk: Record<string, string>): void {
+function drawHover(ctx: CanvasRenderingContext2D, r: Rect, i: number, chans: number[], tk: Record<string, string>): void {
   if (state.hoverT == null || state.hoverT < state.t0 || state.hoverT > state.t1) return;
   const x = Math.round(xAt(r, state.hoverT)) + 0.5;
   ctx.strokeStyle = css(tk['--fg-muted'], 0.5);
@@ -757,7 +849,10 @@ function drawHover(ctx: CanvasRenderingContext2D, r: Rect, chans: number[], y: {
     const s = state.hover.get(ch);
     if (!s || s.v == null || s.t < state.t0 || s.t > state.t1) continue;
     const px = xAt(r, s.t);
-    const py = r.y + r.h - ((s.v - y.yMin) / (y.yMax - y.yMin)) * r.h;
+    const y = paneY[i]?.[axisKey(i, ch)];
+    const v = y?.log ? Math.log10(s.v) : s.v;
+    if (!y || !Number.isFinite(v)) continue;
+    const py = r.y + r.h - ((v - y.min) / (y.max - y.min)) * r.h;
     if (py < r.y || py > r.y + r.h) continue;
     ctx.fillStyle = tk['--plot-bg'];
     ctx.strokeStyle = colorOf(ch);
@@ -1327,7 +1422,7 @@ function paneAt(e: { clientX: number; clientY: number }): { i: number; r: Rect; 
   for (let i = 0; i < stack.panes.length; i++) {
     const r = plotRect(i);
     if (r.w <= 0) continue;
-    const inX = x >= r.x - PAD.left && x <= r.x + r.w + PAD.right;
+    const inX = x >= r.x - PAD.left && x <= r.x + r.w + rightPad();
     if (inX && y >= r.y - 4 && y <= r.y + r.h + 4) return { i, r, x };
   }
   return null;
@@ -1644,6 +1739,11 @@ Object.assign(actions, {
   back,
   clearCursors,
   placeCursor,
+  axisRange: (i: number, key: AxisKey): [number, number] | null => {
+    const y = paneY[i]?.[key];
+    if (!y) return null;
+    return y.log ? [10 ** y.min, 10 ** y.max] : [y.min, y.max];
+  },
   centreOn: (t: bigint) => {
     const half = (state.t1 - state.t0) / 2n;
     setView(t - half, t + half, true);
@@ -1739,6 +1839,8 @@ export const gateApi = {
   panes: () => panes().map((p) => [...p]),
   layout: () => stack.panes.map((p) => (p.beside ? 'beside' : p.under ? 'under' : 'row')),
   modes: () => stack.panes.map((p) => p.mode ?? 'chart'),
+  /** Each pane's axes as last drawn (log axes in log10 units). */
+  axes: () => paneY.map((r) => r && JSON.parse(JSON.stringify(r))),
   sel: () => stack.sel,
   mode: () => settings.mode,
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),

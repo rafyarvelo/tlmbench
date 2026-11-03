@@ -84,7 +84,8 @@ Next, in order:
    table panes over the `rows` command (a window of raw rows read as the table scrolls; row click places A, Shift B,
    double-click centres; Go to A/B; resizable columns and the table's height saved with the layout). Left for
    tables: sort and filter in Rust (a row-id list the table pages through), the Columns list, Autofit, pinned
-   columns, copy as CSV, and the rows on screen as a band on the charts. Then "Axis and scale…" (Phase 3's list).
+   columns, copy as CSV, and the rows on screen as a band on the charts. "Axis and scale…" is done (a unit's axis
+   each, left and right; range, decimals, label, log).
 4. Workspace files (save/open a layout as JSON; design: Files, workspaces and sharing).
 5. The app's Export (visible range or selection → the `convert` writers; PNG/SVG of the view).
 6. `just gate4`: the format matrix (one recording in every format with identical per-channel checksums and views;

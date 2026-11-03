@@ -2,15 +2,31 @@
 // model). Each pane lists its channels; `beside` puts it right of the pane before, `under` below it in the same
 // column. app.ts draws into each pane's plot; PaneStack.svelte renders the panes, and these edits change them.
 
+import { PAD } from './axes';
 import { ui } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
  * view, the chart with its table below, or value tiles. */
 export type PaneMode = 'chart' | 'table' | 'both' | 'values';
 
+/** One of a pane's value axes (design: Pane axes); what's left out is the default (fit the view, auto decimals). */
+export interface AxisSettings {
+  /** Fit ignoring outliers (the 0.1st–99.9th percentile; spikes are clipped and marked), fit including zero, or fixed. */
+  range?: 'robust' | 'zero' | 'fixed';
+  min?: number;
+  max?: number;
+  dec?: number;
+  label?: string;
+  log?: boolean;
+}
+
+/** A pane's axes: u0 for its first unit (left), u1 for its second (right). */
+export type AxisKey = 'u0' | 'u1';
+
 export interface Pane {
   channels: number[];
   mode?: PaneMode;
+  axis?: Partial<Record<AxisKey, AxisSettings>>;
   /** Table column widths by column id ('n', 't', 'c<channel>'), where resized. */
   widths?: Record<string, number>;
   /** The table's height under a chart ('both'), where dragged. */
@@ -186,6 +202,37 @@ export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH
       if (v === undefined || (k === 'widths' && !Object.keys(v).length)) delete p[k];
       else p[k] = v;
     }
+  });
+}
+
+const unitOf = (ch: number) => ui.channels[ch]?.unit ?? '';
+/** Whether pane `i` draws a chart. */
+export const hasChart = (i: number) => !['values', 'table'].includes(stack.panes[i]?.mode ?? 'chart');
+/** Pane `i`'s units, an axis each: the first on the left, the second on the right (any more share the left). */
+export const units = (i: number): string[] => [...new Set((stack.panes[i]?.channels ?? []).map(unitOf))].slice(0, 2);
+/** The axis channel `ch` is drawn against in pane `i`. */
+export const axisKey = (i: number, ch: number): AxisKey => (units(i).indexOf(unitOf(ch)) === 1 ? 'u1' : 'u0');
+export const axisOf = (i: number, key: AxisKey): AxisSettings => stack.panes[i]?.axis?.[key] ?? {};
+/** The margin right of every plot: room for a right axis's labels when any chart has one (plots stay aligned). */
+export const rightPad = () => (stack.panes.some((_, i) => hasChart(i) && units(i).length > 1) ? PAD.left : PAD.right);
+
+/** Changes one of pane `i`'s axes (undefined fields go back to the default). */
+export function setAxis(i: number, key: AxisKey, patch: AxisSettings): void {
+  edit(() => {
+    const p = stack.panes[i];
+    if (!p) return;
+    const ax: AxisSettings = { ...p.axis?.[key], ...patch };
+    for (const k of Object.keys(ax) as (keyof AxisSettings)[]) if (ax[k] === undefined || ax[k] === '' || ax[k] === false) delete ax[k];
+    const axis = { ...p.axis, [key]: ax };
+    if (!Object.keys(ax).length) delete axis[key];
+    if (Object.keys(axis).length) p.axis = axis;
+    else delete p.axis;
+  });
+}
+
+export function resetAxes(i: number): void {
+  edit(() => {
+    if (stack.panes[i]) delete stack.panes[i].axis;
   });
 }
 
