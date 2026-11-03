@@ -13,6 +13,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4.13"
 tlmbench-core = { path = "../../core" }
 tlmbench-decode = { path = ".." }
+tempfile = "3.27.0"
 
 # its own workspace: the root workspace excludes it
 [workspace]
@@ -28,6 +29,13 @@ bench = false
 [[bin]]
 name = "csv"
 path = "fuzz_targets/csv.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parquet"
+path = "fuzz_targets/parquet.rs"
 test = false
 doc = false
 bench = false

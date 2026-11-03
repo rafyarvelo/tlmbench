@@ -1278,7 +1278,7 @@ function emptyWindow(): void {
 }
 
 async function chooseFile(): Promise<void> {
-  const path = await openDialog({ multiple: false, filters: [{ name: 'Recordings', extensions: ['csv', 'tsv', 'tlm'] }] });
+  const path = await openDialog({ multiple: false, filters: [{ name: 'Recordings', extensions: ['csv', 'tsv', 'tlm', 'parquet'] }] });
   if (typeof path === 'string') await openPath(path);
 }
 

@@ -264,7 +264,7 @@ fn parse_number(b: &[u8]) -> Option<f64> {
 }
 
 /// Time-like names, and the unit (nanoseconds per unit) from the name's suffix or its bracketed unit.
-fn time_unit(name: &str, unit: Option<&str>) -> Option<i64> {
+pub(crate) fn time_unit(name: &str, unit: Option<&str>) -> Option<i64> {
     let base = name.trim().to_ascii_lowercase();
     let base = base.as_str();
     let unit_ns = |u: &str| match u {
@@ -284,7 +284,7 @@ fn time_unit(name: &str, unit: Option<&str>) -> Option<i64> {
 }
 
 /// `Speed [m/s]` → (`Speed`, `m/s`); `accel[0]` stays whole (no space before the bracket).
-fn split_unit(name: &str) -> (&str, Option<String>) {
+pub(crate) fn split_unit(name: &str) -> (&str, Option<String>) {
     let n = name.trim_end();
     for (open, close) in [('[', ']'), ('(', ')')] {
         if let Some(stripped) = n.strip_suffix(close)

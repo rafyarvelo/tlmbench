@@ -1,7 +1,8 @@
-//! The columnar cache for formats that can't be read in place (CSV now; compressed formats later).
+//! The columnar cache for formats that can't be read in place: CSV, and Parquet (see [`crate::parquet`]).
 //!
 //! The first open parses the source in parallel into one file per column under the cache root: `t.i64` (sample
-//! times, absent with index time) and `c<k>.f64`, plain little-endian arrays, plus `manifest.json`. Later opens
+//! times, absent with index time) and `c<k>.<type>` (`f64` for CSV, the column's own type for Parquet), plain
+//! little-endian arrays, plus `manifest.json`. Later opens
 //! memory-map those files, so reopening costs the fingerprint only. The cache lives in the app cache dir, never
 //! beside the source, and can be deleted at any time: it is rebuilt on the next open.
 //!
@@ -26,9 +27,10 @@ use tlmbench_core::{
 
 use crate::bytes::{self, Bytes, read_exact_at};
 use crate::csv::{self, TimeColumn};
+use crate::descriptor::DType;
 use crate::error::{Result, format_err, io_err};
 
-const MANIFEST_VERSION: u32 = 1;
+pub(crate) const MANIFEST_VERSION: u32 = 1;
 
 /// The cache root: `override`, else `$TLMBENCH_CACHE`, else the OS cache dir's `tlmbench` folder (the desktop app
 /// and the CLI share it).
@@ -53,15 +55,15 @@ const HEAD_BYTES: usize = 16 << 20;
 
 /// The source file, read with positioned reads.
 #[derive(Debug)]
-struct Source {
-    path: PathBuf,
+pub(crate) struct Source {
+    pub(crate) path: PathBuf,
     file: File,
-    len: u64,
+    pub(crate) len: u64,
     mtime_ns: u128,
 }
 
 impl Source {
-    fn open(path: &Path) -> Result<Self> {
+    pub(crate) fn open(path: &Path) -> Result<Self> {
         let file = File::open(path).map_err(io_err(path))?;
         let meta = file.metadata().map_err(io_err(path))?;
         let mtime_ns = meta.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
@@ -76,7 +78,7 @@ impl Source {
         Ok(buf)
     }
 
-    fn fingerprint(&self) -> Result<String> {
+    pub(crate) fn fingerprint(&self) -> Result<String> {
         const EDGE: usize = 1 << 20;
         const BLOCK: usize = 4096;
         let mut h = blake3::Hasher::new();
@@ -115,33 +117,39 @@ impl Source {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Manifest {
-    version: u32,
-    source_size: u64,
-    rows: usize,
-    skipped_rows: usize,
+pub(crate) struct Manifest {
+    pub(crate) version: u32,
+    pub(crate) source_size: u64,
+    pub(crate) rows: usize,
+    pub(crate) skipped_rows: usize,
     /// None: index time (row numbers).
-    time: Option<String>,
-    channels: Vec<ManifestChannel>,
-    skipped_columns: Vec<String>,
-    t_first: Option<i64>,
-    t_last: Option<i64>,
+    pub(crate) time: Option<String>,
+    pub(crate) channels: Vec<ManifestChannel>,
+    pub(crate) skipped_columns: Vec<String>,
+    pub(crate) t_first: Option<i64>,
+    pub(crate) t_last: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ManifestChannel {
-    name: String,
-    unit: Option<String>,
-    file: String,
+pub(crate) struct ManifestChannel {
+    pub(crate) name: String,
+    pub(crate) unit: Option<String>,
+    pub(crate) file: String,
+    #[serde(default = "f64_type")]
+    pub(crate) dtype: DType,
 }
 
-/// A CSV file read through its cache.
+fn f64_type() -> DType {
+    DType::F64
+}
+
+/// A file read through its cache entry (CSV or Parquet).
 #[derive(Debug)]
-pub struct CsvRecording {
+pub struct CachedRecording {
     info: RecordingInfo,
     rows: usize,
     t: Option<Bytes>,
-    columns: Vec<Bytes>,
+    columns: Vec<(Bytes, DType)>,
     /// Rows left out because their time didn't parse.
     pub skipped_rows: usize,
     /// The chunk index of the time column, once the store has it.
@@ -149,46 +157,30 @@ pub struct CsvRecording {
 }
 
 /// Opens a CSV through the cache under `root`, building the cache entry first if needed.
-pub fn open_csv(path: &Path, root: &Path) -> Result<CsvRecording> {
+pub fn open_csv(path: &Path, root: &Path) -> Result<CachedRecording> {
     let source = Source::open(path)?;
     let dir = root.join("csv").join(source.fingerprint()?);
     let manifest = match read_manifest(&dir) {
         Some(m) => m,
-        None => build(&source, &dir)?,
+        None => build_entry(&dir, |tmp| build(&source, tmp))?,
     };
-    load(path, &dir, manifest)
+    load(path, &dir, manifest, "CSV")
 }
 
-fn read_manifest(dir: &Path) -> Option<Manifest> {
+pub(crate) fn read_manifest(dir: &Path) -> Option<Manifest> {
     let m: Manifest = serde_json::from_slice(&fs::read(dir.join("manifest.json")).ok()?).ok()?;
     (m.version == MANIFEST_VERSION).then_some(m)
 }
 
-fn build(source: &Source, dir: &Path) -> Result<Manifest> {
-    let path = source.path.as_path();
-    let mut head = source.read(0, HEAD_BYTES)?;
-    if (head.len() as u64) < source.len
-        && let Some(end) = memchr::memrchr(b'\n', &head)
-    {
-        head.truncate(end + 1); // whole rows only
-    }
-    let schema = csv::scan(&head).map_err(|e| format_err(path, e.to_string()))?;
-    drop(head);
+/// Builds a cache entry: `write` fills a temporary folder beside `dir` and returns the manifest, which is written
+/// last; the folder is then renamed into place, so a failed or interrupted build leaves nothing.
+pub(crate) fn build_entry(dir: &Path, write: impl FnOnce(&Path) -> Result<Manifest>) -> Result<Manifest> {
     let parent = dir.parent().expect("cache dirs have a parent");
     fs::create_dir_all(parent).map_err(io_err(parent))?;
     let tmp = parent.join(format!(".{}.tmp-{}", dir.file_name().unwrap().to_string_lossy(), std::process::id()));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp).map_err(io_err(&tmp))?;
-    let mut schema = schema;
-    let mut result =
-        if schema.quoted { write_quoted(source, &schema, &tmp) } else { write_fast(source, &schema, &tmp) };
-    if let Ok(None) = result {
-        // a chunk met a quote: read the whole file with the general CSV reader instead
-        schema.quoted = true;
-        result = write_quoted(source, &schema, &tmp);
-    }
-    let result = result.map(|m| m.expect("the general reader never asks to start over"));
-    let manifest = match result {
+    let manifest = match write(&tmp) {
         Ok(m) => m,
         Err(e) => {
             let _ = fs::remove_dir_all(&tmp);
@@ -203,6 +195,28 @@ fn build(source: &Source, dir: &Path) -> Result<Manifest> {
         return read_manifest(dir).ok_or_else(|| format_err(dir, "cache entry could not be written"));
     }
     Ok(manifest)
+}
+
+fn build(source: &Source, tmp: &Path) -> Result<Manifest> {
+    let path = source.path.as_path();
+    let mut head = source.read(0, HEAD_BYTES)?;
+    if (head.len() as u64) < source.len
+        && let Some(end) = memchr::memrchr(b'\n', &head)
+    {
+        head.truncate(end + 1); // whole rows only
+    }
+    let schema = csv::scan(&head).map_err(|e| format_err(path, e.to_string()))?;
+    drop(head);
+    let mut schema = schema;
+    let mut result = if schema.quoted { write_quoted(source, &schema, tmp) } else { write_fast(source, &schema, tmp) };
+    if let Ok(None) = result {
+        // a chunk met a quote: read the whole file with the general CSV reader instead
+        schema.quoted = true;
+        let _ = fs::remove_dir_all(tmp);
+        fs::create_dir_all(tmp).map_err(io_err(tmp))?;
+        result = write_quoted(source, &schema, tmp);
+    }
+    result.map(|m| m.expect("the general reader never asks to start over"))
 }
 
 /// Unquoted data: 8 MB chunks, each read and parsed by its own worker.
@@ -321,7 +335,7 @@ fn write_columns(
         channels: numeric
             .into_iter()
             .enumerate()
-            .map(|(k, c)| ManifestChannel { name: c.name, unit: c.unit, file: format!("c{k}.f64") })
+            .map(|(k, c)| ManifestChannel { name: c.name, unit: c.unit, file: format!("c{k}.f64"), dtype: DType::F64 })
             .collect(),
         skipped_columns: schema.columns.iter().filter(|c| c.kind == csv::Kind::Text).map(|c| c.name.clone()).collect(),
         t_first,
@@ -329,7 +343,7 @@ fn write_columns(
     }))
 }
 
-fn load(path: &Path, dir: &Path, m: Manifest) -> Result<CsvRecording> {
+pub(crate) fn load(path: &Path, dir: &Path, m: Manifest, format: &str) -> Result<CachedRecording> {
     let map_checked = |name: &str, elem: usize| -> Result<Bytes> {
         let b = bytes::map(&dir.join(name))?;
         if b.len() != m.rows * elem {
@@ -338,14 +352,18 @@ fn load(path: &Path, dir: &Path, m: Manifest) -> Result<CsvRecording> {
         Ok(b)
     };
     let t = m.time.as_ref().map(|_| map_checked("t.i64", 8)).transpose()?;
-    let columns = m.channels.iter().map(|c| map_checked(&c.file, 8)).collect::<Result<Vec<_>>>()?;
+    let columns = m
+        .channels
+        .iter()
+        .map(|c| Ok((map_checked(&c.file, c.dtype.size() as usize)?, c.dtype)))
+        .collect::<Result<Vec<_>>>()?;
     let (t_first, t_last) = match m.time {
         Some(_) => (m.t_first, m.t_last),
         None => (if m.rows > 0 { Some(0) } else { None }, m.rows.checked_sub(1).map(|r| r as i64 * 1_000_000_000)),
     };
     let info = RecordingInfo {
         path: path.to_owned(),
-        format: "CSV".into(),
+        format: format.into(),
         samples: m.rows,
         time: match &m.time {
             Some(name) => TimeSource::Column { name: name.clone() },
@@ -356,25 +374,40 @@ fn load(path: &Path, dir: &Path, m: Manifest) -> Result<CsvRecording> {
         channels: m
             .channels
             .iter()
-            .map(|c| ChannelInfo { name: c.name.clone(), unit: c.unit.clone(), dtype: "f64" })
+            .map(|c| ChannelInfo { name: c.name.clone(), unit: c.unit.clone(), dtype: c.dtype.name() })
             .collect(),
         skipped: m.skipped_columns,
     };
-    Ok(CsvRecording { info, rows: m.rows, t, columns, skipped_rows: m.skipped_rows, time_index: Default::default() })
+    Ok(CachedRecording { info, rows: m.rows, t, columns, skipped_rows: m.skipped_rows, time_index: Default::default() })
 }
 
-impl Channels for CsvRecording {
+impl Channels for CachedRecording {
     fn describe(&self) -> &RecordingInfo {
         &self.info
     }
 
     fn dispatch<O: ChannelOp>(&self, channel: usize, op: O) -> O::Out {
-        let values: &[f64] = bytemuck::cast_slice(&self.columns[channel]);
-        match (&self.t, self.time_index.get()) {
-            (Some(t), Some(index)) => op.run(&Indexed { times: bytemuck::cast_slice::<u8, i64>(t), index }, values),
-            (Some(t), None) => op.run(bytemuck::cast_slice::<u8, i64>(t), values),
-            (None, _) => op.run(&RateTimes::from_rate(0, 1.0, self.rows), values),
+        struct WithTimes<'a, O>(O, &'a [u8], DType);
+        impl<O: ChannelOp> TimesOp for WithTimes<'_, O> {
+            type Out = O::Out;
+            fn run<T: tlmbench_core::Times + ?Sized>(self, times: &T) -> O::Out {
+                let WithTimes(op, b, dtype) = self;
+                match dtype {
+                    DType::I8 => op.run(times, bytemuck::cast_slice::<u8, i8>(b)),
+                    DType::I16 => op.run(times, bytemuck::cast_slice::<u8, i16>(b)),
+                    DType::I32 => op.run(times, bytemuck::cast_slice::<u8, i32>(b)),
+                    DType::I64 => op.run(times, bytemuck::cast_slice::<u8, i64>(b)),
+                    DType::U8 => op.run(times, bytemuck::cast_slice::<u8, u8>(b)),
+                    DType::U16 => op.run(times, bytemuck::cast_slice::<u8, u16>(b)),
+                    DType::U32 => op.run(times, bytemuck::cast_slice::<u8, u32>(b)),
+                    DType::U64 => op.run(times, bytemuck::cast_slice::<u8, u64>(b)),
+                    DType::F32 => op.run(times, bytemuck::cast_slice::<u8, f32>(b)),
+                    DType::F64 => op.run(times, bytemuck::cast_slice::<u8, f64>(b)),
+                }
+            }
         }
+        let (bytes, dtype) = &self.columns[channel];
+        self.dispatch_times(WithTimes(op, bytes, *dtype))
     }
 
     fn dispatch_times<O: TimesOp>(&self, op: O) -> O::Out {
@@ -392,7 +425,7 @@ impl Channels for CsvRecording {
     }
 
     fn layout_id(&self) -> Vec<u8> {
-        format!("csv\n{MANIFEST_VERSION}\n").into_bytes()
+        format!("{}\n{MANIFEST_VERSION}\n", self.info.format.to_lowercase()).into_bytes()
     }
 }
 

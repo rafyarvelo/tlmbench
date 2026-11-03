@@ -1,6 +1,6 @@
 [package]
 name = "tlmbench-decode"
-description = "TelemetryBench decoders: CSV into the columnar cache, fixed-width records through format descriptors"
+description = "TelemetryBench decoders: CSV and Parquet into the columnar cache, fixed-width records through format descriptors"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -21,6 +21,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 toml.workspace = true
+parquet.workspace = true
+arrow-array.workspace = true
+arrow-schema.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"

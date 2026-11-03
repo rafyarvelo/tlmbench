@@ -92,7 +92,7 @@ impl Store {
         &self.chunks
     }
 
-    /// Opens a recording (CSV builds its column cache first). Its pyramid is loaded if built, but not built:
+    /// Opens a recording (CSV and Parquet build their column cache first). Its pyramid is loaded if built, but not built:
     /// call [`Opened::build`] (on a background thread in the app).
     pub fn open(&self, path: &Path, descriptor: Option<&Path>) -> Result<Opened> {
         let opts = OpenOptions { descriptor: descriptor.map(Path::to_owned), cache_dir: Some(self.root.clone()) };
@@ -102,7 +102,9 @@ impl Store {
         let dir = self.root.join("pyr").join(pyr::VERSION);
         fs::create_dir_all(&dir).map_err(Error::io(&dir))?;
         let in_use = hold(&self.root, &fingerprint)?;
-        touch_opened(&self.root.join("csv").join(&fingerprint));
+        for kind in COLUMN_CACHES {
+            touch_opened(&self.root.join(kind).join(&fingerprint));
+        }
         let loaded = Loaded::open_built(&dir.join(&key), rec.as_ref())?;
         if loaded.is_some() {
             touch_opened(&dir.join(&key));
@@ -128,7 +130,8 @@ impl Store {
         let mut out = Vec::new();
         // pyramids of every layout version: older ones are no longer read, and age out like any entry
         let versions = fs::read_dir(self.root.join("pyr")).into_iter().flatten().flatten().map(|e| e.path());
-        let dirs = std::iter::once(("csv", self.root.join("csv"))).chain(versions.map(|d| ("pyramid", d)));
+        let columns = COLUMN_CACHES.iter().map(|&k| (k, self.root.join(k)));
+        let dirs = columns.chain(versions.map(|d| ("pyramid", d)));
         for (kind, dir) in dirs {
             let Ok(rd) = fs::read_dir(&dir) else { continue };
             for e in rd.flatten() {
@@ -139,8 +142,8 @@ impl Store {
                 }
                 let building = kind == "pyramid" && !path.join("manifest.json").exists();
                 let fingerprint = match kind {
-                    "csv" => Some(name.clone()),
-                    _ => pyr::fingerprint_of(&path),
+                    "pyramid" => pyr::fingerprint_of(&path),
+                    _ => Some(name.clone()),
                 };
                 out.push(Entry {
                     kind,
@@ -192,10 +195,13 @@ impl Store {
     }
 }
 
+/// Folders under the cache root holding column caches, named by the format they decode.
+const COLUMN_CACHES: [&str; 2] = ["csv", "parquet"];
+
 /// One cache entry.
 #[derive(Clone, Debug, Serialize)]
 pub struct Entry {
-    /// "csv" (the column cache) or "pyramid".
+    /// "csv" or "parquet" (the column cache of that format), or "pyramid".
     pub kind: &'static str,
     pub path: PathBuf,
     pub bytes: u64,

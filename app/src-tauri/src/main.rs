@@ -444,7 +444,7 @@ async fn list_folder(path: String) -> Result<FolderEntry, String> {
         let meta = std::fs::metadata(p).ok()?;
         if !meta.is_dir() {
             let ext = p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
-            return matches!(ext.as_deref(), Some("csv" | "tsv" | "txt" | "tlm")).then(|| FolderEntry {
+            return matches!(ext.as_deref(), Some("csv" | "tsv" | "txt" | "tlm" | "parquet")).then(|| FolderEntry {
                 path: p.display().to_string(),
                 name,
                 dir: false,

@@ -7,7 +7,7 @@ pub enum Error {
     Io { path: PathBuf, source: io::Error },
 
     #[error(
-        "{}: not a format tlmbench reads (CSV, a tlmbench reference file, or fixed-width records with a descriptor)",
+        "{}: not a format tlmbench reads (CSV, Parquet, a tlmbench reference file, or fixed-width records with a descriptor)",
         .0.display()
     )]
     UnknownFormat(PathBuf),
