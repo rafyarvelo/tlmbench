@@ -1,12 +1,14 @@
 // Settings: everything configurable, saved in the app's local storage as it changes (CLAUDE.md: production-like).
 // Components and app.ts read `settings` directly; changes go through `setSetting` so they are saved and applied.
 
+import type { TimeFormat } from './axes';
 import type { Pane } from './stack.svelte';
 import type { Workspace } from './workspaces';
 
 export type Mode = 'box' | 'pan' | 'cursor';
 export type Theme = 'system' | 'light' | 'dark';
 export type Tooltips = 'short' | 'full' | 'off';
+export type TimeAxis = 'bottom' | 'every';
 export type ZoomSpeed = 'slow' | 'normal' | 'fast';
 /** What the left sidebar shows (empty: hidden). */
 export type LeftPanel = 'explorer' | 'settings' | '';
@@ -25,6 +27,10 @@ export interface Settings {
   leftWidth: number;
   measureWidth: number;
   panelsClosed: string[];
+  /** How times read (axes, readouts, tables, cursors), their decimals ('auto' or 0–6), and which charts label the time axis. */
+  timeFormat: TimeFormat;
+  timeDecimals: string;
+  timeAxis: TimeAxis;
   /** Tooltips (Short retires each after three showings; `tipsSeen` counts them by tip). */
   tooltips: Tooltips;
   tipsSeen: Record<string, number>;
@@ -68,6 +74,9 @@ export const DEFAULTS: Settings = {
   leftWidth: 300,
   measureWidth: 260,
   panelsClosed: [],
+  timeFormat: 'auto',
+  timeDecimals: 'auto',
+  timeAxis: 'bottom',
   tooltips: 'short',
   tipsSeen: {},
   showStart: true,

@@ -26,8 +26,53 @@ function niceStep(span: number, maxTicks: number): number {
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0');
 
+export type TimeFormat = 'auto' | 'clock' | 's' | 'ms' | 'minsec' | 'h' | 'd';
+/** The formats Settings and the range menu offer: the key, its name and an example. */
+export const TIME_FORMATS: [TimeFormat, string, string][] = [
+  ['auto', 'Automatic', 'clock, dates or seconds, from the file'],
+  ['clock', 'Clock, from start', '00:41:12.380'],
+  ['s', 'Seconds', '2472.380 s'],
+  ['ms', 'Milliseconds', '2472380 ms'],
+  ['minsec', 'Minutes and seconds', '41:12.380'],
+  ['h', 'Hours', '0.69 h'],
+  ['d', 'Days', '0.03 d'],
+];
+
+const timeFmt = { mode: 'auto' as TimeFormat, decimals: null as number | null, origin: () => 0n };
+/** Sets the time format every label uses: its decimals (null: from the step) and where "from start" counts from. */
+export function setTimeFormat(mode: TimeFormat, decimals: number | null, origin: () => bigint): void {
+  Object.assign(timeFmt, { mode, decimals, origin });
+}
+
+/** A time `rel` ns from the start of the file, in the chosen format. */
+function fromStart(rel: bigint, stepNs: number): string {
+  const neg = rel < 0n ? '−' : '';
+  const a = Number(rel < 0n ? -rel : rel);
+  const auto = Math.max(0, Math.min(9, Math.ceil(-Math.log10(stepNs / NS))));
+  const d = timeFmt.decimals ?? auto;
+  switch (timeFmt.mode) {
+    case 's':
+      return `${neg}${(a / NS).toFixed(d)} s`;
+    case 'ms':
+      return `${neg}${(a / 1e6).toFixed(Math.max(0, d - 3))} ms`;
+    case 'h':
+      return `${neg}${(a / 3.6e12).toFixed(Math.max(1, d - 1))} h`;
+    case 'd':
+      return `${neg}${(a / 86.4e12).toFixed(Math.max(1, d - 1))} d`;
+    default: {
+      // clock and minutes-and-seconds: round first, so 59.97 s at one decimal is 1:00.0, not 0:60.0
+      const q = 10 ** d;
+      const t = d > 0 ? Math.round((a / NS) * q) / q : Math.floor(a / NS);
+      const [h, m, s] = [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60];
+      const ss = d > 0 ? s.toFixed(d).padStart(d + 3, '0') : pad(Math.floor(s));
+      return timeFmt.mode === 'minsec' ? `${neg}${h * 60 + m}:${ss}` : `${neg}${pad(h)}:${pad(m)}:${ss}`;
+    }
+  }
+}
+
 /** A time at the resolution `stepNs` calls for: a clock time for dates, seconds for relative recordings. */
 export function timeLabel(tNs: bigint, stepNs: number): string {
+  if (timeFmt.mode !== 'auto') return fromStart(tNs - timeFmt.origin(), stepNs);
   if (tNs < BigInt(RELATIVE_BEFORE) && tNs > -BigInt(RELATIVE_BEFORE)) {
     const s = Number(tNs) / NS;
     const digits = Math.max(0, Math.min(9, Math.ceil(-Math.log10(stepNs / NS))));

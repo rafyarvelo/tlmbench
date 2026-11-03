@@ -6,6 +6,7 @@
   import { type Mode, PANELS, setSetting, settings, toggleAllPanels } from '../settings.svelte';
   import { play, playActions } from '../play.svelte';
   import { moveTab, tabs } from '../tabs.svelte';
+  import { TIME_FORMATS } from '../axes';
   import { addPaneBelow, clearChannels, clearPanes, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
 
@@ -15,6 +16,8 @@
     ['cursor', 'Cursors', 'Click to place cursors A and B (C)'],
   ];
   let more = $state(false);
+  /** The menu on the time range: how times read. */
+  let timeMenu = $state<null | { x: number; y: number }>(null);
   /** The tab whose menu is open, and where; `naming` while Save as… asks for a name. */
   let tabMenu = $state<null | { key: number; x: number; y: number; naming?: 'saveas' | 'share' }>(null);
   /** The + menu: your layouts, and a new empty one (`naming`). */
@@ -50,6 +53,7 @@
   };
   function outside(e: PointerEvent) {
     if (more && !(e.target as HTMLElement).closest('.moremenu, #b-more')) more = false;
+    if (timeMenu && !(e.target as HTMLElement).closest('.timemenu, #rangeTxt')) timeMenu = null;
     if (tabMenu && !(e.target as HTMLElement).closest('.tabmenu, .tm')) tabMenu = null;
     if (addMenu && !(e.target as HTMLElement).closest('.addmenu, #wsTabNew')) addMenu = null;
   }
@@ -69,6 +73,11 @@
     }
     if ((tabMenu || addMenu) && e.key === 'Escape') {
       tabMenu = addMenu = null;
+      e.stopPropagation();
+      return;
+    }
+    if (timeMenu && e.key === 'Escape') {
+      timeMenu = null;
       e.stopPropagation();
       return;
     }
@@ -148,7 +157,7 @@
     >
   </div>
   <div class="rangebar">
-    <span class="num" id="rangeTxt">{ui.range}</span>
+    <button class="num rangebtn" id="rangeTxt" aria-haspopup="menu" aria-expanded={!!timeMenu} data-tip="Time format: click to change how times read" onclick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); timeMenu = timeMenu ? null : { x: Math.max(8, r.left), y: r.bottom + 4 }; }}>{ui.range}</button>
     <span class="muted" id="spanTxt">{ui.span}</span>
     <span class="num muted" id="hoverTxt">{ui.pointer}</span>
   </div>
@@ -272,6 +281,15 @@
         {/each}
         <p class="mnote">A layout says which channels sit in which panes, by name, so it works on any recording that has them. It opens on the file in front.</p>
       {/if}
+    </div>
+  {/if}
+  {#if timeMenu}
+    <div class="menu timemenu" role="menu" aria-label="Time format" style="left: {timeMenu.x}px; top: {timeMenu.y}px">
+      <div class="mgrp">Time format</div>
+      {#each TIME_FORMATS as [k, name, ex] (k)}
+        <button class="mi" role="menuitemradio" aria-checked={settings.timeFormat === k} data-tf={k} onclick={() => { setSetting('timeFormat', k); timeMenu = null; }}><span class="nm">{name}</span><span class="hint num">{ex}</span></button>
+      {/each}
+      <button class="mi sepi" role="menuitem" onclick={() => { timeMenu = null; setSetting('settingsAll', true); setSetting('leftPanel', 'settings'); }}><span class="nm">More in Settings…</span></button>
     </div>
   {/if}
   {#if more}
@@ -489,6 +507,25 @@
     overflow: hidden;
     white-space: nowrap;
     font-size: 13px;
+  }
+  .rangebtn {
+    padding: 1px 4px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-family: var(--font-data);
+  }
+  .rangebtn:hover {
+    background: var(--raised);
+  }
+  .timemenu {
+    z-index: 61;
+  }
+  .timemenu .mi[aria-checked='true'] .nm::after {
+    content: ' ✓';
+    color: var(--accent);
   }
   .rangebar #hoverTxt {
     min-width: 0;

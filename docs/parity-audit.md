@@ -23,8 +23,8 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 101 ·
-Partial 43 · Different 36 · Missing 98** (278 rows; counts as of Nov 3). Of the missing rows, 32 belong to Phase 3 (the shell port
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 103 ·
+Partial 45 · Different 36 · Missing 94** (278 rows; counts as of Nov 3). Of the missing rows, 28 belong to Phase 3 (the shell port
 that is already due), 31 to Phase 4 and 35 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
@@ -50,7 +50,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Ctrl+B / Ctrl+Alt+B | Left sidebar / Measure (`6796-6798`) | Same (`App.svelte:22-27`) | Ported | 3 | |
 | Measure auto-open | Opens when both cursors are placed, closes on clear unless opened by hand (`6672-6682`) | Same (`ui.svelte.ts:46`, `shell/Rail.svelte:10-18`) | Ported | 3 | |
 | Top bar order | Tabs · range · modes, Clear, Back, Fit, Play · all-panes view, Lock, Events · clear channels, remove panes · ⋯ (`6568-6588`) | Tabs · range · modes, Clear (only with cursors), Back, Fit, Play, ⋯ (`shell/TopBar.svelte:85-165`) | Partial | 3 (all-panes view: 4; Events: 5) | Groups 2 and 3 are missing; see the rows below. |
-| Time range text | Mono, 3 decimals (`00:00:00.000`), a button that opens the time-format menu (`6590-6597`) | Mono, auto decimals (`00:00:00.0`), plain text (`shell/TopBar.svelte:149-153`) | Partial | 3 | No menu and no time formats; see Settings. |
+| Time range text | Mono, 3 decimals (`00:00:00.000`), a button that opens the time-format menu (`6590-6597`) | Mono, a button that opens the time-format menu; decimals follow the zoom | Partial | 3 | Fixed Nov 3: the button and menu; the decimals are auto (3 in the prototype). |
 | Span text | Human duration: "2.00 h visible", "6.00 min visible" | Clock: "00:03:20.0 visible", "10.000 s visible" | Different | 3 | |
 | Pointer time | "pointer 01:13:08.5" in the range bar | "00:02:00.6" with no label (`shell/TopBar.svelte:152`) | Different | 3 | |
 | Mouse modes | Box zoom, Pan, Cursors as icons (`1558-1562`) | Same (`shell/TopBar.svelte:154-158`) | Ported | 3 | |
@@ -159,7 +159,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Item | Prototype | App | Status | Phase | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Y axes | A unit's axis on the left, a second unit on the right | Same (`axes.ts`) | Ported | 2 | |
-| Time labels | Bottom chart, or every chart (Settings › Time labels) (`1721`) | Bottom of the last row (`stack.svelte.ts:78`) | Partial | 3 | No setting. |
+| Time labels | Bottom chart, or every chart (Settings › Time labels) (`1721`) | Settings → Time labels: bottom chart only or every chart | Partial | 3 | Fixed Nov 3 except Automatic (every chart on a phone). |
 | Axis and scale… | Left and right axis: range (fit, ignore outliers, include zero, fixed), decimals, label, log; Reset axes, Done (`10750`) | Same fields (`shell/AxisDialog.svelte`) | Ported | 4 | Title "Pane 1 axes" against "Pane 1 settings · axes". Reset axes is a bordered button and Done is filled (fixed Nov 3). |
 | Ignore outliers clipping | Spikes clipped and marked | Same (`app.ts:741`) | Ported | 4 | |
 | Cursors | Click in Cursors mode (A, then B), drag either | Same (`app.ts:1711-1736`, `nearCursor 1684`) | Ported | 2 | |
@@ -185,7 +185,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Double-click fits | Setting dblFit | Same (`app.ts:1783`) | Ported | 3 | |
 | Glide | Fit, box zoom, Back glide; reduced motion respected (`glideView 5208`) | Same (`app.ts:556-578`) | Ported | 3 | |
 | Draw every sample | Setting: Automatic, up to 100k, up to 1M, Always (`1720`) | Decided by the core | Missing | 3 | |
-| Time format and decimals | Ten formats and fixed decimals (`1722-1723`, `fmtTime 2523`) | Clock with auto decimals (`axes.ts:46`) | Missing | 3 | |
+| Time format and decimals | Ten formats and fixed decimals (`1722-1723`, `fmtTime 2523`) | Seven formats (Automatic, Clock, Seconds, Milliseconds, Minutes and seconds, Hours, Days) and fixed decimals (`axes.ts` `timeLabel`) | Partial | 3 | Fixed Nov 3 except Weeks, Years, Samples and Wall clock. |
 | Channel colours | The least-used palette colour, first among its pane (`assignColor 2748`) | Fixed by channel index: `--trace-(ch % 8 + 1)` (`app.ts:175`) | Different | 3 | Two channels in one pane can share a colour in the app. |
 | Building hatch | — | Hatching and progress while the pyramid builds (`app.ts:789`) | Different | 2 | App only. |
 | Channel editor | Display (name shown, colour, decimals, unit label, scale, offset, missing values, valid range, Missing when), Limits, Value labels (`10643`) | — | Missing | 5 | The design doesn't phase display settings; they sit with missing values. |
@@ -275,9 +275,9 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Session status, Reset session | `1715` | — | Missing | 3 | |
 | Theme | `1719` | `shell/Settings.svelte:19` | Ported | 3 | |
 | Draw every sample | `1720` | — | Missing | 3 | |
-| Time labels | `1721` | — | Missing | 3 | |
-| Time format | `1722` | — | Missing | 3 | |
-| Time decimals | `1723` | — | Missing | 3 | |
+| Time labels | `1721` | Settings → Time labels | Ported | 3 | Fixed Nov 3 (Automatic for phones isn't offered). |
+| Time format | `1722` | Settings → Time format, and the menu on the time range | Partial | 3 | Fixed Nov 3; see the row above for the formats missing. |
+| Time decimals | `1723` | Settings → Time decimals | Ported | 3 | Fixed Nov 3. |
 | Group channels into categories | `1724` | Settings → Group channels into categories (Basic) | Ported | 3 | Fixed Nov 3. |
 | Overview above the panes | `1725` | `shell/Settings.svelte:20` | Ported | 3 | |
 | Left sidebar | `1726` | Not a setting; the rail toggles it (`settings.leftPanel`) | Partial | 3 | |
@@ -374,6 +374,9 @@ state's mode buttons still stay enabled with no file.
 Tooltips (Nov 3): one floating tip for every `data-tip` (700 ms, at once on keyboard focus, warm for 1.5 s), Short (first
 clause and shortcut, retired after three showings), Full or Off, and Reset tooltips. `t_tips` covers it. Look and feel
 item 44 is fixed except that the native `title` is no longer set at all.
+
+Time format (Nov 3): Settings → Time format, Time decimals and Time labels, and the menu on the time range (Automatic,
+Clock, Seconds, Milliseconds, Minutes and seconds, Hours, Days). `t_time` covers it.
 
 ## 9. Look and feel
 

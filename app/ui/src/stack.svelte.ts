@@ -3,6 +3,7 @@
 // column. app.ts draws into each pane's plot; PaneStack.svelte renders the panes, and these edits change them.
 
 import { PAD, value } from './axes';
+import { settings } from './settings.svelte';
 import { ui } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
@@ -95,6 +96,7 @@ export function columns(row: number[]): number[][] {
 
 /** Whether pane `i` is the bottom of its column in the last row: its plot carries the time labels. */
 export function labelled(i: number): boolean {
+  if (settings.timeAxis === 'every') return hasChart(i);
   const rs = rows();
   const last = rs[rs.length - 1] ?? [];
   return columns(last).some((c) => c[c.length - 1] === i);

@@ -20,14 +20,14 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   await p.click('#b-settings');
   check('Settings replaces Explorer', (await visible('#setPanel')) && !(await visible('#chans')));
   const basic = await rows();
-  check('Basic: the everyday settings', basic.length === 6 && basic.includes('Theme') && !basic.includes('Zoom speed'), basic);
+  check('Basic: the everyday settings', basic.length === 7 && basic.includes('Theme') && !basic.includes('Zoom speed'), basic);
   await p.click('#setPanel [data-sv="all"]');
-  check('All settings shows more', (await rows()).length === 12, await rows());
+  check('All settings shows more', (await rows()).length === 15, await rows());
   await p.click('#setPanel [data-sv="basic"]');
   await p.fill('#setPanel input[type=search]', 'wheel');
   check('search finds an All-only setting by its explanation', (await rows()).join() === 'Zoom speed', await rows());
   await p.fill('#setPanel input[type=search]', 'cursors');
-  check('search finds choices too', (await rows()).join() === 'Mouse mode,Cursors still work while locked,Open Measure when both cursors are placed', await rows());
+  check('search finds choices too', (await rows()).join() === 'Mouse mode,Cursors still work while locked,Time format,Open Measure when both cursors are placed', await rows());
   await p.fill('#setPanel input[type=search]', 'xyzzy');
   check('no match message', await visible('.setnone'));
   await p.fill('#setPanel input[type=search]', '');

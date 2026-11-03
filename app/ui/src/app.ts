@@ -12,7 +12,7 @@ import { tick } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
-import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, type YAxis } from './axes';
+import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTimeFormat, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { bindTips } from './tips';
@@ -2127,7 +2127,21 @@ Object.assign(actions, {
     setView(t - half, t + half, true);
   },
 });
+/** Points the time labels at the settings and the open file's start. */
+function applyTimeFormat(): void {
+  setTimeFormat(settings.timeFormat, settings.timeDecimals === 'auto' ? null : Number(settings.timeDecimals), () => state.file?.first ?? 0n);
+}
+applyTimeFormat();
+
 onSetting((key) => {
+  if (key === 'timeFormat' || key === 'timeDecimals' || key === 'timeAxis') {
+    applyTimeFormat();
+    updateRange();
+    void refreshMeasure();
+    renderPanes();
+    scheduleResize();
+    return;
+  }
   if (key === 'theme') {
     applyTheme();
     tokenCache = null;

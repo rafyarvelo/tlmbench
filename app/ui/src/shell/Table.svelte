@@ -8,6 +8,7 @@
 
   import { timeLabel } from '../axes';
   import { live } from '../live.svelte';
+  import { settings } from '../settings.svelte';
   import { fmtCh, learnDecimals, setTable, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
@@ -251,7 +252,7 @@
               {#each headers as { h, col }, c (col.id)}
                 {@const v = c >= 2 ? x?.v[c - 2] : undefined}
                 <span class:l={col.ch == null} class:gapcell={v != null && Number.isNaN(v)} style="width: {h.getSize()}px" role="gridcell"
-                  >{x == null ? '' : col.id === 'n' ? x.n.toLocaleString() : col.id === 't' ? timeLabel(x.t, step) : fmtCh(ui.view.file, col.ch ?? 0, v)}</span
+                  >{x == null ? '' : col.id === 'n' ? x.n.toLocaleString() : col.id === 't' ? (settings.timeFormat + settings.timeDecimals, timeLabel(x.t, step)) : fmtCh(ui.view.file, col.ch ?? 0, v)}</span
                 >
               {/each}
             </div>
