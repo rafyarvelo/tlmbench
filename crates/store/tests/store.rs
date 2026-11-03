@@ -35,6 +35,7 @@ fn recording(dir: &Path) -> PathBuf {
     let desc = Descriptor {
         sequence: None,
         files: Vec::new(),
+        packet_types: Vec::new(),
         packets: None,
         schema: SCHEMA,
         name: None,
@@ -278,6 +279,7 @@ fn gap_factors_apply_per_channel() {
     let desc = Descriptor {
         sequence: None,
         files: Vec::new(),
+        packet_types: Vec::new(),
         packets: None,
         schema: SCHEMA,
         name: None,

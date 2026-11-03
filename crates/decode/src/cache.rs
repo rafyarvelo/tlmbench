@@ -364,6 +364,7 @@ pub(crate) fn load(path: &Path, dir: &Path, m: Manifest, format: &str) -> Result
     let info = RecordingInfo {
         path: path.to_owned(),
         format: format.into(),
+        part: None,
         samples: m.rows,
         time: match &m.time {
             Some(name) => TimeSource::Column { name: name.clone() },

@@ -36,7 +36,7 @@ fuzz_target!(|data: &[u8]| {
     let path = tmp.path().join("f.bin");
     std::fs::write(&path, data).unwrap();
     let desc = Descriptor::parse(DESC).unwrap();
-    if let Ok(f) = PacketFile::open(&path, desc, "fuzz", &tmp.path().join("cache")) {
+    if let Ok(f) = PacketFile::open(&path, desc, None, "fuzz", &tmp.path().join("cache")) {
         let n = f.info().samples;
         if n > 0 {
             let (a, b) = (f.info().t_first.unwrap(), f.info().t_last.unwrap());

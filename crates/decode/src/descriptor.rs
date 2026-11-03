@@ -55,15 +55,68 @@ pub struct Descriptor {
     pub endian: Endian,
     #[serde(default)]
     pub header_size: u64,
+    /// Left out when `[[packet_types]]` give each type its own.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub record_size: u64,
     /// An integer field that counts records up by one each, for live sources: a jump is that many records lost.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence: Option<String>,
+    /// Left out (index) when `[[packet_types]]` give each type its own.
+    #[serde(default, skip_serializing_if = "TimeSpec::is_index")]
     pub time: TimeSpec,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<Field>,
     /// Records framed in packets; field offsets then count from the packet's start (its header, then the record).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub packets: Option<Packets>,
+    /// Packets of several kinds (`[packets] id` says which): each opens as its own recording, with its own record
+    /// layout.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub packet_types: Vec<PacketType>,
+}
+
+/// One kind of packet in a file with an `id` field: `[[packet_types]]`, each with the keys a descriptor has for its
+/// records.
+///
+/// ```toml
+/// [[packet_types]]
+/// id = 2
+/// name = "gps"
+/// record_size = 24
+/// time = { source = "field", field = "t", unit = "us" }
+/// fields = [ { name = "t", type = "u64", offset = 8 }, { name = "lat", type = "f64", offset = 16 } ]
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PacketType {
+    pub id: i64,
+    pub name: String,
+    pub record_size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<String>,
+    pub time: TimeSpec,
+    pub fields: Vec<Field>,
+}
+
+/// The packet field that says what kind a packet is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IdField {
+    pub offset: u64,
+    #[serde(rename = "type")]
+    pub dtype: DType,
+}
+
+/// One packet type of a descriptor, as a recording opens it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Part {
+    pub id: i64,
+    pub name: String,
+    pub field: IdField,
+    /// Every type's id and record size (to frame packets with no length field, and to know ids no type claims).
+    pub known: Vec<(i64, u64)>,
+    /// The first type: it counts the packets no type claims.
+    pub first: bool,
 }
 
 /// How records are framed in packets:
@@ -75,6 +128,7 @@ pub struct Descriptor {
 /// header_size = 8        # bytes before the payload, sync included
 /// length = { offset = 2, type = "u16", counts = "payload" }   # or counts = "packet" (header + payload + checksum);
 ///                        # without a length, each packet holds one record (fixed-size frames, uncompressed)
+/// id = { offset = 4, type = "u8" }   # with [[packet_types]]: each packet's type
 /// checksum = "crc16-ccitt"   # none | sum8 | crc16-ccitt | crc32, after the payload, over header and payload
 /// compression = "zstd"   # none | zstd | lz4 (frame) | gzip, of the payload
 /// ```
@@ -89,6 +143,9 @@ pub struct Packets {
     pub header_size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub length: Option<LengthField>,
+    /// The field holding a packet's type, matching a `[[packet_types]]` id (an integer inside the header).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<IdField>,
     #[serde(default)]
     pub checksum: Checksum,
     #[serde(default)]
@@ -109,6 +166,10 @@ pub struct LengthField {
 }
 
 fn is_zero_i64(v: &i64) -> bool {
+    *v == 0
+}
+
+fn is_zero_u64(v: &u64) -> bool {
     *v == 0
 }
 
@@ -182,7 +243,7 @@ pub enum Endian {
     Big,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "source", rename_all = "lowercase", deny_unknown_fields)]
 pub enum TimeSpec {
     Rate {
@@ -197,7 +258,14 @@ pub enum TimeSpec {
         #[serde(default)]
         t0_ns: i64,
     },
+    #[default]
     Index,
+}
+
+impl TimeSpec {
+    fn is_index(&self) -> bool {
+        *self == TimeSpec::Index
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -319,78 +387,94 @@ impl Descriptor {
         if self.schema != SCHEMA {
             return bad(format!("schema {} is not supported (this version reads schema {SCHEMA})", self.schema));
         }
-        if self.record_size == 0 || self.record_size > 1 << 20 {
-            return bad(format!("record_size {} must be between 1 and 1048576 bytes", self.record_size));
-        }
-        // in a packet file a record is read as the packet header, then the record
-        let mut extent = self.record_size;
-        if let Some(p) = &self.packets {
-            let sync = p.sync_bytes()?;
-            if p.header_size > 1 << 16 || (sync.len() as u64) > p.header_size {
-                return bad(format!(
-                    "packets.header_size {} must hold the sync word and be at most 65536",
-                    p.header_size
-                ));
-            }
-            match &p.length {
-                Some(l)
-                    if l.dtype.is_float() || l.offset.checked_add(l.dtype.size()).is_none_or(|e| e > p.header_size) =>
-                {
+        let header = match &self.packets {
+            None => 0,
+            Some(p) => {
+                let sync = p.sync_bytes()?;
+                if p.header_size > 1 << 16 || (sync.len() as u64) > p.header_size {
                     return bad(format!(
-                        "packets.length must be an integer field inside the {}-byte header",
+                        "packets.header_size {} must hold the sync word and be at most 65536",
                         p.header_size
                     ));
                 }
-                None if p.compression != Compression::None => {
-                    return bad("packets.compression needs packets.length: compressed payloads vary in size".into());
+                let inside = |offset: u64, dtype: DType| {
+                    !dtype.is_float() && offset.checked_add(dtype.size()).is_some_and(|e| e <= p.header_size)
+                };
+                match &p.length {
+                    Some(l) if !inside(l.offset, l.dtype) => {
+                        return bad(format!(
+                            "packets.length must be an integer field inside the {}-byte header",
+                            p.header_size
+                        ));
+                    }
+                    None if p.compression != Compression::None => {
+                        return bad("packets.compression needs packets.length: compressed payloads vary in size".into());
+                    }
+                    _ => {}
                 }
-                _ => {}
+                if let Some(id) = &p.id
+                    && !inside(id.offset, id.dtype)
+                {
+                    return bad(format!(
+                        "packets.id must be an integer field inside the {}-byte header",
+                        p.header_size
+                    ));
+                }
+                p.header_size
             }
-            extent += p.header_size;
+        };
+        if self.packet_types.is_empty() {
+            if self.packets.as_ref().is_some_and(|p| p.id.is_some()) {
+                return bad("packets.id needs [[packet_types]]".into());
+            }
+            return validate_layout(self.record_size, header, &self.fields, &self.time, self.sequence.as_deref(), "");
         }
-        if self.fields.is_empty() {
-            return bad("no fields".into());
+        if self.packets.as_ref().is_none_or(|p| p.id.is_none()) {
+            return bad("[[packet_types]] need [packets] with an id field".into());
         }
-        let mut names = HashSet::new();
-        for f in &self.fields {
-            if f.name.trim().is_empty() {
-                return bad("a field has an empty name".into());
-            }
-            if !names.insert(f.name.as_str()) {
-                return bad(format!("field {:?} appears twice", f.name));
-            }
-            if f.offset.checked_add(f.dtype.size()).is_none_or(|end| end > extent) {
-                let within = if self.packets.is_some() { "packet header and record" } else { "record" };
-                return bad(format!(
-                    "field {:?} ({} at offset {}) runs past the {extent}-byte {within}",
-                    f.name,
-                    f.dtype.name(),
-                    f.offset,
-                ));
-            }
-            if !f.scale.is_finite() || f.scale == 0.0 || !f.value_offset.is_finite() {
-                return bad(format!("field {:?}: scale must be finite and non-zero, value_offset finite", f.name));
-            }
+        if self.record_size != 0 || !self.fields.is_empty() || self.sequence.is_some() || !self.time.is_index() {
+            return bad("with [[packet_types]], record_size, time, sequence and fields go in each type".into());
         }
-        if let Some(seq) = &self.sequence {
-            match self.fields.iter().find(|f| &f.name == seq) {
-                None => return bad(format!("sequence {seq:?} is not one of the fields")),
-                Some(f) if f.dtype.is_float() => return bad(format!("sequence {seq:?} must be an integer type")),
-                Some(_) => {}
+        let (mut ids, mut names) = (HashSet::new(), HashSet::new());
+        for t in &self.packet_types {
+            if t.name.trim().is_empty() {
+                return bad(format!("the packet type with id {} has no name", t.id));
             }
-        }
-        match &self.time {
-            TimeSpec::Rate { rate_hz, .. } if !(rate_hz.is_finite() && *rate_hz > 0.0) => {
-                bad(format!("time.rate_hz {rate_hz} must be a positive number"))
+            if !ids.insert(t.id) {
+                return bad(format!("packet id {} appears twice", t.id));
             }
-            TimeSpec::Field { field, .. } => match self.fields.iter().find(|f| &f.name == field) {
-                None => bad(format!("time.field {field:?} is not one of the fields")),
-                Some(f) if f.dtype.is_float() => bad(format!("time.field {field:?} must be an integer type")),
-                Some(_) if self.fields.len() == 1 => bad("the only field is the time field: no channels".into()),
-                Some(_) => Ok(()),
-            },
-            _ => Ok(()),
+            if !names.insert(t.name.as_str()) {
+                return bad(format!("packet type {:?} appears twice", t.name));
+            }
+            validate_layout(
+                t.record_size,
+                header,
+                &t.fields,
+                &t.time,
+                t.sequence.as_deref(),
+                &format!("{:?}: ", t.name),
+            )?;
         }
+        Ok(())
+    }
+
+    /// One descriptor per packet type, each with the type's own record layout and the part that picks its packets
+    /// (a descriptor without `[[packet_types]]` is its own single part).
+    pub fn parts(&self) -> Vec<(Descriptor, Option<Part>)> {
+        let Some(field) = self.packets.as_ref().and_then(|p| p.id) else { return vec![(self.clone(), None)] };
+        let known: Vec<(i64, u64)> = self.packet_types.iter().map(|t| (t.id, t.record_size)).collect();
+        self.packet_types
+            .iter()
+            .enumerate()
+            .map(|(k, t)| {
+                let mut d = self.clone();
+                d.packet_types.clear();
+                (d.record_size, d.time, d.sequence, d.fields) =
+                    (t.record_size, t.time.clone(), t.sequence.clone(), t.fields.clone());
+                let part = Part { id: t.id, name: t.name.clone(), field, known: known.clone(), first: k == 0 };
+                (d, Some(part))
+            })
+            .collect()
     }
 
     /// The fields that are channels (all but the time field).
@@ -400,6 +484,66 @@ impl Descriptor {
             _ => None,
         };
         self.fields.iter().enumerate().filter(move |(_, f)| Some(f.name.as_str()) != time)
+    }
+}
+
+/// Checks one record layout: `header` bytes (a packet's) then `record_size` bytes holding `fields`.
+fn validate_layout(
+    record_size: u64,
+    header: u64,
+    fields: &[Field],
+    time: &TimeSpec,
+    sequence: Option<&str>,
+    who: &str,
+) -> Result<()> {
+    let bad = |msg: String| Err(Error::Descriptor(format!("{who}{msg}")));
+    if record_size == 0 || record_size > 1 << 20 {
+        return bad(format!("record_size {record_size} must be between 1 and 1048576 bytes"));
+    }
+    // in a packet file a record is read as the packet header, then the record
+    let extent = record_size + header;
+    if fields.is_empty() {
+        return bad("no fields".into());
+    }
+    let mut names = HashSet::new();
+    for f in fields {
+        if f.name.trim().is_empty() {
+            return bad("a field has an empty name".into());
+        }
+        if !names.insert(f.name.as_str()) {
+            return bad(format!("field {:?} appears twice", f.name));
+        }
+        if f.offset.checked_add(f.dtype.size()).is_none_or(|end| end > extent) {
+            let within = if header > 0 { "packet header and record" } else { "record" };
+            return bad(format!(
+                "field {:?} ({} at offset {}) runs past the {extent}-byte {within}",
+                f.name,
+                f.dtype.name(),
+                f.offset,
+            ));
+        }
+        if !f.scale.is_finite() || f.scale == 0.0 || !f.value_offset.is_finite() {
+            return bad(format!("field {:?}: scale must be finite and non-zero, value_offset finite", f.name));
+        }
+    }
+    if let Some(seq) = sequence {
+        match fields.iter().find(|f| f.name == seq) {
+            None => return bad(format!("sequence {seq:?} is not one of the fields")),
+            Some(f) if f.dtype.is_float() => return bad(format!("sequence {seq:?} must be an integer type")),
+            Some(_) => {}
+        }
+    }
+    match time {
+        TimeSpec::Rate { rate_hz, .. } if !(rate_hz.is_finite() && *rate_hz > 0.0) => {
+            bad(format!("time.rate_hz {rate_hz} must be a positive number"))
+        }
+        TimeSpec::Field { field, .. } => match fields.iter().find(|f| &f.name == field) {
+            None => bad(format!("time.field {field:?} is not one of the fields")),
+            Some(f) if f.dtype.is_float() => bad(format!("time.field {field:?} must be an integer type")),
+            Some(_) if fields.len() == 1 => bad("the only field is the time field: no channels".into()),
+            Some(_) => Ok(()),
+        },
+        _ => Ok(()),
     }
 }
 
@@ -484,5 +628,36 @@ mod tests {
                 Descriptor::parse(&(EXAMPLE.to_owned() + &PACKETS.replacen(from, to, 1))).unwrap_err().to_string();
             assert!(err.contains(expect), "{to}: {err}");
         }
+    }
+
+    #[test]
+    fn packet_types_validate_and_split() {
+        const TYPES: &str = "schema = 1\n[packets]\nsync = \"EB90\"\nheader_size = 8\nid = { offset = 4, type = \"u8\" }\n\
+            [[packet_types]]\nid = 1\nname = \"a\"\nrecord_size = 4\ntime = { source = \"index\" }\n\
+            fields = [ { name = \"x\", type = \"u32\", offset = 8 } ]\n\
+            [[packet_types]]\nid = 2\nname = \"b\"\nrecord_size = 2\n\
+            time = { source = \"rate\", rate_hz = 10.0 }\nfields = [ { name = \"y\", type = \"u16\", offset = 8 } ]\n";
+        let d = Descriptor::parse(TYPES).unwrap();
+        assert_eq!(Descriptor::parse(&d.to_toml()).unwrap(), d);
+        let parts = d.parts();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[1].0.record_size, 2);
+        assert_eq!(parts[1].1.as_ref().unwrap().known, [(1, 4), (2, 2)]);
+        assert!(parts[0].1.as_ref().unwrap().first && !parts[1].1.as_ref().unwrap().first);
+        for (from, to, expect) in [
+            ("id = 2", "id = 1", "appears twice"),
+            ("name = \"b\"", "name = \"a\"", "\"a\" appears twice"),
+            ("offset = 8 } ]\n[[", "offset = 10 } ]\n[[", "\"a\": field \"x\""),
+            ("id = { offset = 4, type = \"u8\" }", "id = { offset = 8, type = \"u8\" }", "packets.id must be"),
+            ("schema = 1\n", "schema = 1\nrecord_size = 4\n", "go in each type"),
+            ("id = { offset = 4, type = \"u8\" }\n", "", "need [packets] with an id"),
+        ] {
+            let err = Descriptor::parse(&TYPES.replacen(from, to, 1)).unwrap_err().to_string();
+            assert!(err.contains(expect), "{to}: {err}");
+        }
+        // an id without types
+        let err =
+            Descriptor::parse(&(EXAMPLE.to_owned() + PACKETS + "id = { offset = 4, type = \"u8\" }\n")).unwrap_err();
+        assert!(err.to_string().contains("needs [[packet_types]]"), "{err}");
     }
 }

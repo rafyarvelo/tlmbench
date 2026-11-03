@@ -28,7 +28,7 @@ use tlmbench_core::{
 
 use crate::bytes::{self, Bytes};
 use crate::cache::Source;
-use crate::descriptor::{Checksum, Compression, Counts, DType, Descriptor, Endian, Packets, TimeSpec};
+use crate::descriptor::{Checksum, Compression, Counts, DType, Descriptor, Endian, Packets, Part, TimeSpec};
 use crate::error::{Result, format_err, io_err};
 use crate::fixed::gather_tile;
 use crate::strided::Pod;
@@ -84,6 +84,8 @@ pub struct PacketFile {
     pub skipped_bytes: u64,
     decoded: Mutex<Vec<(usize, Arc<Vec<u8>>)>>,
     time_index: OnceLock<TimeIndex>,
+    /// The packet type this recording holds, in a file with several.
+    part: Option<Part>,
 }
 
 fn packets_of(desc: &Descriptor) -> &Packets {
@@ -202,13 +204,26 @@ struct Framed {
 struct Framing {
     packets: Vec<Framed>,
     bad: usize,
+    /// Bytes of good packets of other types.
+    other_bytes: u64,
 }
 
-/// Finds the packets in `data` from `start`: their offsets and stored payload lengths, and how many were skipped.
-fn frame(data: &[u8], start: usize, p: &Packets, record_size: u64, sync: &[u8], big: bool) -> Framing {
+/// Finds the packets of `part` (every packet without one) in `data` from `start`: their offsets and stored payload
+/// lengths, and how many were skipped. Without a length field a packet holds one record, of the type's size.
+fn frame(
+    data: &[u8],
+    start: usize,
+    p: &Packets,
+    record_size: u64,
+    part: Option<&Part>,
+    sync: &[u8],
+    big: bool,
+) -> Framing {
     let hs = p.header_size as usize;
     let cks = p.checksum.size() as usize;
     let finder = (!sync.is_empty()).then(|| memchr::memmem::Finder::new(sync));
+    // damaged packets are counted once, by the first type
+    let counts = part.is_none_or(|p| p.first);
     let mut out = Framing::default();
     let mut pos = start;
     while pos < data.len() {
@@ -221,9 +236,11 @@ fn frame(data: &[u8], start: usize, p: &Packets, record_size: u64, sync: &[u8], 
         if pos + hs > data.len() {
             break; // a partial packet at the end
         }
+        let id = part.map(|q| read_int(&data[pos + q.field.offset as usize..], q.field.dtype, big));
+        let known = id.and_then(|id| part?.known.iter().find(|k| k.0 == id)).map(|k| k.1);
         // without a length field, each packet holds one record
         let stored = match &p.length {
-            None => record_size as i64,
+            None => known.unwrap_or(record_size) as i64,
             Some(l) => {
                 let raw = read_int(&data[pos + l.offset as usize..], l.dtype, big).saturating_add(l.adjust);
                 match l.counts {
@@ -232,7 +249,9 @@ fn frame(data: &[u8], start: usize, p: &Packets, record_size: u64, sync: &[u8], 
                 }
             }
         };
-        let end = (0..=MAX_PAYLOAD as i64).contains(&stored).then(|| pos + hs + cks + stored as usize);
+        // an id no type claims can't be framed by size, but can by its length field
+        let unframed = p.length.is_none() && part.is_some() && known.is_none();
+        let end = (!unframed && (0..=MAX_PAYLOAD as i64).contains(&stored)).then(|| pos + hs + cks + stored as usize);
         let good = match end {
             Some(e) if e <= data.len() => {
                 let body = pos + hs + stored as usize;
@@ -243,11 +262,21 @@ fn frame(data: &[u8], start: usize, p: &Packets, record_size: u64, sync: &[u8], 
         };
         match (good, end) {
             (true, Some(e)) => {
-                out.packets.push(Framed { offset: pos as u64, stored: stored as u64 });
+                match (part, known) {
+                    (Some(q), Some(_)) if id == Some(q.id) => {
+                        out.packets.push(Framed { offset: pos as u64, stored: stored as u64 })
+                    }
+                    (Some(_), Some(_)) => out.other_bytes += (e - pos) as u64,
+                    (Some(_), None) => {
+                        out.bad += usize::from(counts);
+                        out.other_bytes += (e - pos) as u64;
+                    }
+                    (None, _) => out.packets.push(Framed { offset: pos as u64, stored: stored as u64 }),
+                }
                 pos = e;
             }
             _ => {
-                out.bad += 1;
+                out.bad += usize::from(counts);
                 if finder.is_none() {
                     break; // nothing to find the next packet by
                 }
@@ -260,9 +289,12 @@ fn frame(data: &[u8], start: usize, p: &Packets, record_size: u64, sync: &[u8], 
 
 impl PacketFile {
     /// Opens a packet file laid out by `desc` (which has `[packets]`), building its packet index under `root` first
-    /// if needed.
-    pub fn open(path: &Path, desc: Descriptor, format: &str, root: &Path) -> Result<Self> {
-        desc.validate().map_err(|e| format_err(path, e.to_string()))?;
+    /// if needed. A file with `[[packet_types]]` opens once per type: `desc` is the type's own layout (see
+    /// [`Descriptor::parts`]) and `part` picks its packets.
+    pub fn open(path: &Path, desc: Descriptor, part: Option<Part>, format: &str, root: &Path) -> Result<Self> {
+        if part.is_none() {
+            desc.validate().map_err(|e| format_err(path, e.to_string()))?;
+        }
         if desc.packets.is_none() {
             return Err(format_err(path, "the descriptor has no [packets] table"));
         }
@@ -270,6 +302,9 @@ impl PacketFile {
         let mut key = blake3::Hasher::new();
         key.update(source.fingerprint()?.as_bytes());
         key.update(desc.to_toml().as_bytes());
+        if let Some(q) = &part {
+            key.update(format!("\npart {}", q.id).as_bytes());
+        }
         let dir = root.join("packets").join(&key.finalize().to_hex()[..32]);
         let mut me = Self {
             bytes: bytes::map(path)?,
@@ -279,6 +314,7 @@ impl PacketFile {
             info: RecordingInfo {
                 path: path.to_owned(),
                 format: format.to_owned(),
+                part: part.as_ref().map(|q| q.name.clone()),
                 samples: 0,
                 time: TimeSource::Index,
                 t_first: None,
@@ -291,6 +327,7 @@ impl PacketFile {
             decoded: Mutex::default(),
             time_index: OnceLock::new(),
             desc,
+            part,
         };
         let manifest = match read_index(&dir) {
             Some((m, index)) if m.source_size == source.len => {
@@ -391,7 +428,9 @@ impl PacketFile {
         let path = self.info.path.clone();
         let p = packets_of(&self.desc).clone();
         let sync = p.sync_bytes().map_err(|e| format_err(&path, e.to_string()))?;
-        let framing = frame(&self.bytes, self.desc.header_size as usize, &p, self.desc.record_size, &sync, self.big());
+        let part = self.part.as_ref();
+        let framing =
+            frame(&self.bytes, self.desc.header_size as usize, &p, self.desc.record_size, part, &sync, self.big());
         let mut index = Vec::with_capacity(framing.packets.len());
         let mut bad = framing.bad;
         let (mut t_first, mut t_last) = (None, None::<i64>);
@@ -428,6 +467,7 @@ impl PacketFile {
                 index.push(Entry { offset: f.offset, stored: f.stored as u32, records });
             }
         }
+        let other_bytes = framing.other_bytes;
         let used: u64 = index.iter().map(|e| p.header_size + p.checksum.size() + u64::from(e.stored)).sum::<u64>();
         let records: usize = index.iter().map(|e| e.records as usize).sum();
         let manifest = IndexManifest {
@@ -436,7 +476,7 @@ impl PacketFile {
             packets: index.len(),
             records,
             bad_packets: bad,
-            skipped_bytes: source_size.saturating_sub(used),
+            skipped_bytes: source_size.saturating_sub(used + other_bytes),
             t_first,
             t_last,
         };
@@ -724,6 +764,9 @@ impl Channels for PacketFile {
 
     fn layout_id(&self) -> Vec<u8> {
         let mut id = format!("packets\n{}\n", self.info.format).into_bytes();
+        if let Some(q) = &self.part {
+            id.extend(format!("part {}\n", q.id).into_bytes());
+        }
         id.extend(self.desc.to_toml().into_bytes());
         id
     }

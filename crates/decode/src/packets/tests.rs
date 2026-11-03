@@ -27,9 +27,11 @@ fn desc(compression: Compression, checksum: Checksum) -> Descriptor {
         time: TimeSpec::Field { field: "t".into(), unit: TimeUnit::Us, t0_ns: 0 },
         fields: vec![field("count", DType::U32, 4), field("t", DType::U64, 12), field("v", DType::F32, 20), w],
         files: Vec::new(),
+        packet_types: Vec::new(),
         packets: Some(Packets {
             sync: Some("EB90".into()),
             header_size: 12,
+            id: None,
             length: Some(LengthField { offset: 2, dtype: DType::U16, counts: Counts::Payload, adjust: 0 }),
             checksum,
             compression,
@@ -59,7 +61,7 @@ fn bytes(d: &Descriptor, packets: usize, per: usize) -> Vec<u8> {
 fn open(dir: &Path, name: &str, d: &Descriptor, data: &[u8]) -> PacketFile {
     let path = dir.join(name);
     fs::write(&path, data).unwrap();
-    PacketFile::open(&path, d.clone(), "bench", &dir.join("cache")).unwrap()
+    PacketFile::open(&path, d.clone(), None, "bench", &dir.join("cache")).unwrap()
 }
 
 #[test]
@@ -131,7 +133,7 @@ fn the_index_is_built_once() {
     let dirs: Vec<_> = fs::read_dir(tmp.path().join("cache/packets")).unwrap().map(|e| e.unwrap().path()).collect();
     assert_eq!(dirs.len(), 1);
     let before = fs::metadata(dirs[0].join("index.bin")).unwrap().modified().unwrap();
-    let b = PacketFile::open(&tmp.path().join("once.bin"), d, "bench", &tmp.path().join("cache")).unwrap();
+    let b = PacketFile::open(&tmp.path().join("once.bin"), d, None, "bench", &tmp.path().join("cache")).unwrap();
     assert_eq!(a.info(), b.info());
     assert_eq!(fs::metadata(dirs[0].join("index.bin")).unwrap().modified().unwrap(), before);
 }
@@ -145,7 +147,7 @@ fn backwards_time_is_an_error() {
     data.extend_from_within(..second); // packet 0 again, after packet 1
     let path = tmp.path().join("back.bin");
     fs::write(&path, &data).unwrap();
-    let err = PacketFile::open(&path, d, "bench", &tmp.path().join("cache")).unwrap_err().to_string();
+    let err = PacketFile::open(&path, d, None, "bench", &tmp.path().join("cache")).unwrap_err().to_string();
     assert!(err.contains("time goes backwards"), "{err}");
     assert!(
         !tmp.path().join("cache/packets").exists()
@@ -210,4 +212,131 @@ fn fixed_frames_without_a_length_field() {
     assert_eq!(f.info().t_first, Some(120_000_000_000));
     assert_eq!((f.value_at(0, 9, &h), f.value_at(0, 10, &h)), (9.0, 11.0)); // frame 10 is gone
     assert!((f.value_at(1, 0, &h) - 24.0).abs() < 1e-9);
+}
+
+const TYPES: &str = r#"
+    schema = 1
+    name = "flight"
+    endian = "big"
+    [packets]
+    sync = "EB90"
+    header_size = 8
+    length = { offset = 2, type = "u16" }
+    id = { offset = 4, type = "u8" }
+    checksum = "crc16-ccitt"
+    compression = "zstd"
+    [[packet_types]]
+    id = 1
+    name = "gps"
+    record_size = 12
+    time = { source = "field", field = "t", unit = "us" }
+    fields = [ { name = "t", type = "u64", offset = 8 }, { name = "lat", type = "f32", offset = 16 } ]
+    [[packet_types]]
+    id = 2
+    name = "imu"
+    record_size = 14
+    time = { source = "rate", rate_hz = 1000.0 }
+    fields = [ { name = "ax", type = "i16", offset = 8 }, { name = "ay", type = "i16", offset = 10 } ]
+"#;
+
+/// Packets of both types alternating, then one with an id no type claims: gps record i (t = i s, lat = i),
+/// imu record i (ax = i, ay = -i).
+fn flight(d: &Descriptor, rounds: usize) -> Vec<u8> {
+    let p = d.packets.as_ref().unwrap();
+    let packet = |id: u8, payload: &[u8]| {
+        let mut header = vec![0u8; 8];
+        header[4] = id;
+        encode_packet(p, true, &header, payload).unwrap()
+    };
+    let mut out = Vec::new();
+    for r in 0..rounds {
+        let gps: Vec<u8> = (0..10u64)
+            .flat_map(|j| {
+                let i = (r * 10) as u64 + j;
+                [(i * 1_000_000).to_be_bytes().to_vec(), (i as f32).to_be_bytes().to_vec()].concat()
+            })
+            .collect();
+        let imu: Vec<u8> = (0..20i16)
+            .flat_map(|j| {
+                let i = r as i16 * 20 + j;
+                [0u8; 0].into_iter().chain(i.to_be_bytes()).chain((-i).to_be_bytes()).chain([0; 10])
+            })
+            .collect();
+        out.extend(packet(1, &gps));
+        out.extend(packet(2, &imu));
+        if r == 1 {
+            out.extend(packet(9, &[1, 2, 3]));
+        }
+    }
+    out
+}
+
+#[test]
+fn packet_types_open_one_recording_each() {
+    let tmp = tempfile::tempdir().unwrap();
+    let d = Descriptor::parse(TYPES).unwrap();
+    let data = flight(&d, 5);
+    let (path, toml) = (tmp.path().join("flight.bin"), tmp.path().join("flight.toml"));
+    fs::write(&path, &data).unwrap();
+    fs::write(&toml, TYPES).unwrap();
+    let opts = crate::OpenOptions { descriptor: Some(toml.clone()), part: None, cache_dir: Some(tmp.path().join("c")) };
+    let all = crate::open_all(&path, &opts).unwrap();
+    let infos: Vec<_> = all.iter().map(|r| (r.info().part.clone().unwrap(), r.info().samples)).collect();
+    assert_eq!(infos, [("gps".to_owned(), 50), ("imu".to_owned(), 100)]);
+    let h = Held::default();
+    assert_eq!(all[0].value_at(0, 33, &h), 33.0);
+    assert_eq!(all[0].time_at(33), 33_000_000_000);
+    assert_eq!((all[1].value_at(0, 77, &h), all[1].value_at(1, 77, &h)), (77.0, -77.0));
+    assert_eq!(all[1].info().channels.len(), 2);
+    // one type by name; without one, a file with several refuses to open
+    let imu = crate::open(&path, &crate::OpenOptions { part: Some("imu".into()), ..opts.clone() }).unwrap();
+    assert_eq!(imu.info().samples, 100);
+    let err = crate::open(&path, &opts).err().unwrap().to_string();
+    assert!(err.contains("2 packet types (gps, imu)"), "{err}");
+    let err = crate::open(&path, &crate::OpenOptions { part: Some("nope".into()), ..opts }).err().unwrap().to_string();
+    assert!(err.contains("no packet type \"nope\""), "{err}");
+}
+
+#[test]
+fn packet_types_split_the_skipped_counts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let d = Descriptor::parse(TYPES).unwrap();
+    let mut data = flight(&d, 3);
+    data.extend_from_slice(b"tail");
+    let path = tmp.path().join("flight.bin");
+    fs::write(&path, &data).unwrap();
+    let parts = d.parts();
+    let open = |k: usize| {
+        let (pd, part) = parts[k].clone();
+        PacketFile::open(&path, pd, part, "flight", &tmp.path().join("cache")).unwrap()
+    };
+    let (gps, imu) = (open(0), open(1));
+    // the unknown-id packet is bad once (the first type counts it); other types' bytes are not skipped bytes
+    assert_eq!((gps.bad_packets, imu.bad_packets), (1, 0));
+    assert_eq!(gps.skipped_bytes, imu.skipped_bytes);
+    assert!(gps.skipped_bytes < 40, "{}", gps.skipped_bytes);
+    // each type has its own index
+    assert_eq!(fs::read_dir(tmp.path().join("cache/packets")).unwrap().count(), 2);
+}
+
+#[test]
+fn packet_types_without_a_length_frame_by_the_types_size() {
+    let tmp = tempfile::tempdir().unwrap();
+    let text = TYPES.replace("    length = { offset = 2, type = \"u16\" }\n", "").replace("\"zstd\"", "\"none\"");
+    let d = Descriptor::parse(&text).unwrap();
+    let p = d.packets.as_ref().unwrap();
+    let mut data = Vec::new();
+    for i in 0..6u8 {
+        let (id, size) = if i % 2 == 0 { (1u8, 12) } else { (2, 14) };
+        let mut header = vec![0u8; 8];
+        header[4] = id;
+        data.extend(encode_packet(p, true, &header, &vec![i; size]).unwrap());
+    }
+    let path = tmp.path().join("fixed.bin");
+    fs::write(&path, &data).unwrap();
+    for (k, want) in [3, 3].into_iter().enumerate() {
+        let (pd, part) = d.parts()[k].clone();
+        let f = PacketFile::open(&path, pd, part, "flight", &tmp.path().join("cache")).unwrap();
+        assert_eq!((f.info().samples, f.bad_packets, f.skipped_bytes), (want, 0, 0), "type {k}");
+    }
 }

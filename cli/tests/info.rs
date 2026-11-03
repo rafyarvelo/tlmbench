@@ -41,6 +41,7 @@ fn reference_file_text_output() {
     let desc = Descriptor {
         sequence: None,
         files: Vec::new(),
+        packet_types: Vec::new(),
         packets: None,
         schema: SCHEMA,
         name: None,

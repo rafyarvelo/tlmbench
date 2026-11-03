@@ -67,13 +67,16 @@ read as header then record). Done and pushed:
   `--time`, `--raw`, channel globs, a span, `<name>.channels.csv`. The CSV reader skips leading `#` lines (Proposed).
 - Packet files: `[packets]` (sync, optional length, checksum, zstd/lz4/gzip), a packet index in the cache, packets
   decoded on demand (`crates/decode/src/packets.rs`, fuzz target `packets`); `tlmbench-gen --format zstd,lz4,gzip`.
+- `[[packet_types]]` (`[packets] id`, one recording per type; `crates/decode/src/packets.rs`, `Store::open_all`,
+  CLI `--type`, `convert` writes `<name>.<type>.<ext>`). The prototype's form doesn't know types yet.
 - The descriptor form, drafted in the prototype (`t_descriptor`) for the owner's review; three Proposed decisions
   (the form, `files = [...]` name patterns, packets without a length).
 
 Next, in order:
 
-1. `[[packet_types]]` (an id field picks the type): one recording per type, opened as if separate files on one clock
-   (store, CLI `info`/`convert` per type, the app's slots).
+1. The app's slots for packet types (one recording per type, `flight.bin · gps`): with the descriptor port in step 2,
+   since the app doesn't open descriptor files yet. Done in the core: `[[packet_types]]`, `Store::open_all`/`open_part`,
+   CLI `--type`, `info` and `convert` per type.
 2. Once the owner accepts the form: port it to the app (descriptor lookup by `files` pattern in the app cache and
    `.tlmbench/decoders/`, the form on an unclaimed binary file, Open through the descriptor); the CLI finds
    descriptors the same way when `--descriptor` is left out.

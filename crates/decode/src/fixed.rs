@@ -96,6 +96,7 @@ impl FixedWidth {
             info: RecordingInfo {
                 path: path.to_owned(),
                 format: format.to_owned(),
+                part: None,
                 samples: records,
                 time: TimeSource::Index,
                 t_first: None,
@@ -519,6 +520,7 @@ mod tests {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
+            packet_types: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -544,6 +546,7 @@ mod tests {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
+            packet_types: Vec::new(),
             packets: None,
             schema: 1,
             name: Some("bench".into()),
@@ -579,6 +582,7 @@ mod tests {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
+            packet_types: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -614,6 +618,7 @@ mod tests {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
+            packet_types: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -661,6 +666,7 @@ mod tests {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
+            packet_types: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -701,6 +707,7 @@ mod tests {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
+            packet_types: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -719,6 +726,7 @@ mod tests {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
+            packet_types: Vec::new(),
             packets: None,
             schema: 1,
             name: None,
@@ -743,6 +751,7 @@ mod tests {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
+            packet_types: Vec::new(),
             packets: None,
             schema: 1,
             name: None,

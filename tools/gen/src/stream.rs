@@ -34,6 +34,7 @@ pub fn descriptor(channels: usize, rate: u64) -> Descriptor {
     Descriptor {
         sequence: Some("seq".into()),
         files: Vec::new(),
+        packet_types: Vec::new(),
         packets: None,
         schema: SCHEMA,
         name: Some("tlmbench-gen live sender".into()),

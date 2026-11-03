@@ -35,6 +35,9 @@ pub struct RecordingInfo {
     pub path: PathBuf,
     /// Format name, e.g. "tlmbench reference" or "CSV".
     pub format: String,
+    /// The packet type, for a file that opens as one recording per type (`flight.bin · gps`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub part: Option<String>,
     pub samples: usize,
     pub time: TimeSource,
     /// First and last sample times (None when there are no samples).

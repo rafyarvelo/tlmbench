@@ -37,6 +37,7 @@ fn write(path: &std::path::Path, n: usize) {
     let desc = Descriptor {
         sequence: None,
         files: Vec::new(),
+        packet_types: Vec::new(),
         packets: None,
         schema: SCHEMA,
         name: None,

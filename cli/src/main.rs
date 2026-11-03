@@ -30,6 +30,9 @@ struct Common {
     /// Format descriptor (TOML) for fixed-width files without one
     #[arg(long, global = true)]
     descriptor: Option<PathBuf>,
+    /// The packet type to read, for a packet file with several (default: all in `info` and `convert`)
+    #[arg(long = "type", global = true)]
+    part: Option<String>,
     /// Cache folder (default: $TLMBENCH_CACHE, else the OS cache dir)
     #[arg(long, global = true)]
     cache: Option<PathBuf>,
@@ -306,18 +309,20 @@ fn info(files: &[PathBuf], json: bool, common: &Common) -> Result<(), Fail> {
     let store = store(common);
     let mut worst = None;
     for (k, path) in files.iter().enumerate() {
-        match store.open(path, common.descriptor.as_deref()) {
-            Ok(o) => {
-                let info = o.recording().info();
-                let gaps = gaps(&o);
-                if json {
-                    let duration_ns = info.t_first.zip(info.t_last).map(|(a, b)| b - a);
-                    println!("{}", serde_json::to_string(&InfoJson { info, duration_ns, gaps }).unwrap());
-                } else {
-                    if k > 0 {
-                        println!();
+        match open_parts(&store, path, common) {
+            Ok(parts) => {
+                for (j, o) in parts.iter().enumerate() {
+                    let info = o.recording().info();
+                    let gaps = gaps(o);
+                    if json {
+                        let duration_ns = info.t_first.zip(info.t_last).map(|(a, b)| b - a);
+                        println!("{}", serde_json::to_string(&InfoJson { info, duration_ns, gaps }).unwrap());
+                    } else {
+                        if k + j > 0 {
+                            println!();
+                        }
+                        print_info(info, gaps.as_ref());
                     }
-                    print_info(info, gaps.as_ref());
                 }
             }
             Err(e) => {
@@ -330,13 +335,24 @@ fn info(files: &[PathBuf], json: bool, common: &Common) -> Result<(), Fail> {
     worst.map_or(Ok(()), |code| Err(Fail(code, String::new())))
 }
 
+/// What a file holds: one recording, or one per packet type (just `--type`'s).
+fn open_parts(store: &Store, path: &std::path::Path, common: &Common) -> Result<Vec<Opened>, tlmbench_store::Error> {
+    match &common.part {
+        Some(part) => Ok(vec![store.open_part(path, common.descriptor.as_deref(), Some(part))?]),
+        None => store.open_all(path, common.descriptor.as_deref()),
+    }
+}
+
 fn gaps(o: &Opened) -> Option<GapsJson> {
     let median = o.median_interval_ns()?;
     Some(GapsJson { median_interval_ns: median, count: o.breaks(DEFAULT_FACTOR).len() })
 }
 
 fn print_info(info: &RecordingInfo, gaps: Option<&GapsJson>) {
-    println!("{}", info.path.display());
+    match &info.part {
+        Some(part) => println!("{} · {part}", info.path.display()),
+        None => println!("{}", info.path.display()),
+    }
     println!("  Format    {}", info.format);
     let range = match (info.t_first, info.t_last) {
         (Some(a), Some(b)) if info.time == TimeSource::Index => {
@@ -430,7 +446,7 @@ fn cache(action: CacheAction, common: &Common) -> Result<(), Fail> {
 fn query(what: Query, common: &Common) -> Result<(), Fail> {
     let store = store(common);
     let open = |p: &Pick| -> Result<(Opened, Vec<usize>), Fail> {
-        let o = store.open(&p.file, common.descriptor.as_deref())?;
+        let o = store.open_part(&p.file, common.descriptor.as_deref(), common.part.as_deref())?;
         let chans = channels(&o, &p.channels)?;
         Ok((o, chans))
     };
@@ -545,36 +561,54 @@ fn convert(files: &[PathBuf], a: &ConvertArgs, jobs: usize, common: &Common) -> 
     std::fs::create_dir_all(&a.out).map_err(|e| Fail(2, format!("{}: {e}", a.out.display())))?;
     let store = store(common);
     let one = |input: &PathBuf, output: &PathBuf| -> Result<String, Fail> {
-        let o = store.open(input, common.descriptor.as_deref())?;
-        let rec = o.recording();
-        let chans = select(&o, &a.channels)?;
-        let (t0, t1) = span_of(&o, &a.span)?;
-        let mut opts = Options::new(format, chans, rec.lower_bound(t0), rec.lower_bound(t1));
-        opts.layout = match a.layout {
-            LayoutArg::Wide => Layout::Wide,
-            LayoutArg::Long => Layout::Long,
-        };
-        opts.time = match a.time {
-            TimeArg::Auto => TimeFormat::Auto,
-            TimeArg::Seconds => TimeFormat::Seconds,
-            TimeArg::Iso => TimeFormat::Iso,
-            TimeArg::Ns => TimeFormat::Ns,
-        };
-        opts.resample_hz = resample;
-        opts.raw = a.raw;
-        opts.delimiter = a.delimiter as u8;
-        opts.units_row = a.units_row;
-        opts.rate_hz = match rec.info().time {
-            TimeSource::Rate { hz } => Some(hz),
-            _ => o.median_interval_ns().filter(|&m| m > 0).map(|m| 1e9 / m as f64),
-        };
-        let w = tlmbench_export::export(rec, &opts, output).map_err(|e| Fail(2, e.to_string()))?;
-        Ok(if a.json {
-            let j = ConvertJson { input, output: &w.path, channels_file: &w.manifest, rows: w.rows, bytes: w.bytes };
-            serde_json::to_string(&j).unwrap()
-        } else {
-            format!("{} → {} ({} rows, {})", input.display(), w.path.display(), group(w.rows as usize), size(w.bytes))
-        })
+        let mut lines = Vec::new();
+        for o in open_parts(&store, input, common)? {
+            let rec = o.recording();
+            // a packet type is a recording of its own: <name>.<type>.<ext>
+            let output = match &rec.info().part {
+                Some(part) => {
+                    let stem = input.file_stem().unwrap_or_default().to_string_lossy();
+                    output.with_file_name(format!("{stem}.{part}.{}", format.extension()))
+                }
+                None => output.clone(),
+            };
+            let chans = select(&o, &a.channels)?;
+            let (t0, t1) = span_of(&o, &a.span)?;
+            let mut opts = Options::new(format, chans, rec.lower_bound(t0), rec.lower_bound(t1));
+            opts.layout = match a.layout {
+                LayoutArg::Wide => Layout::Wide,
+                LayoutArg::Long => Layout::Long,
+            };
+            opts.time = match a.time {
+                TimeArg::Auto => TimeFormat::Auto,
+                TimeArg::Seconds => TimeFormat::Seconds,
+                TimeArg::Iso => TimeFormat::Iso,
+                TimeArg::Ns => TimeFormat::Ns,
+            };
+            opts.resample_hz = resample;
+            opts.raw = a.raw;
+            opts.delimiter = a.delimiter as u8;
+            opts.units_row = a.units_row;
+            opts.rate_hz = match rec.info().time {
+                TimeSource::Rate { hz } => Some(hz),
+                _ => o.median_interval_ns().filter(|&m| m > 0).map(|m| 1e9 / m as f64),
+            };
+            let w = tlmbench_export::export(rec, &opts, &output).map_err(|e| Fail(2, e.to_string()))?;
+            lines.push(if a.json {
+                let j =
+                    ConvertJson { input, output: &w.path, channels_file: &w.manifest, rows: w.rows, bytes: w.bytes };
+                serde_json::to_string(&j).unwrap()
+            } else {
+                format!(
+                    "{} → {} ({} rows, {})",
+                    input.display(),
+                    w.path.display(),
+                    group(w.rows as usize),
+                    size(w.bytes)
+                )
+            });
+        }
+        Ok(lines.join("\n"))
     };
     let next = std::sync::atomic::AtomicUsize::new(0);
     let worst = std::sync::Mutex::new(None::<u8>);

@@ -93,10 +93,33 @@ impl Store {
     }
 
     /// Opens a recording (CSV and Parquet build their column cache first). Its pyramid is loaded if built, but not built:
-    /// call [`Opened::build`] (on a background thread in the app).
+    /// call [`Opened::build`] (on a background thread in the app). A packet file with several packet types needs
+    /// [`Store::open_part`] or [`Store::open_all`].
     pub fn open(&self, path: &Path, descriptor: Option<&Path>) -> Result<Opened> {
-        let opts = OpenOptions { descriptor: descriptor.map(Path::to_owned), cache_dir: Some(self.root.clone()) };
-        let rec = tlmbench_decode::open(path, &opts)?;
+        self.open_part(path, descriptor, None)
+    }
+
+    /// Opens the packet type `part` of a file with `[[packet_types]]` (any other file: `None`).
+    pub fn open_part(&self, path: &Path, descriptor: Option<&Path>, part: Option<&str>) -> Result<Opened> {
+        let opts = self.options(descriptor, part);
+        self.wrap(path, tlmbench_decode::open(path, &opts)?)
+    }
+
+    /// Opens every recording a file holds: one, or one per packet type, in the descriptor's order.
+    pub fn open_all(&self, path: &Path, descriptor: Option<&Path>) -> Result<Vec<Opened>> {
+        let opts = self.options(descriptor, None);
+        tlmbench_decode::open_all(path, &opts)?.into_iter().map(|rec| self.wrap(path, rec)).collect()
+    }
+
+    fn options(&self, descriptor: Option<&Path>, part: Option<&str>) -> OpenOptions {
+        OpenOptions {
+            descriptor: descriptor.map(Path::to_owned),
+            part: part.map(str::to_owned),
+            cache_dir: Some(self.root.clone()),
+        }
+    }
+
+    fn wrap(&self, path: &Path, rec: Box<dyn Recording>) -> Result<Opened> {
         let fingerprint = tlmbench_decode::cache::fingerprint(path)?;
         let key = pyr::key(&fingerprint, &rec.layout_id());
         let dir = self.root.join("pyr").join(pyr::VERSION);

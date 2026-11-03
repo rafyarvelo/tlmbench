@@ -8,7 +8,8 @@ use tlmbench_decode::OpenOptions;
 use super::*;
 
 fn open(path: &Path, cache: &Path) -> Box<dyn Recording> {
-    tlmbench_decode::open(path, &OpenOptions { descriptor: None, cache_dir: Some(cache.to_owned()) }).unwrap()
+    tlmbench_decode::open(path, &OpenOptions { descriptor: None, part: None, cache_dir: Some(cache.to_owned()) })
+        .unwrap()
 }
 
 /// Every channel's shown values and the times of `r`, for comparing round trips.
@@ -52,8 +53,11 @@ fn csv_and_parquet_read_back_exactly() {
     let tmp = tempfile::tempdir().unwrap();
     let (data, desc) = scaled_file(tmp.path());
     let cache = tmp.path().join("cache");
-    let src =
-        tlmbench_decode::open(&data, &OpenOptions { descriptor: Some(desc), cache_dir: Some(cache.clone()) }).unwrap();
+    let src = tlmbench_decode::open(
+        &data,
+        &OpenOptions { descriptor: Some(desc), part: None, cache_dir: Some(cache.clone()) },
+    )
+    .unwrap();
     let (times, values) = contents(src.as_ref());
     for format in [Format::Csv, Format::Parquet] {
         let out = tmp.path().join(format!("out.{}", format.extension()));
@@ -82,8 +86,11 @@ fn raw_keeps_stored_types_and_a_span() {
     let tmp = tempfile::tempdir().unwrap();
     let (data, desc) = scaled_file(tmp.path());
     let cache = tmp.path().join("cache");
-    let src =
-        tlmbench_decode::open(&data, &OpenOptions { descriptor: Some(desc), cache_dir: Some(cache.clone()) }).unwrap();
+    let src = tlmbench_decode::open(
+        &data,
+        &OpenOptions { descriptor: Some(desc), part: None, cache_dir: Some(cache.clone()) },
+    )
+    .unwrap();
     let out = tmp.path().join("raw.parquet");
     let mut o = Options::new(Format::Parquet, vec![0], 1000, 3000);
     o.raw = true;
@@ -141,8 +148,11 @@ fn hdf5_and_mat_read_back_exactly() {
     let tmp = tempfile::tempdir().unwrap();
     let (data, desc) = scaled_file(tmp.path());
     let cache = tmp.path().join("cache");
-    let src =
-        tlmbench_decode::open(&data, &OpenOptions { descriptor: Some(desc), cache_dir: Some(cache.clone()) }).unwrap();
+    let src = tlmbench_decode::open(
+        &data,
+        &OpenOptions { descriptor: Some(desc), part: None, cache_dir: Some(cache.clone()) },
+    )
+    .unwrap();
     let (times, values) = contents(src.as_ref());
 
     let h5 = tmp.path().join("out.h5");
