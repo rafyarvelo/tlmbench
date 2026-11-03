@@ -7,7 +7,11 @@ vehicles and test benches. Pan and zoom over billions of samples at 60 fps, read
 run the same views, rules and checks from a command line in CI. It never writes next to your data: everything it
 learns about a file lives in its own cache, so a read-only network share works as well as a local disk.
 
-![TelemetryBench showing three panes of a 20M-sample recording, with the overview strip below](docs/images/app.png)
+![TelemetryBench with the Explorer open, three panes of a recording and the overview strip below](docs/images/app.png)
+
+| Cursors and Measure | Light theme | The ⋯ menu |
+| --- | --- | --- |
+| ![Cursors A and B on three panes, with Measure open on the right](docs/images/app-cursors.png) | ![The same view in the light theme](docs/images/app-light.png) | ![The ⋯ menu: View, All panes and Window groups](docs/images/app-more-menu.png) |
 
 ## Why it's fast, and why you can trust what it draws
 
