@@ -30,6 +30,8 @@ export interface Pane {
   axis?: Partial<Record<AxisKey, AxisSettings>>;
   /** Table column widths by column id ('n', 't', 'c<channel>'), where resized. */
   widths?: Record<string, number>;
+  /** The chart's plot height in px, where dragged (a row's panes share it). */
+  h?: number;
   /** The table's height under a chart ('both'), where dragged. */
   tableH?: number;
   beside?: boolean;
@@ -197,6 +199,28 @@ export function addChannels(chs: number[], i = stack.sel): void {
   });
 }
 
+/** Moves (or, with `copy`, copies) channel `ch` from pane `from` to pane `to`, before channel `before` there (the end when null). */
+export function moveChannel(ch: number, from: number, to: number, before: number | null = null, copy = false): void {
+  edit(() => {
+    const src = stack.panes[from];
+    const dst = stack.panes[to];
+    if (!src || !dst) return;
+    if (!copy) src.channels = src.channels.filter((c) => c !== ch);
+    dst.channels = dst.channels.filter((c) => c !== ch);
+    const at = before == null ? -1 : dst.channels.indexOf(before);
+    if (at >= 0) dst.channels.splice(at, 0, ch);
+    else dst.channels.push(ch);
+    stack.sel = to;
+  });
+}
+
+/** Takes one channel out of pane `i`. */
+export function removeChannel(ch: number, i: number): void {
+  edit(() => {
+    if (stack.panes[i]) stack.panes[i].channels = stack.panes[i].channels.filter((c) => c !== ch);
+  });
+}
+
 /** Takes channels out of every pane. */
 export function removeChannels(chs: number[]): void {
   edit(() => stack.panes.forEach((p) => (p.channels = p.channels.filter((c) => !chs.includes(c)))));
@@ -261,6 +285,16 @@ export function setMode(i: number, mode: PaneMode): void {
   edit(() => {
     stack.panes[i].mode = mode;
     stack.sel = i;
+  });
+}
+
+/** Sets the plot height of pane `i` and the panes beside it (undefined: back to the default). */
+export function setPlotH(i: number, h: number | undefined): void {
+  edit(() => {
+    for (const k of rowOf(i)) {
+      if (h == null) delete stack.panes[k].h;
+      else stack.panes[k].h = Math.round(Math.max(60, Math.min(800, h)));
+    }
   });
 }
 

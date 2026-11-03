@@ -16,6 +16,30 @@
     ['cursor', 'Cursors', 'Click to place cursors A and B (C)'],
   ];
   let more = $state(false);
+  /** The tab strip scrolls when its tabs don't fit: ‹ › appear beside it. */
+  let tabsEl = $state<HTMLElement>();
+  let tabsOver = $state(false);
+  let tabsAt = $state(0);
+  let tabsMax = $state(0);
+  function measureTabs() {
+    if (!tabsEl) return;
+    tabsOver = tabsEl.scrollWidth > tabsEl.clientWidth + 1;
+    tabsAt = tabsEl.scrollLeft;
+    tabsMax = tabsEl.scrollWidth - tabsEl.clientWidth;
+  }
+  $effect(() => {
+    if (!tabsEl) return;
+    void [tabs.list.length, tabs.active, barW];
+    const ro = new ResizeObserver(measureTabs);
+    ro.observe(tabsEl);
+    measureTabs();
+    // the tab in front stays in sight
+    tabsEl.querySelector('[aria-selected="true"]')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    return () => ro.disconnect();
+  });
+  /** The bar's width: under 900 px Clear, Back, Fit, Play and Lock move into ⋯. */
+  let barW = $state(1200);
+  const narrow = $derived(barW < 900);
   /** The menu on the time range: how times read. */
   let timeMenu = $state<null | { x: number; y: number }>(null);
   /** The tab whose menu is open, and where; `naming` while Save as… asks for a name. */
@@ -92,8 +116,9 @@
 <svelte:document onpointerdown={outside} />
 <svelte:window onkeydowncapture={key} />
 
-<header class="toolbar">
-  <div class="wstabs" role="tablist" aria-label="Open tabs" id="wsTabs">
+<header class="toolbar" bind:clientWidth={barW}>
+  {#if tabsOver}<button class="tb tscroll" id="tabsLeft" aria-label="Scroll tabs left" disabled={tabsAt <= 0} onclick={() => tabsEl?.scrollBy({ left: -200, behavior: 'smooth' })}>‹</button>{/if}
+  <div class="wstabs" role="tablist" aria-label="Open tabs" id="wsTabs" bind:this={tabsEl} onscroll={measureTabs}>
     {#each tabs.list as t, i (t.key)}
       <div
         class="wstab"
@@ -156,6 +181,7 @@
       }}>{@html ICON.plus}</button
     >
   </div>
+  {#if tabsOver}<button class="tb tscroll" id="tabsRight" aria-label="Scroll tabs right" disabled={tabsAt >= tabsMax - 1} onclick={() => tabsEl?.scrollBy({ left: 200, behavior: 'smooth' })}>›</button>{/if}
   <div class="rangebar">
     <button class="num rangebtn" id="rangeTxt" aria-haspopup="menu" aria-expanded={!!timeMenu} data-tip="Time format: click to change how times read" onclick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); timeMenu = timeMenu ? null : { x: Math.max(8, r.left), y: r.bottom + 4 }; }}>{ui.range}</button>
     <span class="muted" id="spanTxt">{ui.span}</span>
@@ -166,12 +192,22 @@
       <button class="tb" id="m-{m}" aria-pressed={settings.mode === m} aria-label={label} data-tip={tip} onclick={() => setSetting('mode', m)}>{@html ICON[m]}</button>
     {/each}
   </div>
-  <button class="tb" id="b-clear" aria-label="Clear cursors" disabled={!ui.anyCursor} data-tip="Remove cursors A and B (Esc)" onclick={actions.clearCursors}>{@html ICON.clear}</button>
-  <button class="tb" id="b-back" aria-label="Back" disabled={!ui.canBack} data-tip="Previous view (⌥←)" onclick={actions.back}>{@html ICON.back}</button>
-  <button class="tb" id="b-fit" aria-label="Fit" disabled={!ui.file} data-tip="Show the whole recording (F)" onclick={actions.fit}>{@html ICON.fit}</button>
-  <button class="tb" id="b-play" aria-label="Play back" aria-pressed={play.open} disabled={!ui.file} data-tip="Play back: a playhead moves through the file and the view follows it (Space plays and pauses)" onclick={() => (play.open ? playActions.close() : playActions.open())}>{@html ICON.play}</button>
-  <span class="vsep" aria-hidden="true"></span>
-  <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
+  {#if !narrow}
+    <button class="tb" id="b-clear" aria-label="Clear cursors" disabled={!ui.anyCursor} data-tip="Remove cursors A and B (Esc)" onclick={actions.clearCursors}>{@html ICON.clear}</button>
+  {/if}
+  {#if !narrow}
+    <button class="tb" id="b-back" aria-label="Back" disabled={!ui.canBack} data-tip="Previous view (⌥←)" onclick={actions.back}>{@html ICON.back}</button>
+  {/if}
+  {#if !narrow}
+    <button class="tb" id="b-fit" aria-label="Fit" disabled={!ui.file} data-tip="Show the whole recording (F)" onclick={actions.fit}>{@html ICON.fit}</button>
+  {/if}
+  {#if !narrow}
+    <button class="tb" id="b-play" aria-label="Play back" aria-pressed={play.open} disabled={!ui.file} data-tip="Play back: a playhead moves through the file and the view follows it (Space plays and pauses)" onclick={() => (play.open ? playActions.close() : playActions.open())}>{@html ICON.play}</button>
+  {/if}
+  {#if !narrow}<span class="vsep" aria-hidden="true"></span>{/if}
+  {#if !narrow}
+    <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
+  {/if}
   <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.more}</button>
   {#if tabMenu}
     <div class="menu tabmenu" role="menu" style="left: {tabMenu.x}px; top: {tabMenu.y}px">
@@ -295,6 +331,12 @@
   {#if more}
     <div class="menu moremenu" role="menu">
       <button class="mi" role="menuitem" onclick={pick(actions.open)}><span class="nm">Open recording…</span><kbd>⌘O</kbd></button>
+      {#if narrow}
+        <div class="mgrp">Bar</div>
+        <button class="mi" role="menuitem" data-more="back" disabled={!ui.canBack} onclick={pick(actions.back)}><span class="nm">Back</span><kbd>⌥←</kbd></button>
+        <button class="mi" role="menuitem" data-more="fit" disabled={!ui.file} onclick={pick(actions.fit)}><span class="nm">Fit</span><kbd>F</kbd></button>
+        <button class="mi" role="menuitemcheckbox" data-more="play" aria-checked={play.open} disabled={!ui.file} onclick={pick(() => (play.open ? playActions.close() : playActions.open()))}><span class="nm">Play back</span><kbd>Space</kbd></button>
+      {/if}
       <div class="mgrp">View</div>
       <button class="mi" role="menuitemcheckbox" aria-checked={settings.locked} onclick={pick(() => setSetting('locked', !settings.locked))}><span class="nm">Lock the time view</span><kbd>L</kbd></button>
       <button class="mi" role="menuitem" disabled={!ui.anyCursor} onclick={pick(actions.clearCursors)}><span class="nm">Clear cursors</span><kbd>Esc</kbd></button>
@@ -329,11 +371,22 @@
     flex: 0 1 auto;
     align-self: stretch;
     min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .wstabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tscroll {
+    min-width: 22px;
+    padding: 0;
+    font-size: 15px;
   }
   .wstab {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    flex: none;
     min-width: 96px;
     max-width: 220px;
     padding: 0 6px 0 14px;

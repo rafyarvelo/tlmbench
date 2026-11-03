@@ -29,6 +29,9 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_tips | the floating tooltip (after a pause, at once on keyboard focus, hidden when the pointer leaves), Short retiring a tip after three showings (saved), Full, Off, Reset tooltips |
 | t_time | the menu on the time range (seven formats) changing the range, readouts and cursor tiles, Time decimals, Time labels on every chart, all saved |
 | t_fileopen | Settings → When a file opens and Files opened for the first time (starter charts, tables, values, none; Remember), Forget layouts, Clicking a row (Act at once), Quiet interface |
+| t_height | the grip under a chart (drag, side-by-side panes follow, ↓ steps, double-click resets, saved) |
+| t_chips | a pane's chips: × to take out, drag to reorder or move (Alt copies), "· L" / "· R", "+N" and its list |
+| t_narrow | the top bar under 900 px (Clear, Back, Fit, Play, Lock in ⋯), tabs scrolling with ‹ › |
 | t_modes | a pane's view menu (chart, table, chart and table, values), value tiles at the pointer, else cursor A, else the end of the view, the view saved with the layout and kept by Duplicate |
 | t_axes | a pane's units an axis each (left, right, room on the right of every plot); "Axis and scale…" in the ⋯ menu: range (fixed starting from what's shown, include zero, ignore outliers), decimals, label, log scale; kept with the pane and after a reload; Reset axes; none for a table pane |
 | t_tables | table panes (Table, Chart and table): a row per sample in view, read a window at a time as it scrolls and moving with the view; a row click placing cursor A (Shift: B), double-click centring the view, Go to A; column widths and the table's height under a chart saved with the layout |

@@ -23,8 +23,8 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 107 ·
-Partial 46 · Different 35 · Missing 90** (278 rows; counts as of Nov 3). Of the missing rows, 24 belong to Phase 3 (the shell port
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 111 ·
+Partial 46 · Different 35 · Missing 86** (278 rows; counts as of Nov 3). Of the missing rows, 20 belong to Phase 3 (the shell port
 that is already due), 31 to Phase 4 and 35 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
@@ -63,7 +63,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Event markers toggle | Flag icon, E (`1573`, `toggleEvents 4172`) | — | Missing | 5 | |
 | Remove every channel / Remove every pane | Two icons, each with Undo (`6582-6586`, `clearPanes 6956`) | In ⋯ → All panes, each with Undo (not icons on the bar) | Different | 3 | Fixed Nov 3 in ⋯, where the quiet-UI rule puts rare actions; the prototype also has bar icons. |
 | ⋯ menu | Grouped as View (Lock, Event markers, Clear cursors), All panes (three views, New pane, Remove every channel, Remove every pane), Export (Export data…, Save the view as an image…, Export to HTML…) and Window (Collapse all sidebar panels, Switch theme T, Focus mode Ctrl+., Settings…). Items already on the bar are left out (`6686-6727`) | Open recording…, View (Lock, Clear cursors, Overview above), All panes (New pane, Remove every channel, Remove every pane), Window (Switch theme, Focus mode, Show performance details, Settings…) | Partial | 3 (Export: 4; HTML: 5) | Fixed Nov 3 except: Export group (4; HTML: 5), Event markers (5), the three pane views (4), Collapse all sidebar panels. |
-| Narrow top bar | Bar icons move into ⋯ when they don't fit (`6714-6716`) | No adaptation | Missing | 3 | See `proto_narrow.png` and `app_narrow.png`. |
+| Narrow top bar | Bar icons move into ⋯ when they don't fit (`6714-6716`) | Under 900 px Clear, Back, Fit, Play and Lock move into ⋯ (a Bar group) | Ported | 3 | Fixed Nov 3. |
 | Note under the top bar | Warn dot, text, Undo, ×, goes after 12 s (`3542-3547`) | Same (`App.svelte:40-56`, `stack.svelte.ts:252`) | Ported | 3 | |
 | Transport and live strip placement | Inside the main column, above the panes (`1625-1626`) | Full width under the top bar, above both sidebars (`App.svelte:38-39`) | Different | 3 | See `proto_play.png` and `app_play.png`. |
 | Sidebar panels | Each section is a panel with a title bar: click to collapse, drag to reorder or move to the other side, ⇄ to send it across (`6258-6371`) | Explorer and each Measure panel collapse from their titles (saved); ⇄ swaps Explorer's and Measure's sides | Partial | 3 | Fixed Nov 3 except dragging a panel to reorder it or move it alone. |
@@ -123,14 +123,14 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | --- | --- | --- | --- | --- | --- |
 | Rows, columns, stacks | A row holds up to 3 columns (`MAX_PER_ROW 2719`) | Same model, up to 4 (`stack.svelte.ts:39`) | Different | 3 | |
 | Pane height | Fixed by row count: 150, 125 or 105 px plots (`paneHeight 3758`) | Same: 150 px up to 3 rows, 125 for 4, 105 for more; they shrink (not scroll) when the window is too short; table and values panes fill (`PaneStack.svelte`) | Ported | 3 | Fixed Nov 3. The chart height grip is still missing. |
-| Chart height grip | Drag under a chart to resize, side-by-side panes follow, double-click resets, arrows step (`3838`, `5183-5200`) | — | Missing | 3 | |
+| Chart height grip | Drag under a chart to resize, side-by-side panes follow, double-click resets, arrows step (`3838`, `5183-5200`) | Drag under a chart, side-by-side panes follow, double-click resets, ↑ ↓ step; saved with the layout (`PaneStack.svelte`) | Ported | 3 | Fixed Nov 3. |
 | Pane number | Drag handle; a grip shows on hover; accent when selected; tooltip (`3864-3871`) | Muted number, draggable (`shell/PaneStack.svelte:110-120`) | Partial | 3 | |
 | Moving a pane | Onto a pane's left or right edge (beside), top or bottom (new row), middle (merge), or a gap between rows; Alt copies (`movePane 2898`, `bindPaneDrop 3914`, `makeGap 3981`) | Drop on a pane: it moves before that pane as its own row (`stack.svelte.ts:178-186`) | Partial | 3 | No edges, merge, gaps or copy. |
 | Insert between rows | "+" in the gap between rows (`3791`) | — | Missing | 3 | |
 | Selection | Click a header selects; accent bar at the left | Same | Ported | 3 | |
 | Header right-click | Opens the pane menu (`3875`) | Same, except on chips (`shell/PaneStack.svelte:69-74`) | Ported | 3 | |
-| Chips | Swatch, name, unit, "· L"/"· R" when two units share a pane, value while pointing, × on hover, drag to move or reorder (Alt copies), click opens the channel editor (`3822-3858`) | Colour dash, name, unit, value while pointing (`shell/PaneStack.svelte:121-125`) | Partial | 3 (editor: 5) | No ×, drag, reorder, side tag or click. |
-| Chip overflow | A "+N" button lists every channel with live values when the header overflows (`5064-5203`, `openChanPop 5130`) | No overflow handling in the code | Missing | 3 | Not seen with 2 channels a pane; read from the code. |
+| Chips | Swatch, name, unit, "· L"/"· R" when two units share a pane, value while pointing, × on hover, drag to move or reorder (Alt copies), click opens the channel editor (`3822-3858`) | Colour dash, name, unit, "· L"/"· R", value while pointing, × on hover, drag to reorder (onto a chip) or move (onto a pane; Alt copies) | Partial | 3 (editor: 5) | Fixed Nov 3 except clicking a chip (the channel editor, Phase 5) and the swatch. |
+| Chip overflow | A "+N" button lists every channel with live values when the header overflows (`5064-5203`, `openChanPop 5130`) | "+N" when the header can't fit the chips; lists every channel with its value | Ported | 3 | Fixed Nov 3. |
 | Coarse marker | Drawing level per chart with Show performance details | "coarse" pill while the exact view is on its way (`shell/PaneStack.svelte:127-129`) | Different | 2 | App only, for the pyramid's coarse-to-exact view. |
 | View button | Current view's icon and a chevron (`3832`) | A generic layout icon (`shell/PaneStack.svelte:130-146`) | Different | 3 | |
 | View menu | Chart, Table, Chart and table, Chart and values, Values, Gauges, Checks, XY plot, Spectrum, each with an icon and a hint (`11020-11034`) | Chart, Table, Chart and table, Values, no icons (`shell/PaneStack.svelte:33-38`, `186-201`) | Partial | 3 (cv, gauges, checks, XY, spectrum: 5) | The check mark was unsized and drew about 150 px wide; fixed Nov 3 (14 px). |
@@ -302,7 +302,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Tab drag to reorder | `moveTab 3291` | `shell/TopBar.svelte:100-108` | Ported | 3 | |
 | Tab keys | Ctrl+PageUp/PageDown switch, Ctrl+Shift+PageUp/PageDown move, Delete closes, Enter/Space shows (`3340-3348`, `3644`) | Enter/Space shows (`shell/TopBar.svelte:97`) | Partial | 3 | |
 | Middle-click closes a tab | `3308` | `shell/TopBar.svelte:98` | Ported | 3 | |
-| Tab overflow | ‹ › scroll buttons when tabs don't fit | Names truncate ("f…") | Missing | 3 | `proto_narrow.png`, `app_narrow.png`. |
+| Tab overflow | ‹ › scroll buttons when tabs don't fit | ‹ › scroll buttons beside the tab strip; the front tab kept in sight | Ported | 3 | Fixed Nov 3. |
 | Tab menu header | Name and × (`1743`) | None | Missing | 4 | `proto_tab_menu.png`, `app_tab_menu.png`. |
 | Tab menu status | What the tab is (starter layout, saved, unsaved, shared, built-in, live) (`updateWsStatus 3535-3567`) | None | Missing | 4 | |
 | This tab shows | The tab's files as numbered slots (`3537`) | None | Missing | 5 | |
@@ -380,6 +380,9 @@ Clock, Seconds, Milliseconds, Minutes and seconds, Hours, Days). `t_time` covers
 
 File-open settings (Nov 3): When a file opens, Files opened for the first time, Forget layouts, Clicking a row (Act at
 once) and Quiet interface. `t_fileopen` covers them.
+
+Pane stack and top bar (Nov 3): the chart height grip, chip ×, drag and reorder, side tags, "+N" overflow, the narrow
+top bar (Bar group in ⋯) and scrolling tabs. `t_height`, `t_chips` and `t_narrow` cover them.
 
 ## 9. Look and feel
 

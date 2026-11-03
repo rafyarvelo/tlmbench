@@ -294,6 +294,8 @@ input.sel {
 
 .phead {
   display: flex;
+  min-width: 0;
+  overflow: hidden;
   align-items: center;
   gap: 6px;
   height: 32px;
@@ -331,6 +333,7 @@ input.sel {
 }
 
 .chip .val {
+  min-width: 6ch;
   color: var(--fg);
 }
 
