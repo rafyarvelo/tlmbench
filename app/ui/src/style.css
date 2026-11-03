@@ -882,3 +882,7 @@ input[role='switch']:checked::after {
   background: var(--on-accent);
   transform: translateX(10px);
 }
+
+.nohints .howto {
+  display: none;
+}

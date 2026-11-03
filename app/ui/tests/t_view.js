@@ -7,7 +7,7 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   check('opens the launch file', (await text('#wsTabs .wstab')) === 'flight.tlm', await text('#wsTabs'));
   check('six channels in three panes', (await paneCount()) === 3 && /accel_x.*accel_y/.test((await panes())[0]), await panes());
   check('every pane drawn', await until(() => window.__tlmApp.drawn().every((d) => d && d.length === 2)), await app('drawn'));
-  check('range shows the whole file', /→/.test(await text('#rangeTxt')) && /03:20/.test(await text('#spanTxt')), [await text('#rangeTxt'), await text('#spanTxt')]);
+  check('range shows the whole file', /→/.test(await text('#rangeTxt')) && /3\.33 min/.test(await text('#spanTxt')), [await text('#rangeTxt'), await text('#spanTxt')]);
   check('overview of pane 1', /Overview of pane 1/.test(await text('.ovhead')), await text('.ovhead'));
 
   // the channel list follows the selected pane; a click adds a channel to it

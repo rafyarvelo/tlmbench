@@ -12,10 +12,10 @@ import { tick } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
-import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTimeFormat, timeLabel, type YAxis } from './axes';
+import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
-import { bindTips } from './tips';
+import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, setPanelOpen, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
@@ -417,6 +417,7 @@ function setView(t0: bigint, t1: bigint, remember = false): void {
   const minSpan = 1000n; // 1 µs
   const maxSpan = full * 3n;
   if (span < minSpan || span > maxSpan) {
+    if (span < minSpan && lastPointer) flash('Maximum zoom', lastPointer.clientX, lastPointer.clientY);
     const mid = t0 + span / 2n;
     span = span < minSpan ? minSpan : maxSpan;
     t0 = mid - span / 2n;
@@ -618,7 +619,7 @@ function forward(): void {
 function updateRange(): void {
   const span = Number(state.t1 - state.t0);
   ui.range = state.file ? `${readoutTime(state.t0, span)} → ${readoutTime(state.t1, span)}` : '';
-  ui.span = state.file ? `${duration(span)} visible` : '';
+  ui.span = state.file ? `${spanText(span)} visible` : '';
   ui.canBack = state.history.length > 0;
 }
 
@@ -985,7 +986,7 @@ function updateChips(): void {
   const values: Record<number, string> = {};
   state.hover.forEach((s, ch) => (values[ch] = fmtCh(state.file?.id ?? null, ch, s.v)));
   if (JSON.stringify(values) !== JSON.stringify(stack.values)) stack.values = values;
-  ui.pointer = state.hoverT != null ? readoutTime(state.hoverT, Number(state.t1 - state.t0)) : '';
+  ui.pointer = state.hoverT != null ? `pointer ${readoutTime(state.hoverT, Number(state.t1 - state.t0))}` : '';
 }
 
 function saveLayout(): void {
@@ -1113,7 +1114,7 @@ async function refreshMeasure(): Promise<void> {
   measureEl.innerHTML =
     `<h2>Measure<span class="spacer"></span><button class="ibtn" data-clear data-tip="Clear cursors (Esc)" aria-label="Clear cursors"${ui.anyCursor ? '' : ' disabled'}><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></h2>` +
     `<details class="mpanel" data-panel="cur"${settings.panelsClosed.includes('measure.cur') ? '' : ' open'}><summary>Cursors</summary>` +
-    (state.A == null && state.B == null ? `<p class="mnote">Place cursors A and B: press C, then click a chart twice. A and B also place them at the pointer.</p>` : '') +
+    (state.A == null && state.B == null ? `<p class="mnote howto">Place cursors A and B: press C, then click a chart twice. A and B also place them at the pointer.</p>` : '') +
     `<div class="mtiles">${tile('A', state.A != null ? readoutTime(state.A, span) : '—')}${tile('B', state.B != null ? readoutTime(state.B, span) : '—')}${tile('Δt', dt != null ? duration(dt) : '—', true)}${tile('1/Δt', dt ? frequency(1e9 / Math.abs(dt)) : '—')}</div>` +
     `<table class="mtab"><thead><tr><th>Channel</th><th>A</th><th>B</th><th>Δ</th></tr></thead><tbody>${rowsHtml}</tbody></table></details>` +
     `<details class="mpanel" data-panel="stats"${settings.panelsClosed.includes('measure.stats') ? '' : ' open'}><summary>Stats · ${both ? 'between cursors' : 'visible range'}</summary>` +
@@ -1863,6 +1864,7 @@ const endDrag = () => {
   if (drag?.type === 'box' && state.box) {
     const [a, b] = [Math.min(state.box.x0, state.box.x1), Math.max(state.box.x0, state.box.x1)];
     if (b - a >= 4) glideTo(tAt(drag.r, a), tAt(drag.r, b));
+    else if (b - a > 0 && lastPointer) flash('Drag wider to zoom', lastPointer.clientX, lastPointer.clientY, 'box-narrow');
     state.box = null;
     scheduleDraw();
   }
@@ -1885,6 +1887,13 @@ stackEl.addEventListener(
     stopGlide();
     const span = Number(state.t1 - state.t0);
     let dy = e.deltaY;
+    if (!settings.wheelZoom && !(e.ctrlKey || e.metaKey)) {
+      // the wheel pans, a notch a tenth of the view
+      if (e.deltaMode === 1) dy *= 16;
+      const shift = BigInt(Math.round(Math.sign(dy) * Math.min(1, Math.abs(dy) / 100) * span * 0.1));
+      setView(state.t0 + shift, state.t1 + shift);
+      return;
+    }
     if (e.deltaMode === 1) dy *= 16;
     if (Math.abs(e.deltaX) > Math.abs(dy)) {
       const shift = BigInt(Math.round((e.deltaX / hit.r.w) * span));
@@ -2149,7 +2158,7 @@ window.addEventListener('keydown', (e) => {
     if (k === 't') return toggleTheme();
     if (k === 'l') return setSetting('locked', !settings.locked);
   }
-  if (e.altKey && e.key === 'ArrowLeft') return back();
+  if ((e.altKey && e.key === 'ArrowLeft') || (e.key === 'Backspace' && !(e.target as HTMLElement).closest('input, textarea, select'))) return back();
   if (e.altKey && e.key === 'ArrowRight') return forward();
   if (e.key === 'Escape') return clearCursors();
   if (!state.file) return;
@@ -2194,12 +2203,23 @@ Object.assign(actions, {
   openPath: (p: string) => void openPath(p),
   closeFile: () => void closeAll(),
   showTab: (key: number) => void showTab(key),
-  closeTab: (key: number) => void closeTab(key),
+  closeTab: (key: number) =>
+    void (async () => {
+      const t = tabs.list.find((x) => x.key === key);
+      await closeTab(key);
+      if (t && !t.ws && !t.live) note(`Closed ${t.name}.`, () => void openPath(t.path));
+    })(),
   closePath: (path: string) =>
     void (async () => {
       for (const t of tabs.list.filter((t) => t.path === path)) await closeTab(t.key);
     })(),
-  closeOtherTabs: (key: number) => void Promise.all(tabs.list.filter((t) => t.key !== key).map((t) => closeTab(t.key))),
+  closeOtherTabs: (key: number) =>
+    void (async () => {
+      const gone = tabs.list.filter((t) => t.key !== key);
+      await Promise.all(gone.map((t) => closeTab(t.key)));
+      const files = [...new Set(gone.filter((t) => !t.ws && !t.live).map((t) => t.path))];
+      if (files.length) note(`Closed ${files.length === 1 ? nameOf(files[0]) : `${files.length} files`}.`, () => void Promise.all(files.map((f) => openPath(f))));
+    })(),
   saveSession,
   pickFile: async (ext: string[]) => {
     const p = await openDialog({ multiple: false, filters: [{ name: ext.join(', '), extensions: ext }] });

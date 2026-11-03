@@ -20,6 +20,8 @@
 
   const shown = $derived(measureShown(settings.measureOpen, settings.measureAuto));
 
+  /** Under 980 px the sidebars wrap onto rows of their own above and below the panes. */
+  let winW = $state(1440);
   const MIN_PLOTS = 420;
   let workEl: HTMLElement | undefined = $state();
 
@@ -52,11 +54,11 @@
   }
 </script>
 
-<svelte:window onkeydown={key} />
+<svelte:window onkeydown={key} bind:innerWidth={winW} />
 
 {#if live.connect}<Connect />{/if}
 
-<div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI}>
+<div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>
   <Rail />
   <div class="col">
     <TopBar />
@@ -80,7 +82,7 @@
         <button class="ibtn" aria-label="Dismiss" onclick={() => ((ui.note = ''), (ui.undo = null))}>{@html ICON.close}</button>
       </div>
     {/if}
-    <div class="work" class:swapped={settings.sidesSwapped} bind:this={workEl}>
+    <div class="work" class:swapped={settings.sidesSwapped} class:wrapped={winW < 980} bind:this={workEl}>
       <aside id="side" class="side" hidden={!settings.leftPanel} style:width="{settings.leftWidth}px">
         <div class="exwrap" hidden={settings.leftPanel !== 'explorer'}><Explorer /></div>
         {#if settings.leftPanel === 'settings'}<Settings />{/if}
@@ -100,7 +102,7 @@
       <aside id="measure" class="measure" hidden={!shown} style:width="{settings.measureWidth}px"></aside>
     </div>
     {#if settings.showPerf}
-      <footer class="statusbar" id="statusBar"><span id="status" class="num">{ui.perf}</span></footer>
+      <footer class="statusbar" id="statusBar"><span class="sdot" class:busy={ui.perf.startsWith('Reading')} aria-hidden="true"></span><span id="state">{ui.perf.startsWith('Reading') ? 'Reading the file' : ui.file ? 'Ready' : 'No file open'}</span><span id="status" class="num">{ui.perf}</span></footer>
     {/if}
   </div>
 </div>
@@ -174,6 +176,33 @@
     overflow: auto;
     border-right: 1px solid var(--border);
     background: var(--surface);
+  }
+  .work.wrapped {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .work.wrapped .side,
+  .work.wrapped :global(.measure) {
+    width: 100% !important;
+    max-height: 300px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .work.wrapped .grip {
+    display: none;
+  }
+  .work.wrapped .center {
+    flex: none;
+    min-height: 520px;
+  }
+  .sdot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--good);
+  }
+  .sdot.busy {
+    background: var(--warn);
   }
   .exwrap {
     display: flex;

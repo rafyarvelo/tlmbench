@@ -3,7 +3,7 @@
 // column. app.ts draws into each pane's plot; PaneStack.svelte renders the panes, and these edits change them.
 
 import { PAD, value } from './axes';
-import { settings } from './settings.svelte';
+import { setSetting, settings } from './settings.svelte';
 import { ui } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
@@ -120,6 +120,10 @@ export function normalize(): void {
 }
 
 function edit(f: () => void): void {
+  if (settings.locked && settings.lockLayout) {
+    note('The layout is locked.', () => setSetting('locked', false), 'Unlock');
+    return;
+  }
   f();
   normalize();
   changed();

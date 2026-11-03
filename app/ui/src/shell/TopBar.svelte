@@ -82,6 +82,19 @@
     if (addMenu && !(e.target as HTMLElement).closest('.addmenu, #wsTabNew')) addMenu = null;
   }
   function key(e: KeyboardEvent) {
+    // Ctrl+PageUp / PageDown switch tabs; with Shift they move the tab
+    if (e.ctrlKey && (e.key === 'PageUp' || e.key === 'PageDown') && tabs.list.length > 1) {
+      e.preventDefault();
+      const i = tabs.list.findIndex((t) => t.key === tabs.active);
+      const d = e.key === 'PageUp' ? -1 : 1;
+      const j = (i + d + tabs.list.length) % tabs.list.length;
+      if (e.shiftKey) {
+        if (j !== i + d) return;
+        moveTab(i, d > 0 ? j + 1 : j);
+        actions.saveSession();
+      } else actions.showTab(tabs.list[j].key);
+      return;
+    }
     // ⌘S saves the layout in front (a file tab asks for a name)
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && tabs.active >= 0) {
       e.preventDefault();
@@ -129,7 +142,10 @@
         data-tip={t.path}
         draggable="true"
         onclick={() => actions.showTab(t.key)}
-        onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), actions.showTab(t.key))}
+        onkeydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') (e.preventDefault(), actions.showTab(t.key));
+          else if (e.key === 'Delete') (e.preventDefault(), actions.closeTab(t.key));
+        }}
         onauxclick={(e) => e.button === 1 && actions.closeTab(t.key)}
         oncontextmenu={(e) => (e.preventDefault(), openTabMenu(t.key, e.clientX, e.clientY))}
         ondragstart={() => (dragTab = i)}
@@ -189,7 +205,7 @@
   </div>
   <div class="seg" role="group" aria-label="Mouse mode">
     {#each MODES as [m, label, tip] (m)}
-      <button class="tb" id="m-{m}" aria-pressed={settings.mode === m} aria-label={label} data-tip={tip} onclick={() => setSetting('mode', m)}>{@html ICON[m]}</button>
+      <button class="tb" id="m-{m}" disabled={!ui.file} aria-pressed={settings.mode === m} aria-label={label} data-tip={tip} onclick={() => setSetting('mode', m)}>{@html ICON[m]}</button>
     {/each}
   </div>
   {#if !narrow}

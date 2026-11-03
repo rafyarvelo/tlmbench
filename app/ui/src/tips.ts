@@ -59,6 +59,7 @@ function schedule(target: HTMLElement, now: boolean): void {
 export function bindTips(): void {
   const tipOf = (e: Event) => (e.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-tip]') ?? null;
   document.addEventListener('pointerover', (e) => {
+    if (Date.now() < holdUntil) return;
     const t = tipOf(e);
     if (t) schedule(t, false);
     else hide();
@@ -68,6 +69,26 @@ export function bindTips(): void {
     if (t && (e.target as HTMLElement).matches(':focus-visible')) schedule(t, true);
   });
   for (const type of ['pointerdown', 'keydown', 'focusout', 'wheel', 'dragstart']) document.addEventListener(type, hide, true);
+}
+
+let flashTimer = 0;
+let holdUntil = 0;
+/** A short note at a point (Maximum zoom, Drag wider to zoom); `learn` names a counter so it shows only the first three times. */
+export function flash(text: string, x: number, y: number, learn?: string): void {
+  if (learn) {
+    if ((settings.tipsSeen[learn] ?? 0) >= USES) return;
+    settings.tipsSeen[learn] = (settings.tipsSeen[learn] ?? 0) + 1;
+    saveSettings();
+  }
+  el ??= Object.assign(document.createElement('div'), { className: 'tip', role: 'status', hidden: true });
+  if (!el.isConnected) document.body.append(el);
+  el.textContent = text;
+  el.hidden = false;
+  el.style.left = `${Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, x - el.offsetWidth / 2))}px`;
+  el.style.top = `${Math.max(8, y - el.offsetHeight - 14)}px`;
+  holdUntil = Date.now() + 400;
+  clearTimeout(flashTimer);
+  flashTimer = window.setTimeout(hide, 1400);
 }
 
 /** Forgets which tips have retired. */

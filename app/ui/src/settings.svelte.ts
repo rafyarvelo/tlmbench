@@ -23,6 +23,14 @@ export interface Settings {
   /** The time view can't be changed by gestures; cursors still work unless `lockCursors` is off. */
   locked: boolean;
   lockCursors: boolean;
+  /** A locked view also refuses edits of the panes. */
+  lockLayout: boolean;
+  /** The wheel zooms the charts (off: Ctrl+wheel zooms and the wheel pans). */
+  wheelZoom: boolean;
+  /** A channel dropped where a new pane goes makes a chart, or the same view as the pane it came from. */
+  dropNewView: 'chart' | 'same';
+  /** How-to notes in the panels. */
+  showHints: boolean;
   overviewTop: boolean;
   leftPanel: LeftPanel;
   /** Sidebar widths in px (dragged at their inner edge), sidebar panels collapsed (by name), and Explorer and Measure traded sides. */
@@ -80,6 +88,10 @@ export const DEFAULTS: Settings = {
   dblFit: true,
   locked: false,
   lockCursors: true,
+  lockLayout: false,
+  wheelZoom: true,
+  dropNewView: 'chart',
+  showHints: true,
   overviewTop: false,
   leftPanel: 'explorer',
   leftWidth: 300,

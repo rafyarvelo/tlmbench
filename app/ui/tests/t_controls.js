@@ -11,7 +11,7 @@ run('controls', async ({ p, check, text, visible, plotAt, settingsLS, until, wai
   await p.keyboard.press('ArrowUp');
   await wait(500);
   const zoomed = await range();
-  check('↑ zooms in', !/09:59|03:20\.0 visible/.test(zoomed.split('|')[1]) && zoomed !== '', zoomed);
+  check('↑ zooms in', !/09:59|3\.33 min visible/.test(zoomed.split('|')[1]) && zoomed !== '', zoomed);
   await p.keyboard.press('ArrowRight');
   await wait(300);
   check('→ pans', (await range()) !== zoomed, await range());

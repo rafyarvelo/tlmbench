@@ -105,6 +105,17 @@ export function duration(ns: number): string {
   return `${sign}${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${tail}`;
 }
 
+/** How much time the view spans, in the unit that suits it: `2.00 h`, `3.33 min`, `10.00 s`, `250 ms`. */
+export function spanText(ns: number): string {
+  const s = ns / NS;
+  if (s >= 3600) return `${(s / 3600).toFixed(2)} h`;
+  if (s >= 60) return `${(s / 60).toFixed(2)} min`;
+  if (s >= 1) return `${s.toFixed(2)} s`;
+  if (ns >= 1e6) return `${(ns / 1e6).toPrecision(3)} ms`;
+  if (ns >= 1e3) return `${(ns / 1e3).toPrecision(3)} µs`;
+  return `${Math.round(ns)} ns`;
+}
+
 /** A value with about six significant digits, as readouts show it. */
 export function value(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '—';
