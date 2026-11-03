@@ -270,6 +270,61 @@ export const hasBelow = (i: number) => {
   return r[r.length - 1] < stack.panes.length - 1;
 };
 
+export type Zone = 'left' | 'right' | 'top' | 'bottom' | 'middle';
+
+/**
+ * Drops pane `from` on pane `to`: onto its left or right edge (beside it), top or bottom (a row of its own above or
+ * below), or the middle (its channels join `to`'s). `copy` leaves the original in place.
+ */
+export function dropPane(from: number, to: number, zone: Zone, copy = false): void {
+  if (!stack.panes[from] || !stack.panes[to] || (from === to && (zone === 'middle' || copy))) return;
+  edit(() => {
+    const src = stack.panes[from];
+    const target = stack.panes[to];
+    if (zone === 'middle') {
+      for (const ch of src.channels) if (!target.channels.includes(ch)) target.channels.push(ch);
+      if (!copy) stack.panes.splice(from, 1);
+      stack.sel = stack.panes.indexOf(target);
+      return;
+    }
+    const moved: Pane = { ...src, channels: [...src.channels], beside: undefined, under: undefined };
+    const arr = stack.panes.slice();
+    if (!copy) {
+      // panes under a column's top pane keep their column: the next one takes over the top's place
+      const next = arr[from + 1];
+      if (next?.under && !src.under) Object.assign(next, { under: undefined, beside: src.beside });
+      arr.splice(from, 1);
+    }
+    const at = arr.indexOf(target);
+    const rowStart = () => {
+      let k = at;
+      while (k > 0 && (arr[k].beside || arr[k].under)) k--;
+      return k;
+    };
+    let placed = moved;
+    if (zone === 'top') arr.splice(rowStart(), 0, moved);
+    else if (zone === 'bottom') {
+      let k = at + 1;
+      while (k < arr.length && (arr[k].beside || arr[k].under)) k++;
+      arr.splice(k, 0, moved);
+    } else if (zone === 'right') {
+      let k = at + 1;
+      while (k < arr.length && arr[k].under) k++;
+      placed = { ...moved, beside: true };
+      arr.splice(k, 0, placed);
+    } else {
+      let k = at;
+      while (k > 0 && arr[k].under) k--;
+      const top = arr[k];
+      placed = { ...moved, beside: top.beside };
+      arr.splice(k, 0, placed);
+      top.beside = true;
+    }
+    stack.panes = arr;
+    stack.sel = arr.indexOf(placed);
+  });
+}
+
 /** Moves pane `from` to before pane `to` (or the end), starting a row of its own there. */
 export function movePane(from: number, to: number): void {
   if (from === to || from + 1 === to) return;

@@ -23,8 +23,8 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 111 ·
-Partial 46 · Different 35 · Missing 86** (278 rows; counts as of Nov 3). Of the missing rows, 20 belong to Phase 3 (the shell port
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 121 ·
+Partial 41 · Different 32 · Missing 84** (278 rows; counts as of Nov 3). Of the missing rows, 18 belong to Phase 3 (the shell port
 that is already due), 31 to Phase 4 and 35 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
@@ -73,7 +73,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Status bar | State dot and text, memory, load, query, draw, points (`1662-1669`) | One string: points, kind, round trip (`App.svelte:76-78`) | Partial | 3 | |
 | Start page | Open folder…, Open recording…, Connect live source…, recent sessions, recent recordings, live sources with saved connections, layouts in the folder, "Show this page at launch" (`7039-7212`) | Open folder…, Open recording…, Connect live source…, the last folder, recent recordings, "Show this page at launch" (`shell/StartPage.svelte`); with no file it fills the stack, else it opens over the tabs | Partial | 3 | Fixed Nov 3 except recent sessions, live sources with saved connections and layouts in the folder. |
 | No file open | In the stack: "No file open", a line of help, Start page button (`3773`) | Centred "Open a recording / Drop a CSV or .tlm file here, or press ⌘O" (`App.svelte:69-72`), plus a note in Explorer | Different | 3 | The app's mode buttons stay enabled with no file (`app_empty.png`). |
-| No panes in a tab | "No channels plotted", a line of help, a large + Add pane (`3777-3784`) | Only the "+ Add pane" bar (`App.svelte:65`, `app.ts:929-931`) | Different | 3 | |
+| No panes in a tab | "No channels plotted", a line of help, a large + Add pane (`3777-3784`) | "No channels plotted", a line of help and a + Add pane button | Ported | 3 | Fixed Nov 3. |
 | Focus mode | Ctrl/Cmd+. hides everything but the panes and range; Esc or "Exit focus" leaves (`6389-6397`) | Ctrl/Cmd+. or ⋯ → Focus mode hides the rail, tabs, buttons, sidebars and status bar; Esc or Exit focus leaves | Ported | 3 | Fixed Nov 3. |
 | Lock toast | "The view is locked. Unlock" when a gesture is refused (`1769`, `lockedHint 5526`) | The note under the top bar: "The view is locked." with Unlock | Ported | 3 | Fixed Nov 3. It's the note, not a separate toast. |
 | Theme toggle | T, and the ⋯ item (`5565`) | T and ⋯ → Switch theme | Ported | 3 | Fixed Nov 3. |
@@ -125,8 +125,8 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Pane height | Fixed by row count: 150, 125 or 105 px plots (`paneHeight 3758`) | Same: 150 px up to 3 rows, 125 for 4, 105 for more; they shrink (not scroll) when the window is too short; table and values panes fill (`PaneStack.svelte`) | Ported | 3 | Fixed Nov 3. The chart height grip is still missing. |
 | Chart height grip | Drag under a chart to resize, side-by-side panes follow, double-click resets, arrows step (`3838`, `5183-5200`) | Drag under a chart, side-by-side panes follow, double-click resets, ↑ ↓ step; saved with the layout (`PaneStack.svelte`) | Ported | 3 | Fixed Nov 3. |
 | Pane number | Drag handle; a grip shows on hover; accent when selected; tooltip (`3864-3871`) | Muted number, draggable (`shell/PaneStack.svelte:110-120`) | Partial | 3 | |
-| Moving a pane | Onto a pane's left or right edge (beside), top or bottom (new row), middle (merge), or a gap between rows; Alt copies (`movePane 2898`, `bindPaneDrop 3914`, `makeGap 3981`) | Drop on a pane: it moves before that pane as its own row (`stack.svelte.ts:178-186`) | Partial | 3 | No edges, merge, gaps or copy. |
-| Insert between rows | "+" in the gap between rows (`3791`) | — | Missing | 3 | |
+| Moving a pane | Onto a pane's left or right edge (beside), top or bottom (new row), middle (merge), or a gap between rows; Alt copies (`movePane 2898`, `bindPaneDrop 3914`, `makeGap 3981`) | Onto a pane's left or right edge (beside), top or bottom (a row of its own), middle (merge); Alt copies (`dropPane`) | Ported | 3 | Fixed Nov 3. |
+| Insert between rows | "+" in the gap between rows (`3791`) | "+" in the gap between rows (hover the left gutter) | Ported | 3 | Fixed Nov 3. |
 | Selection | Click a header selects; accent bar at the left | Same | Ported | 3 | |
 | Header right-click | Opens the pane menu (`3875`) | Same, except on chips (`shell/PaneStack.svelte:69-74`) | Ported | 3 | |
 | Chips | Swatch, name, unit, "· L"/"· R" when two units share a pane, value while pointing, × on hover, drag to move or reorder (Alt copies), click opens the channel editor (`3822-3858`) | Colour dash, name, unit, "· L"/"· R", value while pointing, × on hover, drag to reorder (onto a chip) or move (onto a pane; Alt copies) | Partial | 3 (editor: 5) | Fixed Nov 3 except clicking a chip (the channel editor, Phase 5) and the swatch. |
@@ -136,10 +136,10 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | View menu | Chart, Table, Chart and table, Chart and values, Values, Gauges, Checks, XY plot, Spectrum, each with an icon and a hint (`11020-11034`) | Chart, Table, Chart and table, Values, no icons (`shell/PaneStack.svelte:33-38`, `186-201`) | Partial | 3 (cv, gauges, checks, XY, spectrum: 5) | The check mark was unsized and drew about 150 px wide; fixed Nov 3 (14 px). |
 | ⋯ pane menu | Event markers in this pane, Axis and scale…, Close others, Close panes below, Close pane, Duplicate, Split right, Split down, Add a pane below (`2824-2848`) | Same without Event markers (`shell/PaneStack.svelte:43-53`) | Partial | 5 | Only the Phase 5 item is missing. |
 | Close with Undo | Close pane, others and below are undoable (`2797-2812`) | Same (`stack.svelte.ts:159`) | Ported | 3 | |
-| Duplicate | Below, or beside with Shift-click; Ctrl/Cmd+D (`2872`, `6790`) | Below, or beside with Ctrl/Cmd+Shift+D (the menu: below only) | Partial | 3 | Ctrl/Cmd+D added Nov 3; the menu still has no beside. |
+| Duplicate | Below, or beside with Shift-click; Ctrl/Cmd+D (`2872`, `6790`) | Below (⋯ → Duplicate), or beside (⋯ → Duplicate beside; Ctrl/Cmd+Shift+D beside) | Ported | 3 | Fixed Nov 3. |
 | Split right, split down | `2977`, `2743` | `stack.svelte.ts:118-136` | Ported | 3 | |
-| Add pane bar | "+ Add pane" and a ▾ menu of types (Chart, Table, Chart + table, Chart + values, Values); Ctrl+Shift+N adds one below the selected pane (`2852-2869`) | "+ Add pane" only (`App.svelte:65`) | Partial | 3 | |
-| Empty pane | "Empty pane"; "Drag a channel here, or select this pane and click a channel." (`3816`) | "Tick channels on the left to plot them here" (`shell/PaneStack.svelte:124`) | Different | 3 | |
+| Add pane bar | "+ Add pane" and a ▾ menu of types (Chart, Table, Chart + table, Chart + values, Values); Ctrl+Shift+N adds one below the selected pane (`2852-2869`) | "+ Add pane" and a ▾ menu of kinds (Chart, Table, Chart and table, Values); Ctrl+Shift+N | Ported | 3 | Fixed Nov 3 (`shell/AddPane.svelte`). |
+| Empty pane | "Empty pane"; "Drag a channel here, or select this pane and click a channel." (`3816`) | "Empty pane. Drag a channel here, or select this pane and click a channel." | Ported | 3 | Fixed Nov 3. |
 | Chart view | uPlot per pane | WebGL, one canvas for all panes (`app.ts:619`) | Ported | 1 | Different engine by design. |
 | Chart and table | Chart above, table below, table height grip | Same (`shell/PaneStack.svelte:175-176`, `shell/Table.svelte:165-187`) | Ported | 4 | |
 | Values view | Tiles with "at cursor A · 00:32:57.3" (or pointer or end of view) above them, decimals from the channel, "no limits", "Click to set limits"; the pane shrinks to fit (`3835`, `tileHtml`) | Tiles with name, value and unit (`shell/PaneStack.svelte:159-171`); values at raw precision (`0.340868`), no "where" line; the pane keeps its full height | Partial | 3 (limits: 5) | `proto_pane_value.png`, `app_pane_values.png`. |
@@ -148,11 +148,11 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Checks view | `11465` | — | Missing | 5 | |
 | XY plot | X channel picker, 1:1, Fit (`10786-10892`) | — | Missing | 5 | The design lists XY plots in the plot stack without a phase. |
 | Spectrum | `10893-11037` | — | Missing | 5 | Part of derived channels in the design. |
-| Overview title | "Overview of [selected pane · 2 channels ▾]": follow the pane or pin any channel (`5973-5990`) | "Overview of pane N" (`app.ts:933-944`) | Partial | 3 | No channel picker. |
+| Overview title | "Overview of [selected pane · 2 channels ▾]": follow the pane or pin any channel (`5973-5990`) | "Overview of [pane N · k channels ▾]": follows the selected pane, or pins any channel (saved) | Ported | 3 | Fixed Nov 3. |
 | Overview drawing | Each channel's min/max band scaled to its own range plus a midline; an event strip below (`5990-6050`) | The pane's traces as lines (`app.ts:872`) | Different | 3 (events: 5) | |
-| Overview gestures | Follows the mouse mode: Box drags a new view, a click centres; Pan drags the window; Cursors places A and B; the wheel zooms (`6051-6142`) | Drag the window, or click to move it there (`app.ts:1813-1843`) | Partial | 3 | No box, cursors or wheel. |
-| Overview time range | "00:00:00 – 02:00:00" at the right (`1635`) | — | Missing | 3 | |
-| Show on top | A switch in the overview header, and a setting (`1635`, `placeOverview 6732`) | A text link that flips between "Show on top" and "Show at the bottom", a setting and a ⋯ item (`app.ts:940`) | Different | 3 | |
+| Overview gestures | Follows the mouse mode: Box drags a new view, a click centres; Pan drags the window; Cursors places A and B; the wheel zooms (`6051-6142`) | By mouse mode: Box drags a new view (a click centres), Pan drags the window, Cursors places A and B, the wheel zooms | Ported | 3 | Fixed Nov 3. |
+| Overview time range | "00:00:00 – 02:00:00" at the right (`1635`) | The file's range at the right of the header | Ported | 3 | Fixed Nov 3. |
+| Show on top | A switch in the overview header, and a setting (`1635`, `placeOverview 6732`) | A switch in the overview header, and a setting | Ported | 3 | Fixed Nov 3. |
 
 ## 4. Charts
 
@@ -383,6 +383,10 @@ once) and Quiet interface. `t_fileopen` covers them.
 
 Pane stack and top bar (Nov 3): the chart height grip, chip ×, drag and reorder, side tags, "+N" overflow, the narrow
 top bar (Bar group in ⋯) and scrolling tabs. `t_height`, `t_chips` and `t_narrow` cover them.
+
+Pane drops and the overview (Nov 3): dropping a pane's number on another pane's edges or middle, the "+" between rows,
+the Add pane ▾ menu, Duplicate beside, the empty-pane and no-panes states, and the overview's channel picker, range,
+switch and gestures. `t_zones` and `t_overview` cover them.
 
 ## 9. Look and feel
 

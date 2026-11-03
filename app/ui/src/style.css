@@ -828,3 +828,57 @@ input[role='switch']:checked::after {
 .quiet :is(.where, .meta, .catact + .meta) {
   display: none;
 }
+
+/* the overview's header: what it shows, its range, and the switch for showing it on top */
+.ovsel {
+  min-height: 22px;
+  padding: 0 4px;
+  font-size: 11.5px;
+  border-radius: 4px;
+}
+
+.ovrange {
+  font-size: 11.5px;
+}
+
+.ovsw {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+
+.ovsw .knob {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--raised);
+}
+
+.ovsw .knob::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  transition: transform 0.12s;
+}
+
+.ovsw[aria-checked='true'] .knob {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.ovsw[aria-checked='true'] .knob::after {
+  background: var(--on-accent);
+  transform: translateX(10px);
+}

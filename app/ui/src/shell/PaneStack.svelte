@@ -17,7 +17,8 @@
     hasChart,
     labelled,
     moveChannel,
-    movePane,
+    dropPane,
+    type Zone,
     newPaneWith,
     removeChannel,
     rightPad,
@@ -135,6 +136,24 @@
   }
   let dragging = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
+  /** Where on a pane a dragged pane would land: which pane and which part of it. */
+  let zoneAt = $state<null | { i: number; zone: Zone }>(null);
+  function zoneOf(e: DragEvent): Zone {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const [fx, fy] = [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+    return fx < 0.2 ? 'left' : fx > 0.8 ? 'right' : fy < 0.25 ? 'top' : fy > 0.75 ? 'bottom' : 'middle';
+  }
+  function paneOver(e: DragEvent, i: number) {
+    if (dragging == null) return overChans(e, i);
+    e.preventDefault();
+    zoneAt = { i, zone: zoneOf(e) };
+  }
+  function paneDrop(e: DragEvent, i: number) {
+    if (dragging == null) return dropChans(e, i);
+    e.preventDefault();
+    if (zoneAt) dropPane(dragging, i, zoneAt.zone, e.altKey);
+    dragging = dropAt = zoneAt = null;
+  }
 
   const items = (i: number) => [
     ...(hasChart(i) ? [{ label: 'Axis and scale…', run: () => (axes = { ...menuAt!, i }) }, { sep: true }] : []),
@@ -143,6 +162,7 @@
     { label: 'Close pane', run: () => closePane(i) },
     { sep: true },
     { label: 'Duplicate', run: () => duplicate(i), off: !stack.panes[i]?.channels.length },
+    { label: 'Duplicate beside', run: () => duplicate(i, true), off: !stack.panes[i]?.channels.length || !canSplitRight(i) },
     { label: 'Split right', run: () => splitRight(i), off: !canSplitRight(i) },
     { label: 'Split down', run: () => splitDown(i) },
     { label: 'Add a pane below', run: () => addPaneBelow(i) },
@@ -185,25 +205,13 @@
         <div class="pcol">
           {#each col as i (i)}
             {@const p = stack.panes[i]}
-            <section class="pane" class:grow={p.mode === 'table' || p.mode === 'values'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => overChans(e, i)} ondrop={(e) => dropChans(e, i)} role="presentation">
+            <section class="pane" class:grow={p.mode === 'table' || p.mode === 'values'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => zoneAt?.i === i && (zoneAt = null)} ondrop={(e) => paneDrop(e, i)} role="presentation">
               <div
                 class="phead"
                 use:fitChips={i}
                 role="group"
                 aria-label="Pane {i + 1}"
                 oncontextmenu={(e) => context(e, i)}
-                ondragover={(e) => {
-                  if (dragging != null) {
-                    e.preventDefault();
-                    dropAt = i;
-                  }
-                }}
-                ondragleave={() => (dropAt = null)}
-                ondrop={(e) => {
-                  e.preventDefault();
-                  if (dragging != null) movePane(dragging, i);
-                  dragging = dropAt = null;
-                }}
               >
                 <span
                   class="pnum"
@@ -215,7 +223,7 @@
                     dragging = i;
                     e.dataTransfer?.setData('text/plain', `pane ${i + 1}`);
                   }}
-                  ondragend={() => (dragging = dropAt = null)}>{i + 1}</span
+                  ondragend={() => (dragging = dropAt = zoneAt = null)}>{i + 1}</span
                 >
                 {#each p.channels as ch (ch)}
                   {@const info = ui.channels[ch]}
@@ -236,7 +244,7 @@
                     ><button class="cx" data-chip-x={ch} aria-label="Take {info?.name ?? ch} out of pane {i + 1}" data-tip="Take out of this pane" onclick={(e) => (e.stopPropagation(), removeChannel(ch, i))}>{@html ICON.close}</button></span
                   >
                 {:else}
-                  <span class="mnote">Tick channels on the left to plot them here</span>
+                  <span class="mnote" data-empty-pane>Empty pane. Drag a channel here, or select this pane and click a channel.</span>
                 {/each}
                 {#if folded[i]}
                   <button class="more" data-more-chips={i} aria-haspopup="menu" data-tip="Every channel in this pane, with its value" onclick={(e) => {
@@ -314,7 +322,17 @@
         </div>
       {/each}
     </div>
+    {#if r < rows().length - 1}
+      <div class="rgap"><button data-gap={r} aria-label="Add a pane here" data-tip="Add a pane between these rows" onclick={() => addPaneBelow(row[row.length - 1])}>+</button></div>
+    {/if}
   {/each}
+  {#if !stack.panes.length && ui.file}
+    <div class="nopanes" data-nopanes>
+      <p class="np-title">No channels plotted</p>
+      <p class="muted">Add a pane, then tick channels in Explorer or drag them here.</p>
+      <button class="btn primary" id="addFirst" onclick={() => addPaneBelow(0)}>+ Add pane</button>
+    </div>
+  {/if}
 </div>
 
 {#if views}
@@ -392,6 +410,45 @@
   .pane.grow {
     flex: 1 1 0;
   }
+  .rgap {
+    position: relative;
+    z-index: 2;
+    flex: none;
+    width: 56px;
+    height: 6px;
+    margin: -3px 0;
+  }
+  .rgap button {
+    position: absolute;
+    left: 20px;
+    top: -6px;
+    display: none;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--accent-line);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--accent);
+    font-size: 13px;
+    line-height: 1;
+  }
+  .rgap:hover button,
+  .rgap button:focus-visible {
+    display: inline-grid;
+  }
+  .nopanes {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin: 40px 0;
+  }
+  .np-title {
+    margin: 0;
+    font-size: 15px;
+  }
   .more {
     flex: none;
     height: 22px;
@@ -451,8 +508,24 @@
   .stack.chanover {
     box-shadow: inset 0 -2px 0 var(--accent);
   }
-  .pane.drop {
-    box-shadow: inset 0 2px 0 var(--accent);
+  .pane.zone {
+    background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
+  }
+  .pane[data-zone='top'] {
+    box-shadow: inset 0 3px 0 var(--accent);
+  }
+  .pane[data-zone='bottom'] {
+    box-shadow: inset 0 -3px 0 var(--accent);
+  }
+  .pane[data-zone='left'] {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .pane[data-zone='right'] {
+    box-shadow: inset -3px 0 0 var(--accent);
+  }
+  .pane[data-zone='middle'] {
+    outline: 2px dashed var(--accent-line);
+    outline-offset: -2px;
   }
   .pnum {
     cursor: grab;

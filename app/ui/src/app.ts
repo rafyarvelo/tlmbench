@@ -12,7 +12,7 @@ import { tick } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
-import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTimeFormat, type YAxis } from './axes';
+import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTimeFormat, timeLabel, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { bindTips } from './tips';
@@ -156,6 +156,8 @@ const state = {
   A: null as bigint | null,
   B: null as bigint | null,
   box: null as null | { pane: number; x0: number; x1: number },
+  /** A box being dragged on the overview (x from the left of the centre area). */
+  ovBox: null as null | { x0: number; x1: number },
   drawScheduled: false,
   onQuery: null as null | ((q: QueryStats) => void),
   onPaint: null as null | ((p: { coarse: boolean; complete: boolean }) => void),
@@ -304,7 +306,7 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const withOv = state.ovStale && !!r;
   if (withOv && r) {
     const w = Math.max(1, Math.round(r.w * (window.devicePixelRatio || 1)));
-    entries.push(entry(OVERVIEW, panes()[stack.sel] ?? [], f.first, f.last + 1n, w));
+    entries.push(entry(OVERVIEW, ovChans(), f.first, f.last + 1n, w));
     state.ovStale = false;
   }
   const started = performance.now();
@@ -889,6 +891,13 @@ function drawHover(ctx: CanvasRenderingContext2D, r: Rect, i: number, chans: num
   }
 }
 
+/** The channels the overview draws: the one it is pinned to, else the selected pane's. */
+function ovChans(): number[] {
+  const n = state.file?.info.channels.length ?? 0;
+  const pin = settings.overviewCh;
+  return pin != null && pin < n ? [pin] : (panes()[stack.sel] ?? []);
+}
+
 function drawOverview(ctx: CanvasRenderingContext2D, tk: Record<string, string>): void {
   const f = state.file;
   const r = ovRect();
@@ -915,6 +924,10 @@ function drawOverview(ctx: CanvasRenderingContext2D, tk: Record<string, string>)
   ctx.fillRect(xb, r.y, Math.max(0, r.x + r.w - xb), r.h);
   ctx.strokeStyle = tk['--accent'];
   ctx.strokeRect(Math.round(xa) + 0.5, r.y + 0.5, Math.max(2, Math.round(xb - xa) - 1), r.h - 1);
+  if (state.ovBox) {
+    ctx.fillStyle = css(tk['--accent'], 0.25);
+    ctx.fillRect(Math.min(state.ovBox.x0, state.ovBox.x1), r.y, Math.abs(state.ovBox.x1 - state.ovBox.x0), r.h);
+  }
   for (const t of [state.A, state.B]) {
     if (t == null) continue;
     const x = Math.round(r.x + (Number(t - t0) / span) * r.w) + 0.5;
@@ -946,7 +959,6 @@ function renderPanes(): void {
 }
 
 function renderChannels(): void {
-  $('addPane').hidden = !state.file;
 }
 
 function renderOverviewHead(): void {
@@ -957,7 +969,15 @@ function renderOverviewHead(): void {
   if (!state.file || live.on) return;
   const wrap = document.createElement('div');
   wrap.className = 'overview';
-  wrap.innerHTML = `<div class="ovhead"><span>Overview of pane ${stack.sel + 1}</span><span class="spacer"></span><button class="linkbtn" data-ovtop>${settings.overviewTop ? 'Show at the bottom' : 'Show on top'}</button></div><div class="ovplot"></div>`;
+  const f = state.file;
+  const chs = f.info.channels;
+  const pin = settings.overviewCh != null && settings.overviewCh < chs.length ? settings.overviewCh : null;
+  const n = panes()[stack.sel]?.length ?? 0;
+  const rangeTxt = `${timeLabel(f.first, Number(f.last - f.first) / 4)} – ${timeLabel(f.last, Number(f.last - f.first) / 4)}`;
+  wrap.innerHTML =
+    `<div class="ovhead"><span>Overview of</span><select class="sel ovsel" data-ovch aria-label="What the overview shows"><option value=""${pin == null ? ' selected' : ''}>pane ${stack.sel + 1} · ${n} ${n === 1 ? 'channel' : 'channels'}</option>` +
+    chs.map((c, k) => `<option value="${k}"${pin === k ? ' selected' : ''}>${esc(c.name)}</option>`).join('') +
+    `</select><span class="spacer"></span><span class="num ovrange" data-ovrange>${esc(rangeTxt)}</span><button class="ovsw" role="switch" aria-checked="${settings.overviewTop}" data-ovtop><span class="knob"></span>Show on top</button></div><div class="ovplot"></div>`;
   slot.append(wrap);
 }
 
@@ -1773,7 +1793,9 @@ type Drag =
   | { type: 'pan'; cx: number; t0: bigint; t1: bigint; w: number }
   | { type: 'box'; pane: number; r: Rect }
   | { type: 'cursor'; which: 'A' | 'B'; r: Rect }
-  | { type: 'overview'; r: Rect; offset: bigint };
+  | { type: 'overview'; r: Rect; offset: bigint }
+  | { type: 'ovbox'; r: Rect; t: bigint }
+  | { type: 'ovcursor'; which: 'A' | 'B'; r: Rect };
 let drag: Drag | null = null;
 let lastPointer: { clientX: number; clientY: number } | null = null;
 
@@ -1879,7 +1901,14 @@ stackEl.addEventListener(
   { passive: false },
 );
 
-// overview: drag the window, or click elsewhere to move it there
+// overview: by the mouse mode. Box drags out a new view (a click centres on it); Pan drags the window (a click
+// moves it there); Cursors places A and B; the wheel zooms
+const ovTime = (clientX: number, r: Rect) => {
+  const f = state.file!;
+  const c = center.getBoundingClientRect();
+  const t = f.first + BigInt(Math.round(((clientX - c.left - r.x) / r.w) * Number(f.last + 1n - f.first)));
+  return t < f.first ? f.first : t > f.last ? f.last : t;
+};
 center.addEventListener('pointerdown', (e) => {
   const f = state.file;
   const target = e.target as HTMLElement;
@@ -1887,12 +1916,26 @@ center.addEventListener('pointerdown', (e) => {
     setSetting('overviewTop', !settings.overviewTop);
     return;
   }
-  if (!f || !target.closest('.ovplot') || e.button !== 0 || locked()) return;
+  if (!f || !target.closest('.ovplot') || e.button !== 0) return;
   const r = ovRect()!;
   const c = center.getBoundingClientRect();
-  const span = f.last + 1n - f.first;
-  const t = f.first + BigInt(Math.round(((e.clientX - c.left - r.x) / r.w) * Number(span)));
+  const t = ovTime(e.clientX, r);
+  const x = e.clientX - c.left;
+  if (settings.mode === 'cursor') {
+    const which = state.A == null ? 'A' : state.B == null ? 'B' : abs(t - state.A) < abs(t - state.B) ? 'A' : 'B';
+    placeCursor(which, t);
+    drag = { type: 'ovcursor', which, r };
+    center.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (locked()) return;
   stopGlide();
+  if (settings.mode === 'box') {
+    state.ovBox = { x0: x, x1: x };
+    drag = { type: 'ovbox', r, t };
+    center.setPointerCapture(e.pointerId);
+    return;
+  }
   if (t < state.t0 || t > state.t1) {
     const half = (state.t1 - state.t0) / 2n;
     setView(t - half, t + half, true);
@@ -1902,14 +1945,59 @@ center.addEventListener('pointerdown', (e) => {
 });
 center.addEventListener('pointermove', (e) => {
   const f = state.file;
-  if (drag?.type !== 'overview' || !f) return;
-  const c = center.getBoundingClientRect();
-  const t = f.first + BigInt(Math.round(((e.clientX - c.left - drag.r.x) / drag.r.w) * Number(f.last + 1n - f.first)));
-  const span = state.t1 - state.t0;
-  setView(t - drag.offset, t - drag.offset + span);
+  if (!f || !drag) return;
+  if (drag.type === 'overview') {
+    const t = ovTime(e.clientX, drag.r);
+    const span = state.t1 - state.t0;
+    setView(t - drag.offset, t - drag.offset + span);
+  } else if (drag.type === 'ovbox' && state.ovBox) {
+    const c = center.getBoundingClientRect();
+    state.ovBox.x1 = Math.max(drag.r.x, Math.min(drag.r.x + drag.r.w, e.clientX - c.left));
+    scheduleDraw();
+  } else if (drag.type === 'ovcursor') placeCursor(drag.which, ovTime(e.clientX, drag.r));
 });
-center.addEventListener('pointerup', () => {
-  if (drag?.type === 'overview') drag = null;
+center.addEventListener('pointerup', (e) => {
+  if (drag?.type === 'ovbox' && state.file && state.ovBox) {
+    const { x0, x1 } = state.ovBox;
+    const r = drag.r;
+    state.ovBox = null;
+    if (Math.abs(x1 - x0) >= 4) {
+      const c = center.getBoundingClientRect();
+      glideTo(ovTime(Math.min(x0, x1) + c.left, r), ovTime(Math.max(x0, x1) + c.left, r));
+    } else {
+      const half = (state.t1 - state.t0) / 2n;
+      const t = ovTime(e.clientX, r);
+      glideTo(t - half, t + half);
+    }
+    scheduleDraw();
+  }
+  if (drag?.type === 'overview' || drag?.type === 'ovbox' || drag?.type === 'ovcursor') drag = null;
+});
+center.addEventListener(
+  'wheel',
+  (e) => {
+    const f = state.file;
+    if (!f || !(e.target as HTMLElement).closest('.ovplot')) return;
+    e.preventDefault();
+    if (locked()) return;
+    stopGlide();
+    const r = ovRect()!;
+    const t = ovTime(e.clientX, r);
+    const factor = Math.exp(Math.max(-200, Math.min(200, e.deltaY)) * 0.0015);
+    const span = Number(state.t1 - state.t0);
+    const left = Number(t - state.t0);
+    const t0 = t - BigInt(Math.round(left * factor));
+    setView(t0, t0 + BigInt(Math.max(1, Math.round(span * factor))));
+  },
+  { passive: false },
+);
+center.addEventListener('change', (e) => {
+  const t = e.target as HTMLSelectElement;
+  if (!t.matches('[data-ovch]')) return;
+  setSetting('overviewCh', t.value === '' ? null : Number(t.value));
+  state.ovStale = true;
+  renderOverviewHead();
+  void requestView();
 });
 
 $('addPane').addEventListener('click', () => addPaneBelow(stack.panes.length - 1));

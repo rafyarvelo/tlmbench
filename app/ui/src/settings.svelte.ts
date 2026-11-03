@@ -40,6 +40,8 @@ export interface Settings {
   clickMode: 'select' | 'act';
   /** Hides badges and counts until they matter. */
   quietUI: boolean;
+  /** The channel the overview is pinned to (null: it follows the selected pane). */
+  overviewCh: number | null;
   /** Tooltips (Short retires each after three showings; `tipsSeen` counts them by tip). */
   tooltips: Tooltips;
   tipsSeen: Record<string, number>;
@@ -90,6 +92,7 @@ export const DEFAULTS: Settings = {
   fileOpenNew: 'starter',
   clickMode: 'select',
   quietUI: false,
+  overviewCh: null,
   tooltips: 'short',
   tipsSeen: {},
   showStart: true,

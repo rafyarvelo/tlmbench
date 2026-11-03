@@ -14,7 +14,7 @@ run('panes', async ({ p, check, text, visible, paneCount, until, settingsLS, wai
 
   check('three panes', (await paneCount()) === 3);
   const items = await menu(0);
-  check('the ⋯ menu', items.join('|') === 'Axis and scale…|Close others|Close panes below|Close pane|Duplicate|Split right|Split down|Add a pane below', items);
+  check('the ⋯ menu', items.join('|') === 'Axis and scale…|Close others|Close panes below|Close pane|Duplicate|Duplicate beside|Split right|Split down|Add a pane below', items);
   await p.keyboard.press('Escape');
   check('Esc closes it', !(await visible('.panemenu')));
 
@@ -24,7 +24,7 @@ run('panes', async ({ p, check, text, visible, paneCount, until, settingsLS, wai
   check('split right adds a pane beside', (await paneCount()) === 4 && JSON.stringify(await app('layout')) === '["row","beside","row","row"]', await app('layout'));
   const [a, b] = [await rect(0), await rect(1)];
   check('side by side', Math.abs(a.y - b.y) < 2 && b.x > a.x + a.w, [a, b]);
-  check('the new pane is selected and empty', (await app('sel')) === 1 && /Tick channels/.test(await text('#stack [data-pane="1"] .phead')));
+  check('the new pane is selected and empty', (await app('sel')) === 1 && /Empty pane/.test(await text('#stack [data-pane="1"] .phead')));
   await p.click('#chans .chan[data-ch="4"] .box');
   check('a channel goes to the selected pane', JSON.stringify((await app('panes'))[1]) === '[4]', await app('panes'));
   check('every pane draws', await until(() => window.__tlmApp.drawn().filter((d, i) => window.__tlmApp.panes()[i].length).every((d) => d && d.length)));
