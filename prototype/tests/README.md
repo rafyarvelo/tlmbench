@@ -36,6 +36,7 @@ It prints PASS or FAIL per test with the checks that failed, then a summary, and
 | t_trigger | live triggers: arm on a level crossing, the window freezes around it, a Trigger event marks it |
 | t_align | time alignment: Time channel (GPS time of week) and Cross-correlation |
 | t_share | Share… as TOML (rule sets, events, categories, recipes), Export to HTML (Full or Light by budget), no sessions beside the data |
+| t_export | Export data… (format, time: view, cursors or whole recording, channels, wide or long, resampling, times, stored values; size, files and the matching `tlmbench convert`; choices saved) and Save the view as an image… (PNG or SVG, every pane or the selected one, size) |
 | t_colsel | table column selection: Shift-click ranges from the header or checkbox, Ctrl-click |
 | t_colors | channel colours cycle evenly past eight channels |
 | t_checksel | check rows: select and deselect, the tooltip, opening a check's channels |
