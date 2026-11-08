@@ -34,6 +34,10 @@ export interface Pane {
   h?: number;
   /** The table's height under a chart ('both'), where dragged. */
   tableH?: number;
+  /** Table sort keys in order, by column id ('t', 'c<channel>'; the sample column can't sort). */
+  sort?: { col: string; desc: boolean }[];
+  /** Table filters by column id: the text typed (`> 1.5`, `1..2`, `blank`, joined with and / or). */
+  filters?: Record<string, string>;
   beside?: boolean;
   under?: boolean;
 }
@@ -387,12 +391,12 @@ export function setPlotH(i: number, h: number | undefined): void {
 }
 
 /** Sets a pane's table widths or height (undefined: back to the default). */
-export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH'>>): void {
+export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH' | 'sort' | 'filters'>>): void {
   edit(() => {
     const p = stack.panes[i];
     if (!p) return;
     for (const [k, v] of Object.entries(patch) as [keyof typeof patch, never][]) {
-      if (v === undefined || (k === 'widths' && !Object.keys(v).length)) delete p[k];
+      if (v === undefined || ((k === 'widths' || k === 'filters') && !Object.keys(v).length) || (k === 'sort' && !(v as unknown[]).length)) delete p[k];
       else p[k] = v;
     }
   });

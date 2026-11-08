@@ -14,6 +14,9 @@ export interface WsPane {
   /** Table column widths: 'n' and 't' for sample and time, 'c:<channel name>' for a channel. */
   widths?: Record<string, number>;
   tableH?: number;
+  /** Table sort and filters, with columns named as `widths` does. */
+  sort?: { col: string; desc: boolean }[];
+  filters?: Record<string, string>;
 }
 
 export interface Workspace {
@@ -44,6 +47,9 @@ export function toWorkspace(name: string, panes: Pane[], names: string[]): Works
       if (p.axis) w.axis = structuredClone(p.axis);
       if (p.widths) w.widths = Object.fromEntries(Object.entries(p.widths).map(([k, v]) => [k.startsWith('c') ? `c:${names[Number(k.slice(1))]}` : k, v]));
       if (p.tableH != null) w.tableH = p.tableH;
+      const colName = (c: string) => (c.startsWith('c') ? `c:${names[Number(c.slice(1))]}` : c);
+      if (p.sort?.length) w.sort = p.sort.map((k) => ({ col: colName(k.col), desc: k.desc }));
+      if (p.filters) w.filters = Object.fromEntries(Object.entries(p.filters).map(([k, v]) => [colName(k), v]));
       return w;
     }),
   };
@@ -75,6 +81,11 @@ export function fromWorkspace(ws: Workspace, names: string[]): { panes: Pane[]; 
       if (Object.keys(widths).length) p.widths = widths;
     }
     if (w.tableH != null) p.tableH = w.tableH;
+    const colId = (c: string) => (c.startsWith('c:') ? (index.has(c.slice(2)) ? `c${index.get(c.slice(2))}` : null) : c);
+    const sort = (w.sort ?? []).flatMap((k) => (colId(k.col) ? [{ col: colId(k.col)!, desc: !!k.desc }] : []));
+    if (sort.length) p.sort = sort;
+    const filters = Object.fromEntries(Object.entries(w.filters ?? {}).flatMap(([k, v]) => (colId(k) ? [[colId(k)!, v]] : [])));
+    if (Object.keys(filters).length) p.filters = filters;
     return p;
   });
   return { panes, missing: [...missing] };

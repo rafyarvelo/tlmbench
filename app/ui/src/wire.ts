@@ -94,6 +94,8 @@ export interface Rows {
   /** Rows in the whole span. */
   total: number;
   times: BigInt64Array;
+  /** Each row's sample index, for a sorted or filtered list (otherwise `first` + the row's place). */
+  index: BigUint64Array | null;
   /** One column per channel asked for, in order (NaN where missing). */
   values: Float64Array[];
 }
@@ -106,6 +108,9 @@ export function decodeRows(buf: ArrayBuffer): Rows {
   const channels = v.getUint32(4, true);
   const n = v.getUint32(24, true);
   const times = new BigInt64Array(buf, ROWS_HEADER, n);
-  const values = Array.from({ length: channels }, (_, k) => new Float64Array(buf, ROWS_HEADER + 8 * n * (k + 1), n));
-  return { first: Number(v.getBigUint64(8, true)), total: Number(v.getBigUint64(16, true)), times, values };
+  const indexed = v.getUint32(28, true) === 1;
+  const index = indexed ? new BigUint64Array(buf, ROWS_HEADER + 8 * n, n) : null;
+  const at = ROWS_HEADER + 8 * n * (indexed ? 2 : 1);
+  const values = Array.from({ length: channels }, (_, k) => new Float64Array(buf, at + 8 * n * k, n));
+  return { first: Number(v.getBigUint64(8, true)), total: Number(v.getBigUint64(16, true)), times, index, values };
 }

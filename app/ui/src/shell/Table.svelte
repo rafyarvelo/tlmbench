@@ -2,8 +2,15 @@
      (the `rows` command), so a view of millions of rows scrolls without loading them. Columns come from TanStack
      Table (resizable, widths saved with the layout); rows are virtualised here at a fixed height. Clicking a row
      places cursor A (Shift: B), double-click centres the charts on it. -->
+<script module lang="ts">
+  /** Query tokens, unique across tables. */
+  let nextToken = 0;
+</script>
+
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
+  import { onDestroy } from 'svelte';
   import { type ColumnDef, type ColumnSizingState, createTable, getCoreRowModel, type TableState } from '@tanstack/table-core';
 
   import { timeLabel } from '../axes';
@@ -16,6 +23,8 @@
   let { i, height = null }: { i: number; height?: number | null } = $props();
 
   const ROW_H = 26;
+  /** The header's height: names, then the filter row. */
+  const HEAD_H = 56;
   /** Rows read beyond each edge of the window, so short scrolls need no new read. */
   const MARGIN = 100;
 
@@ -72,6 +81,80 @@
     }
   });
 
+  // ---------- sort and filter ----------
+
+  const sort = $derived(pane?.sort ?? []);
+  const filters = $derived(pane?.filters ?? {});
+  /** Filter texts the core can't read, by column id. */
+  let errors = $state<Record<string, string>>({});
+  /** The sorted and filtered list the core holds for this table: its token and the rows it left. */
+  let q = $state<null | { token: number; matched: number; total: number; key: string }>(null);
+  /** The running query's token and progress (0..1). */
+  let running = $state<null | { token: number; done: number }>(null);
+
+  const sortOf = (id: string) => sort.findIndex((k) => k.col === id);
+  function sortBy(id: string, add: boolean) {
+    if (id === 'n') return;
+    const at = sortOf(id);
+    const cur = at >= 0 ? sort[at] : null;
+    // ascending, then descending, then off; Shift adds the column to the keys
+    const next = !cur ? { col: id, desc: false } : !cur.desc ? { col: id, desc: true } : null;
+    const rest = add ? sort.filter((k) => k.col !== id) : [];
+    const keys = next ? (add && at >= 0 ? sort.map((k) => (k.col === id ? next : k)) : [...rest, next]) : add ? rest : [];
+    setTable(i, { sort: keys });
+  }
+  function setFilter(id: string, text: string) {
+    const { [id]: _, ...rest } = filters;
+    setTable(i, { filters: text.trim() ? { ...rest, [id]: text } : rest });
+  }
+  /** Whether a sort or a valid filter is set, so the rows come from a query. */
+  const querying = $derived(sort.length > 0 || Object.entries(filters).some(([id, t]) => t.trim() && !errors[id]));
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const f = ui.view.file;
+    const spec = { t0: ui.view.t0, t1: ui.view.t1 };
+    const texts = { ...filters };
+    const keys = sort.map((k) => ({ col: k.col, desc: k.desc }));
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      if (f == null) return;
+      const bad: Record<string, string> = {};
+      for (const [id, t] of Object.entries(texts)) {
+        const e = await invoke<string | null>('filter_check', { expr: t });
+        if (e) bad[id] = e;
+      }
+      errors = bad;
+      const good = Object.entries(texts).filter(([id, t]) => t.trim() && !bad[id]).map(([col, expr]) => ({ col, expr }));
+      if (running) void invoke('table_cancel', { token: running.token });
+      if (!good.length && !keys.length) {
+        if (q) void invoke('table_query', { file: f, span: spec, filters: [], sort: [], token: ++nextToken, dropToken: q.token }).catch(() => {});
+        q = null;
+        running = null;
+        return;
+      }
+      const token = ++nextToken;
+      running = { token, done: 0 };
+      const was = q?.token ?? null;
+      try {
+        const r = await invoke<{ matched: number; total: number; done: boolean }>('table_query', { file: f, span: spec, filters: good, sort: keys, token, dropToken: was });
+        if (running?.token !== token) return;
+        running = null;
+        if (r.done) q = { token, matched: r.matched, total: r.total, key: `${f}|${spec.t0}|${spec.t1}` };
+      } catch {
+        if (running?.token === token) running = null;
+      }
+    }, 200);
+  });
+  let unlisten: undefined | (() => void);
+  void listen<{ token: number; done: number }>('table-progress', (e) => {
+    if (running && e.payload.token === running.token) running = { token: running.token, done: e.payload.done };
+  }).then((u) => (unlisten = u));
+  onDestroy(() => {
+    unlisten?.();
+    clearTimeout(timer);
+  });
+
   // ---------- rows ----------
 
   let scroller = $state<HTMLDivElement>();
@@ -81,9 +164,9 @@
   let got = $state<null | { key: string; offset: number; rows: Rows }>(null);
   let inflight = false;
 
-  const key = $derived(`${ui.view.file}|${ui.view.t0}|${ui.view.t1}|${channels.join(',')}`);
+  const key = $derived(`${ui.view.file}|${ui.view.t0}|${ui.view.t1}|${channels.join(',')}|${q?.token ?? ''}`);
   /** Rows in view: the last reply's count (kept while the next view is read, so the scrollbar doesn't jump). */
-  const count = $derived(got?.rows.total ?? 0);
+  const count = $derived(q && querying ? q.matched : (got?.rows.total ?? 0));
   const lo = $derived(Math.max(0, Math.floor(scrollTop / ROW_H)));
   const hi = $derived(Math.min(count, Math.ceil((scrollTop + viewH) / ROW_H) + 1));
   /** Times show to the sample interval of the rows read. */
@@ -102,7 +185,7 @@
     const limit = hi - lo + 2 * MARGIN;
     inflight = true;
     try {
-      const buf = await invoke<ArrayBuffer>('rows', { file: f, channels: [...channels], span: { t0: ui.view.t0, t1: ui.view.t1 }, offset, limit });
+      const buf = await invoke<ArrayBuffer>('rows', { file: f, channels: [...channels], span: { t0: ui.view.t0, t1: ui.view.t1 }, offset, limit, query: querying ? (q?.token ?? null) : null });
       got = { key: k, offset, rows: decodeRows(buf) };
       // a channel no chart has drawn learns its decimals from the rows read
       got.rows.values.forEach((col, c) => {
@@ -129,7 +212,7 @@
     if (!got) return null;
     const k = r - got.offset;
     if (k < 0 || k >= got.rows.times.length) return null;
-    return { n: got.rows.first + k, t: got.rows.times[k], v: got.rows.values.map((c) => c[k]) };
+    return { n: got.rows.index ? Number(got.rows.index[k]) : got.rows.first + k, t: got.rows.times[k], v: got.rows.values.map((c) => c[k]) };
   }
 
   /** Whether row `r` is the sample a cursor sits on (the last at or before it). */
@@ -137,6 +220,8 @@
     const x = row(r);
     if (!x || c == null) return false;
     const t = BigInt(c);
+    // a sorted list has no 'next sample': the row at the cursor's time
+    if (querying) return x.t === t;
     const next = row(r + 1);
     return x.t <= t && (next == null ? r === count - 1 || !got || r + 1 - got.offset >= got.rows.times.length : next.t > t);
   }
@@ -149,6 +234,7 @@
     const c = ui.view[which];
     const f = ui.view.file;
     if (c == null || f == null || !got || !channels.length) return;
+    if (querying) return;
     const start = got.rows.first - got.offset;
     const near = await invoke<{ index: number }[]>('values_at', { file: f, channels: [channels[0]], t: c });
     if (near[0]) scrollToRow(Math.max(0, Math.min(count - 1, near[0].index - start)));
@@ -194,7 +280,12 @@
     ></div>
   {/if}
   <div class="tbar">
-    <span class="tstat" role="status" data-tstat>{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view</span>
+    <span class="tstat" role="status" data-tstat
+      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}</span
+    >
+    {#if sort.length || Object.keys(filters).length}
+      <button class="tbtn" data-clear data-tip="Remove the sort and every filter" onclick={() => setTable(i, { sort: [], filters: {} })}>Clear sort and filters</button>
+    {/if}
     <span class="spacer"></span>
     <button class="tbtn" data-go="A" disabled={ui.view.A == null} data-tip="Scroll the table to cursor A" onclick={() => goTo('A')}>Go to A</button>
     <button class="tbtn" data-go="B" disabled={ui.view.B == null} data-tip="Scroll the table to cursor B" onclick={() => goTo('B')}>Go to B</button>
@@ -209,12 +300,44 @@
       bind:clientHeight={viewH}
       onscroll={(e) => (scrollTop = (e.currentTarget as HTMLElement).scrollTop)}
     >
-      <div class="tinner" role="grid" aria-rowcount={count} style="width: {total}px; height: {28 + count * ROW_H}px">
+      <div class="tinner" role="grid" aria-rowcount={count} style="width: {total}px; height: {HEAD_H + count * ROW_H}px">
         <div class="thead" role="row">
           {#each headers as { h, col } (col.id)}
-            <span class="tth" class:num={col.ch != null} role="columnheader" style="width: {h.getSize()}px" data-col={col.id}>
-              {#if col.ch != null}<i style="background: var(--trace-{colorIdx(col.ch) + 1})"></i>{/if}
-              <span class="tlab">{col.label}{#if col.unit}&nbsp;<span class="tunit">{col.unit}</span>{/if}</span>
+            {@const k = sortOf(col.id)}
+            <span
+              class="tth"
+              class:num={col.ch != null}
+              class:sortable={col.id !== 'n'}
+              role="columnheader"
+              aria-sort={k < 0 ? 'none' : sort[k].desc ? 'descending' : 'ascending'}
+              style="width: {h.getSize()}px"
+              data-col={col.id}
+            >
+              <span
+                class="thtop"
+                role="button"
+                tabindex="-1"
+                data-tip={col.id === 'n' ? undefined : 'Sort. Click again to reverse, once more to clear. Shift-click adds a column.'}
+                onclick={(e) => sortBy(col.id, e.shiftKey)}
+                onkeydown={(e) => e.key === 'Enter' && sortBy(col.id, e.shiftKey)}
+              >
+                {#if col.ch != null}<i style="background: var(--trace-{colorIdx(col.ch) + 1})"></i>{/if}
+                <span class="tlab">{col.label}{#if col.unit}&nbsp;<span class="tunit">{col.unit}</span>{/if}</span>
+                {#if k >= 0}<span class="tsort" data-sort={sort[k].desc ? 'desc' : 'asc'}>{sort[k].desc ? '▼' : '▲'}{#if sort.length > 1}<sub>{k + 1}</sub>{/if}</span>{/if}
+              </span>
+              {#if col.id !== 'n'}
+                <input
+                  class="tfin"
+                  class:bad={errors[col.id]}
+                  data-filter={col.id}
+                  placeholder="Filter"
+                  spellcheck="false"
+                  aria-label="Filter {col.label}"
+                  data-tip={errors[col.id] ?? '> 1.5, 1..2, blank; join with and / or'}
+                  value={filters[col.id] ?? ''}
+                  oninput={(e) => setFilter(col.id, e.currentTarget.value)}
+                />
+              {/if}
               <span
                 class="trsz"
                 class:on={h.column.getIsResizing()}
@@ -234,7 +357,7 @@
             </span>
           {/each}
         </div>
-        <div class="tbody" style="top: {28 + lo * ROW_H}px">
+        <div class="tbody" style="top: {HEAD_H + lo * ROW_H}px">
           {#each { length: Math.max(0, hi - lo) } as _, k (lo + k)}
             {@const r = lo + k}
             {@const x = row(r)}
@@ -316,10 +439,8 @@
     position: relative;
     display: flex;
     flex: none;
-    align-items: center;
-    gap: 5px;
-    height: 28px;
-    padding: 0 8px;
+    flex-direction: column;
+    height: 56px;
     overflow: hidden;
     font-size: 12px;
     font-weight: 500;
@@ -329,8 +450,48 @@
     border-right: 1px solid var(--grid);
     border-bottom: 1px solid var(--border);
   }
-  .tth.num {
+  .thtop {
+    display: flex;
+    flex: none;
+    gap: 5px;
+    align-items: center;
+    height: 28px;
+    padding: 0 8px;
+  }
+  .tth.sortable .thtop {
+    cursor: pointer;
+  }
+  .tth.sortable .thtop:hover {
+    color: var(--fg);
+  }
+  .tth.num .thtop {
     justify-content: flex-end;
+  }
+  .tsort {
+    flex: none;
+    font-size: 11px;
+    color: var(--accent);
+  }
+  .tsort sub {
+    font: 11px var(--font-data);
+  }
+  .tfin {
+    flex: none;
+    height: 24px;
+    margin: 0 4px 4px;
+    padding: 0 6px;
+    font: 12px var(--font-data);
+    color: var(--fg);
+    background: var(--plot-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .tfin:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .tfin.bad {
+    border-color: var(--danger);
   }
   .tth i {
     flex: none;

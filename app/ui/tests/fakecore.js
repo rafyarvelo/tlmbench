@@ -156,6 +156,8 @@
     exported: [],
     /** Rows each `rows` call returned. */
     rowsAsked: [],
+    queries: new Map(),
+    queriesRun: [],
     /** The precision each `view` asked for. */
     precisions: [],
     open: new Map(),
@@ -177,6 +179,29 @@
 
   const callbacks = new Map();
   let nextCb = 1;
+  // the filter language: atoms joined by `and`, groups joined by `or`
+  const parseFilter = (text) => {
+    const s = String(text || '').trim().toLowerCase();
+    if (!s) return { test: () => true };
+    const num = '(-?\\d*\\.?\\d+(?:e-?\\d+)?)';
+    const atoms = [];
+    for (const g of s.split(/\s+or\s+/)) {
+      const tests = [];
+      for (const part of g.split(/\s+and\s+/)) {
+        const x = part.trim();
+        let m;
+        if (x === 'blank') tests.push((v) => Number.isNaN(v));
+        else if ((m = x.match(new RegExp(`^${num}\\s*\\.\\.\\s*${num}$`)))) tests.push((v) => v >= +m[1] && v <= +m[2]);
+        else if ((m = x.match(new RegExp(`^(>=|<=|!=|>|<|=)?\\s*${num}$`)))) {
+          const a = +m[2];
+          const op = m[1] || '=';
+          tests.push((v) => ({ '>': v > a, '<': v < a, '>=': v >= a, '<=': v <= a, '=': Math.abs(v - a) < 1e-9, '!=': !Number.isNaN(v) && Math.abs(v - a) >= 1e-9 })[op]);
+        } else return { error: `can't read "${x}"` };
+      }
+      atoms.push(tests);
+    }
+    return { test: (v) => atoms.some((g) => g.every((t) => t(v))) };
+  };
   const listeners = new Map();
   const send = (ch, message) => callbacks.get(ch.id)?.({ message, index: ch.next++ });
   const emit = (event, payload) => (listeners.get(event) || []).forEach((h) => callbacks.get(h)?.({ event, id: h, payload }));
@@ -243,9 +268,31 @@
       });
     },
     // the raw samples in [t0, t1), rows offset..offset + limit, in the app's rows format
-    rows({ file, channels, span, offset, limit }) {
+    rows({ file, channels, span, offset, limit, query }) {
       const r = fake.open.get(file)?.r;
       if (!r) throw 'that file is not open';
+      if (query != null) {
+        const ids = fake.queries.get(query);
+        if (!ids) throw 'that query is gone';
+        const win = ids.ids.slice(offset, offset + Math.min(limit, 10000));
+        const chans = channels.filter((ch) => ch < r.chans.length);
+        fake.rowsAsked.push(win.length);
+        const n = win.length;
+        const buf = new ArrayBuffer(32 + 8 * n * (2 + chans.length));
+        const v = new DataView(buf);
+        [...'TLMR'].forEach((c, i) => v.setUint8(i, c.charCodeAt(0)));
+        v.setUint32(4, chans.length, true);
+        v.setBigUint64(16, BigInt(ids.ids.length), true);
+        v.setUint32(24, n, true);
+        v.setUint32(28, 1, true);
+        win.forEach((id, k) => {
+          const i = ids.first + id;
+          v.setBigInt64(32 + 8 * k, timeAt(r, i), true);
+          v.setBigUint64(32 + 8 * n + 8 * k, BigInt(i), true);
+          chans.forEach((ch, c) => v.setFloat64(32 + 16 * n + 8 * n * c + 8 * k, valueAt(r, ch, i), true));
+        });
+        return buf;
+      }
       const lower = (t) => Math.max(0, Math.min(r.samples, Math.ceil(Number(BigInt(t) - (r.t0 ?? T0)) / Number(dtNs(r)))));
       const a = lower(span.t0);
       const b = Math.max(a, lower(span.t1));
@@ -265,6 +312,33 @@
         for (let k = 0; k < n; k++) v.setFloat64(32 + 8 * n * (c + 1) + 8 * k, valueAt(r, ch, start + k), true);
       });
       return buf;
+    },
+    // table sort and filter: the same language as the core's, over the fake's samples
+    filter_check: ({ expr }) => (parseFilter(expr).error ?? null),
+    table_cancel() {},
+    table_query({ file, span, filters, sort, token, dropToken }) {
+      const r = fake.open.get(file)?.r;
+      if (!r) throw 'that file is not open';
+      fake.queries.delete(dropToken);
+      fake.queriesRun.push({ filters, sort });
+      const lower = (t) => Math.max(0, Math.min(r.samples, Math.ceil(Number(BigInt(t) - (r.t0 ?? T0)) / Number(dtNs(r)))));
+      const a = lower(span.t0);
+      const b = Math.max(a, lower(span.t1));
+      const val = (col, i) => (col === 't' ? Number(timeAt(r, i)) : valueAt(r, Number(col.slice(1)), i));
+      const preds = filters.map((f) => [f.col, parseFilter(f.expr).test]);
+      let ids = [];
+      for (let i = a; i < b; i++) if (preds.every(([c, t]) => t(val(c, i)))) ids.push(i - a);
+      const cmp = (x, y) => {
+        for (const k of sort) {
+          const [p, q] = [val(k.col, a + x), val(k.col, a + y)];
+          if (Number.isNaN(p) || Number.isNaN(q)) { if (Number.isNaN(p) !== Number.isNaN(q)) return Number.isNaN(p) ? 1 : -1; continue; }
+          if (p !== q) return (p < q ? -1 : 1) * (k.desc ? -1 : 1);
+        }
+        return x - y;
+      };
+      if (sort.length) ids.sort(cmp);
+      fake.queries.set(token, { first: a, ids });
+      return { matched: ids.length, total: b - a, done: true };
     },
     // a live source: a recording that grows with the clock at its rate, until stopped
     live_connect({ endpoint, descriptor }) {
