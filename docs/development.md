@@ -25,6 +25,7 @@ About 9–10 GB at first: toolchains ~3–4 GB, `target/` ~5 GB (it grows; `just
 | `just lint` | rustfmt check and clippy, warnings are errors |
 | `just test` | Rust unit, property and doc tests (nextest), then the Python binding tests |
 | `just bench` | criterion benchmarks; run them on the Mac, since CI runners are too noisy for timing |
+| `just bench-record`, `just bench-compare` | after `just bench`: save the medians with the commit (`bench/history.json`); compare with the last saved run, failing on anything over 10% slower |
 | `just proto-test [t_name …]` | syntax-check the prototype, then its Playwright suite |
 | `just app-test [t_name …]` | build the app's UI, then its tests: headless Chromium against a fake core (`app/ui/tests/README.md`) |
 | `just fuzz-smoke [secs]`, `just fuzz <crate> <target>` | fuzz every target briefly, or one until stopped (nightly) |

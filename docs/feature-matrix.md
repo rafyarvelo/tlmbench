@@ -33,7 +33,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Min/max pyramid, resumable background build | v1 | n/a | ✓ | |
 | M4 views, pixel-exact, gaps from the gap index | v1 | n/a | ✓ | |
 | LRU chunk store | v1 | n/a | ✓ | |
-| Cache cap and low-disk eviction; Settings shows path, size, Clear | v1 | n/a | ◐ (Settings → Cache: folder, size, Clear cache; Open folder awaits the owner) | 4.1 |
+| Cache cap and low-disk eviction; Settings shows path, size, Clear | v1 | n/a | ◐ (Settings → Cache: folder, size, Clear cache; Open folder reveals it in the file manager) | 4.1 |
 | Scale and offset per channel (before the pyramid) | v1 | ✓ | ◐ (from descriptors only) | 5.2 |
 | Missing values per channel (raw values, range, Missing when) | v1 | ✓ | ✗ | 5.2 |
 | Derived channels computed in the core, cached with a pyramid | v1 | sim | ✗ | 5.1 |
@@ -57,7 +57,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Canvas 2D fallback renderer | v1 | n/a | ✗ (thin lines on software GL only) | 5.10 |
 | Stack that scrolls when panes don't fit (GL scissored to the stack) | — | ✓ | ✓ |  |
 | Gates 1–3 (100M points at 60 fps; 10 GB first paint; 4M samples/s live) | v1 | n/a | ✓ | |
-| Benchmark tracking across commits | — | n/a | ✗ (in follow-ups) | 4.1 |
+| Benchmark tracking across commits | — | n/a | ✓ (`just bench-record` / `bench-compare`, local) | 4.1 |
 
 ## 3. Shell
 

@@ -189,7 +189,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Draw every sample | Setting: Automatic, up to 100k, up to 1M, Always (`1720`) | Settings → Draw every sample: Automatic, up to 100k, up to 1M, Always (the core's `raw_max`) | Ported | 3 | Fixed Nov 8 (step 4.1). |
 | Time format and decimals | Ten formats and fixed decimals (`1722-1723`, `fmtTime 2523`) | Ten formats (Automatic, Clock, Seconds, Milliseconds, Minutes and seconds, Hours, Days, Weeks, Years, Wall clock) and fixed decimals; sample numbers for a file with no time | Ported | 3 | Fixed Nov 8 (step 4.1). |
 | Channel colours | The least-used palette colour, first among its pane (`assignColor 2748`) | The least-used palette colour, and not one already in its pane (`stack.svelte.ts` `assignColors`) | Ported | 3 | Fixed Nov 3. |
-| Building hatch | — | Hatching and progress while the pyramid builds (`app.ts:789`) | Different | 2 | App only. |
+| Building hatch | — | Hatching and progress while the pyramid builds (`app.ts:789`) | Different | 2 | App only. Accepted by the owner Nov 8; the prototype's load bar and "Summarizing…" aren't built. |
 | Channel editor | Display (name shown, colour, decimals, unit label, scale, offset, missing values, valid range, Missing when), Limits, Value labels (`10643`) | — | Missing | 5 | The design doesn't phase display settings; they sit with missing values. |
 | Y zoom | — | Shift + scroll over a chart, or a drag on its y-axis, sets the axis's fixed range; a double-click on the axis fits it again | Ported | 3 | Fixed Nov 8 (step 4.1). The design's gesture; the prototype has none (owner, Nov 8: the fixed range). |
 

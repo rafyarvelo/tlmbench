@@ -17,19 +17,8 @@ When needed:
   100 GB serves `convert`'s flat-memory claim. Neither suits CI runners (about 14 GB free); run them on the Mac.
 - Add those folders to `ro_commands` coverage, mounted read-only (`hdiutil` image or a read-only external volume).
 
-## Benchmark tracking per commit (step 4.1, awaiting the owner)
-
-The design asks for criterion benchmarks "tracked per commit". CI only runs them once untimed (`bench-smoke`),
-because shared runners are too noisy. To decide: a dedicated runner, a hosted tracker, or results saved locally with
-`just bench -- --save-baseline`.
-
 ## Left from step 4.1 (Nov 8)
 
-- **Settings → Cache: Open folder** waits for the owner. It hands the folder to the OS file manager (Finder, Explorer;
-  on Linux through D-Bus or `xdg-open`), which touches "the app never runs external programs".
-- **The building hatch**: the app hatches the part of the time range not read yet (it reads in time order); the
-  prototype shows a load bar over the panes and "Summarizing…" in each pane (it loads channel by channel). Keep the
-  hatch as an accepted difference, or add the prototype's load bar too: the owner's call.
 - **Parity harness differences left** (`just app-parity`, 157 over 16 scenes): most are how the harness reads the two
   pages, not what they show: the prototype's icon buttons are `font-size: 0`, its menus pad an inner element and
   its selected pane is a `box-shadow` where the app's is a border; item counts differ with the content (the app
