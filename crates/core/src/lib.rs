@@ -7,6 +7,7 @@ pub mod gaps;
 pub mod m4;
 pub mod pyramid;
 pub mod recording;
+pub mod table;
 pub mod time;
 pub mod value;
 pub mod wire;
