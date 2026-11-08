@@ -38,6 +38,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_leftovers2 | the view button's icon, the values pane's "where" line and its height, three panes at most in a row, B over a table row, the transport in the main column |
 | t_exmenus | "No file open" with a folder, a file's channels folding (chevron, ← →), Explorer's folder and ⋯ menus, files that can't be opened, the filter matching units and categories, Only this, Remove the folder |
 | t_colors | channel colours (the least-used, not the channel number) and moving a channel to a category of your own |
+| t_menus | the Menu component every menu uses: under its button (above when there's no room), inside the window on a right-click, the first or checked item focused, ↑ ↓ Home End, Esc giving focus back, a press outside closing it (Explorer's menus too), Enter picking |
 | t_lines | plot lines drawn as quads cover clearly more pixels than one-pixel lines (forced, since software GL defaults to thin ones) |
 | t_modes | a pane's view menu (chart, table, chart and table, values), value tiles at the pointer, else cursor A, else the end of the view, the view saved with the layout and kept by Duplicate |
 | t_axes | a pane's units an axis each (left, right, room on the right of every plot); "Axis and scale…" in the ⋯ menu: range (fixed starting from what's shown, include zero, ignore outliers), decimals, label, log scale; kept with the pane and after a reload; Reset axes; none for a table pane |

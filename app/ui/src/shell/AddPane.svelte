@@ -2,10 +2,11 @@
      tiles. The button keeps its id: app.ts shows it while a file is open. -->
 <script lang="ts">
   import { ICON } from '../icons';
+  import Menu from './Menu.svelte';
   import { addPaneBelow, setMode, stack, type PaneMode } from '../stack.svelte';
   import { ui } from '../ui.svelte';
 
-  let menu = $state<null | { x: number; y: number }>(null);
+  let menu = $state<HTMLElement | null>(null);
   const KINDS: [PaneMode, string][] = [['chart', 'Chart'], ['table', 'Table'], ['both', 'Chart and table'], ['values', 'Values']];
   function add(mode: PaneMode) {
     menu = null;
@@ -14,8 +15,6 @@
   }
 </script>
 
-<svelte:document onpointerdown={(e) => menu && !(e.target as HTMLElement).closest('.addkinds, #addPaneKinds') && (menu = null)} />
-
 <div class="addrow" hidden={!ui.file}>
   <button id="addPane" class="addpane">{@html ICON.plus}Add pane</button><button
     id="addPaneKinds"
@@ -23,16 +22,12 @@
     aria-haspopup="menu"
     aria-label="Kind of pane to add"
     data-tip="Add a table, a chart with its table, or value tiles"
-    onclick={(e) => {
-      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      menu = menu ? null : { x: Math.max(8, r.right - 190), y: r.top - 4 - 4 * 30 - 12 };
-    }}>{@html ICON.chev}</button
+    aria-expanded={!!menu}
+    onclick={(e) => (menu = menu ? null : (e.currentTarget as HTMLElement))}>{@html ICON.chev}</button
   >
 </div>
 {#if menu}
-  <div class="menu addkinds" role="menu" style="left: {menu.x}px; top: {Math.max(8, menu.y)}px">
-    {#each KINDS as [m, label] (m)}<button class="mi" role="menuitem" data-addkind={m} onclick={() => add(m)}><span class="nm">{label}</span></button>{/each}
-  </div>
+  <Menu class="addkinds" anchor={menu ?? null} onclose={() => (menu = null)} items={KINDS.map(([m, label]) => ({ label, run: () => add(m), data: { addkind: m } }))} />
 {/if}
 
 <style>

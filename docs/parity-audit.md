@@ -416,7 +416,10 @@ different): the tab's file, ▾ and × at 11 px, + after the tabs a 15 px glyph,
 icons 10 px, its folds the prototype's chevron (not ›), ⇄ its arrows, the view button a raised box with a 15 px icon,
 the pane ⋯ 12 px, Add pane and the + between rows its plus. `tests/parity/` compares the two scene by scene. Menus use the
 prototype's CSS (`.chpop`, `.moremenu`, `.mi`, `.msep`, `.mgrp`, `kbd`, the grow-in): 300 px wide (the tab and new-tab menus
-320), uppercase group headings, shortcuts in boxes, the view menu's 40 px rows with an accent check.
+320), uppercase group headings, shortcuts in boxes, the view menu's 40 px rows with an accent check. Every menu is one
+component (`shell/Menu.svelte`, fed an item list or its own content): placed as the prototype's `placePop` places them
+(under the button, above it when there's no room, growing out of it), the first or checked item focused, ↑ ↓ Home End
+between items, Esc and a press outside closing it. Explorer's ⋯ and folder menus didn't close on either before (`t_menus`).
 
 ## 9. Look and feel
 

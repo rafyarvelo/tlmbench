@@ -9,6 +9,7 @@
   import { TIME_FORMATS } from '../axes';
   import { addPaneBelow, clearChannels, clearPanes, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
+  import Menu, { type MenuItem } from './Menu.svelte';
 
   const MODES: [Mode, string, string][] = [
     ['box', 'Box zoom', 'Drag across a plot to zoom into that range (B)'],
@@ -41,11 +42,11 @@
   let barW = $state(1200);
   const narrow = $derived(barW < 900);
   /** The menu on the time range: how times read. */
-  let timeMenu = $state<null | { x: number; y: number }>(null);
+  let timeMenu = $state<HTMLElement | null>(null);
   /** The tab whose menu is open, and where; `naming` while Save as… asks for a name. */
-  let tabMenu = $state<null | { key: number; x: number; y: number; naming?: 'saveas' | 'share' }>(null);
+  let tabMenu = $state<null | { key: number; anchor?: HTMLElement; at?: { x: number; y: number }; naming?: 'saveas' | 'share' }>(null);
   /** The + menu: your layouts, and a new empty one (`naming`). */
-  let addMenu = $state<null | { x: number; y: number; naming?: 'new' }>(null);
+  let addMenu = $state<null | { anchor: HTMLElement; naming?: 'new' }>(null);
   let wsName = $state('');
   let wsErr = $state('');
   const menuTab = $derived(tabMenu ? tabs.list.find((t) => t.key === tabMenu!.key) : undefined);
@@ -66,21 +67,37 @@
     tabMenu = null;
     if (key != null) f(key);
   }
-  function openTabMenu(key: number, x: number, y: number) {
+  /** Opens a tab's menu under its ▾ (`anchor`) or tab, or at the pointer (`at`). */
+  function openTabMenu(key: number, how: { anchor?: HTMLElement; at?: { x: number; y: number } }) {
     addMenu = null;
-    tabMenu = { key, x: Math.min(x, window.innerWidth - 260), y };
+    tabMenu = { key, ...how };
   }
   let moreBtn: HTMLButtonElement | undefined = $state();
-  const pick = (f: () => void) => () => {
-    more = false;
-    f();
-  };
-  function outside(e: PointerEvent) {
-    if (more && !(e.target as HTMLElement).closest('.moremenu, #b-more')) more = false;
-    if (timeMenu && !(e.target as HTMLElement).closest('.timemenu, #rangeTxt')) timeMenu = null;
-    if (tabMenu && !(e.target as HTMLElement).closest('.tabmenu, .tm')) tabMenu = null;
-    if (addMenu && !(e.target as HTMLElement).closest('.addmenu, #wsTabNew')) addMenu = null;
-  }
+  const moreItems = (): MenuItem[] => [
+    { label: 'Open recording…', kbd: '⌘O', run: actions.open },
+    ...(narrow
+      ? [
+          { heading: 'Bar' },
+          { label: 'Back', kbd: '⌥←', data: { more: 'back' }, disabled: !ui.canBack, run: actions.back },
+          { label: 'Fit', kbd: 'F', data: { more: 'fit' }, disabled: !ui.file, run: actions.fit },
+          { label: 'Play back', kbd: 'Space', checked: play.open, data: { more: 'play' }, disabled: !ui.file, run: () => (play.open ? playActions.close() : playActions.open()) },
+        ]
+      : []),
+    { heading: 'View' },
+    { label: 'Lock the time view', kbd: 'L', checked: settings.locked, run: () => setSetting('locked', !settings.locked) },
+    { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
+    { label: 'Overview above the panes', checked: settings.overviewTop, run: () => setSetting('overviewTop', !settings.overviewTop) },
+    { heading: 'All panes' },
+    { label: 'New pane', kbd: '⌘⇧N', data: { more: 'addpane' }, disabled: !ui.file, run: () => addPaneBelow(Math.max(0, stack.panes.length - 1)) },
+    { label: 'Remove every channel', data: { more: 'nochan' }, disabled: !stack.panes.some((p) => p.channels.length), run: clearChannels },
+    { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: !stack.panes.length, run: clearPanes },
+    { heading: 'Window' },
+    { label: settings.panelsClosed.length >= PANELS.length ? 'Expand all sidebar panels' : 'Collapse all sidebar panels', data: { more: 'panels' }, run: toggleAllPanels },
+    { label: 'Switch theme', kbd: 'T', data: { more: 'theme' }, run: actions.toggleTheme },
+    { label: 'Focus mode', kbd: '⌘.', data: { more: 'focus' }, run: () => actions.toggleFocus(true) },
+    { label: 'Show performance details', checked: settings.showPerf, run: () => setSetting('showPerf', !settings.showPerf) },
+    { label: 'Settings…', run: () => setSetting('leftPanel', 'settings') },
+  ];
   function key(e: KeyboardEvent) {
     // Ctrl+PageUp / PageDown switch tabs; with Shift they move the tab
     if (e.ctrlKey && (e.key === 'PageUp' || e.key === 'PageDown') && tabs.list.length > 1) {
@@ -101,32 +118,16 @@
       const t = tabs.list.find((t) => t.key === tabs.active);
       if (t?.ws) actions.saveWs(t.key);
       else if (t && !t.live) {
-        const el = document.querySelector(`[data-tab="${t.key}"]`)?.getBoundingClientRect();
-        openTabMenu(t.key, el?.left ?? 8, (el?.bottom ?? 40) + 4);
+        const el = document.querySelector<HTMLElement>(`[data-tab="${t.key}"]`);
+        openTabMenu(t.key, el ? { anchor: el } : { at: { x: 8, y: 44 } });
         tabMenu!.naming = 'saveas';
         startNaming('');
       }
       return;
     }
-    if ((tabMenu || addMenu) && e.key === 'Escape') {
-      tabMenu = addMenu = null;
-      e.stopPropagation();
-      return;
-    }
-    if (timeMenu && e.key === 'Escape') {
-      timeMenu = null;
-      e.stopPropagation();
-      return;
-    }
-    if (more && e.key === 'Escape') {
-      more = false;
-      e.stopPropagation();
-      moreBtn?.focus();
-    }
   }
 </script>
 
-<svelte:document onpointerdown={outside} />
 <svelte:window onkeydowncapture={key} />
 
 <header class="toolbar" bind:clientWidth={barW}>
@@ -147,7 +148,7 @@
           else if (e.key === 'Delete') (e.preventDefault(), actions.closeTab(t.key));
         }}
         onauxclick={(e) => e.button === 1 && actions.closeTab(t.key)}
-        oncontextmenu={(e) => (e.preventDefault(), openTabMenu(t.key, e.clientX, e.clientY))}
+        oncontextmenu={(e) => (e.preventDefault(), openTabMenu(t.key, { at: { x: e.clientX, y: e.clientY } }))}
         ondragstart={() => (dragTab = i)}
         ondragover={(e) => dragTab != null && e.preventDefault()}
         ondrop={(e) => {
@@ -167,8 +168,8 @@
           aria-haspopup="menu"
           onclick={(e) => {
             e.stopPropagation();
-            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            openTabMenu(t.key, r.left, r.bottom + 4);
+            if (tabMenu?.key === t.key) tabMenu = null;
+            else openTabMenu(t.key, { anchor: e.currentTarget as HTMLElement });
           }}
           onkeydown={() => {}}>{@html ICON.chevron}</span
         >
@@ -190,16 +191,15 @@
       aria-expanded={!!addMenu}
       data-tip="Open one of your layouts in a new tab, or start an empty one"
       onclick={(e) => {
-        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
         tabMenu = null;
-        addMenu = addMenu ? null : { x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 };
+        addMenu = addMenu ? null : { anchor: e.currentTarget as HTMLElement };
         if (addMenu) actions.loadShared();
       }}>+</button
     >
   </div>
   {#if tabsOver}<button class="tb tscroll" id="tabsRight" aria-label="Scroll tabs right" disabled={tabsAt >= tabsMax - 1} onclick={() => tabsEl?.scrollBy({ left: 200, behavior: 'smooth' })}>›</button>{/if}
   <div class="rangebar">
-    <button class="num rangebtn" id="rangeTxt" aria-haspopup="menu" aria-expanded={!!timeMenu} data-tip="Time format: click to change how times read" onclick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); timeMenu = timeMenu ? null : { x: Math.max(8, r.left), y: r.bottom + 4 }; }}>{ui.range}</button>
+    <button class="num rangebtn" id="rangeTxt" aria-haspopup="menu" aria-expanded={!!timeMenu} data-tip="Time format: click to change how times read" onclick={(e) => (timeMenu = timeMenu ? null : (e.currentTarget as HTMLElement))}>{ui.range}</button>
     <span class="muted" id="spanTxt">{ui.span}</span>
     <span class="num muted" id="hoverTxt">{ui.pointer}</span>
   </div>
@@ -226,7 +226,7 @@
   {/if}
   <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.moreBar}</button>
   {#if tabMenu}
-    <div class="menu tabmenu" role="menu" style="left: {tabMenu.x}px; top: {tabMenu.y}px">
+    <Menu class="tabmenu" label="Tab" anchor={tabMenu?.anchor} at={tabMenu?.at} onclose={() => (tabMenu = null)}>
       {#if tabMenu.naming}
         <form class="wsname" onsubmit={(e) => nameSubmit(e, (n) => (tabMenu!.naming === 'share' ? actions.share : actions.saveAs)(tabMenu!.key, n))}>
           <label for="wsName">{tabMenu.naming === 'share' ? 'Share with this folder as' : 'Save as a layout named'}</label>
@@ -276,10 +276,10 @@
       >
       <button class="mi" role="menuitem" onclick={() => tabAct(() => actions.closeFile())}><span class="nm">Close all tabs</span></button>
       {/if}
-    </div>
+    </Menu>
   {/if}
   {#if addMenu}
-    <div class="menu addmenu" role="menu" aria-label="New tab" style="left: {addMenu.x}px; top: {addMenu.y}px">
+    <Menu class="addmenu" label="New tab" anchor={addMenu?.anchor} onclose={() => (addMenu = null)}>
       {#if addMenu.naming}
         <form class="wsname" onsubmit={(e) => nameSubmit(e, actions.newWs)}>
           <label for="wsName">Name of the new layout</label>
@@ -333,41 +333,24 @@
         {/each}
         <p class="mnote">A layout says which channels sit in which panes, by name, so it works on any recording that has them. It opens on the file in front.</p>
       {/if}
-    </div>
+    </Menu>
   {/if}
   {#if timeMenu}
-    <div class="menu timemenu" role="menu" aria-label="Time format" style="left: {timeMenu.x}px; top: {timeMenu.y}px">
-      <div class="mgrp">Time format</div>
-      {#each TIME_FORMATS as [k, name, ex] (k)}
-        <button class="mi" role="menuitemradio" aria-checked={settings.timeFormat === k} data-tf={k} onclick={() => { setSetting('timeFormat', k); timeMenu = null; }}><span class="nm">{name}</span><span class="hint num">{ex}</span></button>
-      {/each}
-      <button class="mi sepi" role="menuitem" onclick={() => { timeMenu = null; setSetting('settingsAll', true); setSetting('leftPanel', 'settings'); }}><span class="nm">More in Settings…</span></button>
-    </div>
+    <Menu
+      class="timemenu"
+      label="Time format"
+      anchor={timeMenu}
+      onclose={() => (timeMenu = null)}
+      items={[
+        { heading: 'Time format' },
+        ...TIME_FORMATS.map(([k, name, ex]) => ({ label: name, meta: ex, checked: settings.timeFormat === k, radio: true, data: { tf: k }, run: () => setSetting('timeFormat', k) })),
+        { sep: true },
+        { label: 'More in Settings…', run: () => (setSetting('settingsAll', true), setSetting('leftPanel', 'settings')) },
+      ]}
+    />
   {/if}
   {#if more}
-    <div class="menu moremenu" role="menu">
-      <button class="mi" role="menuitem" onclick={pick(actions.open)}><span class="nm">Open recording…</span><kbd>⌘O</kbd></button>
-      {#if narrow}
-        <div class="mgrp">Bar</div>
-        <button class="mi" role="menuitem" data-more="back" disabled={!ui.canBack} onclick={pick(actions.back)}><span class="nm">Back</span><kbd>⌥←</kbd></button>
-        <button class="mi" role="menuitem" data-more="fit" disabled={!ui.file} onclick={pick(actions.fit)}><span class="nm">Fit</span><kbd>F</kbd></button>
-        <button class="mi" role="menuitemcheckbox" data-more="play" aria-checked={play.open} disabled={!ui.file} onclick={pick(() => (play.open ? playActions.close() : playActions.open()))}><span class="nm">Play back</span><kbd>Space</kbd></button>
-      {/if}
-      <div class="mgrp">View</div>
-      <button class="mi" role="menuitemcheckbox" aria-checked={settings.locked} onclick={pick(() => setSetting('locked', !settings.locked))}><span class="nm">Lock the time view</span><kbd>L</kbd></button>
-      <button class="mi" role="menuitem" disabled={!ui.anyCursor} onclick={pick(actions.clearCursors)}><span class="nm">Clear cursors</span><kbd>Esc</kbd></button>
-      <button class="mi" role="menuitemcheckbox" aria-checked={settings.overviewTop} onclick={pick(() => setSetting('overviewTop', !settings.overviewTop))}><span class="nm">Overview above the panes</span></button>
-      <div class="mgrp">All panes</div>
-      <button class="mi" role="menuitem" data-more="addpane" disabled={!ui.file} onclick={pick(() => addPaneBelow(Math.max(0, stack.panes.length - 1)))}><span class="nm">New pane</span><kbd>⌘⇧N</kbd></button>
-      <button class="mi" role="menuitem" data-more="nochan" disabled={!stack.panes.some((p) => p.channels.length)} onclick={pick(clearChannels)}><span class="nm">Remove every channel</span></button>
-      <button class="mi" role="menuitem" data-more="nopanes" disabled={!stack.panes.length} onclick={pick(clearPanes)}><span class="nm">Remove every pane</span></button>
-      <div class="mgrp">Window</div>
-      <button class="mi" role="menuitem" data-more="panels" onclick={pick(toggleAllPanels)}><span class="nm">{settings.panelsClosed.length >= PANELS.length ? 'Expand all sidebar panels' : 'Collapse all sidebar panels'}</span></button>
-      <button class="mi" role="menuitem" data-more="theme" onclick={pick(actions.toggleTheme)}><span class="nm">Switch theme</span><kbd>T</kbd></button>
-      <button class="mi" role="menuitem" data-more="focus" onclick={pick(() => actions.toggleFocus(true))}><span class="nm">Focus mode</span><kbd>⌘.</kbd></button>
-      <button class="mi" role="menuitemcheckbox" aria-checked={settings.showPerf} onclick={pick(() => setSetting('showPerf', !settings.showPerf))}><span class="nm">Show performance details</span></button>
-      <button class="mi" role="menuitem" onclick={pick(() => setSetting('leftPanel', 'settings'))}><span class="nm">Settings…</span></button>
-    </div>
+    <Menu class="moremenu" label="More" anchor={moreBtn} onclose={() => (more = false)} items={moreItems()} />
   {/if}
 </header>
 
@@ -457,12 +440,12 @@
     background: var(--border);
     color: var(--fg);
   }
-  .tabmenu,
-  .addmenu {
+  :global(.tabmenu),
+  :global(.addmenu) {
     width: min(320px, calc(100vw - 32px));
     max-height: min(520px, calc(100vh - 32px));
   }
-  .addmenu .mi :global(svg) {
+  :global(.addmenu) .mi :global(svg) {
     flex: none;
     width: 14px;
     height: 14px;
@@ -590,12 +573,8 @@
   .rangebtn:hover {
     background: var(--raised);
   }
-  .timemenu {
-    z-index: 61;
-  }
-  .timemenu .mi[aria-checked='true'] .nm::after {
-    content: ' ✓';
-    color: var(--accent);
+  :global(.timemenu .meta) {
+    font-family: var(--font-data);
   }
   .rangebar #hoverTxt {
     min-width: 0;
@@ -638,15 +617,5 @@
     width: 1px;
     height: 18px;
     background: var(--border);
-  }
-  .moremenu {
-    position: absolute;
-    top: 40px;
-    right: 8px;
-  }
-  .mi[aria-checked='true']::after {
-    content: '✓';
-    margin-left: 12px;
-    color: var(--accent);
   }
 </style>

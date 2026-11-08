@@ -35,10 +35,12 @@
   import { settings } from '../settings.svelte';
   import { ui } from '../ui.svelte';
   import AxisDialog from './AxisDialog.svelte';
+  import Menu, { type MenuItem } from './Menu.svelte';
   import Table from './Table.svelte';
 
-  let menu = $state<null | { i: number; x: number; y: number }>(null);
-  let views = $state<null | { i: number; x: number; y: number }>(null);
+  /** the pane menu: under its ⋯ button, or at the pointer on a right-click */
+  let menu = $state<null | { i: number; anchor?: HTMLElement; at?: { x: number; y: number } }>(null);
+  let views = $state<null | { i: number; anchor: HTMLElement }>(null);
   let axes = $state<null | { i: number; x: number; y: number }>(null);
   const VIEWS = [
     { mode: 'chart', label: 'Chart', hint: 'Channels over time' },
@@ -117,7 +119,7 @@
   }
   /** Panes whose header can't show every chip: how many are folded into "+N", and the open list. */
   let folded = $state<Record<number, number>>({});
-  let chanList = $state<null | { i: number; x: number; y: number }>(null);
+  let chanList = $state<null | { i: number; anchor: HTMLElement }>(null);
   /** Hides the chips that don't fit the header, from the last, and counts them. */
   function fitChips(node: HTMLElement, i: number) {
     const fit = () => {
@@ -164,35 +166,38 @@
     dragging = dropAt = zoneAt = null;
   }
 
-  const items = (i: number) => [
-    ...(hasChart(i) ? [{ label: 'Axis and scale…', run: () => (axes = { ...menuAt!, i }) }, { sep: true }] : []),
-    { label: 'Close others', run: () => closeOthers(i), off: stack.panes.length < 2 },
-    { label: 'Close panes below', run: () => closeBelow(i), off: !hasBelow(i) },
+  const items = (i: number): MenuItem[] => [
+    ...(hasChart(i) ? [{ label: 'Axis and scale…', run: () => (axes = { ...menuAt!, i }) }, { sep: true } as const] : []),
+    { label: 'Close others', run: () => closeOthers(i), disabled: stack.panes.length < 2 },
+    { label: 'Close panes below', run: () => closeBelow(i), disabled: !hasBelow(i) },
     { label: 'Close pane', run: () => closePane(i) },
     { sep: true },
-    { label: 'Duplicate', run: () => duplicate(i), off: !stack.panes[i]?.channels.length },
-    { label: 'Duplicate beside', run: () => duplicate(i, true), off: !stack.panes[i]?.channels.length || !canSplitRight(i) },
-    { label: 'Split right', run: () => splitRight(i), off: !canSplitRight(i) },
+    { label: 'Duplicate', run: () => duplicate(i), disabled: !stack.panes[i]?.channels.length },
+    { label: 'Duplicate beside', run: () => duplicate(i, true), disabled: !stack.panes[i]?.channels.length || !canSplitRight(i) },
+    { label: 'Split right', run: () => splitRight(i), disabled: !canSplitRight(i) },
     { label: 'Split down', run: () => splitDown(i) },
     { label: 'Add a pane below', run: () => addPaneBelow(i) },
   ];
 
+  const viewItems = (i: number): MenuItem[] =>
+    VIEWS.map((v) => ({ label: v.label, note: v.hint, icon: VIEW_ICON[v.mode], checked: (stack.panes[i]?.mode ?? 'chart') === v.mode, radio: true, data: { vm: v.mode }, run: () => setMode(i, v.mode) }));
+
   let menuAt: { x: number; y: number } | null = null;
-  function open(i: number, x: number, y: number) {
+  function open(i: number, how: { anchor?: HTMLElement; at?: { x: number; y: number } }) {
     stack.sel = i;
-    menu = { i, x: Math.min(x, window.innerWidth - 230), y: Math.min(y, window.innerHeight - 300) };
+    views = null;
+    menu = { i, ...how };
     // the axes dialog opens where the menu was
-    menuAt = { x: Math.min(menu.x, window.innerWidth - 400), y: Math.min(menu.y, window.innerHeight - 460) };
+    const r = how.anchor?.getBoundingClientRect();
+    const [x, y] = r ? [r.left, r.bottom + 4] : [how.at!.x, how.at!.y];
+    menuAt = { x: Math.max(8, Math.min(x, window.innerWidth - 400)), y: Math.max(8, Math.min(y, window.innerHeight - 460)) };
   }
   function outside(e: PointerEvent) {
-    if (menu && !(e.target as HTMLElement).closest('.panemenu, [data-pmenu]')) menu = null;
-    if (views && !(e.target as HTMLElement).closest('.viewmenu, [data-vmenu]')) views = null;
-    if (chanList && !(e.target as HTMLElement).closest('.chanlist, [data-more-chips]')) chanList = null;
     if (axes && !(e.target as HTMLElement).closest('.axdlg, .panemenu')) axes = null;
   }
   function key(e: KeyboardEvent) {
-    if ((menu || views || axes) && e.key === 'Escape') {
-      menu = views = axes = null;
+    if (axes && e.key === 'Escape') {
+      axes = null;
       e.stopPropagation();
     }
   }
@@ -200,7 +205,7 @@
     // a chip's right-click is the channel's menu (app.ts); elsewhere on the title, the pane's
     if ((e.target as HTMLElement).closest('[data-ch]')) return;
     e.preventDefault();
-    open(i, e.clientX, e.clientY);
+    open(i, { at: { x: e.clientX, y: e.clientY } });
   }
 </script>
 
@@ -256,10 +261,7 @@
                   <span class="mnote" data-empty-pane>Empty pane. Drag a channel here, or select this pane and click a channel.</span>
                 {/each}
                 {#if folded[i]}
-                  <button class="more" data-more-chips={i} aria-haspopup="menu" data-tip="Every channel in this pane, with its value" onclick={(e) => {
-                    const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    chanList = chanList?.i === i ? null : { i, x: Math.min(b.left, window.innerWidth - 260), y: b.bottom + 4 };
-                  }}>+{folded[i]}</button>
+                  <button class="more" data-more-chips={i} aria-haspopup="menu" data-tip="Every channel in this pane, with its value" onclick={(e) => (chanList = chanList?.i === i ? null : { i, anchor: e.currentTarget as HTMLElement })}>+{folded[i]}</button>
                 {/if}
                 <span class="spacer"></span>
                 {#if stack.coarse[i]}
@@ -271,10 +273,10 @@
                   aria-haspopup="menu"
                   aria-label="View of pane {i + 1}: {viewName(i)}"
                   data-tip="View: {viewName(i).toLowerCase()}. Click to change"
+                  aria-expanded={views?.i === i}
                   onclick={(e) => {
-                    const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     menu = null;
-                    views = views?.i === i ? null : { i, x: Math.min(b.right - 250, window.innerWidth - 270), y: b.bottom + 4 };
+                    views = views?.i === i ? null : { i, anchor: e.currentTarget as HTMLElement };
                   }}>{@html VIEW_ICON[p.mode ?? 'chart']}<span class="vchev">{@html ICON.chev}</span></button
                 >
                 <button
@@ -283,10 +285,8 @@
                   aria-haspopup="menu"
                   aria-label="More for pane {i + 1}"
                   data-tip="Close, duplicate or split (also on right-click)"
-                  onclick={(e) => {
-                    const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    open(i, b.right - 220, b.bottom + 4);
-                  }}>{@html ICON.more}</button
+                  aria-expanded={menu?.i === i}
+                  onclick={(e) => (menu?.i === i ? (menu = null) : open(i, { anchor: e.currentTarget as HTMLElement }))}>{@html ICON.more}</button
                 >
               </div>
               {#if p.mode === 'values'}
@@ -346,22 +346,13 @@
 </div>
 
 {#if views}
-  <div class="menu viewmenu" role="menu" aria-label="View of pane {views.i + 1}" style="left: {views.x}px; top: {views.y}px">
-    {#each VIEWS as v (v.mode)}
-      {@const on = (stack.panes[views.i]?.mode ?? 'chart') === v.mode}
-      <button
-        class="mi"
-        role="menuitemradio"
-        aria-checked={on}
-        data-vm={v.mode}
-        onclick={() => {
-          const i = views!.i;
-          views = null;
-          setMode(i, v.mode);
-        }}>{@html VIEW_ICON[v.mode]}<span class="nm">{v.label}<small>{v.hint}</small></span>{#if on}{@html ICON.check}{/if}</button
-      >
-    {/each}
-  </div>
+  <Menu
+    class="viewmenu"
+    label="View of pane {(views?.i ?? 0) + 1}"
+    anchor={views?.anchor}
+    onclose={() => (views = null)}
+    items={views ? viewItems(views.i) : []}
+  />
 {/if}
 
 {#if axes && stack.panes[axes.i]}
@@ -369,32 +360,16 @@
 {/if}
 
 {#if chanList && stack.panes[chanList.i]}
-  <div class="menu chanlist" role="menu" aria-label="Channels in pane {chanList.i + 1}" style="left: {chanList.x}px; top: {chanList.y}px">
-    {#each stack.panes[chanList.i].channels as ch (ch)}
+  <Menu class="chanlist" label="Channels in pane {(chanList?.i ?? 0) + 1}" anchor={chanList?.anchor} onclose={() => (chanList = null)}>
+    {#each chanList ? (stack.panes[chanList.i]?.channels ?? []) : [] as ch (ch)}
       {@const info = ui.channels[ch]}
       <div class="mi" role="menuitem" tabindex="-1" style="--c: var(--trace-{colorIdx(ch) + 1})"><span class="sw8" style="background: var(--c)"></span><span class="nm">{info?.name ?? ch}</span>{#if info?.unit}<span class="hint">{info.unit}</span>{/if}<span class="hint num">{stack.values[ch] ?? stack.resting[ch] ?? ''}</span></div>
     {/each}
-  </div>
+  </Menu>
 {/if}
 
 {#if menu}
-  <div class="menu panemenu" role="menu" aria-label="Pane {menu.i + 1}" style="left: {menu.x}px; top: {menu.y}px">
-    {#each items(menu.i) as it, k (k)}
-      {#if it.sep}
-        <div class="msep"></div>
-      {:else}
-        <button
-          class="mi"
-          role="menuitem"
-          disabled={it.off}
-          onclick={() => {
-            menu = null;
-            it.run?.();
-          }}><span class="nm">{it.label}</span></button
-        >
-      {/if}
-    {/each}
-  </div>
+  <Menu class="panemenu" label="Pane {(menu?.i ?? 0) + 1}" anchor={menu?.anchor} at={menu?.at} onclose={() => (menu = null)} items={menu ? items(menu.i) : []} />
 {/if}
 
 <style>
@@ -609,21 +584,17 @@
     width: 10px;
     height: 10px;
   }
-  .viewmenu .mi {
+  :global(.viewmenu .mi) {
     min-height: 40px;
   }
-  .viewmenu .mi .nm {
+  :global(.viewmenu .mi .nm) {
     display: flex;
     flex-direction: column;
     line-height: 1.25;
     white-space: normal;
   }
-  .viewmenu .mi[aria-checked='true'] {
+  :global(.viewmenu .mi[aria-checked='true']) {
     background: var(--accent-soft);
-  }
-  .viewmenu .mi > :global(svg:last-child:not(:first-child)) {
-    margin-left: auto;
-    color: var(--accent);
   }
   .tiles {
     display: flex;
@@ -657,7 +628,7 @@
     font-size: 11px;
     color: var(--fg-muted);
   }
-  .viewmenu small {
+  :global(.viewmenu small) {
     font-size: 11px;
     color: var(--fg-muted);
   }

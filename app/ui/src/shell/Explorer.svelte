@@ -10,13 +10,14 @@
   import { addChannels, colorIdx, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui } from '../ui.svelte';
+  import Menu, { type MenuItem } from './Menu.svelte';
 
   let q = $state('');
   let regex = $state(false);
   let sel = $state<string | null>(null);
   /** Channels picked together (Ctrl/Cmd-click, Shift-click a range, Ctrl+A); `sel` is the one last clicked. */
   let picked = $state<number[]>([]);
-  let fmenu = $state<null | { x: number; y: number; path: string }>(null);
+  let fmenu = $state<null | { at: { x: number; y: number }; path: string }>(null);
 
   const matcher = $derived.by(() => {
     const t = q.trim();
@@ -80,16 +81,9 @@
   }
   const closed = $derived(settings.panelsClosed.includes('explorer'));
   const catOf = (name: string) => groups.find((g) => g.chs.some((ch) => ui.channels[ch]?.name === name))?.name ?? '';
-  let fold = $state<null | { x: number; y: number }>(null);
-  let more = $state<null | { x: number; y: number }>(null);
-  const at = (e: MouseEvent) => {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return { x: Math.max(8, Math.min(r.left, window.innerWidth - 250)), y: r.bottom + 4 };
-  };
-  const off = (f: () => void) => () => {
-    fold = more = null;
-    f();
-  };
+  /** the folder menu and the ⋯ menu, by the button that opened each */
+  let fold = $state<HTMLElement | null>(null);
+  let more = $state<HTMLElement | null>(null);
   /** The channels the actions below act on: the picked ones, else the selected row. */
   const targets = $derived(picked.length > 1 ? picked : sel?.startsWith('ch:') ? [Number(sel.slice(3))] : []);
   const groups = $derived(groupChannels(ui.path, ui.channels));
@@ -138,8 +132,14 @@
   function fileMenu(e: MouseEvent, path: string) {
     e.preventDefault();
     sel = path;
-    fmenu = { x: Math.min(e.clientX, window.innerWidth - 220), y: Math.min(e.clientY, window.innerHeight - 160), path };
+    fmenu = { at: { x: e.clientX, y: e.clientY }, path };
   }
+  const fileItems = (path: string): MenuItem[] => [
+    { label: 'Open', data: { fm: 'open' }, disabled: isOpen(path), run: () => actions.openPath(path) },
+    { label: 'Open only this', data: { fm: 'only' }, disabled: !listedPath(path), run: () => actions.openOnly(path) },
+    { label: 'Close this file', data: { fm: 'close' }, disabled: !inTab(path), run: () => actions.closePath(path) },
+    { label: 'Close all files', data: { fm: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
+  ];
   const inSel = (ch: number) => stack.panes[stack.sel]?.channels.includes(ch) ?? false;
 
   function key(e: KeyboardEvent, row: { kind: 'file'; path: string } | { kind: 'chan'; ch: number }) {
@@ -171,8 +171,8 @@
       <input type="search" placeholder="Filter files and channels" aria-label="Filter files and channels" aria-invalid={!matcher.ok} bind:value={q} />
       <button class="rx" aria-pressed={regex} aria-label="Regular expression" data-tip="Regular expression" onclick={() => (regex = !regex)}>.*</button>
     </label>
-    <button class="ibtn" id="exFolderMenu" aria-haspopup="menu" aria-label="Folder menu" data-tip="The folder: open, expand, collapse, close all files" onclick={(e) => ((more = null), (fold = fold ? null : at(e)))}>{@html ICON.folder}</button>
-    <button class="ibtn" id="exMore" aria-haspopup="menu" aria-label="Explorer menu" data-tip="Add every channel shown, categories, sides" onclick={(e) => ((fold = null), (more = more ? null : at(e)))}>{@html ICON.more}</button>
+    <button class="ibtn" id="exFolderMenu" aria-haspopup="menu" aria-label="Folder menu" data-tip="The folder: open, expand, collapse, close all files" aria-expanded={!!fold} onclick={(e) => ((more = null), (fold = fold ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.folder}</button>
+    <button class="ibtn" id="exMore" aria-haspopup="menu" aria-label="Explorer menu" data-tip="Add every channel shown, categories, sides" aria-expanded={!!more} onclick={(e) => ((fold = null), (more = more ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.more}</button>
   </div>
 
   {#if tabs.list.length}
@@ -230,38 +230,42 @@
 </div>
 
 {#if fold}
-  <div class="menu exmenu" role="menu" style="left: {fold.x}px; top: {fold.y}px">
-    <button class="mi" role="menuitem" data-ex="open-folder" onclick={off(actions.openFolder)}><span class="nm">Open folder…</span></button>
-    <button class="mi" role="menuitem" data-ex="open-file" onclick={off(actions.open)}><span class="nm">Open recording…</span><kbd>⌘O</kbd></button>
-    <button class="mi" role="menuitem" data-ex="expand" disabled={!ui.folder} onclick={off(() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])))}><span class="nm">Expand all folders</span></button>
-    <button class="mi" role="menuitem" data-ex="collapse" disabled={!ui.folder} onclick={off(() => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path))))}><span class="nm">Collapse all folders</span></button>
-    <button class="mi" role="menuitem" data-ex="remove" disabled={!ui.folder} onclick={off(() => { setSetting('folder', ''); ui.folder = null; })}><span class="nm">Remove the folder from Explorer</span></button>
-    <button class="mi" role="menuitem" data-ex="closeall" disabled={!tabs.list.length} onclick={off(actions.closeFile)}><span class="nm">Close all files</span></button>
-  </div>
+  <Menu
+    class="exmenu"
+    label="Folder"
+    anchor={fold}
+    onclose={() => (fold = null)}
+    items={[
+      { label: 'Open folder…', data: { ex: 'open-folder' }, run: actions.openFolder },
+      { label: 'Open recording…', kbd: '⌘O', data: { ex: 'open-file' }, run: actions.open },
+      { label: 'Expand all folders', data: { ex: 'expand' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])) },
+      { label: 'Collapse all folders', data: { ex: 'collapse' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path))) },
+      { label: 'Remove the folder from Explorer', data: { ex: 'remove' }, disabled: !ui.folder, run: () => (setSetting('folder', ''), (ui.folder = null)) },
+      { label: 'Close all files', data: { ex: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
+    ]}
+  />
 {/if}
 {#if more}
-  <div class="menu exmenu" role="menu" style="left: {more.x}px; top: {more.y}px">
-    <button class="mi" role="menuitem" data-ex="add-all" disabled={!shownChans.length} onclick={off(() => addChannels(shownChans))}><span class="nm">Add all {shownChans.length} channels to pane {stack.sel + 1}</span></button>
-    <button class="mi" role="menuitem" data-ex="new-chart" disabled={!shownChans.length} onclick={off(() => newPaneWith(shownChans))}><span class="nm">Open them in a new chart</span></button>
-    <button class="mi" role="menuitem" data-ex="new-table" disabled={!shownChans.length} onclick={off(() => newPaneWith(shownChans, 'table'))}><span class="nm">Open them in a new table</span></button>
-    <div class="msep"></div>
-    <button class="mi" role="menuitemcheckbox" aria-checked={settings.exCategories} data-ex="cats" onclick={off(() => setSetting('exCategories', !settings.exCategories))}><span class="nm">Group channels into categories</span></button>
-    <button class="mi" role="menuitemcheckbox" aria-checked={settings.exShowAll} data-ex="showall" onclick={off(() => setSetting('exShowAll', !settings.exShowAll))}><span class="nm">Show files that can't be opened{hidden ? ` (${hidden} hidden)` : ''}</span></button>
-    <button class="mi" role="menuitem" data-ex="swap" onclick={off(() => setSetting('sidesSwapped', !settings.sidesSwapped))}><span class="nm">Swap Explorer and Measure</span></button>
-  </div>
+  <Menu
+    class="exmenu"
+    label="Explorer"
+    anchor={more}
+    onclose={() => (more = null)}
+    items={[
+      { label: `Add all ${shownChans.length} channels to pane ${stack.sel + 1}`, data: { ex: 'add-all' }, disabled: !shownChans.length, run: () => addChannels(shownChans) },
+      { label: 'Open them in a new chart', data: { ex: 'new-chart' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans) },
+      { label: 'Open them in a new table', data: { ex: 'new-table' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans, 'table') },
+      { sep: true },
+      { label: 'Group channels into categories', checked: settings.exCategories, data: { ex: 'cats' }, run: () => setSetting('exCategories', !settings.exCategories) },
+      { label: `Show files that can't be opened${hidden ? ` (${hidden} hidden)` : ''}`, checked: settings.exShowAll, data: { ex: 'showall' }, run: () => setSetting('exShowAll', !settings.exShowAll) },
+      { label: 'Swap Explorer and Measure', data: { ex: 'swap' }, run: () => setSetting('sidesSwapped', !settings.sidesSwapped) },
+    ]}
+  />
 {/if}
 
 {#if fmenu}
-  <div class="menu filemenu" role="menu" style="left: {fmenu.x}px; top: {fmenu.y}px">
-    <button class="mi" role="menuitem" data-fm="open" disabled={isOpen(fmenu.path)} onclick={() => { actions.openPath(fmenu!.path); fmenu = null; }}><span class="nm">Open</span></button>
-    <button class="mi" role="menuitem" data-fm="only" disabled={!listedPath(fmenu.path)} onclick={() => { actions.openOnly(fmenu!.path); fmenu = null; }}><span class="nm">Open only this</span></button>
-    <button class="mi" role="menuitem" data-fm="close" disabled={!inTab(fmenu.path)} onclick={() => { actions.closePath(fmenu!.path); fmenu = null; }}><span class="nm">Close this file</span></button>
-    <button class="mi" role="menuitem" data-fm="closeall" disabled={!tabs.list.length} onclick={() => { actions.closeFile(); fmenu = null; }}><span class="nm">Close all files</span></button>
-  </div>
+  <Menu class="filemenu" label={fmenu?.path} at={fmenu?.at} onclose={() => (fmenu = null)} items={fmenu ? fileItems(fmenu.path) : []} />
 {/if}
-
-<svelte:document onpointerdown={(e) => fmenu && !(e.target as HTMLElement).closest('.filemenu') && (fmenu = null)} />
-<svelte:window onkeydowncapture={(e) => e.key === 'Escape' && fmenu && ((fmenu = null), e.stopPropagation())} />
 
 {#snippet file(path: string, name: string, depth: number)}
   {@const open = isOpen(path)}

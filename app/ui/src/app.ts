@@ -8,7 +8,7 @@
 // pyramid is built, panes fill in left to right and the part not read yet is hatched.
 
 import { Channel, invoke } from '@tauri-apps/api/core';
-import { tick } from 'svelte';
+import { mount, tick, unmount } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
@@ -16,6 +16,7 @@ import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTim
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { groupChannels, overrideKey } from './groups';
+import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, setPanelOpen, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
@@ -2052,7 +2053,14 @@ measureEl.addEventListener(
 // ---------- channel menu and gap factor ----------
 
 let popup: HTMLElement | null = null;
+/** A channel's menu (the Menu component), open instead of `popup`. */
+let popMenu: ReturnType<typeof mount> | null = null;
 function closePopup(): boolean {
+  if (popMenu) {
+    void unmount(popMenu);
+    popMenu = null;
+    return true;
+  }
   if (!popup) return false;
   popup.remove();
   popup = null;
@@ -2071,13 +2079,15 @@ function place(el: HTMLElement, x: number, y: number): void {
 function channelMenu(ch: number, x: number, y: number): void {
   const f = state.file;
   if (!f) return;
-  const el = document.createElement('div');
-  el.className = 'menu chmenu';
-  el.setAttribute('role', 'menu');
-  el.innerHTML = `<div class="mgrp">${esc(f.info.channels[ch].name)}</div><button class="mi" role="menuitem" data-cat><span class="nm">Move to a category…</span><span class="hint">${esc(groupChannels(f.info.path, f.info.channels).find((g) => g.chs.includes(ch))?.name ?? '')}</span></button><button class="mi" role="menuitem" data-gap><span class="nm">Gap factor…</span><span class="hint num">${gapFactor(ch)}×</span></button>`;
-  el.querySelector('[data-gap]')!.addEventListener('click', () => gapDialog(ch, x, y));
-  el.querySelector('[data-cat]')!.addEventListener('click', () => categoryDialog(ch, x, y));
-  place(el, x, y);
+  closePopup();
+  const name = f.info.channels[ch].name;
+  const items: MenuItem[] = [
+    { heading: name },
+    { label: 'Move to a category…', meta: groupChannels(f.info.path, f.info.channels).find((g) => g.chs.includes(ch))?.name ?? '', data: { cat: '' }, run: () => categoryDialog(ch, x, y) },
+    { label: 'Gap factor…', meta: `${gapFactor(ch)}×`, data: { gap: '' }, run: () => gapDialog(ch, x, y) },
+  ];
+  // its pick opens a dialog in `popup`: unmount the menu first (onclose), then run
+  popMenu = mount(Menu, { target: document.body, props: { class: 'chmenu', label: name, at: { x, y }, items, onclose: () => closePopup() } });
 }
 
 /** Moves channel `ch` to a category of your own (a name; empty puts it back where its name says). */
