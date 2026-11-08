@@ -93,6 +93,13 @@ export const actions = {
   importAll: (_paths: string[]) => {},
   importGo: () => {},
   importCancel: () => {},
+  /** Export data… and Save the view as an image…: open the dialogs, write the files. */
+  exportOpen: () => {},
+  exportGo: () => {},
+  exportClose: () => {},
+  imageOpen: () => {},
+  imageGo: () => {},
+  imageClose: () => {},
   /** The descriptor form for a file: the descriptor that names it, else a new one. */
   descriptorForm: (_path: string) => {},
   dscPick: (_id: string) => {},

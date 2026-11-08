@@ -45,6 +45,7 @@ import {
 } from './stack.svelte';
 import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
 import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
+import { type ExportContext, exp, FORMATS, img } from './exports.svelte';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
@@ -2296,6 +2297,59 @@ async function dscShareGo(): Promise<void> {
   }
 }
 
+
+// ---------- Export data… and Save the view as an image… ----------
+
+/** What the front tab shows, for Export data…: its channels, the time view, the cursors and the whole recording. */
+function exportContext(): ExportContext | null {
+  const f = state.file;
+  if (!f) return null;
+  const part = f.info.part ? `.${f.info.part}` : '';
+  const named = (c: number): [number, string] => [c, f.info.channels[c].name];
+  const inPanes = [...new Set(stack.panes.flatMap((p) => p.channels))].filter((c) => c < f.info.channels.length);
+  return {
+    base: `${nameOf(f.info.path).replace(/\.[^.]*$/, '')}${part}`,
+    tab: inPanes.map(named),
+    all: f.info.channels.map((_, c) => named(c)),
+    view: [state.t0, state.t1],
+    cursors: state.A != null && state.B != null ? (state.A < state.B ? [state.A, state.B] : [state.B, state.A]) : null,
+    whole: [f.first, f.last + 1n],
+    samples: f.info.samples,
+  };
+}
+
+function exportOpen(): void {
+  const ctx = exportContext();
+  if (!ctx) return;
+  Object.assign(exp, { open: true, busy: false, error: '', result: '', ctx });
+}
+
+/** Export…: asks where, then the core writes the file and its channel list. */
+async function exportGo(): Promise<void> {
+  const ctx = exp.ctx;
+  const f = state.file;
+  if (!ctx || !f || exp.busy) return;
+  const o = settings.exportData;
+  const range = o.range === 'cursors' && !ctx.cursors ? 'view' : o.range;
+  const span = range === 'all' ? null : range === 'cursors' ? ctx.cursors! : ctx.view;
+  const chans = o.channels === 'all' ? ctx.all : ctx.tab;
+  exp.error = '';
+  exp.result = '';
+  const folder = await openDialog({ directory: true, title: 'Export to' });
+  if (typeof folder !== 'string') return;
+  exp.busy = true;
+  try {
+    const out = `${folder.replace(/[\\/]$/, '')}${sep(folder)}${ctx.base}.${FORMATS[o.format][1]}`;
+    const w = await invoke<{ path: string; channelsFile: string; rows: number; bytes: number }>('export_data', {
+      req: { file: f.id, format: o.format, out, channels: chans.map((c) => c[0]), from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, layout: o.layout, time: o.time, raw: o.raw, resampleHz: o.resample ? o.hz : null },
+    });
+    exp.result = `Wrote ${w.rows.toLocaleString('en-US')} rows of ${chans.length} channel${chans.length === 1 ? '' : 's'} to ${nameOf(w.path)} and ${nameOf(w.channelsFile)} in ${folder}.`;
+  } catch (e) {
+    exp.error = `Couldn't export: ${e}`;
+  } finally {
+    exp.busy = false;
+  }
+}
 // ---------- interaction ----------
 
 const setMode = (m: Mode) => setSetting('mode', m);
@@ -2882,6 +2936,16 @@ Object.assign(actions, {
   importAll: (paths: string[]) => void openWithImport(paths, true),
   importGo: () => void importGo(),
   importCancel,
+  exportOpen,
+  exportGo: () => void exportGo(),
+  exportClose: () => {
+    exp.open = false;
+  },
+  imageOpen: () => {},
+  imageGo: () => {},
+  imageClose: () => {
+    img.open = false;
+  },
   descriptorForm: (p: string) => void dscOpenForm(p),
   dscPick,
   dscPreview: () => void dscPreview(),

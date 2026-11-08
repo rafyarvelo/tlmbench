@@ -4787,6 +4787,7 @@ dependencies = [
  "tempfile",
  "tlmbench-core",
  "tlmbench-decode",
+ "tlmbench-export",
  "tlmbench-live",
  "tlmbench-store",
 ]

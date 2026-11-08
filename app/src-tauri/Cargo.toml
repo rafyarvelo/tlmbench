@@ -18,6 +18,7 @@ tauri-build = { version = "2.7.4", features = [] }
 tlmbench-core.workspace = true
 tlmbench-store.workspace = true
 tlmbench-decode.workspace = true
+tlmbench-export.workspace = true
 tlmbench-live.workspace = true
 serde.workspace = true
 serde_json.workspace = true

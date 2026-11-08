@@ -27,6 +27,22 @@ export const PANEL_TITLE: Record<PanelId, string> = { explorer: 'Explorer', sett
 
 /** A folder's session: the files open (in tab order), the one in front, the layouts shown in tabs, and each file's
  *  view and cursors (nanoseconds as strings). `at`: when it was last saved. */
+export interface ExportOpts {
+  format: 'csv' | 'parquet' | 'arrow' | 'hdf5' | 'mat';
+  range: 'view' | 'cursors' | 'all';
+  channels: 'tab' | 'all';
+  layout: 'wide' | 'long';
+  resample: boolean;
+  hz: number;
+  time: 'auto' | 'seconds' | 'iso' | 'ns';
+  raw: boolean;
+}
+export interface ImageOpts {
+  format: 'png' | 'svg';
+  what: 'all' | 'sel';
+  scale: 1 | 2;
+}
+
 export interface Session {
   files: string[];
   active: string | null;
@@ -83,6 +99,9 @@ export interface Settings {
   recent: string[];
   /** Where files go after the import dialog: each in a tab, or just into Explorer. */
   importWhere: 'tabs' | 'none';
+  /** Export data…: what was chosen last, and Save the view as an image…. */
+  exportData: ExportOpts;
+  exportImage: ImageOpts;
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
@@ -152,6 +171,8 @@ export const DEFAULTS: Settings = {
   showStart: true,
   recent: [],
   importWhere: 'tabs',
+  exportData: { format: 'csv', range: 'view', channels: 'tab', layout: 'wide', resample: false, hz: 100, time: 'auto', raw: false },
+  exportImage: { format: 'png', what: 'all', scale: 2 },
   exCategories: true,
   exCatClosed: [],
   catOverride: {},
@@ -207,7 +228,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

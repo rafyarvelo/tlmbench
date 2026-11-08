@@ -985,6 +985,82 @@ async fn share_view(folder: String, file: String, mut view: serde_json::Value) -
     .map_err(|e| e.to_string())?
 }
 
+/// What Export data… writes: the open file's samples in a time span, as the CLI's `convert` writes them.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportRequest {
+    file: u32,
+    /// `csv`, `parquet`, `arrow`, `hdf5` or `mat`.
+    format: String,
+    /// The file to write (its channel list goes beside it as `<name>.channels.csv`).
+    out: String,
+    /// Channel numbers in the file, in order.
+    channels: Vec<u32>,
+    /// The span as decimal nanosecond strings; none: from the first / to the last sample.
+    from: Option<String>,
+    until: Option<String>,
+    /// `wide` or `long`.
+    layout: String,
+    /// `auto`, `seconds`, `iso` or `ns`.
+    time: String,
+    raw: bool,
+    resample_hz: Option<f64>,
+}
+
+#[derive(Serialize)]
+struct Exported {
+    path: String,
+    channels_file: String,
+    rows: u64,
+    bytes: u64,
+}
+
+/// Export data…: writes samples of an open file to `out`, chunk by chunk (flat memory). Masks and filters are views:
+/// an export reads the full data.
+#[tauri::command]
+async fn export_data(req: ExportRequest, files: State<'_, Files>) -> Result<Exported, String> {
+    use tlmbench_export::{Format, Layout, Options, TimeFormat};
+    let o = files.get(req.file)?;
+    spawn_blocking(move || {
+        let format = match req.format.as_str() {
+            "csv" => Format::Csv,
+            "parquet" => Format::Parquet,
+            "arrow" => Format::Arrow,
+            "hdf5" => Format::Hdf5,
+            "mat" => Format::Mat,
+            other => return Err(format!("{other:?} isn't an export format")),
+        };
+        let rec = o.recording();
+        let t0 = req.from.as_deref().map(parse_time).transpose()?;
+        let t1 = req.until.as_deref().map(parse_time).transpose()?;
+        let n = rec.info().samples;
+        let (start, end) = (t0.map_or(0, |t| rec.lower_bound(t)), t1.map_or(n, |t| rec.lower_bound(t)));
+        let mut opts = Options::new(format, req.channels.iter().map(|&c| c as usize).collect(), start, end);
+        opts.layout = if req.layout == "long" { Layout::Long } else { Layout::Wide };
+        opts.time = match req.time.as_str() {
+            "seconds" => TimeFormat::Seconds,
+            "iso" => TimeFormat::Iso,
+            "ns" => TimeFormat::Ns,
+            _ => TimeFormat::Auto,
+        };
+        opts.resample_hz = req.resample_hz.filter(|h| *h > 0.0);
+        opts.raw = req.raw;
+        opts.rate_hz = match rec.info().time {
+            tlmbench_core::TimeSource::Rate { hz } => Some(hz),
+            _ => o.median_interval_ns().filter(|&m| m > 0).map(|m| 1e9 / m as f64),
+        };
+        let w = tlmbench_export::export(rec, &opts, Path::new(&req.out)).map_err(|e| e.to_string())?;
+        Ok(Exported {
+            path: w.path.display().to_string(),
+            channels_file: w.manifest.display().to_string(),
+            rows: w.rows,
+            bytes: w.bytes,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Export file…: writes a view to a `.json` file the person chose in the save dialog.
 #[tauri::command]
 async fn export_view(path: String, view: serde_json::Value) -> Result<(), String> {
@@ -1336,6 +1412,7 @@ fn main() {
             shared_views,
             share_view,
             export_view,
+            export_data,
             live_connect,
             live_state,
             live_stop,

@@ -173,6 +173,8 @@
     readOnly: [],
     savePick: null,
     exported: [],
+    dataExports: [],
+    exportFails: null,
     /** Rows each `rows` call returned. */
     rowsAsked: [],
     queries: new Map(),
@@ -639,6 +641,12 @@
       if (fake.readOnly.includes(folder)) throw `can't write to ${folder}/.tlmbench/views: Read-only file system (os error 30)`;
       (fake.views[folder] ??= {})[file] = { ...view, by: 'tester' };
       return `${folder}/.tlmbench/views/${file}`;
+    },
+    // Export data…: what the page asked the core to write
+    export_data({ req }) {
+      fake.dataExports.push(req);
+      if (fake.exportFails) throw fake.exportFails;
+      return { path: req.out, channelsFile: req.out.replace(/\.[^.]+$/, '.channels.csv'), rows: 1234, bytes: 99999 };
     },
     export_view({ path, view }) {
       fake.exported.push({ path, view });
