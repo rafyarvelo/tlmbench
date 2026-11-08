@@ -374,7 +374,7 @@
     />
   {/if}
   {#if more}
-    <Menu class="moremenu" label="More" anchor={moreBtn} onclose={() => (more = false)} items={moreItems()} />
+    <Menu class="moremenu" label="More" first anchor={moreBtn} onclose={() => (more = false)} items={moreItems()} />
   {/if}
 </header>
 

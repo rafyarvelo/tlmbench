@@ -34,6 +34,7 @@
     anchor = null,
     at = null,
     label,
+    first = false,
     class: cls = '',
     onclose,
   }: {
@@ -44,6 +45,8 @@
     /** a point (right-click) when there's no button */
     at?: { x: number; y: number } | null;
     label?: string;
+    /** the first item takes focus even when another is ticked */
+    first?: boolean;
     class?: string;
     onclose: () => void;
   } = $props();
@@ -74,7 +77,7 @@
   onMount(() => {
     place();
     // the checked item, else the first; not when something inside already has focus (a name field)
-    void tick().then(() => !el?.contains(document.activeElement) && (el?.querySelector<HTMLElement>('.mi[aria-checked="true"]:not(:disabled)') ?? enabled()[0] ?? el)?.focus({ preventScroll: true }));
+    void tick().then(() => !el?.contains(document.activeElement) && ((first ? null : el?.querySelector<HTMLElement>('.mi[aria-checked="true"]:not(:disabled)')) ?? enabled()[0] ?? el)?.focus({ preventScroll: true }));
   });
 
   function keydown(e: KeyboardEvent) {
