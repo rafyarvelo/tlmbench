@@ -66,8 +66,8 @@
     margin-bottom: 8px;
   }
   .rlogo :global(svg) {
-    width: 22px;
-    height: 22px;
+    width: 19px;
+    height: 19px;
   }
   .rb {
     position: relative;

@@ -387,19 +387,29 @@ input.sel {
 }
 
 .addpane {
-  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
   margin: 6px 0 0 52px;
+  padding: 0 12px;
   border: 1px dashed var(--border);
   border-radius: 8px;
   background: transparent;
   color: var(--fg-muted);
-  font: inherit;
-  font-size: 12px;
+  font: 500 13px var(--font-ui);
+}
+
+.addpane svg {
+  width: 13px;
+  height: 13px;
 }
 
 .addpane:hover {
   border-color: var(--accent-line);
   color: var(--fg);
+  background: var(--accent-soft);
 }
 
 .ovslot:empty {

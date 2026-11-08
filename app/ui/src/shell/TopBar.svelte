@@ -194,7 +194,7 @@
         tabMenu = null;
         addMenu = addMenu ? null : { x: Math.min(r.left, window.innerWidth - 320), y: r.bottom + 4 };
         if (addMenu) actions.loadShared();
-      }}>{@html ICON.plus}</button
+      }}>+</button
     >
   </div>
   {#if tabsOver}<button class="tb tscroll" id="tabsRight" aria-label="Scroll tabs right" disabled={tabsAt >= tabsMax - 1} onclick={() => tabsEl?.scrollBy({ left: 200, behavior: 'smooth' })}>›</button>{/if}
@@ -224,7 +224,7 @@
   {#if !narrow}
     <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
   {/if}
-  <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.more}</button>
+  <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.moreBar}</button>
   {#if tabMenu}
     <div class="menu tabmenu" role="menu" style="left: {tabMenu.x}px; top: {tabMenu.y}px">
       {#if tabMenu.naming}
@@ -435,8 +435,8 @@
   .tx {
     display: inline-grid;
     place-items: center;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     border-radius: 4px;
     color: var(--fg-muted);
     visibility: hidden;
@@ -475,18 +475,16 @@
     flex: none;
     place-items: center;
     align-self: center;
-    width: 26px;
-    height: 26px;
-    margin: 0 4px;
+    width: 30px;
+    height: 30px;
+    margin: 0 4px 0 2px;
     padding: 0;
     border: 0;
-    border-radius: 4px;
+    border-radius: 8px;
     background: transparent;
     color: var(--fg-muted);
-  }
-  .tnew :global(svg) {
-    width: 14px;
-    height: 14px;
+    font-size: 15px;
+    line-height: 1;
   }
   .tnew:hover {
     background: var(--raised);
@@ -568,11 +566,11 @@
   .mi:disabled {
     opacity: 0.45;
   }
-  .wstab :global(svg) {
+  .wstab > :global(svg) {
     flex: none;
-    width: 14px;
-    height: 14px;
-    color: var(--fg-muted);
+    width: 11px;
+    height: 11px;
+    opacity: 0.7;
   }
   .wstab .nm {
     overflow: hidden;

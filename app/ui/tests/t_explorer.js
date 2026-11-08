@@ -64,7 +64,7 @@ run('explorer', async ({ p, check, text, visible, fake, paneCount, until, settin
 
   // Close all, and the folder after a reload
   await p.click('#closeAll');
-  check('Close all empties the panes', (await paneCount()) === 0 && (await visible('#empty')) && !(await text('#wsTabs')));
+  check('Close all empties the panes', (await paneCount()) === 0 && (await visible('#empty')) && (await p.locator('#wsTabs .wstab').count()) === 0);
   check('the folder is saved', (await settingsLS()).folder === DIR);
   await p.reload();
   await wait(800);

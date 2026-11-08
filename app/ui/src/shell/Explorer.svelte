@@ -157,11 +157,11 @@
 
 <div class="explorer" id="explorer">
   <div class="phd">
-    <button class="phtog" id="exToggle" aria-expanded={!closed} aria-label="Explorer panel" data-tip="Collapse or expand this panel" onclick={() => setPanelOpen('explorer', closed)}><span class="chv" class:shut={closed}>{@html ICON.chevron}</span>Explorer</button><span class="spacer"></span>
-    <button class="ibtn" id="swapSides" aria-label="Move to the other side" data-tip="Swap Explorer and Measure" onclick={() => setSetting('sidesSwapped', !settings.sidesSwapped)}>⇄</button>
+    <button class="phtog" id="exToggle" aria-expanded={!closed} aria-label="Explorer panel" data-tip="Collapse or expand this panel" onclick={() => setPanelOpen('explorer', closed)}><span class="chv" class:shut={closed}>{@html ICON.chev}</span>Explorer</button><span class="spacer"></span>
+    <button class="ibtn" id="swapSides" aria-label="Move to the other side" data-tip="Swap Explorer and Measure" onclick={() => setSetting('sidesSwapped', !settings.sidesSwapped)}>{@html ICON.swap}</button>
     <button class="ibtn" id="exFolder" aria-label="Open folder" data-tip="Open a folder of recordings (only read)" onclick={actions.openFolder}>{@html ICON.folder}</button>
     <button class="ibtn" id="exOpen" aria-label="Open recording" data-tip="Open a CSV or .tlm file (⌘O)" onclick={actions.open}>{@html ICON.open}</button>
-    <button class="ibtn" id="exAddShown" aria-label="Add the shown channels" disabled={!ui.file || !shownChans.length} data-tip="Plot the channels shown below in the selected pane" onclick={() => addChannels(shownChans)}>{@html ICON.plus}</button>
+    <button class="ibtn" id="exAddShown" aria-label="Add the shown channels" disabled={!ui.file || !shownChans.length} data-tip="Plot the channels shown below in the selected pane" onclick={() => addChannels(shownChans)}>{@html ICON.add}</button>
     <button class="ibtn" id="treeExpand" aria-label="Expand all" data-tip="Expand all" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
     <button class="ibtn" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all" onclick={() => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path)))}>{@html ICON.collapse}</button>
   </div>
@@ -201,7 +201,7 @@
           {#if c.dir}
             <div class="row dir" role="treeitem" aria-selected="false" aria-expanded={expanded(c.path)} style="--d: {depth}" tabindex="0" data-path={c.path}
               onclick={() => toggle(c.path)} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle(c.path))}>
-              <span class="chev" class:on={expanded(c.path)}>›</span>{@html ICON.folder}<span class="nm">{c.name}</span>
+              <span class="chev" class:on={expanded(c.path)}>{@html ICON.chev}</span>{@html ICON.folder}<span class="nm">{c.name}</span>
             </div>
             {#if expanded(c.path)}{@render dir(c, depth + 1)}{/if}
           {:else}
@@ -282,7 +282,7 @@
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>›</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open && listedPath(path)}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
@@ -298,7 +298,7 @@
             <div class="row cat" role="treeitem" aria-selected="false" aria-expanded={!shut} tabindex="0" style="--d: {depth + 1}" data-cat={g.name}
               onclick={() => setSetting('exCatClosed', shut ? settings.exCatClosed.filter((n) => n !== g.name) : [...settings.exCatClosed, g.name])}
               onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), (e.currentTarget as HTMLElement).click())}>
-              <span class="chev" class:on={!shut}>›</span><span class="nm">{g.name}</span>
+              <span class="chev" class:on={!shut}>{@html ICON.chev}</span><span class="nm">{g.name}</span>
               <span class="catact">
                 <button class="linkbtn" data-cat-act="add" data-tip="Plot the group in the selected pane" onclick={(e) => (e.stopPropagation(), addChannels(vis))}>Add</button>
                 <button class="linkbtn" data-cat-act="chart" onclick={(e) => (e.stopPropagation(), newPaneWith(vis))}>Chart</button>
@@ -354,6 +354,24 @@
     font: inherit;
     letter-spacing: inherit;
     text-transform: inherit;
+  }
+  /* the prototype's panel heading buttons (.ib, .pmove): 24 px, their icons drawn at 10 px; the filter row's at 12-14 px */
+  .phd .ibtn {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+  }
+  .phd .ibtn :global(svg) {
+    width: 10px;
+    height: 10px;
+  }
+  #exMore :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+  #exFolderMenu :global(svg) {
+    width: 14px;
+    height: 14px;
   }
   .chv {
     display: inline-grid;
@@ -526,13 +544,20 @@
     font-weight: 600;
   }
   .chev {
-    display: inline-block;
-    width: 10px;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: 12px;
     color: var(--fg-muted);
+    transform: rotate(-90deg);
     transition: transform 0.12s;
   }
   .chev.on {
-    transform: rotate(90deg);
+    transform: none;
+  }
+  .chev :global(svg) {
+    width: 12px;
+    height: 12px;
   }
   .meta,
   .unit {
@@ -630,8 +655,8 @@
     background: var(--c);
   }
   .box :global(svg) {
-    width: 10px;
-    height: 10px;
+    width: 11px;
+    height: 11px;
     color: var(--on-accent);
   }
   .exnone {

@@ -1,4 +1,5 @@
-// Icons from the prototype (prototype/plotter.html), as SVG markup for {@html}.
+// Icons from the prototype (prototype/plotter.html), as SVG markup for {@html}: the same paths and stroke widths, so
+// `tests/parity/icons.mjs` finds them equal. Sizes are set per use, as the prototype's CSS sets them.
 
 const s = (body: string, extra = 'fill="none" stroke="currentColor" stroke-width="2"') => `<svg viewBox="0 0 24 24" ${extra} aria-hidden="true">${body}</svg>`;
 
@@ -17,23 +18,32 @@ export const ICON = {
   clear: s('<path d="M8 3v8M16 3v8M8 21v-2M16 21v-2"/><path d="M9 12l6 6M15 12l-6 6"/>'),
   back: s('<path d="M9 14L4 9l5-5M4 9h11a5 5 0 010 10h-3"/>'),
   fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
-  view: s('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
-  check: s('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"'),
+  check: s('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 'fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"'),
   lock: s('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>'),
-  vchart: s('<path d="M3 17l5-6 4 3 5-8 4 5"/><path d="M3 21h18"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
-  vboth: s('<path d="M4 9l4-4 3 3 4-5 5 6"/><rect x="3" y="12" width="18" height="8" rx="1.5"/><path d="M3 16h18"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
-  vvalues: s('<rect x="3.5" y="4.5" width="7" height="6" rx="1.5"/><rect x="13.5" y="4.5" width="7" height="6" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="6" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="6" rx="1.5"/>'),
-  more: s('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>', 'fill="currentColor"'),
+  vchart: s('<path d="M4 4v16h16"/><path d="M7 15l3.5-5 3 3 4.5-6"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  vtable: s('<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 4.5v15"/>'),
+  vboth: s('<path d="M4 3.5v8h16"/><path d="M7 9l3-3 3 2 4-4"/><rect x="3.5" y="14" width="17" height="6.5" rx="1"/><path d="M3.5 17.25h17"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  vvalues: s('<rect x="3" y="5" width="8" height="6" rx="1.2"/><rect x="13" y="5" width="8" height="6" rx="1.2"/><rect x="3" y="13" width="8" height="6" rx="1.2"/><rect x="13" y="13" width="8" height="6" rx="1.2"/>'),
+  more: s('<circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/>', 'fill="currentColor"'),
+  /** the top bar's ⋯ */
+  moreBar: s('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>', 'fill="currentColor"'),
   file: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'),
+  /** a tab's menu */
   chevron: s('<path d="M6 9l6 6 6-6"/>', 'fill="none" stroke="currentColor" stroke-width="2.4"'),
+  /** everywhere else: folds (turned -90° when shut), the view button, Add pane's kinds, the folder button */
+  chev: s('<path d="M6 9l6 6 6-6"/>', 'fill="none" stroke="currentColor" stroke-width="2.5"'),
   play: s('<path d="M8 5v14l11-7z"/>', 'fill="currentColor"'),
   pause: s('<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>', 'fill="currentColor"'),
   close: s('<path d="M6 6l12 12M18 6L6 18"/>', 'fill="none" stroke="currentColor" stroke-width="2.4"'),
-  folder: s('<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
-  expand: s('<path d="M7 9l5-5 5 5M7 15l5 5 5-5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
-  collapse: s('<path d="M7 4l5 5 5-5M7 20l5-5 5 5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  folder: s('<path d="M3 7h6l2 2h10v10H3z"/>'),
+  expand: s('<path d="M7 15l5 5 5-5M7 9l5-5 5 5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  collapse: s('<path d="M7 20l5-5 5 5M7 4l5 5 5-5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  /** move a sidebar panel to the other side */
+  swap: s('<path d="M4 8h14l-3-3M20 16H6l3 3"/>'),
   layout: s('<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 11h17M12 11v8.5"/>', 'fill="none" stroke="currentColor" stroke-width="2"'),
-  plus: s('<path d="M12 5v14M5 12h14"/>', 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"'),
+  plus: s('<path d="M12 5v14M5 12h14"/>', 'fill="none" stroke="currentColor" stroke-width="2.2"'),
+  /** Explorer's add-the-shown-channels */
+  add: s('<path d="M12 5v14M5 12h14"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
   trash: s('<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
   open: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M12 11v6M9 14l3 3 3-3"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"'),
 };

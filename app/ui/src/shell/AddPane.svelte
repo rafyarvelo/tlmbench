@@ -1,6 +1,7 @@
 <!-- "+ Add pane" under the stack, with a ▾ for the kind of pane: a chart, a table, a chart with its table, or value
      tiles. The button keeps its id: app.ts shows it while a file is open. -->
 <script lang="ts">
+  import { ICON } from '../icons';
   import { addPaneBelow, setMode, stack, type PaneMode } from '../stack.svelte';
   import { ui } from '../ui.svelte';
 
@@ -16,7 +17,7 @@
 <svelte:document onpointerdown={(e) => menu && !(e.target as HTMLElement).closest('.addkinds, #addPaneKinds') && (menu = null)} />
 
 <div class="addrow" hidden={!ui.file}>
-  <button id="addPane" class="addpane">+ Add pane</button><button
+  <button id="addPane" class="addpane">{@html ICON.plus}Add pane</button><button
     id="addPaneKinds"
     class="addpane kinds"
     aria-haspopup="menu"
@@ -25,7 +26,7 @@
     onclick={(e) => {
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
       menu = menu ? null : { x: Math.max(8, r.right - 190), y: r.top - 4 - 4 * 30 - 12 };
-    }}>▾</button
+    }}>{@html ICON.chev}</button
   >
 </div>
 {#if menu}
@@ -48,7 +49,7 @@
     border-radius: 8px 0 0 8px;
   }
   .addrow :global(.kinds) {
-    width: 34px;
+    padding: 0 8px;
     border-left: 0;
     border-radius: 0 8px 8px 0;
   }

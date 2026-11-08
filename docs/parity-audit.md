@@ -410,6 +410,12 @@ from 1.5. The view stays inside the recording, as the prototype's does: at most 
 wheel, keys) stops at either end (`setView` in `app.ts`; `t_view`). A row's double-click no longer loses to a zoom
 still gliding.
 
+Fonts and icons (Nov 7): the app bundles IBM Plex Sans and Mono (it named them but fell back to the system font). Every
+icon the two share has the prototype's markup and draws at the prototype's size (`tests/parity/icons.mjs` finds none
+different): the tab's file, ▾ and × at 11 px, + after the tabs a 15 px glyph, the rail logo 19 px, Explorer's heading
+icons 10 px, its folds the prototype's chevron (not ›), ⇄ its arrows, the view button a raised box with a 15 px icon,
+the pane ⋯ 12 px, Add pane and the + between rows its plus. `tests/parity/` compares the two scene by scene.
+
 ## 9. Look and feel
 
 The audit's screenshots were kept in a scratch folder and are gone; `app/ui/tests/shots.js` regenerates the app's (below, `docs/images/`). The pairs were named `proto_<view>.png` and `app_<view>.png`. The pairs are:

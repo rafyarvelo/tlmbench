@@ -46,7 +46,7 @@
     { mode: 'both', label: 'Chart and table', hint: 'The chart with its table below' },
     { mode: 'values', label: 'Values', hint: 'Value tiles at the pointer, cursor A or the end of the view' },
   ] as const;
-  const VIEW_ICON = { chart: ICON.vchart, table: ICON.view, both: ICON.vboth, values: ICON.vvalues } as const;
+  const VIEW_ICON = { chart: ICON.vchart, table: ICON.vtable, both: ICON.vboth, values: ICON.vvalues } as const;
   const viewName = (i: number) => VIEWS.find((v) => v.mode === (stack.panes[i]?.mode ?? 'chart'))!.label;
   /** A channel dragged from Explorer: the pane it would land in (-1: a new pane). */
   let chanOver = $state<number | null>(null);
@@ -266,7 +266,7 @@
                   <span class="pill" data-coarse data-tip="Drawn from summaries; the exact view follows">coarse</span>
                 {/if}
                 <button
-                  class="pmore"
+                  class="pmore vmenu"
                   data-vmenu
                   aria-haspopup="menu"
                   aria-label="View of pane {i + 1}: {viewName(i)}"
@@ -275,7 +275,7 @@
                     const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     menu = null;
                     views = views?.i === i ? null : { i, x: Math.min(b.right - 250, window.innerWidth - 270), y: b.bottom + 4 };
-                  }}>{@html VIEW_ICON[p.mode ?? 'chart']}<span class="vchev">{@html ICON.chevron}</span></button
+                  }}>{@html VIEW_ICON[p.mode ?? 'chart']}<span class="vchev">{@html ICON.chev}</span></button
                 >
                 <button
                   class="pmore"
@@ -333,14 +333,14 @@
       {/each}
     </div>
     {#if r < rows().length - 1}
-      <div class="rgap"><button data-gap={r} aria-label="Add a pane here" data-tip="Add a pane between these rows" onclick={() => addPaneBelow(row[row.length - 1])}>+</button></div>
+      <div class="rgap"><button data-gap={r} aria-label="Add a pane here" data-tip="Add a pane between these rows" onclick={() => addPaneBelow(row[row.length - 1])}>{@html ICON.plus}</button></div>
     {/if}
   {/each}
   {#if !stack.panes.length && ui.file}
     <div class="nopanes" data-nopanes>
       <p class="np-title">No channels plotted</p>
       <p class="muted">Add a pane, then tick channels in Explorer or drag them here.</p>
-      <button class="btn primary" id="addFirst" onclick={() => addPaneBelow(0)}>+ Add pane</button>
+      <button class="btn primary" id="addFirst" onclick={() => addPaneBelow(0)}>{@html ICON.plus}Add pane</button>
     </div>
   {/if}
 </div>
@@ -430,19 +430,21 @@
   }
   .rgap button {
     position: absolute;
-    left: 20px;
-    top: -6px;
+    left: 18px;
+    top: -8px;
     display: none;
     place-items: center;
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     padding: 0;
     border: 1px solid var(--accent-line);
     border-radius: 50%;
     background: var(--surface);
     color: var(--accent);
-    font-size: 13px;
-    line-height: 1;
+  }
+  .rgap button :global(svg) {
+    width: 12px;
+    height: 12px;
   }
   .rgap:hover button,
   .rgap button:focus-visible {
@@ -563,12 +565,31 @@
     visibility: hidden;
   }
   .pmore :global(svg) {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
   }
   .pmore:hover {
     background: var(--raised);
     color: var(--fg);
+  }
+  /* the view button, as the prototype's .vmenu: the view's icon and a ▾ in a raised box */
+  .vmenu {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 4px 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--raised);
+    color: var(--fg);
+  }
+  .vmenu :global(svg) {
+    width: 15px;
+    height: 15px;
+  }
+  .vmenu:hover {
+    border-color: var(--accent-line);
+    background: var(--raised);
   }
   .phead:hover .pmore,
   .pane.sel .pmore,
@@ -580,9 +601,13 @@
     color: var(--fg-muted);
     font-size: 11.5px;
   }
-  .vchev :global(svg) {
-    width: 9px;
-    height: 9px;
+  .vchev {
+    display: inline-flex;
+    color: var(--fg-muted);
+  }
+  .vmenu .vchev :global(svg) {
+    width: 10px;
+    height: 10px;
   }
   .viewmenu .mi > :global(svg) {
     width: 16px;
