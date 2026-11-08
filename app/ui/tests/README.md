@@ -45,6 +45,12 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 
 `node shots.js [dir]` writes the README's screenshots (`docs/images/`) from the built UI and the fake core.
 
+`node parity/parity.mjs [scene ...] [--dpr 2] [--light]` (or `just app-parity`) compares the app with the prototype. It
+opens both at the same viewport and device scale, puts each in the same scene (a menu open, a dialog, a hover state;
+`parity/scenes.js`), and writes `out/parity/index.html`: the two screenshots side by side and the computed styles of
+mapped elements that differ. It reports and never fails. The prototype runs offline with the real uPlot and TanStack
+table-core (`parity/vendor/`) and the app's IBM Plex files.
+
 Each test uses `lib.js`: `run(name, async h => { ... }, opts)`. `h.check(label, condition, got)` records a result;
 a test fails on any failed check, any error in the page, or an exception in the script. Helpers: `text`, `visible`,
 `panes`, `paneCount`, `plotAt(pane, fraction)`, `until`, `settingsLS`, `fake(fn, arg)` (runs in the page, where

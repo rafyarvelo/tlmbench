@@ -60,6 +60,12 @@ app-test *tests:
     cd app/ui && npm run -s build
     cd app/ui/tests && ./run.sh {{tests}}
 
+# Compare the app with the prototype scene by scene (menus, dialogs, hover states): app/ui/tests/out/parity/index.html.
+# Reports only. Arguments: scene names, --dpr 2, --light
+app-parity *args:
+    cd app/ui && npm run -s build
+    cd app/ui/tests && node parity/parity.mjs {{args}}
+
 # Fuzz each target of every crates/*/fuzz for a few seconds (nightly)
 fuzz-smoke secs="30":
     #!/usr/bin/env bash
