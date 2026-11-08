@@ -21,8 +21,9 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::{Channel, Response};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tlmbench_core::gaps::DEFAULT_FACTOR;
+use tlmbench_core::table::{Col, Filter, SortKey};
 use tlmbench_core::{RecordingInfo, Viewport, wire};
 use tlmbench_store::{Opened as StoreOpened, Precision, Request, Status, Store};
 
@@ -32,6 +33,10 @@ struct Files {
     next: AtomicU32,
     open: Mutex<HashMap<u32, Arc<StoreOpened>>>,
     live: Mutex<HashMap<u32, Arc<LiveEntry>>>,
+    /// Sorted and filtered row lists, by query token (the latest per table; see `table_query`).
+    queries: Mutex<HashMap<u32, Arc<RowQuery>>>,
+    /// Running queries' cancel flags, by token.
+    cancels: Mutex<HashMap<u32, Arc<AtomicBool>>>,
 }
 
 impl Files {
@@ -387,9 +392,20 @@ async fn rows(
     span: Span,
     offset: u64,
     limit: u32,
+    query: Option<u32>,
     files: State<'_, Files>,
 ) -> Result<Response, String> {
     let o = files.get(file)?;
+    if let Some(token) = query {
+        let q = files.queries.lock().unwrap().get(&token).cloned().ok_or("that query is gone")?;
+        let bytes = spawn_blocking(move || {
+            let channels: Vec<usize> = channels.into_iter().map(|c| c as usize).collect();
+            encode_query_rows(o.recording(), &channels, &q, offset, limit)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        return Ok(Response::new(bytes));
+    }
     let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
     let bytes = spawn_blocking(move || {
         let channels: Vec<usize> = channels.into_iter().map(|c| c as usize).collect();
@@ -398,6 +414,162 @@ async fn rows(
     .await
     .map_err(|e| e.to_string())?;
     Ok(Response::new(bytes))
+}
+
+/// A sorted and filtered list of rows (see [`table_query`]).
+struct RowQuery {
+    /// Index of the span's first sample; `ids` are offsets from it.
+    first: usize,
+    ids: Vec<u32>,
+}
+
+/// One column of a table query: `t` (the time) or `c<channel>`.
+#[derive(Deserialize)]
+struct ColSpec {
+    col: String,
+    /// The filter text (filters) or whether the sort is descending (sorts).
+    #[serde(default)]
+    expr: String,
+    #[serde(default)]
+    desc: bool,
+}
+
+fn col_of(s: &str) -> Result<Col, String> {
+    match s {
+        "t" => Ok(Col::Time),
+        _ => s.strip_prefix('c').and_then(|n| n.parse().ok()).map(Col::Channel).ok_or_else(|| format!("column {s:?}")),
+    }
+}
+
+/// What a table query found.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QueryDone {
+    /// Rows left after the filters.
+    matched: u64,
+    /// Rows in the span.
+    total: u64,
+    /// False when it was cancelled (nothing is kept then).
+    done: bool,
+}
+
+/// Sorts and filters the rows with times in `[t0, t1)` over their whole columns (`token` names the result, which
+/// `rows` then pages through; a new query with a token replaces the table's last one via `drop_token`). Progress goes
+/// out as `table-progress` events `{ token, done }` (0..1); `table_cancel` stops it.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn table_query(
+    file: u32,
+    span: Span,
+    filters: Vec<ColSpec>,
+    sort: Vec<ColSpec>,
+    token: u32,
+    drop_token: Option<u32>,
+    app: AppHandle,
+    files: State<'_, Files>,
+) -> Result<QueryDone, String> {
+    let o = files.get(file)?;
+    let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
+    let mut fs = Vec::new();
+    for f in &filters {
+        if let Some(p) = Filter::parse(&f.expr)? {
+            fs.push((col_of(&f.col)?, p));
+        }
+    }
+    let sort = sort
+        .iter()
+        .map(|k| Ok(SortKey { col: col_of(&k.col)?, descending: k.desc }))
+        .collect::<Result<Vec<_>, String>>()?;
+    let stop = Arc::new(AtomicBool::new(false));
+    files.cancels.lock().unwrap().insert(token, stop.clone());
+    if let Some(d) = drop_token {
+        files.queries.lock().unwrap().remove(&d);
+    }
+    let flag = stop.clone();
+    let got = spawn_blocking(move || {
+        let last = Mutex::new(Instant::now() - Duration::from_secs(1));
+        let report = move |done: f64| {
+            let mut last = last.lock().unwrap();
+            if done >= 1.0 || last.elapsed() > Duration::from_millis(100) {
+                *last = Instant::now();
+                let _ = app.emit("table-progress", serde_json::json!({ "token": token, "done": done }));
+            }
+            !flag.load(Ordering::Relaxed)
+        };
+        let total = o.recording().lower_bound(t1).saturating_sub(o.recording().lower_bound(t0)) as u64;
+        o.select_rows((t0, t1), fs, sort, &report).map(|(first, rows)| (total, first, rows))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    files.cancels.lock().unwrap().remove(&token);
+    match got {
+        None => Ok(QueryDone { matched: 0, total: 0, done: false }),
+        Some((total, first, rows)) => {
+            let matched = rows.ids.len() as u64;
+            files.queries.lock().unwrap().insert(token, Arc::new(RowQuery { first, ids: rows.ids }));
+            Ok(QueryDone { matched, total, done: true })
+        }
+    }
+}
+
+/// Stops a running `table_query`.
+#[tauri::command]
+fn table_cancel(token: u32, files: State<'_, Files>) {
+    if let Some(c) = files.cancels.lock().unwrap().get(&token) {
+        c.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Whether a filter's text is understood: the problem, or nothing.
+#[tauri::command]
+fn filter_check(expr: String) -> Option<String> {
+    Filter::parse(&expr).err()
+}
+
+/// A `rows` reply for rows `offset..offset + limit` of a query's list, flagged `1` at byte 28 with each row's
+/// sample index (u64) between the times and the values. Runs of consecutive rows are read together.
+fn encode_query_rows(
+    rec: &dyn tlmbench_core::Recording,
+    channels: &[usize],
+    q: &RowQuery,
+    offset: u64,
+    limit: u32,
+) -> Vec<u8> {
+    let n = rec.info().channels.len();
+    let chans: Vec<usize> = channels.iter().copied().filter(|&c| c < n).collect();
+    let start = (offset as usize).min(q.ids.len());
+    let end = start + (q.ids.len() - start).min(limit as usize).min(MAX_ROWS);
+    let window = &q.ids[start..end];
+    let k = window.len();
+    let mut times: Vec<i64> = Vec::with_capacity(k);
+    let mut index: Vec<u64> = Vec::with_capacity(k);
+    let mut cols: Vec<Vec<f64>> = vec![Vec::with_capacity(k); chans.len()];
+    let mut at = 0;
+    while at < k {
+        let mut e = at + 1;
+        while e < k && window[e] == window[e - 1] + 1 {
+            e += 1;
+        }
+        let (a, b) = (q.first + window[at] as usize, q.first + window[e - 1] as usize + 1);
+        times.extend(rec.read_times(a, b));
+        index.extend((a..b).map(|i| i as u64));
+        for (col, &c) in cols.iter_mut().zip(&chans) {
+            let (scale, off) = rec.scale_offset(c);
+            col.extend(rec.read(c, a, b).to_f64(scale, off));
+        }
+        at = e;
+    }
+    let mut out = Vec::with_capacity(32 + 8 * k * (2 + chans.len()));
+    out.extend_from_slice(b"TLMR");
+    out.extend_from_slice(&(chans.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(q.first as u64).to_le_bytes());
+    out.extend_from_slice(&(q.ids.len() as u64).to_le_bytes());
+    out.extend_from_slice(&(k as u32).to_le_bytes());
+    out.extend_from_slice(&1u32.to_le_bytes());
+    times.iter().for_each(|t| out.extend_from_slice(&t.to_le_bytes()));
+    index.iter().for_each(|i| out.extend_from_slice(&i.to_le_bytes()));
+    cols.iter().flatten().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
+    out
 }
 
 /// A `rows` reply (see [`rows`]); channels past the recording's are left out.
@@ -747,6 +919,8 @@ fn main() {
             next: AtomicU32::new(0),
             open: Mutex::default(),
             live: Mutex::default(),
+            queries: Mutex::default(),
+            cancels: Mutex::default(),
         })
         .invoke_handler(tauri::generate_handler![
             open,
@@ -759,6 +933,9 @@ fn main() {
             values_at,
             stats,
             rows,
+            table_query,
+            table_cancel,
+            filter_check,
             list_folder,
             shared_views,
             share_view,
@@ -777,6 +954,28 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn query_rows_follow_the_sorted_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("q.csv");
+        let body: String = (0..10).map(|i| format!("{i},{},{}\n", i * 10, (i * 7 % 10) as f64)).collect();
+        std::fs::write(&path, format!("time,a,b\n{body}")).unwrap();
+        let opts = tlmbench_decode::OpenOptions { cache_dir: Some(dir.path().join("cache")), ..Default::default() };
+        let rec = tlmbench_decode::open(&path, &opts).unwrap();
+        // rows 2..8 of the file, ids as offsets from 2: (b descending) then the ones 3, 4, 5 are consecutive
+        let q = RowQuery { first: 2, ids: vec![5, 0, 1, 2, 3] };
+        let out = encode_query_rows(rec.as_ref(), &[1], &q, 1, 10);
+        let u32_at = |o: usize| u32::from_le_bytes(out[o..o + 4].try_into().unwrap());
+        let u64_at = |o: usize| u64::from_le_bytes(out[o..o + 8].try_into().unwrap());
+        assert_eq!((u64_at(16), u32_at(24), u32_at(28)), (5, 4, 1), "total, rows returned, indexed");
+        let index: Vec<u64> = (0..4).map(|k| u64_at(32 + 32 + 8 * k)).collect();
+        assert_eq!(index, vec![2, 3, 4, 5]);
+        let times: Vec<i64> = (0..4).map(|k| u64_at(32 + 8 * k) as i64).collect();
+        assert_eq!(times, (2..6).map(|i| rec.time_at(i)).collect::<Vec<_>>());
+        let b: Vec<f64> = (0..4).map(|k| f64::from_bits(u64_at(32 + 64 + 8 * k))).collect();
+        assert_eq!(b, vec![4.0, 1.0, 8.0, 5.0], "b = i * 7 % 10 at rows 2..6");
+    }
 
     #[test]
     fn rows_window() {
