@@ -72,7 +72,8 @@ read as header then record). Done and pushed:
 - The descriptor form, drafted in the prototype (`t_descriptor`) for the owner's review; three Proposed decisions
   (the form, `files = [...]` name patterns, packets without a length).
 
-Next, in order:
+Next: these items are now steps 4.2–4.4 of `docs/roadmap.md`, which orders all remaining work (the descriptor form
+and Export were accepted Nov 7). The detail below stays for reference:
 
 1. The app's slots for packet types (one recording per type, `flight.bin · gps`): with the descriptor port in step 2,
    since the app doesn't open descriptor files yet. Done in the core: `[[packet_types]]`, `Store::open_all`/`open_part`,

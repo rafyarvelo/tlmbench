@@ -2,8 +2,9 @@
 
 Desktop telemetry workbench: Rust core, Tauri app with a web UI, CLI and Python bindings over the same core.
 The repo holds the design doc, the Rust crates, CLI and Tauri app, a single-file HTML prototype of the UI, its tests, and example shared config.
-Phases 1–3 (core loop, scale, live) are done and Phase 4 (formats and polish) is next; the roadmap (Phases 1–5) is in
-`docs/design.md`.
+Phases 1–3 (core loop, scale, live) are done and Phase 4 (formats and polish) is under way; the phases and gates are in
+`docs/design.md`, and `docs/roadmap.md` orders the remaining steps (one agent at a time) with `docs/feature-matrix.md`
+showing each feature in the design, the prototype and the app.
 
 ## Hard requirements (never trade these away)
 
