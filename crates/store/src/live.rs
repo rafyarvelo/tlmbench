@@ -99,7 +99,12 @@ impl Store {
 
     /// An [`Opened`] over `path` at its current length, with the growing pyramid `loaded`.
     fn live_snapshot(&self, path: &Path, key: &str, id: u64, loaded: Option<Loaded>) -> Result<Opened> {
-        let opts = tlmbench_decode::OpenOptions { descriptor: None, part: None, cache_dir: Some(self.root.clone()) };
+        let opts = tlmbench_decode::OpenOptions {
+            descriptor: None,
+            part: None,
+            profile: None,
+            cache_dir: Some(self.root.clone()),
+        };
         let rec = tlmbench_decode::open(path, &opts)?;
         Ok(Opened {
             id,

@@ -44,6 +44,7 @@ use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Pyramid, Stats};
 use tlmbench_core::table::{self, Col, Filter, Query, Rows, SortKey};
 use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
 use tlmbench_decode::OpenOptions;
+use tlmbench_decode::profile::ImportProfile;
 
 use crate::pyr::Loaded;
 
@@ -68,6 +69,8 @@ pub struct Store {
     root: PathBuf,
     pub limits: Limits,
     chunks: Arc<ChunkCache>,
+    /// Applied to every CSV file this store opens.
+    profile: Option<Arc<ImportProfile>>,
 }
 
 impl Store {
@@ -77,7 +80,15 @@ impl Store {
             root: tlmbench_decode::cache::cache_root(root),
             limits: Limits::default(),
             chunks: Arc::new(ChunkCache::new(ChunkCache::default_budget())),
+            profile: None,
         }
+    }
+
+    /// The same store, applying `profile` to every CSV file it opens (each profile has its own column cache and
+    /// pyramid; other formats ignore it).
+    pub fn with_profile(mut self, profile: Option<ImportProfile>) -> Self {
+        self.profile = profile.filter(|p| !p.is_default()).map(Arc::new);
+        self
     }
 
     /// The same store with a chunk cache of `bytes` (0: channels are always read in place).
@@ -117,12 +128,14 @@ impl Store {
         OpenOptions {
             descriptor: descriptor.map(Path::to_owned),
             part: part.map(str::to_owned),
+            profile: self.profile.as_deref().cloned(),
             cache_dir: Some(self.root.clone()),
         }
     }
 
     fn wrap(&self, path: &Path, rec: Box<dyn Recording>) -> Result<Opened> {
-        let fingerprint = tlmbench_decode::cache::fingerprint(path)?;
+        let profile = self.profile.as_deref().filter(|_| rec.info().format == "CSV");
+        let fingerprint = tlmbench_decode::cache::fingerprint_with(path, profile)?;
         let key = pyr::key(&fingerprint, &rec.layout_id());
         let dir = self.root.join("pyr").join(pyr::VERSION);
         fs::create_dir_all(&dir).map_err(Error::io(&dir))?;

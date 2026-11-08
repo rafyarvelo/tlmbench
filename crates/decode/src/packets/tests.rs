@@ -279,7 +279,12 @@ fn packet_types_open_one_recording_each() {
     let (path, toml) = (tmp.path().join("flight.bin"), tmp.path().join("flight.toml"));
     fs::write(&path, &data).unwrap();
     fs::write(&toml, TYPES).unwrap();
-    let opts = crate::OpenOptions { descriptor: Some(toml.clone()), part: None, cache_dir: Some(tmp.path().join("c")) };
+    let opts = crate::OpenOptions {
+        descriptor: Some(toml.clone()),
+        part: None,
+        profile: None,
+        cache_dir: Some(tmp.path().join("c")),
+    };
     let all = crate::open_all(&path, &opts).unwrap();
     let infos: Vec<_> = all.iter().map(|r| (r.info().part.clone().unwrap(), r.info().samples)).collect();
     assert_eq!(infos, [("gps".to_owned(), 50), ("imu".to_owned(), 100)]);

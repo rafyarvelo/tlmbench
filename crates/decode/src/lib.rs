@@ -19,6 +19,7 @@ pub mod fixed;
 pub mod packets;
 pub mod parquet;
 mod parquet_pages;
+pub mod profile;
 pub mod reference;
 mod strided;
 
@@ -34,6 +35,8 @@ pub struct OpenOptions {
     pub descriptor: Option<PathBuf>,
     /// The packet type to open, for a descriptor with `[[packet_types]]` (see [`open_all`]).
     pub part: Option<String>,
+    /// An import profile for a CSV file (ignored by other formats).
+    pub profile: Option<profile::ImportProfile>,
     /// Cache root; defaults to [`cache::cache_root`].
     pub cache_dir: Option<PathBuf>,
 }
@@ -91,7 +94,7 @@ pub fn open_all(path: &Path, opts: &OpenOptions) -> Result<Vec<Box<dyn Recording
     }
     if csv::looks_like_csv(path, &head) {
         let root = cache::cache_root(opts.cache_dir.as_deref());
-        return Ok(vec![Box::new(cache::open_csv(path, &root)?)]);
+        return Ok(vec![Box::new(cache::open_csv_with(path, &root, opts.profile.as_ref())?)]);
     }
     Err(Error::UnknownFormat(path.to_owned()))
 }

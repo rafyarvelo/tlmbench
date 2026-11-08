@@ -29,6 +29,9 @@ pub struct ChannelInfo {
     pub unit: Option<String>,
     /// Stored type: f32, f64, i16, …
     pub dtype: &'static str,
+    /// A group label from an import profile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

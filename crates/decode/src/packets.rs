@@ -345,7 +345,7 @@ impl PacketFile {
             .iter()
             .map(|&i| {
                 let f = &me.desc.fields[i];
-                ChannelInfo { name: f.name.clone(), unit: f.unit.clone(), dtype: f.dtype.name() }
+                ChannelInfo { name: f.name.clone(), unit: f.unit.clone(), dtype: f.dtype.name(), category: None }
             })
             .collect();
         me.info.time = match &me.desc.time {

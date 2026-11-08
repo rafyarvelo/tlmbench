@@ -34,6 +34,9 @@ struct Common {
     /// The packet type to read, for a packet file with several (default: all in `info` and `convert`)
     #[arg(long = "type", global = true)]
     part: Option<String>,
+    /// Import profile (JSON) for CSV files: names, units, types, the time column and the rate
+    #[arg(long, global = true)]
+    profile: Option<PathBuf>,
     /// Cache folder (default: $TLMBENCH_CACHE, else the OS cache dir)
     #[arg(long, global = true)]
     cache: Option<PathBuf>,
@@ -48,6 +51,13 @@ enum Command {
         /// One JSON object per file, one per line
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        common: Common,
+    },
+    /// What a CSV file's import dialog would show: its columns as detected, the first rows, the time column and
+    /// rate, and the saved import profile for its header (JSON)
+    Inspect {
+        file: PathBuf,
         #[command(flatten)]
         common: Common,
     },
@@ -280,6 +290,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
         Command::Info { files, json, common } => info(&files, json, &common),
+        Command::Inspect { file, common } => inspect(&file, &common),
         Command::Cache { action, common } => cache(action, &common),
         Command::Query { what, common } => query(what, &common),
         Command::Convert {
@@ -316,8 +327,29 @@ fn main() -> ExitCode {
     }
 }
 
+fn inspect(file: &std::path::Path, common: &Common) -> Result<(), Fail> {
+    let i = tlmbench_decode::csv::inspect_file(file).map_err(tlmbench_store::Error::from)?;
+    let root = tlmbench_decode::cache::cache_root(common.cache.as_deref());
+    let header: Vec<String> = i.columns.iter().map(|c| c.source.clone()).collect();
+    let found = tlmbench_decode::profile::find(&root, &header);
+    let mut v = serde_json::to_value(&i).expect("inspections serialize");
+    v["profile"] = serde_json::to_value(&found).expect("profiles serialize");
+    println!("{}", serde_json::to_string_pretty(&v).expect("json prints"));
+    Ok(())
+}
+
 fn store(common: &Common) -> Store {
-    Store::new(common.cache.as_deref())
+    Store::new(common.cache.as_deref()).with_profile(common.profile.as_deref().map(load_profile))
+}
+
+/// Reads `--profile`; a bad file is a configuration error.
+fn load_profile(path: &std::path::Path) -> tlmbench_decode::profile::ImportProfile {
+    let fail = |msg: String| -> ! {
+        eprintln!("tlmbench: {}: {msg}", path.display());
+        std::process::exit(3)
+    };
+    let text = std::fs::read_to_string(path).unwrap_or_else(|e| fail(e.to_string()));
+    serde_json::from_str(&text).unwrap_or_else(|e| fail(format!("not an import profile: {e}")))
 }
 
 #[derive(Serialize)]

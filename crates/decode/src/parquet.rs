@@ -239,12 +239,13 @@ fn build(source: &Source, tmp: &Path) -> Result<Manifest> {
             .zip(names)
             .map(|(&(i, r), file)| {
                 let (name, unit) = name_and_unit(schema.field(i));
-                ManifestChannel { name, unit, file, dtype: r.dtype() }
+                ManifestChannel { name, unit, category: None, file, dtype: r.dtype() }
             })
             .collect(),
         skipped_columns: skipped,
         t_first,
         t_last,
+        rate: None,
     })
 }
 

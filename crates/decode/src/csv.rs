@@ -19,6 +19,7 @@ use tlmbench_core::Timestamp;
 use tlmbench_core::datetime::{parse_decimal, parse_iso};
 
 use crate::error::{Error, Result};
+use crate::profile::{ColumnKind, ImportProfile, RateChoice, TimeChoice};
 
 /// Rows used to infer column kinds.
 const SAMPLE_ROWS: usize = 10_000;
@@ -36,6 +37,8 @@ pub struct Schema {
     /// data can't be split at arbitrary line ends). Set when the sampled rows have a quote, or when a chunk read on
     /// the fast path meets one (`Rows::quotes`) and the file is read again.
     pub quoted: bool,
+    /// Rows are at this rate from zero (a profile's assumed rate; with `TimeColumn::Index`).
+    pub index_rate: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +46,9 @@ pub struct Column {
     pub name: String,
     pub unit: Option<String>,
     pub kind: Kind,
+    /// The name as the file spells it (what an import profile finds the column by).
+    pub source: String,
+    pub category: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +56,8 @@ pub enum Kind {
     Number,
     Text,
     Time,
+    /// Left out by an import profile.
+    Skip,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -312,6 +320,19 @@ fn comment_lines(bytes: &[u8]) -> usize {
 
 /// Reads the header and the first rows to decide the schema. `#` comment lines before the header are skipped.
 pub fn scan(all: &[u8]) -> Result<Schema> {
+    scan_with(all, None)
+}
+
+/// The column names of a header as [`scan`] sees them (what profiles are keyed by), without reading any rows.
+pub fn header_names(all: &[u8]) -> Result<Vec<String>> {
+    let bytes = &all[comment_lines(all)..];
+    let end = memchr::memchr(b'\n', bytes).map_or(bytes.len(), |i| i + 1);
+    Ok(scan_with(&bytes[..end], None)?.columns.into_iter().map(|c| c.source).collect())
+}
+
+/// [`scan`] with an import profile: its names, units and types replace what was detected, and its time column
+/// and rate decide the x axis.
+pub fn scan_with(all: &[u8], profile: Option<&ImportProfile>) -> Result<Schema> {
     let skip = comment_lines(all);
     let bytes = &all[skip..];
     let first_line = bytes.split(|&c| c == b'\n').next().unwrap_or_default();
@@ -331,7 +352,7 @@ pub fn scan(all: &[u8]) -> Result<Schema> {
             let n = seen.entry(name.to_owned()).or_insert(0);
             *n += 1;
             let name = if *n > 1 { format!("{name} ({n})") } else { name.to_owned() };
-            Column { name, unit, kind: Kind::Number }
+            Column { source: name.clone(), name, unit, kind: Kind::Number, category: None }
         })
         .collect();
     let data_start = skip + rec.pos;
@@ -374,12 +395,95 @@ pub fn scan(all: &[u8]) -> Result<Schema> {
         })
         .or_else(|| stats.iter().position(|&(any, _, iso)| mostly(iso, any)).map(|index| TimeColumn::Iso { index }))
         .unwrap_or(TimeColumn::Index);
+    let mut index_rate = None;
+    let time = match profile {
+        Some(p) => apply_profile(p, &mut columns, time, &mut index_rate)?,
+        None => time,
+    };
     if let TimeColumn::Numeric { index, .. } | TimeColumn::Iso { index } = time {
         columns[index].kind = Kind::Time;
     }
     // quotes in the sampled rows only: the rest of the file is checked chunk by chunk as it is parsed
     let quoted = memchr::memchr(b'"', &all[data_start..(skip + rec.pos).max(data_start)]).is_some();
-    Ok(Schema { delimiter, data_start, columns, time, quoted })
+    Ok(Schema { delimiter, data_start, columns, time, quoted, index_rate })
+}
+
+/// Applies a profile's column choices and decides the time: returns the time column to use.
+fn apply_profile(
+    p: &ImportProfile,
+    columns: &mut [Column],
+    detected: TimeColumn,
+    index_rate: &mut Option<f64>,
+) -> Result<TimeColumn> {
+    p.validate().map_err(|e| Error::Descriptor(format!("import profile: {e}")))?;
+    for c in columns.iter_mut() {
+        let Some(ch) = p.column(&c.source) else { continue };
+        if let Some(n) = ch.name.as_ref().filter(|n| !n.trim().is_empty()) {
+            c.name = n.trim().to_owned();
+        }
+        if ch.unit.is_some() {
+            c.unit = ch.unit.clone().filter(|u| !u.trim().is_empty());
+        }
+        c.category = ch.category.clone().filter(|u| !u.trim().is_empty());
+        match ch.kind {
+            Some(ColumnKind::Number) => c.kind = Kind::Number,
+            Some(ColumnKind::Text) => c.kind = Kind::Text,
+            Some(ColumnKind::Skip) => c.kind = Kind::Skip,
+            None => {}
+        }
+    }
+    // time: a choice of a column, or none, or the rate settings that drop the column
+    let time = match &p.time {
+        TimeChoice::Auto => detected,
+        TimeChoice::None => TimeColumn::Index,
+        TimeChoice::Column { name, unit } => {
+            let index = columns
+                .iter()
+                .position(|c| c.source == *name)
+                .ok_or_else(|| Error::Descriptor(format!("import profile: no time column named {name:?}")))?;
+            let unit = unit.as_deref().map(str::to_ascii_lowercase);
+            match unit.as_deref() {
+                Some("iso") => TimeColumn::Iso { index },
+                Some(u) => match time_unit_of(u) {
+                    Some(unit_ns) => TimeColumn::Numeric { index, unit_ns },
+                    None => return Err(Error::Descriptor(format!("import profile: unknown time unit {u:?}"))),
+                },
+                None => {
+                    let unit_ns =
+                        time_unit(&columns[index].name, columns[index].unit.as_deref()).unwrap_or(1_000_000_000);
+                    TimeColumn::Numeric { index, unit_ns }
+                }
+            }
+        }
+    };
+    let time = match p.rate {
+        RateChoice::Assume { hz } => {
+            *index_rate = Some(hz);
+            TimeColumn::Index
+        }
+        RateChoice::Samples => TimeColumn::Index,
+        _ => time,
+    };
+    // a detected time column that isn't the time any more is an ordinary column again
+    for (i, c) in columns.iter_mut().enumerate() {
+        let is_time = matches!(time, TimeColumn::Numeric { index, .. } | TimeColumn::Iso { index } if index == i);
+        if is_time && c.kind != Kind::Skip {
+            c.kind = Kind::Time;
+        } else if c.kind == Kind::Time {
+            c.kind = Kind::Number;
+        }
+    }
+    Ok(time)
+}
+
+pub(crate) fn time_unit_of(u: &str) -> Option<i64> {
+    match u {
+        "s" | "sec" | "secs" | "seconds" => Some(1_000_000_000),
+        "ms" => Some(1_000_000),
+        "us" | "µs" => Some(1_000),
+        "ns" => Some(1),
+        _ => None,
+    }
 }
 
 /// Splits the data rows into chunks of about `target` bytes at line ends (one chunk if fields are quoted).
@@ -627,4 +731,125 @@ mod tests {
         assert_eq!(t, parse_all(b).unwrap().1.t);
         assert_eq!(t.len(), 5000);
     }
+}
+
+/// What the import dialog shows about a CSV file: its columns as detected, the first rows as text, and the time
+/// and rate it would use.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Inspection {
+    /// The key import profiles are found by (see [`crate::profile::header_key`]).
+    pub header_key: String,
+    pub delimiter: char,
+    pub columns: Vec<InspectedColumn>,
+    /// Index into `columns` of the detected time column.
+    pub time: Option<usize>,
+    /// `s`, `ms`, `us`, `ns` or `iso` for the detected time column.
+    pub time_unit: Option<&'static str>,
+    /// The first rows, as the file spells them (up to 8).
+    pub preview: Vec<Vec<String>>,
+    /// Rows in the file: counted when the whole file was read, else estimated from the size.
+    pub rows: usize,
+    pub rows_exact: bool,
+    /// The recorded rate from the median step of the first times, when there is a time column.
+    pub rate_hz: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct InspectedColumn {
+    pub source: String,
+    pub name: String,
+    pub unit: Option<String>,
+    /// `number`, `text` or `time`.
+    pub kind: &'static str,
+}
+
+/// Inspects the start of a CSV file (`head`: its first bytes, cut at a line end; `file_len`: the whole file's size).
+pub fn inspect(head: &[u8], file_len: u64) -> Result<Inspection> {
+    let schema = scan(head)?;
+    let mut rec = Records::new(schema.delimiter, &head[schema.data_start..]);
+    let mut preview = Vec::new();
+    let mut rows = 0usize;
+    let mut times: Vec<i64> = Vec::new();
+    while rec.next() {
+        if rec.is_blank() {
+            continue;
+        }
+        rows += 1;
+        if preview.len() < 8 {
+            preview.push(
+                (0..schema.columns.len()).map(|i| String::from_utf8_lossy(rec.field(i)).trim().to_owned()).collect(),
+            );
+        }
+        if times.len() < 1000 {
+            let t = match schema.time {
+                TimeColumn::Numeric { index, unit_ns } => {
+                    std::str::from_utf8(trim(rec.field(index))).ok().and_then(|s| parse_decimal(s, unit_ns))
+                }
+                TimeColumn::Iso { index } => std::str::from_utf8(rec.field(index)).ok().and_then(parse_iso),
+                TimeColumn::Index => None,
+            };
+            times.extend(t);
+        }
+    }
+    let exact = head.len() as u64 >= file_len;
+    if !exact && !head.is_empty() {
+        rows = (rows as f64 * file_len as f64 / head.len() as f64) as usize;
+    }
+    let mut steps: Vec<i64> = times.windows(2).map(|w| w[1] - w[0]).filter(|&d| d > 0).collect();
+    steps.sort_unstable();
+    let rate_hz = steps.get(steps.len() / 2).map(|&d| 1e9 / d as f64);
+    let (time, time_unit) = match schema.time {
+        TimeColumn::Numeric { index, unit_ns } => (
+            Some(index),
+            Some(match unit_ns {
+                1_000_000_000 => "s",
+                1_000_000 => "ms",
+                1_000 => "us",
+                _ => "ns",
+            }),
+        ),
+        TimeColumn::Iso { index } => (Some(index), Some("iso")),
+        TimeColumn::Index => (None, None),
+    };
+    let names: Vec<String> = schema.columns.iter().map(|c| c.source.clone()).collect();
+    Ok(Inspection {
+        header_key: crate::profile::header_key(&names),
+        delimiter: schema.delimiter as char,
+        columns: schema
+            .columns
+            .iter()
+            .map(|c| InspectedColumn {
+                source: c.source.clone(),
+                name: c.name.clone(),
+                unit: c.unit.clone(),
+                kind: match c.kind {
+                    Kind::Number => "number",
+                    Kind::Time => "time",
+                    Kind::Text | Kind::Skip => "text",
+                },
+            })
+            .collect(),
+        time,
+        time_unit,
+        preview,
+        rows,
+        rows_exact: exact,
+        rate_hz: if time.is_some() { rate_hz } else { None },
+    })
+}
+
+/// Inspects a CSV file for the import dialog: reads its first 4 MB.
+pub fn inspect_file(path: &Path) -> Result<Inspection> {
+    use std::io::Read;
+    const HEAD: usize = 4 << 20;
+    let file = std::fs::File::open(path).map_err(crate::error::io_err(path))?;
+    let len = file.metadata().map_err(crate::error::io_err(path))?.len();
+    let mut head = Vec::new();
+    file.take(HEAD as u64).read_to_end(&mut head).map_err(crate::error::io_err(path))?;
+    if (head.len() as u64) < len
+        && let Some(end) = memchr::memrchr(b'\n', &head)
+    {
+        head.truncate(end + 1);
+    }
+    inspect(&head, len)
 }

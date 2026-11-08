@@ -8,8 +8,11 @@ use tlmbench_decode::OpenOptions;
 use super::*;
 
 fn open(path: &Path, cache: &Path) -> Box<dyn Recording> {
-    tlmbench_decode::open(path, &OpenOptions { descriptor: None, part: None, cache_dir: Some(cache.to_owned()) })
-        .unwrap()
+    tlmbench_decode::open(
+        path,
+        &OpenOptions { descriptor: None, part: None, profile: None, cache_dir: Some(cache.to_owned()) },
+    )
+    .unwrap()
 }
 
 /// Every channel's shown values and the times of `r`, for comparing round trips.
@@ -55,7 +58,7 @@ fn csv_and_parquet_read_back_exactly() {
     let cache = tmp.path().join("cache");
     let src = tlmbench_decode::open(
         &data,
-        &OpenOptions { descriptor: Some(desc), part: None, cache_dir: Some(cache.clone()) },
+        &OpenOptions { descriptor: Some(desc), part: None, profile: None, cache_dir: Some(cache.clone()) },
     )
     .unwrap();
     let (times, values) = contents(src.as_ref());
@@ -88,7 +91,7 @@ fn raw_keeps_stored_types_and_a_span() {
     let cache = tmp.path().join("cache");
     let src = tlmbench_decode::open(
         &data,
-        &OpenOptions { descriptor: Some(desc), part: None, cache_dir: Some(cache.clone()) },
+        &OpenOptions { descriptor: Some(desc), part: None, profile: None, cache_dir: Some(cache.clone()) },
     )
     .unwrap();
     let out = tmp.path().join("raw.parquet");
@@ -150,7 +153,7 @@ fn hdf5_and_mat_read_back_exactly() {
     let cache = tmp.path().join("cache");
     let src = tlmbench_decode::open(
         &data,
-        &OpenOptions { descriptor: Some(desc), part: None, cache_dir: Some(cache.clone()) },
+        &OpenOptions { descriptor: Some(desc), part: None, profile: None, cache_dir: Some(cache.clone()) },
     )
     .unwrap();
     let (times, values) = contents(src.as_ref());
