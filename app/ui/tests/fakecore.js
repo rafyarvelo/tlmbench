@@ -114,7 +114,7 @@
     const t = [];
     const y = [];
     if (lim <= 0 || a >= lim) return { kind: 'raw', t, y };
-    if (b - a + 1 <= 4 * vp.widthPx) {
+    if (b - a + 1 <= Math.max(4 * vp.widthPx, vp.rawMax ?? 0)) {
       for (let i = a; i <= b; i++) [t[t.length], y[y.length]] = [timeAt(r, i), valueAt(r, ch, i)];
       return { kind: 'raw', t, y };
     }

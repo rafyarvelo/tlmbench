@@ -276,8 +276,9 @@ function upload(layer: Layer | null, reply: Reply, logOf: (ch: number) => boolea
 }
 
 /** A pane's or the overview's request: its channels with their gap factors, over its own width. */
-function entry(id: number, channels: number[], t0: bigint, t1: bigint, width: number) {
-  return { id, channels, gapFactors: channels.map(gapFactor), t0: t0.toString(), t1: t1.toString(), widthPx: width };
+/** One pane's (or the overview's) part of a view request; `rawMax`: Draw every sample up to this many in view. */
+function entry(id: number, channels: number[], t0: bigint, t1: bigint, width: number, rawMax = 0) {
+  return { id, channels, gapFactors: channels.map(gapFactor), t0: t0.toString(), t1: t1.toString(), widthPx: width, rawMax };
 }
 
 const LIVE_VIEW_EVERY_MS = 33;
@@ -306,7 +307,8 @@ async function requestView(precision?: 'coarse' | 'exact'): Promise<void> {
   const want = precision ?? (state.exactMs > 150 ? 'coarse' : 'exact');
   const inView = samplesInView();
   // values and table panes have no plot to ask for
-  const entries = panes().flatMap((chans, i) => (hasPlot(i) ? [entry(i, chans, state.t0, state.t1, widthPx(i))] : []));
+  const rawMax = Number(settings.drawRaw) || 0;
+  const entries = panes().flatMap((chans, i) => (hasPlot(i) ? [entry(i, chans, state.t0, state.t1, widthPx(i), rawMax)] : []));
   const r = ovRect();
   const withOv = state.ovStale && !!r;
   if (withOv && r) {
@@ -2594,6 +2596,8 @@ onSetting((key) => {
     applyTheme();
     tokenCache = null;
     renderPanes();
+  } else if (key === 'drawRaw') {
+    void requestView();
   } else if (key === 'overviewTop') {
     renderOverviewHead();
     scheduleResize();

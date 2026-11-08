@@ -94,6 +94,8 @@ export interface Settings {
   measureOpen: boolean;
   measureAuto: boolean;
   showPerf: boolean;
+  /** Draw every sample up to this many in view per channel ('0': only when there are at most four per pixel). */
+  drawRaw: string;
   /** Settings shows every setting, not just the everyday ones. */
   settingsAll: boolean;
   /** The folder Explorer lists, and its folders (and open files) shown expanded. */
@@ -149,6 +151,7 @@ export const DEFAULTS: Settings = {
   measureOpen: false,
   measureAuto: true,
   showPerf: false,
+  drawRaw: '0',
   settingsAll: false,
   folder: '',
   exExpanded: [],
