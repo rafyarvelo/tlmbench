@@ -72,7 +72,7 @@ run('channels', async ({ p, check, text, visible, fake, paneCount, until, wait }
 
   // files: right-click, Show only these, Close all with Undo
   await p.click('#explorer .row.file[data-path$="hover.csv"]', { button: 'right' });
-  check('a file has a right-click menu', (await p.$$eval('.filemenu .mi', (e) => e.map((x) => x.textContent))).join() === 'Open,Open only this,Import settings…,Close this file,Close all files');
+  check('a file has a right-click menu', (await p.$$eval('.filemenu .mi', (e) => e.map((x) => x.textContent))).join() === 'Open,Open only this,Import settings…,Format descriptor…,Close this file,Close all files');
   await p.click('.filemenu [data-fm="open"]');
   check('Open opens it', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'hover.csv'));
   await p.click('#onlyOpen');

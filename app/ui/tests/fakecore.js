@@ -199,6 +199,32 @@
       const columns = names.map((n, i) => ({ source: n, name: n, unit: o.units?.[n] ?? null, kind: i === time ? 'time' : (o.text ?? []).includes(n) ? 'text' : 'number' }));
       fake.csvs[path] = { header_key: [...names].sort().join('\u0000'), delimiter: o.delimiter ?? ',', columns, time, time_unit: time == null ? null : (o.unit ?? 's'), preview: [], rows: o.rows ?? 1000, rows_exact: true, rate_hz: time == null ? null : (o.rate ?? 10) };
     },
+    /** Binary files for the descriptor form, by path: `fake.bin(path)` is a logger's 24-byte frames (sync A55A, a
+     * counter, a µs clock, three readings, CRC-16); descriptors saved to the cache and shared to folders; every
+     * descriptor_preview and descriptor_save the page sent. The fake decodes a little (fixed frames, integers) so the
+     * form has something to show: the real wording and values are the core's, tested in Rust. */
+    bins: {},
+    decoders: {},
+    sharedDecoders: {},
+    previewed: [],
+    savedDescriptors: [],
+    bin(path, o = {}) {
+      const n = o.frames ?? 64;
+      const out = new Uint8Array(n * 24);
+      const dv = new DataView(out.buffer);
+      for (let k = 0; k < n; k++) {
+        const at = k * 24;
+        out[at] = 0xa5;
+        out[at + 1] = 0x5a;
+        dv.setUint16(at + 2, k, true);
+        dv.setUint32(at + 4, 120000000 + k * 10000, true);
+        dv.setUint16(at + 8, 1200 + k, true);
+        out[at + 10] = 60 + (k & 7);
+        dv.setUint16(at + 14, 24600 - k, true);
+        dv.setUint16(at + 22, crc16(out.subarray(at, at + 22)), true);
+      }
+      fake.bins[path] = { bytes: o.bytes ?? out, spec: o.spec ?? { channels: ['motor_rpm', 'battery_v'], samples: 4000, rate: 100 } };
+    },
     recording,
     /** Moves `path`'s pyramid build to `fraction` (1 finishes it), sending progress like the core. */
     build(path, fraction) {
@@ -217,6 +243,68 @@
 
   const callbacks = new Map();
   let nextCb = 1;
+  // ---------- the descriptor form's stand-in for the core ----------
+  function crc16(b) {
+    let c = 0xffff;
+    for (const x of b) {
+      c ^= x << 8;
+      for (let k = 0; k < 8; k++) c = c & 0x8000 ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff;
+    }
+    return c;
+  }
+  const SIZES = { i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, i64: 8, u64: 8, f32: 4, f64: 8 };
+  const globOk = (g, name) => new RegExp('^' + g.split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$').test(name);
+  const slug = (n) => (String(n || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join('-') || 'decoder');
+  const dirOf = (p) => p.replace(/\/[^/]*$/, '');
+  const nameOf = (p) => p.split('/').pop();
+  const known = (path) => [
+    ...Object.entries(fake.sharedDecoders[dirOf(path)] ?? {}).map(([id, descriptor]) => ({ id, path: `${dirOf(path)}/.tlmbench/decoders/${id}.toml`, shared: true, descriptor })),
+    ...Object.entries(fake.decoders).map(([id, descriptor]) => ({ id, path: `/cache/decoders/${id}.toml`, shared: false, descriptor })),
+  ].map((k) => ({ ...k, claims: (k.descriptor.files ?? []).some((g) => globOk(g, nameOf(path))) }));
+  const claimed = (path) => known(path).some((k) => k.claims);
+  const problemOf = (d) => {
+    const hs = d.packets?.header_size ?? 0;
+    const ext = d.record_size + hs;
+    if (!(d.record_size >= 1)) return `record_size ${d.record_size} must be between 1 and 1048576 bytes`;
+    if (!d.fields.length) return 'no fields';
+    for (const f of d.fields) if (f.offset + SIZES[f.type] > ext) return `field "${f.name}" (${f.type} at offset ${f.offset}) runs past the ${ext}-byte ${hs ? 'packet header and record' : 'record'}`;
+    for (const f of d.fields) if (f.bits && f.bits.shift + f.bits.width > SIZES[f.type] * 8) return `field "${f.name}": bits shift ${f.bits.shift} and width ${f.bits.width} don't fit in ${SIZES[f.type] * 8} bits`;
+    if (d.time.source !== 'rate' && d.time.source !== 'index' && !d.fields.some((f) => f.name === d.time.field)) return `time.field "${d.time.field}" is not one of the fields`;
+    return null;
+  };
+  function previewOf(bytes, d) {
+    const toml = `# the fake core's TOML\nname = ${JSON.stringify(d.name)}\n${d.packets ? `[packets]\nsync = ${JSON.stringify(d.packets.sync ?? '')}\n` : ''}`;
+    const problem = problemOf(d);
+    const out = { toml, problem, error: null, rows: [], stride: 0, start: 0, skipped: 0, bad_checks: 0, checked: false, hex_at: 0, hex: [] };
+    if (problem) return out;
+    const le = d.endian !== 'big';
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+    const read = (o, t) => ({ i8: () => dv.getInt8(o), u8: () => dv.getUint8(o), i16: () => dv.getInt16(o, le), u16: () => dv.getUint16(o, le), i32: () => dv.getInt32(o, le), u32: () => dv.getUint32(o, le), i64: () => Number(dv.getBigInt64(o, le)), u64: () => Number(dv.getBigUint64(o, le)), f32: () => dv.getFloat32(o, le), f64: () => dv.getFloat64(o, le) })[t]();
+    const p = d.packets;
+    const hs = p?.header_size ?? 0;
+    const cks = { none: 0, sum8: 1, 'crc16-ccitt': 2, crc32: 4 }[p?.checksum ?? 'none'];
+    const step = d.record_size + hs + cks;
+    const sync = (p?.sync ?? '').match(/../g)?.map((x) => parseInt(x, 16)) ?? [];
+    let o = d.header_size;
+    while (sync.length && o < bytes.length && !sync.every((x, j) => bytes[o + j] === x)) o++;
+    out.skipped = sync.length ? o - d.header_size : 0;
+    out.start = o;
+    out.stride = step;
+    out.checked = cks > 0;
+    for (let k = 0; o + step <= bytes.length && k < 8; k++, o += step) {
+      const ok = cks ? (le ? dv.getUint16(o + step - 2, true) === crc16(bytes.subarray(o, o + step - 2)) : false) : null;
+      const base = o;
+      const values = d.fields.map((f) => { const raw = read(base + f.offset, f.type); const v = f.bits ? (raw >> f.bits.shift) & ((1 << f.bits.width) - 1) : raw; return v * (f.scale ?? 1) + (f.value_offset ?? 0); });
+      const ti = d.fields.findIndex((f) => f.name === d.time.field);
+      const t = d.time.source === 'rate' ? k / d.time.rate_hz : d.time.source === 'index' ? k : d.time.source === 'field' ? (read(base + d.fields[ti].offset, d.fields[ti].type) * { ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1 }[d.time.unit]) : read(base + d.fields[ti].offset, d.fields[ti].type) / d.time.clock_hz;
+      out.rows.push({ offset: base, time: t, values, ok });
+    }
+    if (!out.rows.length) out.error = 'No whole record found in the first bytes: check the framing.';
+    out.bad_checks = out.rows.filter((r) => r.ok === false).length;
+    out.hex_at = out.rows[0]?.offset ?? 0;
+    out.hex = [...bytes.subarray(out.hex_at, out.hex_at + 64)];
+    return out;
+  }
   // the filter language: atoms joined by `and`, groups joined by `or`
   const parseFilter = (text) => {
     const s = String(text || '').trim().toLowerCase();
@@ -247,6 +335,41 @@
   let nextFile = 1;
   const commands = {
     launch: () => ({ file: fake.launch, gate: null, gateMode: null }),
+    needs_descriptor: ({ path }) => !!fake.bins[path] && !claimed(path),
+    descriptor_list: ({ path }) => known(path),
+    descriptor_preview({ path, descriptor }) {
+      fake.previewed.push(descriptor);
+      return previewOf(fake.bins[path].bytes, descriptor);
+    },
+    descriptor_find_frames({ path }) {
+      const b = fake.bins[path].bytes;
+      for (let w = 2; w >= 1; w--) for (let stride = 4; stride <= 256; stride++) {
+        if (stride * 8 > b.length) break;
+        if ([...b.subarray(0, w)].every((x) => x === 0)) continue;
+        let ok = true;
+        for (let k = 1; k < 8 && ok; k++) for (let j = 0; j < w; j++) ok &&= b[k * stride + j] === b[j];
+        if (ok) return { sync: [...b.subarray(0, w)].map((x) => x.toString(16).padStart(2, '0').toUpperCase()).join(''), stride, start: 0 };
+      }
+      return null;
+    },
+    descriptor_save({ descriptor, replace }) {
+      const problem = problemOf(descriptor);
+      if (problem) throw problem;
+      fake.savedDescriptors.push({ descriptor, replace });
+      let id = slug(descriptor.name);
+      if (replace && fake.decoders[replace]) {
+        if (slug(fake.decoders[replace].name) === id) id = replace;
+        else delete fake.decoders[replace];
+      } else for (let n = 2; fake.decoders[id]; n++) id = `${slug(descriptor.name)}-${n}`;
+      fake.decoders[id] = descriptor;
+      return { id, path: `/cache/decoders/${id}.toml`, shared: false, descriptor, claims: false };
+    },
+    descriptor_share({ path, descriptor }) {
+      if (fake.readOnly.includes(dirOf(path))) throw `can't write to ${dirOf(path)}/.tlmbench/decoders: Read-only file system (os error 30)`;
+      const id = slug(descriptor.name);
+      (fake.sharedDecoders[dirOf(path)] ??= {})[id] = descriptor;
+      return `${dirOf(path)}/.tlmbench/decoders/${id}.toml`;
+    },
     import_inspect({ paths }) {
       return paths.map((path) => {
         const insp = fake.csvs[path];
@@ -272,6 +395,10 @@
       // the core applies the header's saved profile when none is given
       const profile = given ?? fake.profiles[fake.csvs[path]?.header_key]?.profile ?? null;
       fake.openedWith.push({ path, profile });
+      if (fake.bins[path] && !fake.files[path]) {
+        if (!claimed(path)) throw `${path}: not a format tlmbench knows`;
+        fake.files[path] = fake.bins[path].spec;
+      }
       const spec = fake.files[path];
       if (!spec) throw `couldn't open ${path}: no such file`;
       const r = recording(path, spec);
@@ -509,7 +636,7 @@
     },
     list_folder({ path }) {
       // a folder's tree from the paths of `fake.files` under it (the core lists the disk)
-      const files = Object.keys(fake.files).filter((p) => p.startsWith(path.replace(/\/$/, '') + '/'));
+      const files = [...new Set([...Object.keys(fake.files), ...Object.keys(fake.bins)])].filter((p) => p.startsWith(path.replace(/\/$/, '') + '/'));
       if (!files.length && !fake.folders.includes(path)) throw `${path} isn't a folder that can be read`;
       const root = { path, name: path.split('/').pop(), dir: true, bytes: 0, children: [] };
       for (const f of [...files, ...(fake.unopenable ?? []).filter((p) => p.startsWith(path.replace(/\/$/, '') + '/'))].sort()) {
@@ -519,7 +646,7 @@
           const p = node.path + '/' + part;
           let child = node.children.find((c) => c.path === p);
           if (!child) {
-            child = { path: p, name: part, dir: k < parts.length - 1, bytes: k < parts.length - 1 ? 0 : 1234567, openable: !(fake.unopenable ?? []).includes(p), children: [] };
+            child = { path: p, name: part, dir: k < parts.length - 1, bytes: k < parts.length - 1 ? 0 : 1234567, openable: !(fake.unopenable ?? []).includes(p), ...(fake.bins[p] && k === parts.length - 1 && !claimed(p) ? { needsDescriptor: true } : {}), children: [] };
             node.children.push(child);
           }
           node = child;

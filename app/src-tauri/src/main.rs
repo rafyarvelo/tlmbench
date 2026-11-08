@@ -1085,15 +1085,29 @@ async fn needs_descriptor(path: String, files: State<'_, Files>) -> Result<bool,
     .map_err(|e| e.to_string())
 }
 
+/// A descriptor that could decode a file, and whether its `files` patterns name this one.
+#[derive(Serialize)]
+struct Listed {
+    #[serde(flatten)]
+    known: tlmbench_decode::descriptor::Known,
+    claims: bool,
+}
+
 /// The descriptors that could decode a file: its folder's `.tlmbench/decoders/` and the app cache's `decoders/`.
 #[tauri::command]
-async fn descriptor_list(
-    path: String,
-    files: State<'_, Files>,
-) -> Result<Vec<tlmbench_decode::descriptor::Known>, String> {
+async fn descriptor_list(path: String, files: State<'_, Files>) -> Result<Vec<Listed>, String> {
     let root = files.store.root().to_owned();
     spawn_blocking(move || {
-        Path::new(&path).parent().map(|d| tlmbench_decode::descriptor::known(d, &root)).unwrap_or_default()
+        let p = Path::new(&path);
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let known = p.parent().map(|d| tlmbench_decode::descriptor::known(d, &root)).unwrap_or_default();
+        known
+            .into_iter()
+            .map(|k| {
+                let claims = k.descriptor.files.iter().any(|g| tlmbench_decode::descriptor::name_matches(g, &name));
+                Listed { known: k, claims }
+            })
+            .collect()
     })
     .await
     .map_err(|e| e.to_string())

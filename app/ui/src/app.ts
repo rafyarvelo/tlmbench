@@ -43,6 +43,7 @@ import {
   stack,
   units,
 } from './stack.svelte';
+import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
 import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
@@ -1510,6 +1511,8 @@ async function openPath(path: string): Promise<void> {
     ui.undo = null;
     await showTab(key);
   } catch (e) {
+    // a binary file nothing claims: the descriptor form, not an error
+    if (await invoke<boolean>('needs_descriptor', { path }).catch(() => false)) return void dscOpenForm(path);
     note(`Couldn't open ${nameOf(path)}: ${e}`);
   }
 }
@@ -2162,6 +2165,119 @@ function importCancel(): void {
   importRedo = null;
 }
 
+
+// ---------- Format descriptors: the form on a binary file nothing claims ----------
+
+let dscSeq = 0;
+
+/** Loads a known descriptor into the form for editing (a copy of it). */
+function dscLoad(k: Known): void {
+  dsc.d = normalizeDescriptor(k.descriptor);
+  if (!dsc.d.files.length) dsc.d.files = [namePattern(nameOf(dsc.path))];
+  Object.assign(dsc, { pick: k.path, pickShared: k.shared, autoSize: false, found: null });
+}
+
+/** The form for a file: the descriptor that names it (or `base`), else a new one made for it. */
+async function dscOpenForm(path: string, base?: string): Promise<void> {
+  let known: Known[] = [];
+  try {
+    known = await invoke<Known[]>('descriptor_list', { path });
+  } catch {
+    known = [];
+  }
+  Object.assign(dsc, { open: true, path, known, pv: null, pvD: null, error: '', found: null, confirmShare: false, busy: false });
+  const k = known.find((x) => (base ? x.path === base : x.claims));
+  if (k) dscLoad(k);
+  else Object.assign(dsc, { d: blankFor(path), pick: '', pickShared: false, autoSize: true });
+}
+
+function dscPick(path: string): void {
+  const k = dsc.known.find((x) => x.path === path);
+  if (k) dscLoad(k);
+  else Object.assign(dsc, { pick: '', pickShared: false, found: null, d: { ...blankFor(dsc.path), name: dsc.d.name, files: dsc.d.files }, autoSize: true });
+}
+
+/** Asks the core to decode the file's first records through the form's descriptor (the latest answer wins). */
+async function dscPreview(): Promise<void> {
+  const seq = ++dscSeq;
+  if (dsc.autoSize) dsc.d.record_size = fieldsEnd(dsc.d);
+  try {
+    const sent = editing();
+    const pv = await invoke<Preview>('descriptor_preview', { path: dsc.path, descriptor: sent });
+    if (seq === dscSeq) Object.assign(dsc, { pv, pvD: sent });
+  } catch (e) {
+    if (seq === dscSeq) dsc.pv = { toml: '', problem: String(e), error: null, rows: [], stride: 0, start: 0, skipped: 0, bad_checks: 0, checked: false, hex_at: 0, hex: [] };
+  }
+}
+
+/** Find frames: a sync word and frame length that repeat in the file make it packets. */
+async function dscFind(): Promise<void> {
+  let f: Frames | null = null;
+  try {
+    f = await invoke<Frames | null>('descriptor_find_frames', { path: dsc.path });
+  } catch {
+    f = null;
+  }
+  dsc.found = f ?? false;
+  if (!f) return;
+  const d = dsc.d;
+  d.packets = { checksum: 'none', compression: 'none', ...d.packets, sync: f.sync, header_size: Math.max(d.packets?.header_size ?? 2, f.sync.length / 2) };
+  d.header_size = f.start;
+  dsc.autoSize = false;
+  d.record_size = Math.max(1, f.stride - d.packets.header_size - checkSize(d));
+}
+
+/** Save: the descriptor goes to the app cache (never beside the data). */
+async function dscSave(): Promise<Known | null> {
+  if (dsc.busy) return null;
+  dsc.busy = true;
+  dsc.error = '';
+  try {
+    const descriptor = editing();
+    // a shared descriptor is copied to the cache over the cache's own copy of it, if there is one
+    const picked = dsc.known.find((x) => x.path === dsc.pick);
+    const was = picked ? (dsc.known.find((x) => !x.shared && x.id === picked.id)?.id ?? null) : null;
+    let k = await invoke<Known>('descriptor_save', { descriptor, replace: was });
+    // Open needs the file's name among the names it claims
+    const listed = await invoke<Known[]>('descriptor_list', { path: dsc.path });
+    if (!listed.find((x) => x.id === k.id && !x.shared)?.claims) {
+      descriptor.files = [...descriptor.files, nameOf(dsc.path)];
+      dsc.d.files = descriptor.files;
+      k = await invoke<Known>('descriptor_save', { descriptor, replace: k.id });
+    }
+    dsc.known = await invoke<Known[]>('descriptor_list', { path: dsc.path });
+    Object.assign(dsc, { pick: k.path, pickShared: false });
+    // the folder's files that this descriptor now names stop asking for one
+    if (settings.folder && dsc.path.startsWith(settings.folder)) await listFolder(settings.folder);
+    return k;
+  } catch (e) {
+    dsc.error = `Couldn't save the descriptor: ${e}`;
+    return null;
+  } finally {
+    dsc.busy = false;
+  }
+}
+
+/** Open: saves the descriptor, then opens the file through it. */
+async function dscOpen(): Promise<void> {
+  const k = await dscSave();
+  if (!k) return;
+  dsc.open = false;
+  const path = dsc.path;
+  await openPath(path);
+}
+
+/** Share…, once confirmed: writes the descriptor into the file's folder, the one write beside the data. */
+async function dscShareGo(): Promise<void> {
+  dsc.confirmShare = false;
+  try {
+    const out = await invoke<string>('descriptor_share', { path: dsc.path, descriptor: editing() });
+    note(`Shared as ${out.split(/[\\/]/).slice(-3).join('/')}. Anyone who opens this folder decodes these files the same way.`);
+  } catch (e) {
+    dsc.error = `Couldn't share the descriptor: ${e}`;
+  }
+}
+
 // ---------- interaction ----------
 
 const setMode = (m: Mode) => setSetting('mode', m);
@@ -2748,6 +2864,16 @@ Object.assign(actions, {
   importAll: (paths: string[]) => void openWithImport(paths, true),
   importGo: () => void importGo(),
   importCancel,
+  descriptorForm: (p: string) => void dscOpenForm(p),
+  dscPick,
+  dscPreview: () => void dscPreview(),
+  dscFind: () => void dscFind(),
+  dscSave: () => void dscSave(),
+  dscOpen: () => void dscOpen(),
+  dscShareGo: () => void dscShareGo(),
+  dscClose: () => {
+    dsc.open = false;
+  },
   closePaths: (paths: string[]) =>
     void (async () => {
       const gone = paths.filter((p) => tabs.list.some((t) => t.path === p));

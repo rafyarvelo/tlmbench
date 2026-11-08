@@ -11,6 +11,8 @@ export interface FolderEntry {
   bytes: number;
   /** A file the app can open (undefined: yes). Others are listed only when Explorer is asked to show them. */
   openable?: boolean;
+  /** A binary file no descriptor names: Explorer says so, and opening it asks for one. */
+  needsDescriptor?: boolean;
   children: FolderEntry[];
 }
 
@@ -91,6 +93,15 @@ export const actions = {
   importAll: (_paths: string[]) => {},
   importGo: () => {},
   importCancel: () => {},
+  /** The descriptor form for a file: the descriptor that names it, else a new one. */
+  descriptorForm: (_path: string) => {},
+  dscPick: (_id: string) => {},
+  dscPreview: () => {},
+  dscFind: () => {},
+  dscSave: () => {},
+  dscOpen: () => {},
+  dscShareGo: () => {},
+  dscClose: () => {},
   /** Closes several files, with Undo. */
   closePaths: (_paths: string[]) => {},
   saveSession: () => {},

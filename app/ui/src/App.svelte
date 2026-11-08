@@ -12,6 +12,7 @@
   import Transport from './shell/Transport.svelte';
   import LiveStrip from './shell/LiveStrip.svelte';
   import Connect from './shell/Connect.svelte';
+  import DescriptorForm from './shell/DescriptorForm.svelte';
   import ImportDialog from './shell/ImportDialog.svelte';
   import { live } from './live.svelte';
   import { play } from './play.svelte';
@@ -108,6 +109,7 @@
 
 {#if live.connect}<Connect />{/if}
 <ImportDialog />
+<DescriptorForm />
 
 <div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>
   <Rail />

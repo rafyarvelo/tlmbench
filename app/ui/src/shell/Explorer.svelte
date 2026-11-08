@@ -181,6 +181,13 @@
     walk(ui.folder);
     return out;
   });
+  /** Binary files no descriptor names (the form opens for them). */
+  const needsDesc = $derived.by(() => {
+    const out = new Set<string>();
+    const walk = (d: FolderEntry | null) => d?.children.forEach((c) => (c.dir ? walk(c) : c.needsDescriptor && out.add(c.path)));
+    walk(ui.folder);
+    return out;
+  });
   const unopenable = $derived.by(() => {
     const out = new Set<string>();
     const walk = (d: FolderEntry | null) => d?.children.forEach((c) => (c.dir ? walk(c) : c.openable === false && out.add(c.path)));
@@ -196,6 +203,7 @@
     { label: 'Open', data: { fm: 'open' }, disabled: isOpen(path), run: () => actions.openPath(path) },
     { label: 'Open only this', data: { fm: 'only' }, disabled: !listedPath(path), run: () => actions.openOnly(path) },
     { label: 'Import settings…', data: { fm: 'import' }, disabled: !/\.(csv|tsv|txt)$/i.test(path), run: () => actions.importAgain(path) },
+    { label: 'Format descriptor…', data: { fm: 'descriptor' }, disabled: /\.(csv|tsv|txt|tlm|parquet)$/i.test(path), run: () => actions.descriptorForm(path) },
     { label: 'Close this file', data: { fm: 'close' }, disabled: !inTab(path), run: () => actions.closePath(path) },
     { label: 'Close all files', data: { fm: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
   ];
@@ -363,7 +371,7 @@
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
@@ -502,6 +510,16 @@
     font: 600 11px var(--font-ui);
     letter-spacing: 0.06em;
     text-transform: uppercase;
+  }
+  .fbadge {
+    flex: none;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--raised);
+    color: var(--fg-muted);
+    font-size: 11px;
+    white-space: nowrap;
   }
   .exoh .linkbtn {
     color: var(--accent);
