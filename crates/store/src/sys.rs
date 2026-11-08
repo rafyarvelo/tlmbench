@@ -1,5 +1,5 @@
 //! What the OS says about the machine: free disk space (for the cache cap) and physical memory (for the chunk
-//! cache budget).
+//! cache budget), and about this process: its resident memory and CPU time (the status bar's memory and load).
 
 use std::path::Path;
 
@@ -13,6 +13,17 @@ pub use tlmbench_decode::resident_share;
 /// Physical memory in bytes, if the OS says.
 pub fn total_ram() -> Option<u64> {
     imp::total_ram()
+}
+
+/// This process's resident memory in bytes, if the OS says.
+pub fn resident() -> Option<u64> {
+    imp::resident()
+}
+
+/// CPU time this process has used, user and system, in seconds, if the OS says. Over an interval, its growth divided
+/// by the interval is the load (1.0: one core busy).
+pub fn cpu_seconds() -> Option<f64> {
+    imp::cpu_seconds()
 }
 
 #[cfg(unix)]
@@ -50,6 +61,37 @@ mod imp {
         let (pages, size) = unsafe { (libc::sysconf(libc::_SC_PHYS_PAGES), libc::sysconf(libc::_SC_PAGESIZE)) };
         (pages > 0 && size > 0).then(|| pages as u64 * size as u64)
     }
+
+    #[cfg(target_os = "macos")]
+    pub fn resident() -> Option<u64> {
+        let mut info = std::mem::MaybeUninit::<libc::proc_taskinfo>::zeroed();
+        let size = size_of::<libc::proc_taskinfo>() as libc::c_int;
+        // SAFETY: `info` is writable for one proc_taskinfo, and `size` says so.
+        let n =
+            unsafe { libc::proc_pidinfo(libc::getpid(), libc::PROC_PIDTASKINFO, 0, info.as_mut_ptr().cast(), size) };
+        // SAFETY: proc_pidinfo filled `size` bytes.
+        (n == size).then(|| unsafe { info.assume_init() }.pti_resident_size)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn resident() -> Option<u64> {
+        // the second field of statm: resident pages
+        let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
+        let pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
+        // SAFETY: sysconf has no preconditions.
+        let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+        (size > 0).then(|| pages * size as u64)
+    }
+
+    pub fn cpu_seconds() -> Option<f64> {
+        let mut ru = std::mem::MaybeUninit::<libc::rusage>::zeroed();
+        // SAFETY: `ru` is writable for one rusage.
+        let ok = unsafe { libc::getrusage(libc::RUSAGE_SELF, ru.as_mut_ptr()) } == 0;
+        // SAFETY: getrusage succeeded, so it filled `ru`.
+        let ru = ok.then(|| unsafe { ru.assume_init() })?;
+        let secs = |t: libc::timeval| t.tv_sec as f64 + t.tv_usec as f64 / 1e6;
+        Some(secs(ru.ru_utime) + secs(ru.ru_stime))
+    }
 }
 
 #[cfg(windows)]
@@ -57,8 +99,11 @@ mod imp {
     use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
 
+    use windows_sys::Win32::Foundation::FILETIME;
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    use windows_sys::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
     use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
 
     pub fn free_disk(path: &Path) -> Option<u64> {
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
@@ -76,6 +121,24 @@ mod imp {
         let ok = unsafe { GlobalMemoryStatusEx(&mut st) };
         (ok != 0).then_some(st.ullTotalPhys)
     }
+    pub fn resident() -> Option<u64> {
+        // SAFETY: PROCESS_MEMORY_COUNTERS is plain data; cb is set as the call requires.
+        let mut pmc: PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
+        pmc.cb = size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+        // SAFETY: the pseudo-handle of this process, and `pmc` valid and sized.
+        let ok = unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) };
+        (ok != 0).then_some(pmc.WorkingSetSize as u64)
+    }
+
+    pub fn cpu_seconds() -> Option<f64> {
+        let zero = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+        let [mut created, mut exited, mut kernel, mut user] = [zero; 4];
+        // SAFETY: the pseudo-handle of this process, and four writable FILETIMEs.
+        let ok = unsafe { GetProcessTimes(GetCurrentProcess(), &mut created, &mut exited, &mut kernel, &mut user) };
+        // FILETIMEs count 100 ns
+        let secs = |t: FILETIME| ((u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime)) as f64 / 1e7;
+        (ok != 0).then(|| secs(kernel) + secs(user))
+    }
 }
 
 #[cfg(test)]
@@ -84,5 +147,14 @@ mod tests {
     fn the_os_answers() {
         assert!(super::free_disk(&std::env::temp_dir()).is_some_and(|b| b > 0));
         assert!(super::total_ram().is_some_and(|b| b > 1 << 28));
+        assert!(super::resident().is_some_and(|b| b > 1 << 20));
+        let t0 = super::cpu_seconds().expect("cpu time");
+        // burn a little CPU: the time grows
+        let mut x = 0u64;
+        for i in 0..20_000_000u64 {
+            x = x.wrapping_mul(31).wrapping_add(i);
+        }
+        std::hint::black_box(x);
+        assert!(super::cpu_seconds().is_some_and(|t| t > t0), "CPU time grows");
     }
 }

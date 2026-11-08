@@ -624,6 +624,28 @@ async fn list_folder(path: String) -> Result<FolderEntry, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// What the status bar shows about the core: its memory, the chunk cache's share of it and budget, and the CPU time
+/// it has used (the UI turns two readings into a load).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Usage {
+    memory: Option<u64>,
+    chunks: u64,
+    chunk_budget: u64,
+    cpu_seconds: Option<f64>,
+}
+
+#[tauri::command]
+fn usage(files: State<'_, Files>) -> Usage {
+    let cache = files.store.chunk_cache();
+    Usage {
+        memory: tlmbench_store::sys::resident(),
+        chunks: cache.bytes(),
+        chunk_budget: cache.budget(),
+        cpu_seconds: tlmbench_store::sys::cpu_seconds(),
+    }
+}
+
 /// `bytes` zero bytes: the IPC transfer cost alone, for the gate report.
 #[tauri::command]
 fn echo(bytes: u32) -> Response {
@@ -687,6 +709,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open,
+            usage,
             close,
             view,
             values_at,
