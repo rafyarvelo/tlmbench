@@ -341,6 +341,10 @@
       return handler;
     },
     'plugin:event|unlisten': () => null,
+    'plugin:window|set_title'({ value }) {
+      fake.title = value;
+      return null;
+    },
   };
 
   window.__TAURI_INTERNALS__ = {

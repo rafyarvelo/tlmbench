@@ -41,6 +41,7 @@ run(
     // edits are unsaved changes; the file's own layout stays as it was
     await duplicatePane();
     check('an edit marks it unsaved', await until(() => !!document.querySelector('#wsTabs [aria-selected=true] [data-dirty]')), await names());
+    check('...and the window title has a dot', /^• .* — TelemetryBench$/.test(await p.title()), await p.title());
     check("the file's layout is untouched", JSON.stringify((await settingsLS()).layouts?.[A] ?? null) === fileLayout);
     await tabMenu();
     await p.click('.tabmenu [data-ws="save"]');

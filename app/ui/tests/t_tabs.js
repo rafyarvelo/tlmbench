@@ -17,10 +17,12 @@ run('tabs', async ({ p, check, fake, paneCount, plotAt, until, settingsLS, wait 
   }
   check('a tab per file, the last in front', (await names()).join() === 'a.tlm,b.csv,c.tlm*', await names());
   check('every file stays open', (await fake(() => window.__tlmFake.open.size)) === 3);
+  check('the window title follows the tab in front', (await fake(() => window.__tlmFake.title)) === 'c.tlm — TelemetryBench' && (await p.title()) === 'c.tlm — TelemetryBench', await fake(() => window.__tlmFake.title));
 
   // each tab keeps its own panes, view and cursors
   await p.click(tab(A));
   await until(() => window.__tlmApp.panes().length === 3);
+  check('...and changes with it', await until(() => window.__tlmFake.title === 'a.tlm — TelemetryBench'));
   const c = await plotAt(0);
   await p.mouse.move(c.x, c.y);
   await p.mouse.wheel(0, -400);

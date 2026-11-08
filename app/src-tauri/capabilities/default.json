@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "The main window: core APIs and the open and save dialogs",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
+  "permissions": ["core:default", "core:window:allow-set-title", "dialog:allow-open", "dialog:allow-save"]
 }

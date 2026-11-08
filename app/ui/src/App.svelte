@@ -18,8 +18,20 @@
   import { ICON } from './icons';
   import { setSetting, settings } from './settings.svelte';
   import { actions, measureShown, ui } from './ui.svelte';
+  import { tabs } from './tabs.svelte';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
 
   const shown = $derived(measureShown(settings.measureOpen, settings.measureAuto));
+
+  /** The window's title follows the tab in front, with a dot while its layout has unsaved changes. */
+  const title = $derived.by(() => {
+    const t = tabs.list.find((x) => x.key === tabs.active);
+    return t ? `${t.dirty ? '• ' : ''}${t.name} — TelemetryBench` : 'TelemetryBench';
+  });
+  $effect(() => {
+    document.title = title;
+    getCurrentWindow().setTitle(title).catch(() => {});
+  });
 
   /** Under 980 px the sidebars wrap onto rows of their own above and below the panes. */
   let winW = $state(1440);
