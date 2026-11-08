@@ -190,6 +190,8 @@
   .row > select {
     max-width: 58%;
     min-height: 30px;
+    padding: 0 6px;
+    font: 13px var(--font-ui);
   }
   .switch {
     display: flex;

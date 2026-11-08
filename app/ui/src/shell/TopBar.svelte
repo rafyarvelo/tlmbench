@@ -621,7 +621,7 @@
     min-width: 32px;
     min-height: 30px;
     padding: 0 8px;
-    border: 0;
+    border: 1px solid transparent;
     border-radius: 8px;
     background: transparent;
     color: var(--fg-muted);
@@ -635,8 +635,13 @@
     color: var(--fg);
   }
   .tb[aria-pressed='true'] {
+    border-color: var(--accent-line);
     background: var(--accent-soft);
     color: var(--fg);
+  }
+  /* as the prototype's: a locked view says so in the warning colour */
+  #b-lock[aria-pressed='true'] {
+    color: var(--warn);
   }
   .tb:disabled {
     opacity: 0.4;
