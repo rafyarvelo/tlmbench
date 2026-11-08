@@ -41,6 +41,8 @@ export interface Pane {
   /** Where a table's filter looks: `scope` 'file' for every row (else the rows in view), and `apply` to leave the rows it
    *  filters out from this file's charts, statistics and values (always over the whole file). */
   tfilt?: { scope?: 'file'; apply?: boolean };
+  /** Channels whose columns the table leaves out (they stay in the pane and its chart). */
+  hideCols?: number[];
   beside?: boolean;
   under?: boolean;
 }
@@ -394,12 +396,12 @@ export function setPlotH(i: number, h: number | undefined): void {
 }
 
 /** Sets a pane's table widths or height (undefined: back to the default). */
-export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH' | 'sort' | 'filters' | 'tfilt'>>): void {
+export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH' | 'sort' | 'filters' | 'tfilt' | 'hideCols'>>): void {
   edit(() => {
     const p = stack.panes[i];
     if (!p) return;
     for (const [k, v] of Object.entries(patch) as [keyof typeof patch, never][]) {
-      if (v === undefined || ((k === 'widths' || k === 'filters' || k === 'tfilt') && !Object.keys(v).length) || (k === 'sort' && !(v as unknown[]).length)) delete p[k];
+      if (v === undefined || ((k === 'widths' || k === 'filters' || k === 'tfilt') && !Object.keys(v).length) || ((k === 'sort' || k === 'hideCols') && !(v as unknown[]).length)) delete p[k];
       else p[k] = v;
     }
   });

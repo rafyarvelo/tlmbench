@@ -22,7 +22,7 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   await p.click('.viewmenu [data-vm="table"]');
   check('pane 1 is a table, no plot', (await app('modes'))[0] === 'table' && !!(await p.$(T)) && !(await p.$('#stack [data-pane="0"] .plot')));
   const chans = (await app('panes'))[0];
-  const heads = await p.$$eval(`${T} .tth`, (h) => h.map((x) => x.textContent.trim()));
+  const heads = await p.$$eval(`${T} .tth`, (h) => h.map((x) => x.querySelector('.tlab').textContent.trim()));
   check('columns: sample, time, a channel each', heads.length === chans.length + 2 && heads[0] === 'Sample' && heads[1] === 'Time', heads);
 
   // the whole recording is in view: 200,000 rows, of which only a window is read and drawn

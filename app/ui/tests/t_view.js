@@ -95,7 +95,7 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   await p.mouse.click(cb.x, cb.y);
   check('both cursors open Measure', await until(() => !document.getElementById('measure').hidden), await app('cursors'));
   check('Measure shows Δt and 1 / Δt', await until(() => /Δt.*1 \/ Δt/.test(document.getElementById('measure').innerText.replace(/\s+/g, ' '))), await text('#measure'));
-  check('...the frequency as the prototype\'s (Hz to three decimals, mHz under 1 Hz)', /1 \/ Δt \d+\.\d{3} Hz|1 \/ Δt \d+\.\d{2} mHz/.test((await text('#measure')).replace(/\s+/g, ' ')), await text('#measure'));
+  check('...the frequency as the prototype\'s (Hz to three decimals, mHz under 1 Hz)', await until(() => /1 \/ Δt \d+\.\d{3} Hz|1 \/ Δt \d+\.\d{2} mHz/.test(document.getElementById('measure').innerText.replace(/\s+/g, ' '))), await text('#measure'));
   check('exact stats per plotted channel', await until(() => document.querySelectorAll('#measure tr[data-mrow]').length === 6 && /Std dev/.test(document.getElementById('measure').innerText)), await text('#measure'));
   // drag cursor B
   const before = (await app('cursors')).B;

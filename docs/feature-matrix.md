@@ -158,8 +158,8 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Sort (multi-column) and filter in the core, with progress | v1 | ✓ | ✓ (`tlmbench query rows` too) | 4.2 |
 | Filter row (`> 1.5`, `1..2`, `blank`, and/or), filter strip (In view / Whole file, ▲▼) | v1 | ✓ | ◐ (filter row, scope, ▲▼ and Apply to charts done; Save as rule waits for Event rules) | 4.2 |
 | Save as rule (from the filter strip) | v1 | ✓ | ✗ | 5.3 |
-| Clear sort and filters, Columns list, Autofit, header ▾ menu | v1 | ✓ | ◐ (Clear sort and filters done) | 4.2 |
-| Pinned columns, column selection, copy a selection as CSV | v1 | ◐ (no copy) | ✗ | 4.2 |
+| Clear sort and filters, Columns list, Autofit, header ▾ menu | v1 | ✓ | ✓ built (`t_tablequery`, `t_tablecols`) | 4.2 |
+| Pinned columns, column selection, copy a selection as CSV | v1 | ◐ (no copy) | ◐ (Sample and Time pinned, column selection with Chart, Table and Hide; copy as CSV is next) | 4.2 |
 | Row hover, row right-click, cursor line in the table | v1 | ✓ | ✗ | 4.2 |
 | Status line (rows, rate, how slower channels show) | v1 | ✓ | ◐ | 4.2 |
 | Event column and tinted rows inside events | v1 | ✓ | ✗ | 5.2 |

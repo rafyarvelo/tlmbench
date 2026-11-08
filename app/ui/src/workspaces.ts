@@ -18,6 +18,8 @@ export interface WsPane {
   sort?: { col: string; desc: boolean }[];
   filters?: Record<string, string>;
   tfilt?: { scope?: 'file'; apply?: boolean };
+  /** Channels (by name) whose columns the table leaves out. */
+  hide?: string[];
 }
 
 export interface Workspace {
@@ -52,6 +54,7 @@ export function toWorkspace(name: string, panes: Pane[], names: string[]): Works
       if (p.sort?.length) w.sort = p.sort.map((k) => ({ col: colName(k.col), desc: k.desc }));
       if (p.filters) w.filters = Object.fromEntries(Object.entries(p.filters).map(([k, v]) => [colName(k), v]));
       if (p.tfilt) w.tfilt = { ...p.tfilt };
+      if (p.hideCols?.length) w.hide = p.hideCols.map((c) => names[c]).filter((n) => n != null);
       return w;
     }),
   };
@@ -89,6 +92,8 @@ export function fromWorkspace(ws: Workspace, names: string[]): { panes: Pane[]; 
     const filters = Object.fromEntries(Object.entries(w.filters ?? {}).flatMap(([k, v]) => (colId(k) ? [[colId(k)!, v]] : [])));
     if (Object.keys(filters).length) p.filters = filters;
     if (w.tfilt) p.tfilt = { ...w.tfilt };
+    const hide = (w.hide ?? []).flatMap((n) => (index.has(n) ? [index.get(n)!] : []));
+    if (hide.length) p.hideCols = hide;
     return p;
   });
   return { panes, missing: [...missing] };
