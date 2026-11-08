@@ -24,7 +24,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { QueryStats, RecordingInfo } from './app';
 
 export interface GateApi {
-  readonly file: null | { info: RecordingInfo; first: bigint; last: bigint };
+  readonly file: null | { id: number; info: RecordingInfo; first: bigint; last: bigint };
   readonly panes: number[][];
   widthPx(): number;
   setView(t0: bigint, t1: bigint): void;
@@ -320,4 +320,61 @@ export async function runGate3(api: GateApi, endpoint: string, descriptor: strin
     pass: !hidden && Object.values(ok).every(Boolean),
   });
   await invoke('gate_report', { report });
+}
+
+/** What `ci/gate4.py` asks of one file: its name, how closely it must match, and each channel's expected statistics. */
+interface Gate4File {
+  name: string;
+  path: string;
+  /** Relative tolerance (0: the numbers must match exactly). */
+  tolerance: number;
+  expect: Record<string, { count: number; min: number; max: number; mean: number; std: number }>;
+}
+
+/** Gate 4 in the app: every file of the format matrix opens through the app's own open path (a descriptor found by its
+ * file patterns where the format needs one) with the same per-channel count, extremes, mean and standard deviation. */
+export async function runGate4(api: GateApi, manifest: string): Promise<void> {
+  const m = await invoke<{ files: Gate4File[] }>('gate_manifest', { path: manifest });
+  const results: Record<string, string> = {};
+  const close = (a: number, b: number, tol: number) => a === b || Math.abs(a - b) <= tol * Math.max(1, Math.abs(a), Math.abs(b));
+  for (const f of m.files) {
+    try {
+      await api.open(f.path);
+      const file = api.file;
+      if (!file || file.info.path !== f.path) {
+        results[f.name] = 'did not open';
+        continue;
+      }
+      const names = file.info.channels.map((c) => c.name);
+      const wanted = Object.keys(f.expect).filter((n) => names.includes(n));
+      if (wanted.length !== Object.keys(f.expect).length) {
+        results[f.name] = `channels ${names.join(',')} lack some of ${Object.keys(f.expect).join(',')}`;
+        continue;
+      }
+      // exact statistics come from the finished pyramid: ask until the core has it (it answers nothing before)
+      const ask = () => invoke<{ channel: number; count: number; min: number | null; max: number | null; mean: number | null; std: number | null }[] | null>('stats', {
+        file: file.id,
+        channels: wanted.map((n) => names.indexOf(n)),
+        span: { t0: file.first.toString(), t1: (file.last + 1n).toString() },
+      });
+      let got = await ask();
+      for (let k = 0; !got && k < 1200; k++) {
+        await new Promise((r) => setTimeout(r, 100));
+        got = await ask();
+      }
+      const bad: string[] = [];
+      wanted.forEach((n, i) => {
+        const g = got?.[i];
+        const e = f.expect[n];
+        if (!g) return void bad.push(`${n}: no statistics`);
+        if (g.count !== e.count) bad.push(`${n}: count ${g.count} != ${e.count}`);
+        for (const k of ['min', 'max', 'mean', 'std'] as const) if (g[k] == null || !close(g[k]!, e[k], k === 'mean' || k === 'std' ? Math.max(f.tolerance, 1e-9) : f.tolerance)) bad.push(`${n}: ${k} ${g[k]} != ${e[k]}`);
+      });
+      results[f.name] = bad.length ? bad.join('; ') : 'same';
+    } catch (e) {
+      results[f.name] = `error: ${e}`;
+    }
+  }
+  const failed = Object.entries(results).filter(([, v]) => v !== 'same');
+  await invoke('gate_report', { report: { gate: 'Phase 4: formats in the app', results, failures: failed.map(([k, v]) => `${k}: ${v}`), pass: failed.length === 0 && m.files.length > 0 } });
 }

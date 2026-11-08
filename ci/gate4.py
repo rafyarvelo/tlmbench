@@ -15,6 +15,11 @@ gated), then, with the index and pyramid cached and the file evicted from memory
 under 1 s (gated; the exact view, which reads the packets, is reported).
 
     python3 ci/gate4.py --bin target/release [--only matrix|packets] [--samples 2M] [--packet-gb 10] [--keep]
+                        [--app target/release/tlmbench-app]
+
+With --app the matrix's files are also opened in the release app (it must stay visible while it runs, as for the other
+app gates), through the app's own open path: each must read with the same per-channel count, extremes, mean and
+standard deviation.
 
 Needs numpy and pyarrow (the dev venv has them). Prints a JSON report; exits 0 on a pass. The packet file is
 deleted afterwards unless --keep.
@@ -137,7 +142,7 @@ def write_big_endian(work, arrow_path):
     return path, toml
 
 
-def matrix(tool, work, samples):
+def matrix(tool, work, samples, app=None):
     report = {"samples": samples, "formats": {}, "failures": []}
     run([tool.gen, "--samples", samples, "--channels", str(CHANNELS), "--rate", RATE, "--format", ",".join(FORMATS), "--out", work, "--name", "m"])
     tlm = os.path.join(work, "m.tlm")
@@ -154,7 +159,9 @@ def matrix(tool, work, samples):
         ("parquet", os.path.join(conv, "parquet", "m.parquet"), None, True),
         ("converted csv", os.path.join(conv, "csv", "m.csv"), None, False),
     ] + [(f, os.path.join(work, f"m.{f}.bin"), os.path.join(work, f"m.{f}.toml"), True) for f in FORMATS[2:]]
+    app_files = [("tlm", tlm, 1e-12)]
     for name, path, desc, exact in readable:
+        app_files.append((name, path, 1e-12 if exact else 2e-4))
         bad = compare(ref_stats, ref_view, tool.stats(path, desc), tool.view(path, desc), exact)
         report["formats"][name] = bad or "same"
         report["failures"] += [f"{name}: {b}" for b in bad]
@@ -171,7 +178,33 @@ def matrix(tool, work, samples):
             bad = check_converted(tool, fmt, got[0], ref_stats)
             report["formats"][f"{name} -> {fmt}"] = bad or "reads back"
             report["failures"] += [f"{name} -> {fmt}: {b}" for b in bad]
+    if app:
+        report["app"] = run_app(tool, work, app, app_files, ref_stats, {p: d for _, p, d, _ in readable})
+        report["failures"] += [f"app: {f}" for f in report["app"].get("failures", [])]
     return report
+
+
+def run_app(tool, work, app_bin, app_files, ref_stats, descriptors):
+    """The same files through the release app's own open path: descriptors are installed in the app cache with the
+    names they claim (`files = [...]`), as a person's would be, and the app reports each file's statistics."""
+    decoders = os.path.join(tool.cache, "decoders")
+    os.makedirs(decoders, exist_ok=True)
+    for path, desc in descriptors.items():
+        if not desc:
+            continue
+        text = open(desc).read().replace("schema = 1\n", f'schema = 1\nfiles = ["{os.path.basename(path)}"]\n', 1)
+        open(os.path.join(decoders, os.path.basename(desc)), "w").write(text)
+    expect = {c: {"count": int(r["count"]), **{k: float(r[k]) for k in ("min", "max", "mean", "std")}} for c, r in ref_stats.items()}
+    manifest = os.path.join(work, "gate4-manifest.json")
+    with open(manifest, "w") as f:
+        json.dump({"files": [{"name": n, "path": p, "tolerance": t, "expect": expect} for n, p, t in app_files]}, f)
+    env = {**os.environ, "TLMBENCH_GATE4": manifest, "TLMBENCH_CACHE": tool.cache}
+    r = subprocess.run([app_bin], env=env, capture_output=True, text=True, timeout=600)
+    try:
+        out = json.loads(r.stdout[r.stdout.index("{") :])
+    except ValueError:
+        return {"failures": [f"the app reported nothing (exit {r.returncode}): {r.stderr[-400:]}"]}
+    return {"results": out.get("results"), "failures": out.get("failures", []) if r.returncode == 0 else out.get("failures") or [f"exit {r.returncode}"]}
 
 
 def check_converted(tool, fmt, path, ref):
@@ -189,77 +222,6 @@ def check_converted(tool, fmt, path, ref):
             for k in ("count", "min", "max")
             if c not in s or not close(float(s[c][k]), float(r[k]), 2e-4)
         ]
-    import pyarrow as pa
-
-    with pa.ipc.open_file(arrow_path) as f:
-        table = f.read_all()
-    names = [n for n in table.column_names if n.startswith("signal_")]
-    n = table.num_rows
-    rec = np.zeros(n, dtype=[(c, ">f4") for c in names])
-    for c in names:
-        rec[c] = (table[c].to_numpy() / 2.0).astype(">f4")
-    path = os.path.join(work, "be.bin")
-    rec.tofile(path)
-    toml = os.path.join(work, "be.toml")
-    fields = "".join(
-        f'\n[[fields]]\nname = "{c}"\ntype = "f32"\noffset = {4 * i}\nunit = "V"\nscale = 2.0\n' for i, c in enumerate(names)
-    )
-    t0 = 1767225600000000000  # the generator's start, 2026-01-01T00:00:00Z
-    with open(toml, "w") as f:
-        f.write(
-            f'schema = 1\nname = "big-endian scaled"\nendian = "big"\nrecord_size = {4 * len(names)}\n\n'
-            f'[time]\nsource = "rate"\nrate_hz = 10000.0\nt0_ns = {t0}\n{fields}'
-        )
-    return path, toml
-
-
-def matrix(tool, work, samples):
-    report = {"samples": samples, "formats": {}, "failures": []}
-    run([tool.gen, "--samples", samples, "--channels", str(CHANNELS), "--rate", RATE, "--format", ",".join(FORMATS), "--out", work, "--name", "m"])
-    tlm = os.path.join(work, "m.tlm")
-    conv = os.path.join(work, "conv")
-    for fmt in ("csv", "parquet", "arrow", "hdf5", "mat"):
-        run([tool.cli, "convert", tlm, "--to", fmt, "--out", os.path.join(conv, fmt), "--cache", tool.cache])
-    ref_stats, ref_view = tool.stats(tlm), tool.view(tlm)
-    report["channels"] = {c: int(s["count"]) for c, s in ref_stats.items()}
-    be, be_toml = write_big_endian(work, os.path.join(conv, "arrow", "m.arrow"))
-    # (name, path, descriptor, exact)
-    readable = [
-        ("csv", os.path.join(work, "m.csv"), None, False),
-        ("big-endian scaled", be, be_toml, True),
-        ("parquet", os.path.join(conv, "parquet", "m.parquet"), None, True),
-        ("converted csv", os.path.join(conv, "csv", "m.csv"), None, False),
-    ] + [(f, os.path.join(work, f"m.{f}.bin"), os.path.join(work, f"m.{f}.toml"), True) for f in FORMATS[2:]]
-    for name, path, desc, exact in readable:
-        bad = compare(ref_stats, ref_view, tool.stats(path, desc), tool.view(path, desc), exact)
-        report["formats"][name] = bad or "same"
-        report["failures"] += [f"{name}: {b}" for b in bad]
-    # convert from each readable file reads back
-    for name, path, desc, exact in [("tlm", tlm, None, True)] + readable:
-        d = ["--descriptor", desc] if desc else []
-        for fmt in ("parquet", "arrow", "csv", "hdf5", "mat"):
-            out = os.path.join(work, "rt", name.replace(" ", "_"), fmt)
-            run([tool.cli, "convert", path, "--to", fmt, "--out", out, "--channels", "signal_*", "--cache", tool.cache, *d])
-            got = [os.path.join(out, f) for f in os.listdir(out) if not f.endswith(".channels.csv")]
-            if len(got) != 1:
-                report["failures"].append(f"{name} -> {fmt}: wrote {len(got)} files")
-                continue
-            bad = check_converted(tool, fmt, got[0], ref_stats)
-            report["formats"][f"{name} -> {fmt}"] = bad or "reads back"
-            report["failures"] += [f"{name} -> {fmt}: {b}" for b in bad]
-    return report
-
-
-def check_converted(tool, fmt, path, ref):
-    if fmt in ("hdf5", "mat"):
-        with open(path, "rb") as f:
-            head = f.read(8)
-        return [] if (head.startswith(b"\x89HDF") or head.startswith(b"MATLAB")) and os.path.getsize(path) > 1000 else [f"not an HDF5 file ({head!r})"]
-    if fmt == "csv":
-        return []  # written and read back through the CSV reader in the "converted csv" row
-    if fmt == "parquet":
-        s = tool.stats(path)
-        return compare(ref, {}, s, {}, False) if False else [f"{c}: {k}" for c, r in ref.items() for k in ("count", "min", "max") if str(s.get(c, {}).get(k)) != r[k] and not close(float(s.get(c, {}).get(k, "nan")), float(r[k]), 2e-4)]
     import pyarrow as pa
 
     with pa.ipc.open_file(path) as f:
@@ -321,6 +283,7 @@ def main():
     ap.add_argument("--samples", default="2M")
     ap.add_argument("--packet-gb", type=float, default=10.0)
     ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--app", help="the release app (target/release/tlmbench-app): also open every file of the matrix in it")
     a = ap.parse_args()
     for mod in ("numpy", "pyarrow"):
         try:
@@ -334,7 +297,7 @@ def main():
     report = {}
     try:
         if a.only in (None, "matrix"):
-            report["matrix"] = matrix(tool, work, a.samples)
+            report["matrix"] = matrix(tool, work, a.samples, a.app)
         if a.only in (None, "packets"):
             report["packets"] = packets(tool, work, a.packet_gb, a.keep)
     finally:

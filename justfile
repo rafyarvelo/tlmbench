@@ -190,12 +190,17 @@ gate3 target="core" seconds="60":
 # Gate 4 (formats complete), the core's half: one recording in every format opens with the same counts, checksums and
 # views, and `convert` from each reads back (matrix); a 10 GB zstd packet file reopens with its index cached and draws
 # its whole view in under 1 s (packets; needs ~12 GB free, the file is deleted afterwards). `just gate4 matrix` is quick.
+# `just gate4 app` also opens every format of the matrix in the release app (keep its window visible).
 gate4 part="" gb="10":
     #!/usr/bin/env bash
     set -euo pipefail
     cargo build -q --release -p tlmbench -p tlmbench-gen
     py="python3"; [ -x .venv/bin/python3 ] && py=".venv/bin/python3"
-    $py ci/gate4.py --bin target/release --packet-gb {{gb}} {{ if part == "" { "" } else { "--only " + part } }}
+    case "{{part}}" in
+      app) (cd app/src-tauri && cargo tauri build --no-bundle) && $py ci/gate4.py --bin target/release --only matrix --app target/release/tlmbench-app ;;
+      "")  $py ci/gate4.py --bin target/release --packet-gb {{gb}} ;;
+      *)   $py ci/gate4.py --bin target/release --packet-gb {{gb}} --only {{part}} ;;
+    esac
 
 # Everything the Linux CI job runs (inside the CI image)
 ci-linux: lint test bench-smoke proto-test app-test ro-test fuzz-smoke app-build

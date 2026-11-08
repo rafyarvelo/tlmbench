@@ -7,6 +7,7 @@
 //! summarized part and the UI hatches the rest; its progress streams over a channel.
 //!
 //! `tlmbench-app <file>` opens a file at launch. `TLMBENCH_GATE=<file>` runs the Phase 1 gate and
+//! `TLMBENCH_GATE4=<manifest>` the Phase 4 format matrix in the app (`just gate4 app`).
 //! `TLMBENCH_GATE2=<file>` the Phase 2 gate (`just gate`, `just gate2`): a scripted run, then the report on stdout
 //! and exit code 0 (pass) or 1.
 
@@ -1336,7 +1337,8 @@ fn echo(bytes: u32) -> Response {
 #[serde(rename_all = "camelCase")]
 struct Launch {
     file: Option<String>,
-    /// "1" (Phase 1), "2" (Phase 2), "3" (Phase 3: `file` is the source's endpoint), or None.
+    /// "1" (Phase 1), "2" (Phase 2), "3" (Phase 3: `file` is the source's endpoint), "4" (Phase 4: `file` is the
+    /// format matrix's manifest), or None.
     gate: Option<&'static str>,
     /// Gate 2: "reopen" (the pyramid is cached) or "first" (a first-ever open). Gate 3: the frames' descriptor.
     gate_mode: Option<String>,
@@ -1356,6 +1358,9 @@ fn launch() -> Launch {
             gate_seconds: seconds,
         };
     }
+    if let Some(manifest) = env("TLMBENCH_GATE4") {
+        return Launch { file: Some(manifest), gate: Some("4"), gate_mode: None, gate_seconds: None };
+    }
     if let Some(file) = env("TLMBENCH_GATE2") {
         return Launch { file: Some(file), gate: Some("2"), gate_mode: env("TLMBENCH_GATE2_MODE"), gate_seconds: None };
     }
@@ -1368,6 +1373,13 @@ fn launch() -> Launch {
             gate_seconds: None,
         },
     }
+}
+
+/// Gate 4's manifest: the files to open and what each must read as (written by `ci/gate4.py`).
+#[tauri::command]
+fn gate_manifest(path: String) -> Result<serde_json::Value, String> {
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))
 }
 
 /// Prints the gate report and quits: exit code 0 when it passed, 1 when not.
@@ -1427,7 +1439,8 @@ fn main() {
             live_stop,
             echo,
             launch,
-            gate_report
+            gate_report,
+            gate_manifest
         ])
         .run(tauri::generate_context!())
         .expect("TelemetryBench failed to start");

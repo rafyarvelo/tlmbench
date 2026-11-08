@@ -13,7 +13,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
 import { type AxesStyle, drawAxes, duration, fileTime, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
-import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
+import { type LiveHealth, runGate, runGate2, runGate3, runGate4 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
@@ -3301,8 +3301,9 @@ export const gateApi = {
 };
 
 if (settings.folder) void showFolder(settings.folder);
-const launch = await invoke<{ file: string | null; gate: '1' | '2' | '3' | null; gateMode: string | null; gateSeconds: number | null }>('launch');
-if (launch.gate === '3' && launch.file) await runGate3(gateApi, launch.file, launch.gateMode ?? '', launch.gateSeconds ?? 60);
+const launch = await invoke<{ file: string | null; gate: '1' | '2' | '3' | '4' | null; gateMode: string | null; gateSeconds: number | null }>('launch');
+if (launch.gate === '4' && launch.file) await runGate4(gateApi, launch.file);
+else if (launch.gate === '3' && launch.file) await runGate3(gateApi, launch.file, launch.gateMode ?? '', launch.gateSeconds ?? 60);
 else if (launch.gate === '2' && launch.file) await runGate2(gateApi, launch.file, launch.gateMode === 'first' ? 'first' : 'reopen');
 else if (launch.gate === '1' && launch.file) {
   await openPath(launch.file);

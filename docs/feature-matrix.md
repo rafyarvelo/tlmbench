@@ -64,9 +64,9 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
 | Rail: Explorer, Measure, Live, Settings | v1 | ✓ | ✓ | |
-| Rail: Events, Rules & checks, Layouts | v1 | ✓ | ✗ | 4.4, 5.2, 5.3 |
+| Rail: Events, Rules & checks, Layouts | v1 | ✓ | ◐ (Layouts; Events and Rules & checks wait) | 5.2, 5.3 |
 | Tabs: file and workspace tabs, drag to reorder, keys, Undo on close | v1 | ✓ | ✓ | |
-| Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ✗ | 4.4 |
+| Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ✓ (one file per tab until 5.6) | 5.6 |
 | Tab menu actions: Save layout, Save as, Revert, Share, Export file, Delete, Close… | v1 | ✓ | ✓ | |
 | + menu: empty layout, your layouts, shared in this folder | v1 | ✓ | ✓ | |
 | + menu: what each layout needs ("needs file 2"), slot picker | v1 | ✓ | ✗ | 5.6 |
@@ -76,7 +76,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Event markers toggle (top bar, E) | v1 | ✓ | ✗ | 5.2 |
 | Remove every channel / every pane (top bar) | v1 | ✓ | ✓ (icons at 1300 px and wider, ⋯ otherwise) |  |
 | ⋯ menu: View, All panes, Window groups | v1 | ✓ | ✓ | |
-| ⋯ menu: Export group (data, image, HTML) | v1 | ✓ | ✗ | 4.4, 5.10 |
+| ⋯ menu: Export group (data, image, HTML) | v1 | ✓ | ◐ (data and image; HTML waits) | 5.10 |
 | Narrow window moves groups into ⋯ | v1 | ✓ | ✓ | |
 | Menus: one style, grow from their button, keys, Esc, outside close | v1 | ✓ | ✓ | |
 | Tooltips: data-tip, retire after 3 uses, Short / Full / Off | v1 | ✓ | ✓ | |
@@ -108,7 +108,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Folder menu: Import all, recipes and profiles | v1 | ✓ | ◐ (Import all; recipes and profiles wait for 5.1) | 4.3, 5.1 |
 | Filter with regex, matching units and categories | v1 | ✓ | ✓ | |
 | Open files strip: Show only these, Close all | v1 | ✓ | ✓ | |
-| `.tlmbench` entry at the top (shared views count) | v1 | ✓ | ✗ | 4.4 |
+| `.tlmbench` entry at the top (shared views count) | v1 | ✓ | ✓ | |
 | Categories by name prefix, your own categories, counts | v1 | ✓ | ✓ | |
 | Multi-select, selection bar (Add, Chart, Table, Remove) | v1 | ✓ | ◐ (channels and files; no Derive in the bar) | 5.1 |
 | Drag channels to panes | v1 | ✓ | ✓ | |
@@ -205,11 +205,11 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Layouts by channel name in app data; Save, Save as, Revert, Delete | v1 | ✓ | ✓ | |
 | Shared views in `.tlmbench/views/`; Share with this folder; Export file | v1 | ✓ | ✓ | |
 | Share dialog (what gets written, read-only folders) | v1 | ✓ | ✗ | 5.7 |
-| Layouts sidebar | v1 | ✓ | ✗ | 4.4 |
-| Built-in starter layouts (what a file opens with) | v1 | ✓ | ◐ (starter charts, table, values, nothing) | 4.4 |
-| Session restore (tabs, files, time range, cursors), per folder | v1 | ✓ | ◐ (one session, not per folder) | 4.4 |
-| Export data… (CSV, Parquet, Arrow, HDF5, MAT; view, cursors or all) | v1 | ✓ | ✗ (the CLI's `convert` has it) | 4.4 |
-| Save the view as an image (PNG, SVG) | v1 | ✓ | ✗ | 4.4 |
+| Layouts sidebar | v1 | ✓ | ✓ | |
+| Built-in starter layouts (what a file opens with) | v1 | ✓ | ✓ (starter charts, charts and tables, one table, values, nothing: the prototype lists no built-in layouts) | |
+| Session restore (tabs, files, time range, cursors), per folder | v1 | ✓ | ✓ (a session per folder, Reset session in Settings) | |
+| Export data… (CSV, Parquet, Arrow, HDF5, MAT; view, cursors or all) | v1 | ✓ | ✓ (the core's `convert` writers) | |
+| Save the view as an image (PNG, SVG) | v1 | ✓ | ✓ (panes scrolled out of the stack aren't drawn) | |
 | Export to HTML (static viewer, Full and Light) | v1 | ✓ (simulated) | ✗ | 5.10 |
 
 ## 10. Derived channels

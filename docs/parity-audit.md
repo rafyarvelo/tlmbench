@@ -25,8 +25,7 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 187 ·
-Partial 32 · Different 11 · Missing 52** (282 rows; counts as of Nov 8, during step 4.3). Of the missing rows, 2 belong to Phase 3 (the shell port
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 195 · Partial 32 · Different 11 · Missing 44** (282 rows; counts as of Nov 8, at the end of step 4.4). Of the missing rows, 2 belong to Phase 3 (the shell port
 that was due), 14 to Phase 4 and 34 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
@@ -43,7 +42,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 
 | Item | Prototype | App | Status | Phase | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Rail views | Logo, Explorer, Events, Rules & checks, Layouts, Measure, Live, Settings (`6547-6558`) | Logo, Explorer, Measure, Live, Settings (`shell/Rail.svelte:21-28`) | Partial | 3 (Events, checks: 5; Layouts: 4) | Events, Rules & checks and Layouts are missing. |
+| Rail views | Logo, Explorer, Events, Rules & checks, Layouts, Measure, Live, Settings (`6547-6558`) | Logo, Explorer, Layouts, Measure, Live, Settings (`shell/Rail.svelte`) | Partial | 3 (Events, checks: 5) | Layouts built Nov 8 (step 4.4); Events and Rules & checks are missing. |
 | Rail logo | Button that opens the start page (`6551`, `6599`) | Button that opens the start page (`shell/Rail.svelte`) | Ported | 3 | Fixed Nov 3. |
 | Settings position in rail | Under Live, with the other views; a spacer below (`6560`) | Under Live, a spacer below | Ported | 3 | Fixed Nov 3. |
 | Rail Live button | Brings the live tab forward if there is one, else opens Connect. A dot shows while streaming (`6600-6604`) | Brings the live tab forward if there is one, else opens Connect; a pulsing dot while a source streams | Ported | 3 | Fixed Nov 3. |
@@ -96,7 +95,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Open-files strip | "OPEN · n", Show only these (toggle), Close all, file chips with × (`2284-2297`) | The prototype's raised box: "OPEN · n", the Show only these pill, Close all, chips on the plot background with × | Ported | 3 | Fixed Nov 8 (step 4.1). |
 | Close all files with Undo | Undo restores the files and tabs (`closeTabs 3260`) | Undo reopens the files (not layout tabs) and brings the front one back (`app.ts` `closeAll`) | Ported | 3 | Fixed Nov 3. |
 | Folder tree | Folders expand and collapse, kept (`2303`) | Same, kept in settings (`shell/Explorer.svelte:44-50`) | Ported | 3 | |
-| `.tlmbench` entry | First row, with an "N shared views" badge (`2303-2330`) | — | Missing | 4 | In the follow-ups' Phase 4 list. |
+| `.tlmbench` entry | First row, with an "N shared views" badge (`2303-2330`) | A folded `.tlmbench` row at the top of the tree with the count; it lists the views and opens one | Ported | 4 | Built Nov 8 (step 4.4). |
 | File badges | "no descriptor" on binary files nothing decodes (`2323`), a check badge "✗ 2" (5), LIVE on live files | "no descriptor" on a binary file nothing claims (the core lists it, opening it asks for a descriptor) | Partial | 4 (checks, live: 5) | Built Nov 8 (step 4.3). |
 | File size | Not shown (the design: "Rows show only what matters: the data rate of imported files") | Not shown | Ported | 3 | Fixed Nov 3. |
 | Show files that can't be opened | Switch with "(N hidden)" (`1599`, `2307`) | Explorer ⋯ → Show files that can't be opened (N hidden); dimmed, they don't open (`list_folder` reports `openable`) | Ported | 3 | Fixed Nov 3. |
@@ -305,8 +304,8 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Tab keys | Ctrl+PageUp/PageDown switch, Ctrl+Shift+PageUp/PageDown move, Delete closes, Enter/Space shows (`3340-3348`, `3644`) | Ctrl+PageUp/PageDown switch, Ctrl+Shift+PageUp/PageDown move, Delete closes, Enter/Space shows | Ported | 3 | Fixed Nov 3. |
 | Middle-click closes a tab | `3308` | `shell/TopBar.svelte:98` | Ported | 3 | |
 | Tab overflow | ‹ › scroll buttons when tabs don't fit | ‹ › scroll buttons beside the tab strip; the front tab kept in sight | Ported | 3 | Fixed Nov 3. |
-| Tab menu header | Name and × (`1743`) | None | Missing | 4 | `proto_tab_menu.png`, `app_tab_menu.png`. |
-| Tab menu status | What the tab is (starter layout, saved, unsaved, shared, built-in, live) (`updateWsStatus 3535-3567`) | None | Missing | 4 | |
+| Tab menu header | Name and × (`1743`) | The tab menu opens with the tab's name and × | Ported | 4 | Built Nov 8 (step 4.4). |
+| Tab menu status | What the tab is (starter layout, saved, unsaved, shared, built-in, live) (`updateWsStatus 3535-3567`) | The tab menu's status line: live, shared (by whom, where), saved, unsaved, or what the file opened with; "This tab shows" names the file | Ported | 4 | Built Nov 8 (step 4.4). |
 | This tab shows | The tab's files as numbered slots (`3537`) | None | Missing | 5 | |
 | Save layout ⌘S | Always listed, disabled when there's nothing to save (`1749`) | Listed on layout tabs only (`shell/TopBar.svelte:182-184`) | Different | 4 | |
 | Save as… | Name form (`1750`, `openNameForm 3589`) | Name form (`shell/TopBar.svelte:168-180`) | Ported | 4 | |
@@ -318,12 +317,12 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | + menu | "New tab" header and ×; Empty layout…; your layouts with delete; shared layouts with "1 file · ready · a.chen" or "needs file 2" in warn; Starters (`openAddMenu 3420-3460`) | Empty layout…; your layouts ("N panes", delete); shared layouts ("by …"); a note (`shell/TopBar.svelte:219-275`) | Partial | 4 (needs and slots: 5) | `proto_add_menu.png`, `app_add_menu.png`. |
 | Built-in starter layouts | Starters group | — | Missing | 4 | |
 | Slot picker | Which file fills each slot before a layout opens (`askForSlot 3218`, `openLayout 3465`) | — | Missing | 5 | |
-| Layouts sidebar | Your layouts, shared, starters; New empty layout…, Save current as… (`renderLayoutList 6609`) | — | Missing | 4 | In the follow-ups. |
+| Layouts sidebar | Your layouts, shared, starters; New empty layout…, Save current as… (`renderLayoutList 6609`) | `shell/Layouts.svelte`: the rail's Layouts panel with your layouts, the shared ones, New empty layout… and Save current as… | Ported | 4 | Built Nov 8 (step 4.4). The prototype lists no built-in starters. |
 | Shared view opens its file and range | `applySharedFiles 3204` | `app.ts:1510-1525` | Ported | 4 | |
-| Session restore | Per folder, with Reset session (`6981-7038`) | Tabs, layouts and the front tab restored at launch (`app.ts:2115-2135`) | Partial | 3 | No per-folder sessions, no reset. |
+| Session restore | Per folder, with Reset session (`6981-7038`) | A session per folder, restored at launch, with Reset session in Settings | Ported | 3 | |
 | Share dialog | Previews the TOML files written for events, categories, recipes, checks (`shareDialog 10490`) | — | Missing | 5 | |
-| Export data… | Format, time, channels, wide or long, resample, time format, size and files, the matching command (`openExportData 10436`) | — | Missing | 4 | Proposed decision. |
-| Save the view as an image… | Every pane or the selected one; PNG 1× or 2×, SVG (`openExportImage 10468`) | — | Missing | 4 | Proposed decision. |
+| Export data… | Format, time, channels, wide or long, resample, time format, size and files, the matching command (`openExportData 10436`) | `shell/ExportDialog.svelte`: the same choices; the core writes with the `convert` writers into a folder chosen when Export is pressed | Ported | 4 | Built Nov 8 (step 4.4). |
+| Save the view as an image… | Every pane or the selected one; PNG 1× or 2×, SVG (`openExportImage 10468`) | The same dialog; PNG from the plot canvases, SVG recorded from the axes and cursors with a line per trace | Ported | 4 | Built Nov 8 (step 4.4). Panes scrolled out of the stack aren't drawn. |
 | Export to HTML… | `openExportHtml 10395` | — | Missing | 5 | |
 | Descriptor form | Framing, byte order, header, time, fields table, hex preview, decoded rows, Find frames, TOML beside it (`openDescDlg 9621-9820`) | `DescriptorForm.svelte`: framing, byte order, header, time (rate, field, counter, none), fields with bits, Find frames, hex of the first bytes, the core's decoded rows, TOML; Save (app cache), Share… (asks first), Open | Ported | 4 | Built Nov 8 (step 4.3); accepted Nov 7. The preview comes from the core (`descriptor_preview`), so problems are worded as the decoder words them. Added over the prototype: a Bits column, the counter time base, a hover-only × on field rows. Packet types are kept as they are (not edited in the form). Harness artefacts (`descriptor` scene): the field name's width (the Bits column) and the TOML's height (the fake core writes a short TOML). |
 | CSV import dialog | Time column and unit, data rate, columns (name, unit, type, category), profiles, several files grouped (`8961-9472`) | `ImportDialog.svelte`: time column and unit, the four rates, columns (name, unit, type, category), files grouped by header, where they go (own tabs, Explorer only), a near profile offered; the core applies the saved profile | Partial | 4 (profiles' recipes: 5) | Built Nov 8 (step 4.3). Owner, Nov 8: a profile applies silently only for an exact header (order ignored); a header sharing 60% or more of its names is offered, never applied unasked; Explorer only keeps the settings and later opens skip the dialog (Import settings… in the file menu shows them again). Left: Panes, Channel prefix and Derived channels (5.1, 5.6), text columns as states (5.2), one tab for several files (5.6), Import all (below). |
