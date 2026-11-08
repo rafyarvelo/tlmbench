@@ -40,12 +40,18 @@ run('tablerows', async ({ p, check, text, until, wait }) => {
   await p.mouse.move(c.x, c.y);
   for (let k = 0; k < 6; k++) await p.mouse.wheel(0, -300);
   await until(() => BigInt(window.__tlmApp.view().t1) - BigInt(window.__tlmApp.view().t0) < 100000000000n);
-  await wait(600);
-  await p.click(`${T} [data-row="4"]`, { button: 'right' });
-  await p.click('.rowmenu [data-rm="centre"]');
-  await p.click(`${T} [data-row="4"]`, { button: 'right' });
-  await p.click('.rowmenu [data-rm="centre"]');
+  // the zoom glides: wait until the view has stopped moving, then read the row's time
+  let last = '';
+  for (let k = 0; k < 40; k++) {
+    const v = JSON.stringify(await p.evaluate(() => window.__tlmApp.view()));
+    if (v === last) break;
+    last = v;
+    await wait(500);
+  }
+  await until(() => !!document.querySelector('[data-table] [data-row="4"][data-t]'));
   const mid = await p.getAttribute(`${T} [data-row="4"]`, 'data-t');
+  await p.click(`${T} [data-row="4"]`, { button: 'right' });
+  await p.click('.rowmenu [data-rm="centre"]');
   check('Centre the charts on this row', await until((t) => { const v = window.__tlmApp.view(); return Math.abs(Number((BigInt(v.t0) + BigInt(v.t1)) / 2n - BigInt(t))) < 5000000; }, mid), [await p.evaluate(() => window.__tlmApp.view()), mid]);
   await p.click(`${T} [data-row="4"]`, { button: 'right' });
   await p.click('.rowmenu [data-rm="clear"]');
