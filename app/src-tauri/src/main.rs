@@ -679,6 +679,14 @@ async fn cache_clear(files: State<'_, Files>) -> Result<usize, String> {
     files.store.clear().map(|removed| removed.len()).map_err(|e| e.to_string())
 }
 
+/// Settings → Cache → Open folder: the OS file manager shows the cache folder (reveal only; the app runs no program).
+#[tauri::command]
+async fn cache_reveal(files: State<'_, Files>) -> Result<(), String> {
+    let root = files.store.root().to_path_buf();
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    tauri_plugin_opener::reveal_item_in_dir(root).map_err(|e| e.to_string())
+}
+
 /// `bytes` zero bytes: the IPC transfer cost alone, for the gate report.
 #[tauri::command]
 fn echo(bytes: u32) -> Response {
@@ -745,6 +753,7 @@ fn main() {
             usage,
             cache_info,
             cache_clear,
+            cache_reveal,
             close,
             view,
             values_at,

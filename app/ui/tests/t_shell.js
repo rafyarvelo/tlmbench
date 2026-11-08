@@ -70,6 +70,8 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   // the cache: where it is, how big against its cap, Clear cache keeping the open files'
   check('Settings shows the cache folder', /Caches\/tlmbench$/.test(await text('#cachePath')), await text('#cachePath'));
   check('...and its size against the cap', (await text('#cacheSize')) === '1.2 GB of 20.0 GB', await text('#cacheSize'));
+  await p.click('#cacheOpen');
+  check('Open folder asks the core to reveal the cache', await until(() => window.__tlmFake?.revealed === 1), null);
   await p.click('#cacheClear');
   check('Clear cache removes what is not in use', await until(() => document.getElementById('cacheSize')?.textContent === '64 MB of 20.0 GB') && /Removed 2 cache entries/.test(await text('#cacheNote')), [await text('#cacheSize'), await text('#cacheNote')]);
 

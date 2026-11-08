@@ -346,6 +346,9 @@
     'plugin:event|unlisten': () => null,
     // the cache: `cache` is its entries (bytes each; open: in use, kept by Clear)
     cache_info: () => ({ path: '/Users/me/Library/Caches/tlmbench', bytes: fake.cache.reduce((a, e) => a + e.bytes, 0), cap: 20 * 2 ** 30 }),
+    cache_reveal() {
+      fake.revealed = (fake.revealed || 0) + 1;
+    },
     cache_clear() {
       const gone = fake.cache.filter((e) => !e.open);
       fake.cache = fake.cache.filter((e) => e.open);
