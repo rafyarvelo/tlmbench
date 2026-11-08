@@ -414,7 +414,9 @@ Fonts and icons (Nov 7): the app bundles IBM Plex Sans and Mono (it named them b
 icon the two share has the prototype's markup and draws at the prototype's size (`tests/parity/icons.mjs` finds none
 different): the tab's file, ▾ and × at 11 px, + after the tabs a 15 px glyph, the rail logo 19 px, Explorer's heading
 icons 10 px, its folds the prototype's chevron (not ›), ⇄ its arrows, the view button a raised box with a 15 px icon,
-the pane ⋯ 12 px, Add pane and the + between rows its plus. `tests/parity/` compares the two scene by scene.
+the pane ⋯ 12 px, Add pane and the + between rows its plus. `tests/parity/` compares the two scene by scene. Menus use the
+prototype's CSS (`.chpop`, `.moremenu`, `.mi`, `.msep`, `.mgrp`, `kbd`, the grow-in): 300 px wide (the tab and new-tab menus
+320), uppercase group headings, shortcuts in boxes, the view menu's 40 px rows with an accent check.
 
 ## 9. Look and feel
 

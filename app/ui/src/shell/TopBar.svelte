@@ -457,12 +457,10 @@
     background: var(--border);
     color: var(--fg);
   }
-  .tabmenu {
-    position: fixed;
-    min-width: 220px;
-  }
+  .tabmenu,
   .addmenu {
-    width: 300px;
+    width: min(320px, calc(100vw - 32px));
+    max-height: min(520px, calc(100vh - 32px));
   }
   .addmenu .mi :global(svg) {
     flex: none;
@@ -558,14 +556,6 @@
     font-size: 11.5px;
     color: var(--fg-muted);
   }
-  .msep {
-    height: 1px;
-    margin: 4px 6px;
-    background: var(--grid);
-  }
-  .mi:disabled {
-    opacity: 0.45;
-  }
   .wstab > :global(svg) {
     flex: none;
     width: 11px;
@@ -658,12 +648,5 @@
     content: '✓';
     margin-left: 12px;
     color: var(--accent);
-  }
-  .mi kbd {
-    color: var(--fg-muted);
-    font: 11px var(--font-data);
-  }
-  .mi:disabled {
-    opacity: 0.45;
   }
 </style>

@@ -2072,7 +2072,7 @@ function channelMenu(ch: number, x: number, y: number): void {
   const f = state.file;
   if (!f) return;
   const el = document.createElement('div');
-  el.className = 'menu';
+  el.className = 'menu chmenu';
   el.setAttribute('role', 'menu');
   el.innerHTML = `<div class="mgrp">${esc(f.info.channels[ch].name)}</div><button class="mi" role="menuitem" data-cat><span class="nm">Move to a category…</span><span class="hint">${esc(groupChannels(f.info.path, f.info.channels).find((g) => g.chs.includes(ch))?.name ?? '')}</span></button><button class="mi" role="menuitem" data-gap><span class="nm">Gap factor…</span><span class="hint num">${gapFactor(ch)}×</span></button>`;
   el.querySelector('[data-gap]')!.addEventListener('click', () => gapDialog(ch, x, y));

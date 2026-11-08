@@ -609,10 +609,21 @@
     width: 10px;
     height: 10px;
   }
-  .viewmenu .mi > :global(svg) {
-    width: 16px;
-    height: 16px;
-    color: var(--fg-muted);
+  .viewmenu .mi {
+    min-height: 40px;
+  }
+  .viewmenu .mi .nm {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    white-space: normal;
+  }
+  .viewmenu .mi[aria-checked='true'] {
+    background: var(--accent-soft);
+  }
+  .viewmenu .mi > :global(svg:last-child:not(:first-child)) {
+    margin-left: auto;
+    color: var(--accent);
   }
   .tiles {
     display: flex;
@@ -647,20 +658,7 @@
     color: var(--fg-muted);
   }
   .viewmenu small {
-    display: block;
     font-size: 11px;
     color: var(--fg-muted);
-  }
-  .panemenu,
-  .viewmenu {
-    min-width: 210px;
-  }
-  .msep {
-    height: 1px;
-    margin: 4px 6px;
-    background: var(--grid);
-  }
-  .mi:disabled {
-    opacity: 0.45;
   }
 </style>
