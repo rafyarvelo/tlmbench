@@ -95,7 +95,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ✗ | 5.1, 5.2 |
 | Settings: Record live sessions to | v1 | ✓ | ✗ | 5.5 |
 | Sidebars: collapse, move, resize, swap sides | v1 | ✓ | ✓ | |
-| Drag a sidebar panel to reorder it | v1 | ✓ | ✗ (needs a decision: audit) | 4.1 |
+| Drag a sidebar panel to reorder it | v1 | ✓ | ✗ (decided Nov 7: add it) | 4.1 |
 
 ## 4. Explorer
 
@@ -141,7 +141,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Table rows band on the charts | v1 | ✓ | ✗ | 4.2 |
 | Hover readout snapping to samples; legend values | v1 | ✓ | ✓ | |
 | Overview: picker, range, window, gestures, top or bottom | v1 | ✓ | ✓ | |
-| Overview drawing: min/max band per channel with a midline | v1 | ✓ | ◐ (each trace scaled to its range; needs a decision) | 4.1 |
+| Overview drawing: min/max band per channel with a midline | v1 | ✓ | ◐ (each trace scaled to its range; band decided Nov 7) | 4.1 |
 | Overview event ticks | v1 | ✓ | ✗ | 5.2 |
 | Values view: tiles at the pointer, cursor A or the end of the view | v1 | ✓ | ✓ | |
 | Values tiles coloured by limits | v1 | ✓ | ✗ | 5.2 |

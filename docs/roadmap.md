@@ -46,10 +46,18 @@ The look and the shell, so that the app reads as the prototype before the big fe
 - Dialogs rise over a scrim as the prototype's; Settings' Basic set and missing rows; a cache section in Settings
   (path, size, Open folder, Clear cache).
 - Benchmark tracking across commits (`docs/follow-ups.md`).
-- **Owner decisions, open since Phase 3** (ask first): the overview as a min/max band per channel with a midline;
-  per-folder sessions; the Samples and Wall clock time formats; dragging a sidebar panel to reorder it; selecting
-  several files in Explorer; the status bar's memory and load figures. Each one, once decided, is built here.
-- **Core work:** Draw every sample (a request flag that skips reduction up to a budget).
+- **Owner decisions (Nov 7), all built here:**
+  - The overview draws each channel as a min/max band with a midline, as the prototype.
+  - One session per folder (tabs, open files, time range, cursors), restored when the folder opens and listed under
+    Recent sessions on the start page.
+  - The Samples and Wall clock time formats, in the time-format menu and Settings (Wall clock only for files with an
+    absolute start time).
+  - Sidebar panels drag by their title to reorder or move to the other sidebar; saved in settings, restored by Reset
+    UI layout.
+  - Explorer selects several files (Cmd- and Shift-click) to Open (each in its own tab) or Close together; several
+    files in one tab waits for 5.6.
+  - The status bar shows the core's memory (and the chunk store's share) and CPU load, about once a second.
+- **Core work:** Draw every sample (a request flag that skips reduction up to a budget); memory and load figures.
 - **Done when** the harness's `main`, menu, hover and dialog scenes show no differences outside the accepted list, the
   suite passes, and the Connect dialog scene matches the prototype's layout.
 
@@ -202,11 +210,10 @@ The look and the shell, so that the app reads as the prototype before the big fe
 
 Things the app does differently on purpose. Only the owner adds to this list.
 
-- (Proposed Nov 7, awaiting the owner) The tab strip's ‹ › scroll buttons when tabs overflow (the prototype just
-  scrolls).
-- (Proposed Nov 7) The view menu's checked row is highlighted across its full width (the prototype's highlight hugs
+- (Accepted Nov 7) The tab strip's ‹ › scroll buttons when tabs overflow (the prototype just scrolls).
+- (Accepted Nov 7) The view menu's checked row is highlighted across its full width (the prototype's highlight hugs
   the text, which looks unintended).
-- (Proposed Nov 7) Arrow keys, Home and End move between menu items (the prototype has none).
+- (Accepted Nov 7) Arrow keys, Home and End move between menu items (the prototype has none).
 - Thin one-pixel lines on software GL (headless tests only), since quads draw slowly there.
 
 ## Status
