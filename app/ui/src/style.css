@@ -1,5 +1,6 @@
 /* Tokens follow the prototype (prototype/plotter.html): dark-first, the same palette, six font sizes, radii 4, 8,
    12 and round, and monospace only for numbers, times and units. */
+@import './fonts/fonts.css';
 :root {
   --bg: #0d1117;
   --surface: #10151c;
