@@ -657,6 +657,28 @@ fn usage(files: State<'_, Files>) -> Usage {
     }
 }
 
+/// The cache folder (in the app's cache, never next to the data), what it holds and its cap, for Settings.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CacheInfo {
+    path: String,
+    bytes: u64,
+    cap: u64,
+}
+
+#[tauri::command]
+async fn cache_info(files: State<'_, Files>) -> Result<CacheInfo, String> {
+    let store = &files.store;
+    let bytes = store.entries().map_err(|e| e.to_string())?.iter().map(|e| e.bytes).sum();
+    Ok(CacheInfo { path: store.root().display().to_string(), bytes, cap: store.limits.cap })
+}
+
+/// Settings → Clear cache: removes every entry not in use (the open files keep theirs); returns how many went.
+#[tauri::command]
+async fn cache_clear(files: State<'_, Files>) -> Result<usize, String> {
+    files.store.clear().map(|removed| removed.len()).map_err(|e| e.to_string())
+}
+
 /// `bytes` zero bytes: the IPC transfer cost alone, for the gate report.
 #[tauri::command]
 fn echo(bytes: u32) -> Response {
@@ -721,6 +743,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open,
             usage,
+            cache_info,
+            cache_clear,
             close,
             view,
             values_at,
