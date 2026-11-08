@@ -1,6 +1,6 @@
 // A session per folder (owner, Nov 7): its tabs, open files, and each file's time range and cursors. Opening another
 // folder puts the session away and brings that folder's; the start page lists them under Recent sessions (the
-// current one marked), a click opens one; the folder's session comes back at launch.
+// current one marked), a click opens one; the folder's session comes back at launch; Settings → Reset session.
 import { run } from './lib.js';
 
 const A = '/data/flights';
@@ -73,6 +73,12 @@ run(
     await p.click('#wsTabs .wstab:has-text("one.tlm")');
     await wait(300);
     check('...at its time range', (await app('view')).t0 === view.t0, await app('view'));
+
+    // Settings → Reset session: this folder's tabs close and its session is forgotten; the other is kept
+    await p.click('#b-settings');
+    check('Settings says the session is saved', /Session saved · only you/.test(await text('#sessTxt')), await text('#sessTxt'));
+    await p.click('#setResetSession');
+    check('Reset session closes the folder\'s tabs and forgets it', await until(() => document.querySelectorAll('#wsTabs .wstab').length === 0) && !(await settingsLS()).sessions[A] && !!(await settingsLS()).sessions[B], Object.keys((await settingsLS()).sessions));
   },
   { files, launch: null, settings: { showStart: false } },
 );

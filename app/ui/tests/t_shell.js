@@ -20,9 +20,9 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   await p.click('#b-settings');
   check('Settings replaces Explorer', (await visible('#setPanel')) && !(await visible('#chans')));
   const basic = await rows();
-  check('Basic: the everyday settings', basic.length === 13 && basic.includes('Theme') && !basic.includes('Zoom speed'), basic);
+  check('Basic: the prototype\'s everyday settings', basic.length === 11 && ['Mouse mode', 'Theme', 'Group channels into categories', 'Tooltips', 'When a file opens', 'Files opened for the first time', 'Clicking a row', 'Left sidebar', 'Right sidebar', 'Quiet interface', 'Time format'].every((r) => basic.includes(r)), basic);
   await p.click('#setPanel [data-sv="all"]');
-  check('All settings shows more', (await rows()).length === 25, await rows());
+  check('All settings shows more', (await rows()).length === 26, await rows());
   await p.click('#setPanel [data-sv="basic"]');
   await p.fill('#setPanel input[type=search]', 'wheel');
   check('search finds an All-only setting by its explanation', (await rows()).join() === 'Zoom speed,Scroll wheel zooms the charts', await rows());
@@ -44,6 +44,7 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   check('mouse mode from Settings', (await app('mode')) === 'pan' && (await p.getAttribute('#m-pan', 'aria-pressed')) === 'true');
   await p.click('#m-cursor');
   check('mouse mode from the top bar shows in Settings', (await p.inputValue('#setPanel [data-set="mode"]')) === 'cursor');
+  await p.click('#setPanel [data-sv="all"]');
   await p.click('#setPanel label.switch:has([data-set="overviewTop"])');
   check('overview above the panes', await until(() => !!document.querySelector('#ovTop .overview')) && (await settingsLS()).overviewTop === true);
 

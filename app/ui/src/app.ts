@@ -2512,6 +2512,17 @@ Object.assign(actions, {
     void (async () => {
       for (const t of tabs.list.filter((t) => t.path === path)) await closeTab(t.key);
     })(),
+  resetSession: () =>
+    void (async () => {
+      sessionBusy = true;
+      try {
+        for (const t of tabs.list.filter((t) => !t.live)) await closeTab(t.key);
+      } finally {
+        sessionBusy = false;
+      }
+      const { [settings.folder]: _, ...rest } = settings.sessions;
+      setSetting('sessions', rest);
+    })(),
   openSession: (folder: string) => {
     if (folder === settings.folder) return;
     if (folder) void showFolder(folder);

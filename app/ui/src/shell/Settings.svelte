@@ -6,6 +6,7 @@
   import { movePanel, resetSettings, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { ICON } from '../icons';
+  import { actions } from '../ui.svelte';
 
   interface Row {
     key: keyof Settings;
@@ -32,8 +33,8 @@
     { key: 'fileOpenNew', section: 'Files', basic: true, label: 'Files opened for the first time', hint: 'Starter charts: one chart per group of channels, up to four. Starter charts + tables: the same, each with its table below. One table: every channel in a single table. One values pane: the value of every channel at the pointer.', options: STARTERS },
     { key: 'clickMode', section: 'Files', basic: true, label: 'Clicking a row', hint: 'Select first: one click selects a file or channel, double-click (or Enter) opens a file, the checkbox plots a channel. Act at once: one click opens or plots.', options: [['select', 'Select first'], ['act', 'Act at once']] },
     { key: 'dropNewView', section: 'Files', label: 'New pane from a dragged channel', hint: "Dropping a channel where a new pane goes makes a chart. Same view keeps the view of the pane it came from, so a channel dragged out of a table makes another table.", options: [['chart', 'Chart'], ['same', 'Same view as where it came from']] },
-    { key: 'leftPanel', section: 'Display', basic: true, label: 'Left sidebar', options: [['explorer', 'Explorer'], ['measure', 'Measure'], ['settings', 'Settings'], ['', 'Hidden']] },
-    { key: 'measureOpen', section: 'Display', basic: true, label: 'Right sidebar', hint: 'Open by hand. With Measure on it, it also opens by itself when both cursors are placed (see below).' },
+    { key: 'leftPanel', section: 'Display', basic: true, label: 'Left sidebar', hint: 'What it shows, picked from the rail. Ctrl+B.', options: [['explorer', 'Explorer'], ['measure', 'Measure'], ['settings', 'Settings'], ['', 'Hidden']] },
+    { key: 'measureOpen', section: 'Display', basic: true, label: 'Right sidebar', hint: 'Cursor values and stats, unless you moved other panels there. Ctrl+Alt+B. With Measure on it, it also opens by itself when both cursors are placed (see below).' },
     { key: 'showHints', section: 'Display', label: 'Show tips and extra controls', hint: 'How-to notes in the panels.' },
     { key: 'quietUI', section: 'Display', basic: true, label: 'Quiet interface', hint: 'Hides badges and counts until they matter: the panes a channel is in, file sizes and category counts.' },
     { key: 'showStart', section: 'Display', label: 'Show the start page at launch', hint: 'Recent recordings and ways to open things, over your tabs when the app starts.' },
@@ -41,8 +42,8 @@
     { key: 'timeDecimals', section: 'Display', label: 'Time decimals', options: [['auto', 'Automatic'], ...[0, 1, 2, 3, 4, 5, 6].map((n) => [String(n), String(n)] as [string, string])] },
     { key: 'timeAxis', section: 'Display', label: 'Time labels', hint: 'Which charts show the time axis labels. Charts share one time axis.', options: [['auto', 'Automatic (every chart on a narrow window)'], ['bottom', 'Bottom chart only'], ['every', 'Every chart']] },
     { key: 'drawRaw', section: 'Display', label: 'Draw every sample', hint: 'Automatic draws each sample only when there are at most 4 per pixel column, and reduces the rest to min/max per column (M4), which looks the same. Raise it to see every point drawn; slower with millions.', options: [['0', 'Automatic'], ['100000', 'Up to 100k per channel'], ['1000000', 'Up to 1M per channel'], ['10000000', 'Always (slow)']] },
-    { key: 'overviewTop', section: 'Display', basic: true, label: 'Overview above the panes' },
-    { key: 'measureAuto', section: 'Display', basic: true, label: 'Open Measure when both cursors are placed', hint: 'It closes again when you clear the cursors, unless you opened it yourself.' },
+    { key: 'overviewTop', section: 'Display', label: 'Overview above the panes' },
+    { key: 'measureAuto', section: 'Display', label: 'Open Measure when both cursors are placed', hint: 'It closes again when you clear the cursors, unless you opened it yourself.' },
     { key: 'showPerf', section: 'Display', label: 'Show performance details', hint: 'A status bar with the last view: points drawn, how they were reduced, and the round trip.' },
   ];
 
@@ -90,7 +91,7 @@
   {:else}
     <p class="setnone">No setting matches “{q.trim()}”.</p>
   {/each}
-  <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span>Sessions kept for each folder</span><button class="tbtn" id="setResetSession" onclick={() => setSetting('sessions', {})}>Forget sessions</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
+  <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span id="sessTxt">{settings.sessions[settings.folder]?.files.length ? 'Session saved · only you (app cache)' : 'Session saves automatically'}</span><button class="tbtn" id="setResetSession" data-tip="Close this folder's tabs and forget its saved session" onclick={actions.resetSession}>Reset session</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
   <footer><span>Saved as you change them</span><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
   {/if}
 </div>
