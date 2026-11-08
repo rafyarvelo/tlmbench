@@ -12,6 +12,8 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   await p.click('[data-rail="live"]');
   check('Live opens the Connect dialog', await p.isVisible('#liveDlg'));
   check('TCP needs a descriptor', await p.isDisabled('#lvConnect'));
+  check('laid out as the prototype\'s: the kinds on the left, each with what it\'s for', (await p.$$eval('#liveDlg .lvkind', (b) => b.map((x) => x.querySelector('b').textContent))).join() === 'Serial port,UDP,TCP,Tail a file' && (await p.getAttribute('#liveDlg [data-kind="tcp"]', 'aria-pressed')) === 'true');
+  check('...over a scrim, with a × to close', (await p.isVisible('.scrim')) && (await p.isVisible('#liveDlg .dclose')));
   await p.click('#liveDlg [data-kind="serial"]');
   await p.fill('#lvPort', '/dev/tty.usbserial-1');
   await p.fill('#lvDesc', '/data/frames.toml');
