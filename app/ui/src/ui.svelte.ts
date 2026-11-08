@@ -69,6 +69,10 @@ export const actions = {
   closeOtherTabs: (_key: number) => {},
   /** Closes a file: every tab showing it. */
   closePath: (_path: string) => {},
+  /** Opens several files, each in a tab of its own (the last in front). */
+  openPaths: (_paths: string[]) => {},
+  /** Closes several files, with Undo. */
+  closePaths: (_paths: string[]) => {},
   saveSession: () => {},
   /** The native file picker for these extensions; null when cancelled. */
   pickFile: async (_ext: string[]): Promise<string | null> => null,

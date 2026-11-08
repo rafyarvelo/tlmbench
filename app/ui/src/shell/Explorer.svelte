@@ -18,6 +18,8 @@
   /** Channels picked together (Ctrl/Cmd-click, Shift-click a range, Ctrl+A); `sel` is the one last clicked. */
   let picked = $state<number[]>([]);
   let fmenu = $state<null | { at: { x: number; y: number }; path: string }>(null);
+  /** Files picked together (Cmd/Ctrl-click, Shift-click a range) to open or close at once. */
+  let pickedFiles = $state<string[]>([]);
 
   const matcher = $derived.by(() => {
     const t = q.trim();
@@ -105,8 +107,33 @@
       if (settings.clickMode === 'act') toggleChannel(ch);
     }
     if (!e.shiftKey) sel = id;
+    pickedFiles = [];
   }
+  /** A click on a file row: selects it; Cmd/Ctrl adds or takes it out of the files picked, Shift picks a range. */
+  function clickFile(e: MouseEvent, path: string) {
+    picked = [];
+    if (e.metaKey || e.ctrlKey) {
+      const cur = pickedFiles.length ? pickedFiles : sel && !sel.startsWith('ch:') ? [sel] : [];
+      pickedFiles = cur.includes(path) ? cur.filter((p) => p !== path) : [...cur, path];
+    } else if (e.shiftKey && sel && !sel.startsWith('ch:')) {
+      const rows = [...document.querySelectorAll<HTMLElement>('#explorer .row.file:not(.cant)')].map((r) => r.dataset.path!);
+      const [a, b] = [rows.indexOf(sel), rows.indexOf(path)];
+      if (a >= 0 && b >= 0) pickedFiles = rows.slice(Math.min(a, b), Math.max(a, b) + 1);
+    } else {
+      pickedFiles = [];
+      if (settings.clickMode === 'act') actions.openPath(path);
+    }
+    if (!e.shiftKey) sel = path;
+  }
+  const filesOpen = $derived(pickedFiles.filter(inTab));
   function treeKey(e: KeyboardEvent) {
+    if (pickedFiles.length > 1 && (e.key === 'Escape' || e.key === 'Enter')) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Enter') actions.openPaths(pickedFiles.filter(listedPath));
+      pickedFiles = [];
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a' && ui.file) {
       e.preventDefault();
       picked = [...shownChans];
@@ -150,6 +177,8 @@
       return;
     }
     if (e.key !== 'Enter' && e.key !== ' ') return;
+    // several files picked: Enter opens them all (the tree's handler)
+    if (row.kind === 'file' && pickedFiles.length > 1) return;
     e.preventDefault();
     if (row.kind === 'file') actions.openPath(row.path);
     else toggleChannel(row.ch);
@@ -222,7 +251,14 @@
       <p class="exnone">No recording open. <button class="linkbtn" onclick={actions.openFolder}>Open a folder</button> or a <button class="linkbtn" onclick={actions.open}>recording</button>, or drop a CSV or .tlm file on the window.</p>
     {/if}
   </div>
-  {#if targets.length && (picked.length > 1 || sel?.startsWith('ch:'))}
+  {#if pickedFiles.length > 1}
+    <div class="selbar" id="fileSelBar" role="toolbar" aria-label="Selected files">
+      <span class="cap">{pickedFiles.length} files</span><span class="spacer"></span>
+      <button class="tbtn primary" data-fsel="open" data-tip="Open each in a tab of its own (Enter)" onclick={() => (actions.openPaths(pickedFiles.filter(listedPath)), (pickedFiles = []))}>Open</button>
+      {#if filesOpen.length}<button class="tbtn" data-fsel="close" onclick={() => (actions.closePaths(filesOpen), (pickedFiles = []))}>Close</button>{/if}
+      <button class="ibtn" data-fsel="clear" aria-label="Clear the selection" data-tip="Clear the selection (Esc)" onclick={() => (pickedFiles = [])}>{@html ICON.close}</button>
+    </div>
+  {:else if targets.length && (picked.length > 1 || sel?.startsWith('ch:'))}
     <div class="selbar" id="selBar" role="toolbar" aria-label="Selected channels">
       <span class="cap">{targets.length === 1 ? ui.channels[targets[0]]?.name : `${targets.length} selected`}</span><span class="spacer"></span>
       <button class="tbtn" data-sel="add" data-tip="Plot in the selected pane" onclick={() => addChannels(targets)}>Add to pane {stack.sel + 1}</button>
@@ -278,21 +314,21 @@
     class="row file"
     class:open
     class:cant={!listedPath(path)}
-    class:sel={sel === path}
+    class:sel={sel === path || pickedFiles.includes(path)}
     role="treeitem"
-    aria-selected={sel === path}
+    aria-selected={sel === path || pickedFiles.includes(path)}
     aria-expanded={open ? !q.trim() || true : undefined}
     tabindex="0"
     style="--d: {depth}"
     data-path={path}
     data-tip={path}
-    onclick={() => ((sel = path), settings.clickMode === 'act' && actions.openPath(path))}
+    onclick={(e) => clickFile(e, path)}
     ondblclick={() => listedPath(path) && actions.openPath(path)}
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
     {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
-    {#if sel === path && !open && listedPath(path)}
+    {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
     {/if}

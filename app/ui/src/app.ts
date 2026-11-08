@@ -2436,6 +2436,16 @@ Object.assign(actions, {
     void (async () => {
       for (const t of tabs.list.filter((t) => t.path === path)) await closeTab(t.key);
     })(),
+  openPaths: (paths: string[]) =>
+    void (async () => {
+      for (const p of paths) await openPath(p);
+    })(),
+  closePaths: (paths: string[]) =>
+    void (async () => {
+      const gone = paths.filter((p) => tabs.list.some((t) => t.path === p));
+      for (const t of tabs.list.filter((t) => gone.includes(t.path))) await closeTab(t.key);
+      if (gone.length) note(`Closed ${gone.length === 1 ? nameOf(gone[0]) : `${gone.length} files`}.`, () => void (async () => { for (const p of gone) await openPath(p); })());
+    })(),
   closeOtherTabs: (key: number) =>
     void (async () => {
       const gone = tabs.list.filter((t) => t.key !== key);
