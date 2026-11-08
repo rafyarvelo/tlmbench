@@ -21,9 +21,17 @@ pub struct Viewport {
     pub t0: Timestamp,
     pub t1: Timestamp,
     pub width_px: u32,
+    /// Draw every sample: a view of at most this many samples comes back raw, not reduced (0: only when there are
+    /// at most four per pixel column, which looks the same as reduced).
+    pub raw_max: u32,
 }
 
 impl Viewport {
+    /// The most samples in view that come back raw: four per pixel column, or `raw_max` when it is more.
+    pub fn raw_limit(&self) -> usize {
+        (4 * self.width_px as usize).max(self.raw_max as usize)
+    }
+
     /// Bucket width in nanoseconds: the time one pixel column covers, at least 1 ns.
     pub fn bucket_ns(&self) -> i64 {
         let span = self.t1 as i128 - self.t0 as i128;
@@ -164,7 +172,7 @@ pub(crate) fn reduce_with<T: Times + ?Sized>(
     let bw = vp.bucket_ns();
 
     let (lo, hi) = (times.lower_bound(vp.t0), times.lower_bound(vp.t1));
-    if hi - lo <= 4 * vp.width_px as usize {
+    if hi - lo <= vp.raw_limit() {
         let mut out = Vec::with_capacity(hi - lo + 2);
         out.extend(lo.checked_sub(1).map(Emit::Sample));
         out.extend((lo..hi).map(Emit::Sample));
@@ -319,7 +327,7 @@ mod tests {
             };
             out.extend(idx.map(Emit::Sample));
         };
-        if in_view.len() <= 4 * vp.width_px as usize {
+        if in_view.len() <= vp.raw_limit() {
             let mut out = vec![];
             if in_view.is_empty() {
                 let lo = (0..n).find(|&i| times.at(i) >= vp.t0).unwrap_or(n);
@@ -382,7 +390,12 @@ mod tests {
     }
 
     fn viewport() -> impl Strategy<Value = Viewport> {
-        (-1500i64..40_000, 1i64..40_000, 1u32..80).prop_map(|(t0, span, w)| Viewport { t0, t1: t0 + span, width_px: w })
+        (-1500i64..40_000, 1i64..40_000, 1u32..80).prop_map(|(t0, span, w)| Viewport {
+            t0,
+            t1: t0 + span,
+            width_px: w,
+            raw_max: 0,
+        })
     }
 
     proptest! {
@@ -399,7 +412,7 @@ mod tests {
             rate in 1u32..5000, t0 in -10_000_000i64..10_000_000, vp in viewport(), scale in 1i64..200_000,
         ) {
             let times = RateTimes::from_rate(t0, rate as f64, values.len());
-            let vp = Viewport { t0: vp.t0 * scale, t1: vp.t1 * scale, width_px: vp.width_px };
+            let vp = Viewport { t0: vp.t0 * scale, t1: vp.t1 * scale, width_px: vp.width_px, raw_max: 0 };
             prop_assert_eq!(reduce(&times, &values, vp), reference(&times, &values, vp));
         }
 
@@ -439,7 +452,7 @@ mod tests {
         let times = RateTimes::from_rate(0, 1000.0, n);
         let values: Vec<f32> =
             (0..n).map(|i| if i % 100_003 < 50 { f32::NAN } else { ((i as f32) * 0.001).sin() }).collect();
-        let vp = Viewport { t0: 0, t1: times.at(n - 1) + 1, width_px: 1500 };
+        let vp = Viewport { t0: 0, t1: times.at(n - 1) + 1, width_px: 1500, raw_max: 0 };
         let (kind, par) = reduce(&times, &values, vp);
         assert_eq!(kind, TraceKind::M4);
         // the same viewport split by hand into sequential pieces gives the same emits
@@ -455,10 +468,26 @@ mod tests {
     }
 
     #[test]
+    fn raw_max_draws_every_sample_up_to_it() {
+        let times: Vec<Timestamp> = (0..10_000).collect();
+        let values: Vec<f32> = (0..10_000).map(|i| (i % 7) as f32).collect();
+        let vp = Viewport { t0: 0, t1: 10_000, width_px: 100, raw_max: 0 };
+        assert_eq!(m4(&times, &values, vp).kind, TraceKind::M4, "400 raw at most by default");
+        let every = m4(&times, &values, Viewport { raw_max: 10_000, ..vp });
+        assert_eq!(every.kind, TraceKind::Raw);
+        assert_eq!(every.t.len(), 10_000);
+        assert_eq!(
+            m4(&times, &values, Viewport { raw_max: 9_999, ..vp }).kind,
+            TraceKind::M4,
+            "past the budget it reduces"
+        );
+    }
+
+    #[test]
     fn sparse_view_returns_raw_samples_with_neighbours() {
         let times: Vec<Timestamp> = (0..100).map(|i| i * 10).collect();
         let values: Vec<f32> = (0..100).map(|i| i as f32).collect();
-        let tr = m4(&times, &values, Viewport { t0: 205, t1: 255, width_px: 1000 });
+        let tr = m4(&times, &values, Viewport { t0: 205, t1: 255, width_px: 1000, raw_max: 0 });
         assert_eq!(tr.kind, TraceKind::Raw);
         assert_eq!(tr.t, vec![200, 210, 220, 230, 240, 250, 260]);
     }
@@ -471,7 +500,7 @@ mod tests {
         let breaks = crate::gaps::GapIndex::build(&times).breaks(2.0);
         assert_eq!(breaks, vec![50]);
         for width_px in [1000, 4] {
-            let tr = m4_breaking(&times, &values, Viewport { t0: 0, t1: 1100, width_px }, &breaks);
+            let tr = m4_breaking(&times, &values, Viewport { t0: 0, t1: 1100, width_px, raw_max: 0 }, &breaks);
             let gap = tr.y.iter().position(|y| y.is_nan()).expect("a gap");
             assert!(tr.t[gap - 1] <= times[49] && tr.t[gap + 1] >= times[50], "width {width_px}: {:?}", tr.t);
             assert_eq!(tr.y.iter().filter(|y| y.is_nan()).count(), 1);
@@ -483,7 +512,7 @@ mod tests {
         let mut times: Vec<Timestamp> = (0..1000).collect();
         times.extend(5000..6000);
         let values = vec![1.0f32; times.len()];
-        let tr = m4(&times, &values, Viewport { t0: 0, t1: 6000, width_px: 60 });
+        let tr = m4(&times, &values, Viewport { t0: 0, t1: 6000, width_px: 60, raw_max: 0 });
         assert_eq!(tr.kind, TraceKind::M4);
         assert_eq!(tr.y.iter().filter(|y| y.is_nan()).count(), 1);
     }

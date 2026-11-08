@@ -214,6 +214,10 @@ enum Query {
         /// quarter pixel)
         #[arg(long)]
         coarse: bool,
+        /// Draw every sample: up to this many in the span come back raw, not reduced (0: only up to four per pixel
+        /// column)
+        #[arg(long, default_value_t = 0)]
+        raw_max: u32,
     },
     /// Each channel's sample nearest a time, as CSV: channel, index, time_ns, value
     Values {
@@ -455,13 +459,13 @@ fn query(what: Query, common: &Common) -> Result<(), Fail> {
         writeln!(out, "{line}").map_err(|e| Fail(2, e.to_string()))
     };
     match what {
-        Query::View { pick, span, width, gap_factor, coarse } => {
+        Query::View { pick, span, width, gap_factor, coarse, raw_max } => {
             let (o, chans) = open(&pick)?;
             let (t0, t1) = span_of(&o, &span)?;
             w(&mut out, "channel,time_ns,value".into())?;
             let precision = if coarse { Precision::Coarse } else { Precision::Exact };
             let factors = vec![gap_factor; chans.len()];
-            for v in o.views(&chans, Viewport { t0, t1, width_px: width.max(1) }, &factors, precision) {
+            for v in o.views(&chans, Viewport { t0, t1, width_px: width.max(1), raw_max }, &factors, precision) {
                 let name = &o.recording().info().channels[v.channel].name;
                 for (t, y) in v.trace.t.iter().zip(&v.trace.y) {
                     let y = if y.is_nan() { String::new() } else { y.to_string() };

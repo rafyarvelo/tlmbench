@@ -73,6 +73,10 @@ fn build_list_query_clear() {
     assert_eq!(built, raw, "the pyramid answers exactly like the raw samples");
     assert!(built.lines().count() > 1500 && built.starts_with("channel,time_ns,value\nvolts,"));
     assert!(built.lines().any(|l| l.ends_with(',')), "the dropout is a gap");
+    // Draw every sample: up to --raw-max in the span come back raw (2M here, and a neighbour each side), not reduced
+    let every = text(&run(c, &[&view[..], &["--raw-max", "3000000"]].concat()));
+    assert!(every.lines().count() == 2_000_003, "every sample: {}", every.lines().count());
+    assert_eq!(text(&run(c, &[&view[..], &["--raw-max", "1999999"]].concat())), built, "past the budget it reduces");
 
     let values = text(&run(c, &["query", "values", file, "--at", "7.77771"]));
     let v = ((77_777f32 * 1e-4).sin() + 9.0) as f64;

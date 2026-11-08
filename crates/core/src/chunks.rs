@@ -256,7 +256,7 @@ mod tests {
             let (first, last) = (times.at(0), times.at(n - 1) + 1);
             let t0 = first + ((last - first) as f64 * a) as i64;
             let t1 = t0 + 1 + ((last - t0) as f64 * span) as i64;
-            let vp = Viewport { t0, t1, width_px };
+            let vp = Viewport { t0, t1, width_px, raw_max: 0 };
             prop_assert!(same(&m4(&times, &chunked, vp), &m4(&times, &values, vp)));
 
             let levels = pyramid::build_levels(pyramid::summarize(&times, &values, 0, n));

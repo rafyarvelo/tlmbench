@@ -41,7 +41,7 @@ fuzz_target!(|data: &[u8]| {
         if n > 0 {
             let (a, b) = (f.info().t_first.unwrap(), f.info().t_last.unwrap());
             assert!(a <= b);
-            let tr = f.trace(0, Viewport { t0: a, t1: b + 1, width_px: 50 });
+            let tr = f.trace(0, Viewport { t0: a, t1: b + 1, width_px: 50, raw_max: 0 });
             assert!(tr.t.windows(2).all(|w| w[0] <= w[1]));
             let chunks = Channels::decode_chunks(&f, &[0], 0..n.div_ceil(1 << 16));
             assert_eq!(chunks[0].iter().map(|c| c.len()).sum::<usize>(), n);

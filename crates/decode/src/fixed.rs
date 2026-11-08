@@ -533,7 +533,7 @@ mod tests {
         let f = file(&desc, (0..1000).map(|i| (i as f32).to_le_bytes().to_vec()));
         assert_eq!(f.info().samples, 1000);
         assert_eq!((f.info().t_first, f.info().t_last), (Some(1_000), Some(1_000 + 999 * 10_000_000)));
-        let tr = f.trace(0, Viewport { t0: 0, t1: 50_000_000, width_px: 100 });
+        let tr = f.trace(0, Viewport { t0: 0, t1: 50_000_000, width_px: 100, raw_max: 0 });
         assert_eq!(tr.kind, TraceKind::Raw);
         assert_eq!(tr.y, vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]); // 5 in view plus the one after
     }
@@ -569,7 +569,7 @@ mod tests {
         assert_eq!(names, ["battery_v", "flags"]);
         assert_eq!(f.info().time, TimeSource::Column { name: "t".into() });
         assert_eq!(f.info().t_last, Some(4_500_000));
-        let tr = f.trace(0, Viewport { t0: 0, t1: 5_000_000, width_px: 100 });
+        let tr = f.trace(0, Viewport { t0: 0, t1: 5_000_000, width_px: 100, raw_max: 0 });
         assert_eq!(tr.t[3], 1_500_000);
         assert!((tr.y[3] - 4.0).abs() < 1e-6); // 3000 * 0.001 + 1
     }
@@ -599,7 +599,7 @@ mod tests {
         let f = file(&desc, (0..n).map(|i| [0u16.to_be_bytes(), raw(i).to_be_bytes(), 0u16.to_be_bytes()].concat()));
         let levels = tlmbench_core::pyramid::build_levels(f.summarize(1, 0, n));
         let pyr = tlmbench_core::pyramid::Pyramid::new(n, levels.iter().map(Vec::as_slice).collect());
-        let vp = Viewport { t0: 0, t1: f.info().t_last.unwrap() + 1, width_px: 30 };
+        let vp = Viewport { t0: 0, t1: f.info().t_last.unwrap() + 1, width_px: 30, raw_max: 0 };
         assert_eq!(f.view(1, vp, Some(&pyr), &[], &Held::default()), f.trace(1, vp));
         let st = f.stats(1, &pyr, 100, 40_000, &Held::default());
         // the largest stored value (2000 + something at 4242) becomes the smallest shown one
@@ -692,8 +692,8 @@ mod tests {
         let held = Held { first: 1, chunks: chunks[1].drain(..).map(|c| Some(std::sync::Arc::new(c))).collect() };
         let t = |i: usize| f.time_at(i);
         for vp in [
-            Viewport { t0: t(CHUNK_SAMPLES - 300), t1: t(CHUNK_SAMPLES + 300), width_px: 100 },
-            Viewport { t0: t(1000), t1: t(n - 1) + 1, width_px: 333 },
+            Viewport { t0: t(CHUNK_SAMPLES - 300), t1: t(CHUNK_SAMPLES + 300), width_px: 100, raw_max: 0 },
+            Viewport { t0: t(1000), t1: t(n - 1) + 1, width_px: 333, raw_max: 0 },
         ] {
             let (a, b) = (f.view(0, vp, None, &[], &held), f.trace(0, vp));
             assert_eq!(a.t, b.t);

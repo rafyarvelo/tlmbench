@@ -20,8 +20,8 @@ fuzz_target!(|data: &[u8]| {
     let all: Vec<usize> = (0..info.channels.len()).filter(|&c| file.chunked(c)).collect();
     let mut decoded = file.decode_chunks(&all, 0..chunks);
     for ch in 0..info.channels.len() {
-        let whole = Viewport { t0: a, t1: b.saturating_add(1), width_px: 64 };
-        let near = Viewport { t0: seed, t1: seed.saturating_add(seed.unsigned_abs() as i64 / 3 + 1), width_px: 7 };
+        let whole = Viewport { t0: a, t1: b.saturating_add(1), width_px: 64, raw_max: 0 };
+        let near = Viewport { t0: seed, t1: seed.saturating_add(seed.unsigned_abs() as i64 / 3 + 1), width_px: 7, raw_max: 0 };
         let held = match all.iter().position(|&c| c == ch) {
             Some(i) => Held {
                 first: 0,

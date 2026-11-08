@@ -78,10 +78,10 @@ fn same(a: &tlmbench_core::Trace, b: &tlmbench_core::Trace) -> bool {
 
 fn views(first: i64, last: i64) -> Vec<Viewport> {
     let span = last - first;
-    let mut out = vec![Viewport { t0: first, t1: last + 1, width_px: 1999 }];
+    let mut out = vec![Viewport { t0: first, t1: last + 1, width_px: 1999, raw_max: 0 }];
     for k in 1..12i64 {
         let t0 = first + span * k / 13 - 777_777 * k;
-        out.push(Viewport { t0, t1: t0 + span / (k * k * 3) + 1, width_px: 300 + 97 * k as u32 });
+        out.push(Viewport { t0, t1: t0 + span / (k * k * 3) + 1, width_px: 300 + 97 * k as u32, raw_max: 0 });
     }
     out
 }
@@ -114,7 +114,7 @@ fn builds_reopens_and_answers_like_raw_samples() {
             assert!(v.from_pyramid && v.built_until.is_none());
         }
     }
-    let vp = Viewport { t0: first, t1: last + 1, width_px: 1999 };
+    let vp = Viewport { t0: first, t1: last + 1, width_px: 1999, raw_max: 0 };
     let coarse = opened.views(&[0, 1], vp, &[4.0, 4.0], Precision::Coarse);
     assert!(coarse.iter().all(|v| v.coarse && v.from_pyramid));
     assert!(coarse[0].trace.y.contains(&50.0), "coarse views keep every spike too");
@@ -221,7 +221,7 @@ fn chunked_reads_answer_like_reads_in_place() {
     // a 1M-sample view: chunks 1 to 16 of each channel, decoded together
     chunked.chunk_cache().clear();
     let t = |i: usize| a.recording().time_at(i);
-    a.views(&[0, 1], Viewport { t0: t(70_000), t1: t(1_070_000), width_px: 1736 }, &[], Precision::Exact);
+    a.views(&[0, 1], Viewport { t0: t(70_000), t1: t(1_070_000), width_px: 1736, raw_max: 0 }, &[], Precision::Exact);
     assert_eq!(chunked.chunk_cache().len(), 2 * 16);
     let (i, j) = (12_345, 2_999_999);
     let st = |o: &tlmbench_store::Opened| o.stats(&[0, 1], t(i), t(j)).unwrap();
@@ -245,8 +245,8 @@ fn a_batch_answers_like_its_entries_alone() {
     let o = store.open(&path, None).unwrap();
     o.build(&mut |_, _| {}).unwrap();
     let t = |i: usize| o.recording().time_at(i);
-    let zoomed = |w| Viewport { t0: t(1_000_000), t1: t(1_400_000), width_px: w };
-    let whole = Viewport { t0: t(0), t1: t(N - 1) + 1, width_px: 1200 };
+    let zoomed = |w| Viewport { t0: t(1_000_000), t1: t(1_400_000), width_px: w, raw_max: 0 };
+    let whole = Viewport { t0: t(0), t1: t(N - 1) + 1, width_px: 1200, raw_max: 0 };
     let requests = [
         Request { channels: vec![0], gap_factors: vec![4.0], vp: zoomed(900) },
         Request { channels: vec![1, 0], gap_factors: vec![], vp: zoomed(437) },
@@ -314,7 +314,7 @@ fn gap_factors_apply_per_channel() {
     drop(o);
     let o = store.open(&path, None).unwrap();
     assert_eq!(o.status(), Status::Built);
-    let vp = Viewport { t0: 0, t1: t * 1000 + 1, width_px: 100 };
+    let vp = Viewport { t0: 0, t1: t * 1000 + 1, width_px: 100, raw_max: 0 };
     let gaps = |f: f64| o.view(0, vp, f, Precision::Exact).trace.y.iter().filter(|y| y.is_nan()).count();
     assert_eq!((gaps(2.0), gaps(4.0), gaps(8.0)), (2, 1, 0));
     let both = o.views(&[0, 0], vp, &[2.0, 8.0], Precision::Exact);

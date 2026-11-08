@@ -88,7 +88,7 @@ fn every_compression_reads_back() {
         assert_eq!(chunks[1][0].values::<i16>()[7], ((CHUNK_SAMPLES + 7) % 100) as i16);
         let all = Channels::summarize_all(&f, 1024, 1024 + 4096);
         assert_eq!(all[1], f.summarize(1, 1024, 1024 + 4096));
-        let tr = f.trace(1, Viewport { t0: 0, t1: n as i64 * 1_000_000, width_px: 200 });
+        let tr = f.trace(1, Viewport { t0: 0, t1: n as i64 * 1_000_000, width_px: 200, raw_max: 0 });
         assert_eq!(tr.kind, TraceKind::M4);
         assert_eq!(f.read(1, 10, 13), tlmbench_core::Column::F32(vec![2.5, 2.75, 3.0]));
     }

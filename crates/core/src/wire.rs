@@ -213,9 +213,9 @@ mod tests {
         let n = 100_001;
         let times = RateTimes::from_rate(1_767_225_600_000_000_000, 10_000.0, n);
         let values: Vec<f32> = (0..n).map(|i| if i == 500 { f32::NAN } else { (i as f32 * 0.01).sin() }).collect();
-        let vp = Viewport { t0: times.at(10), t1: times.at(90_000), width_px: 777 };
+        let vp = Viewport { t0: times.at(10), t1: times.at(90_000), width_px: 777, raw_max: 0 };
         let a = m4(&times, &values, vp);
-        let raw_vp = Viewport { t0: times.at(10), t1: times.at(30), width_px: 777 };
+        let raw_vp = Viewport { t0: times.at(10), t1: times.at(30), width_px: 777, raw_max: 0 };
         let b = m4(&times, &values, raw_vp);
         let outs = [
             Out { channel: 3, trace: &a, reduce_us: 1234, coarse: true, from_pyramid: true },
@@ -246,10 +246,10 @@ mod tests {
         let times = RateTimes::from_rate(1_767_225_600_000_000_000, 1000.0, 50_000);
         let values: Vec<f32> = (0..50_000).map(|i| (i as f32 * 0.02).cos()).collect();
         let (a, b) = (
-            Viewport { t0: times.at(100), t1: times.at(40_000), width_px: 640 },
-            Viewport { t0: times.at(100), t1: times.at(40_000), width_px: 311 },
+            Viewport { t0: times.at(100), t1: times.at(40_000), width_px: 640, raw_max: 0 },
+            Viewport { t0: times.at(100), t1: times.at(40_000), width_px: 311, raw_max: 0 },
         );
-        let whole = Viewport { t0: times.at(0), t1: times.at(49_999) + 1, width_px: 1200 };
+        let whole = Viewport { t0: times.at(0), t1: times.at(49_999) + 1, width_px: 1200, raw_max: 0 };
         let (ta, tb, tw) = (m4(&times, &values, a), m4(&times, &values, b), m4(&times, &values, whole));
         let one = |vp, t: &Trace, ch| {
             let out = Out { channel: ch, trace: t, reduce_us: 7, coarse: false, from_pyramid: true };
@@ -286,7 +286,7 @@ mod tests {
     fn golden_batch() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/wire-batch.bin");
         let t0 = 1_767_225_600_000_000_123;
-        let pane = Viewport { t0, t1: t0 + 10_000, width_px: 4 };
+        let pane = Viewport { t0, t1: t0 + 10_000, width_px: 4, raw_max: 0 };
         let m4 = Trace {
             kind: TraceKind::M4,
             bucket_ns: pane.bucket_ns(),
@@ -299,7 +299,7 @@ mod tests {
             t: vec![t0 + 1000, t0 + 9000],
             y: vec![-1.0, 1.0],
         };
-        let ov = Viewport { t0: 0, t1: 1000, width_px: 3 };
+        let ov = Viewport { t0: 0, t1: 1000, width_px: 3, raw_max: 0 };
         let flat = Trace { kind: TraceKind::Raw, bucket_ns: ov.bucket_ns(), t: vec![0, 999], y: vec![4.0, 4.0] };
         let bytes = encode_batch(
             7,
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn rejects_truncated_or_foreign_bytes() {
-        let bytes = encode(1, Viewport { t0: 0, t1: 10, width_px: 10 }, None, &[]);
+        let bytes = encode(1, Viewport { t0: 0, t1: 10, width_px: 10, raw_max: 0 }, None, &[]);
         assert_eq!(decode(&bytes).map(|r| r.built_until), Some(None));
         assert!(decode(&bytes[..39]).is_none());
         assert!(decode(b"NOPE").is_none());

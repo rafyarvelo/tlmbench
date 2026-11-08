@@ -253,6 +253,9 @@ fn live_stop(file: u32, files: State<'_, Files>) -> Result<tlmbench_live::Health
     Ok(h)
 }
 
+/// Draw every sample at most draws this many per channel (about 80 MB of reply).
+const RAW_MAX: u32 = 10_000_000;
+
 /// One pane (or the overview) of a view batch.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -267,6 +270,9 @@ struct ViewEntry {
     t0: String,
     t1: String,
     width_px: u32,
+    /// Draw every sample: up to this many in view come back raw (0: only up to four per pixel column).
+    #[serde(default)]
+    raw_max: u32,
 }
 
 /// Every pane of a tab and the overview, each reduced over its own span and width under one generation, as a
@@ -286,7 +292,12 @@ async fn view(
     let mut ids = Vec::with_capacity(entries.len());
     let mut requests = Vec::with_capacity(entries.len());
     for e in entries {
-        let vp = Viewport { t0: parse_time(&e.t0)?, t1: parse_time(&e.t1)?, width_px: e.width_px.clamp(1, 16_384) };
+        let vp = Viewport {
+            t0: parse_time(&e.t0)?,
+            t1: parse_time(&e.t1)?,
+            width_px: e.width_px.clamp(1, 16_384),
+            raw_max: e.raw_max.min(RAW_MAX),
+        };
         let (channels, gap_factors) = e
             .channels
             .iter()

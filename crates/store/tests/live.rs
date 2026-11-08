@@ -75,8 +75,11 @@ fn same(live: &Opened, whole: &Opened) {
         (t1 - span / 50, t1, 600),
         (t1 - 3_000_000, t1 + 1_000_000_000, 300),
     ] {
-        let req =
-            Request { channels: vec![0, 1], gap_factors: vec![4.0, 4.0], vp: Viewport { t0: a, t1: b, width_px: w } };
+        let req = Request {
+            channels: vec![0, 1],
+            gap_factors: vec![4.0, 4.0],
+            vp: Viewport { t0: a, t1: b, width_px: w, raw_max: 0 },
+        };
         for precision in [Precision::Exact, Precision::Coarse] {
             let (l, o) = (
                 live.view_batch(std::slice::from_ref(&req), precision),

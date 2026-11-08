@@ -77,7 +77,7 @@ fn bench_zoomed(c: &mut Criterion) {
     let b = chunked.open(&path, None).unwrap();
     let t = |i: usize| a.recording().time_at(i);
     let mid = n / 2;
-    let vp = Viewport { t0: t(mid - 500_000), t1: t(mid + 500_000), width_px: 1736 };
+    let vp = Viewport { t0: t(mid - 500_000), t1: t(mid + 500_000), width_px: 1736, raw_max: 0 };
 
     let mut g = c.benchmark_group(format!("zoomed_1M_x{CHANNELS}"));
     g.sample_size(30);

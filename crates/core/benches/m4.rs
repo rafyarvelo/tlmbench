@@ -53,7 +53,7 @@ fn bench_rate(c: &mut Criterion) {
         let in_view = times.lower_bound(t1) - times.lower_bound(t0);
         g.throughput(Throughput::Elements(in_view as u64));
         for width_px in [1000u32, 2000, 4000] {
-            let vp = Viewport { t0, t1, width_px };
+            let vp = Viewport { t0, t1, width_px, raw_max: 0 };
             g.bench_with_input(BenchmarkId::new(format!("{view}/all_threads"), width_px), &vp, |b, &vp| {
                 b.iter(|| black_box(m4(&times, &values, vp)))
             });
@@ -76,7 +76,7 @@ fn bench_column(c: &mut Criterion) {
     let mut g = c.benchmark_group(format!("m4_column_{}M", n / 1_000_000));
     g.sample_size(20);
     for (view, t0, t1) in views(&times) {
-        let vp = Viewport { t0, t1, width_px: 2000 };
+        let vp = Viewport { t0, t1, width_px: 2000, raw_max: 0 };
         g.throughput(Throughput::Elements((times.lower_bound(t1) - times.lower_bound(t0)) as u64));
         g.bench_with_input(BenchmarkId::new(view, 2000), &vp, |b, &vp| b.iter(|| black_box(m4(&times, &values, vp))));
     }
@@ -96,7 +96,7 @@ fn bench_pyramid(c: &mut Criterion) {
     let levels = pyramid::build_levels(pyramid::summarize(&times, &values, 0, n));
     let pyr = Pyramid::new(n, levels.iter().map(Vec::as_slice).collect());
     for (view, t0, t1) in views(&times) {
-        let vp = Viewport { t0, t1, width_px: 2000 };
+        let vp = Viewport { t0, t1, width_px: 2000, raw_max: 0 };
         g.throughput(Throughput::Elements((times.lower_bound(t1) - times.lower_bound(t0)) as u64));
         g.bench_with_input(BenchmarkId::new(format!("{view}/m4"), 2000), &vp, |b, &vp| {
             b.iter(|| black_box(pyramid::m4(&times, &values, &pyr, vp, &[])))

@@ -696,7 +696,7 @@ mod tests {
             let (a, b) = (a.min(b), a.max(b));
             let t0 = -6_000 + (a * (span + 12_000) as f64) as i64;
             let t1 = (-6_000 + (b * (span + 12_000) as f64) as i64).max(t0 + 1);
-            Viewport { t0, t1, width_px: w }
+            Viewport { t0, t1, width_px: w, raw_max: 0 }
         })
     }
 
@@ -726,14 +726,14 @@ mod tests {
             let len = ((v.len() as f64 * cut) as usize / block * block).max(block).min(v.len() / block * block);
             prop_assume!(len >= block);
             let pyr = Pyramid::new(len, levels.iter().take(2).map(Vec::as_slice).collect());
-            let vp = Viewport { t0: vp.t0 * 1000, t1: vp.t1 * 1000, width_px: vp.width_px };
+            let vp = Viewport { t0: vp.t0 * 1000, t1: vp.t1 * 1000, width_px: vp.width_px, raw_max: 0 };
             prop_assert_eq!(reduce(&times, &v, &pyr, vp, 1), crate::m4::reduce(&times, &v, vp));
         }
 
         #[test]
         fn pyramid_m4_equals_raw_m4_at_a_rate(v in values(), rate in 1u32..20_000, vp in vp_within(1 << 40), scale in 1i64..2000) {
             let times = crate::RateTimes::from_rate(-1_000, rate as f64, v.len());
-            let vp = Viewport { t0: vp.t0 * scale, t1: vp.t1 * scale, width_px: vp.width_px };
+            let vp = Viewport { t0: vp.t0 * scale, t1: vp.t1 * scale, width_px: vp.width_px, raw_max: 0 };
             let levels = owned(&times, &v);
             let pyr = view(&levels, v.len());
             prop_assert_eq!(reduce(&times, &v, &pyr, vp, 1), crate::m4::reduce(&times, &v, vp));
@@ -757,7 +757,7 @@ mod tests {
             let levels = owned(&times, &v);
             let pyr = view(&levels, n);
             let (t0, t1) = ((a * n as f64) as i64 * 1_000_000, (b * n as f64) as i64 * 1_000_000 + 1);
-            let vp = Viewport { t0, t1, width_px: w };
+            let vp = Viewport { t0, t1, width_px: w, raw_max: 0 };
             let tr = m4_coarse(&times, &v, &pyr, vp, &[]);
             prop_assert!(tr.t.is_sorted(), "times go back");
             for (&t, &y) in tr.t.iter().zip(&tr.y) {
@@ -834,7 +834,7 @@ mod tests {
         let levels = owned(&times, &v);
         let mut pyr = Pyramid::new(n / 4, levels.iter().take(2).map(Vec::as_slice).collect());
         pyr.raw_past = false;
-        let vp = Viewport { t0: 0, t1: times.at(n - 1) + 1, width_px: 16 };
+        let vp = Viewport { t0: 0, t1: times.at(n - 1) + 1, width_px: 16, raw_max: 0 };
         let (_, emits) = reduce(&times, &v, &pyr, vp, 1);
         let read: Vec<usize> =
             emits.iter().filter_map(|e| if let Emit::Sample(i) = e { Some(*i) } else { None }).collect();

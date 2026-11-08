@@ -450,7 +450,7 @@ mod tests {
         assert_eq!(r.info().samples, 20_000);
         assert_eq!(r.info().skipped, ["label"]);
         assert_eq!(r.info().t_last, Some(1_999_900_000));
-        let tr = r.trace(0, Viewport { t0: 0, t1: 2_000_000_000, width_px: 100 });
+        let tr = r.trace(0, Viewport { t0: 0, t1: 2_000_000_000, width_px: 100, raw_max: 0 });
         assert_eq!(tr.kind, tlmbench_core::TraceKind::M4);
         assert!(tr.y.iter().all(|&y| (0.0..=6.0).contains(&y)));
 
