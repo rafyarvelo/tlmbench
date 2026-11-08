@@ -24,6 +24,7 @@ fn recording(dir: &Path, n: usize) -> PathBuf {
         unit: None,
         scale: 1.0,
         value_offset: 0.0,
+        bits: None,
     };
     let desc = Descriptor {
         sequence: None,

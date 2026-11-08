@@ -27,6 +27,7 @@ fn descriptor(column: bool) -> Descriptor {
         unit: None,
         scale: 1.0,
         value_offset: 0.0,
+        bits: None,
     };
     let (time, fields, size) = if column {
         let t = TimeSpec::Field { field: "t".into(), unit: TimeUnit::Ns, t0_ns: 0 };

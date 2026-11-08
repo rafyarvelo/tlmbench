@@ -28,10 +28,12 @@ use tlmbench_core::{
 
 use crate::bytes::{self, Bytes};
 use crate::cache::Source;
-use crate::descriptor::{Checksum, Compression, Counts, DType, Descriptor, Endian, Packets, Part, TimeSpec};
+use crate::descriptor::{
+    Bits, Checksum, Compression, Counts, DType, Descriptor, Endian, Packets, Part, TimeSpec, counter_range,
+};
 use crate::error::{Result, format_err, io_err};
 use crate::fixed::gather_tile;
-use crate::strided::Pod;
+use crate::strided::{Pod, decode, wrapped};
 
 const INDEX_VERSION: u32 = 1;
 /// The most a packet's payload may hold, stored or decompressed.
@@ -41,9 +43,13 @@ const KEEP_DECODED: usize = 32;
 /// Packets decompressed at once while the index is built.
 const SCAN_BATCH: usize = 4096;
 
-/// A packet decoded by the index build: its records, their first and last times (with a time field), and whether
-/// its times are in order.
-type Scanned = (u32, Option<(i64, i64)>, bool);
+/// A packet decoded by the index build: its records, their first and last times (with a time field; a counter's
+/// raw first and last), whether its times are in order, and where a counter wrapped inside it (record numbers
+/// within the packet).
+type Scanned = (u32, Option<(i64, i64)>, bool, Vec<usize>);
+
+/// Turns a raw time field and a record number into a time.
+type ToTime<'a> = Box<dyn Fn(i64, usize) -> Timestamp + Sync + 'a>;
 
 /// One good packet: where it starts, its stored payload's length, and how many records it holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,6 +71,9 @@ struct IndexManifest {
     skipped_bytes: u64,
     t_first: Option<i64>,
     t_last: Option<i64>,
+    /// The records where a counter time base wrapped.
+    #[serde(default)]
+    wraps: Vec<usize>,
 }
 
 /// A packet file, read through its packet index.
@@ -84,6 +93,8 @@ pub struct PacketFile {
     pub skipped_bytes: u64,
     decoded: Mutex<Vec<(usize, Arc<Vec<u8>>)>>,
     time_index: OnceLock<TimeIndex>,
+    /// The records where a counter time base wrapped.
+    wraps: Vec<usize>,
     /// The packet type this recording holds, in a file with several.
     part: Option<Part>,
 }
@@ -94,9 +105,14 @@ fn packets_of(desc: &Descriptor) -> &Packets {
 
 /// An integer field of `dtype` at the start of `b`, as i64.
 fn read_int(b: &[u8], dtype: DType, big: bool) -> i64 {
+    read_bits(b, dtype, None, big)
+}
+
+/// [`read_int`] of the run of bits a bitfield takes.
+fn read_bits(b: &[u8], dtype: DType, bits: Option<Bits>, big: bool) -> i64 {
     macro_rules! read {
         ($t:ty) => {{
-            let v: $t = if big { <$t as Pod>::from_be(b) } else { <$t as Pod>::from_le(b) };
+            let v: $t = decode(big, bits, b);
             v as i64
         }};
     }
@@ -326,6 +342,7 @@ impl PacketFile {
             skipped_bytes: 0,
             decoded: Mutex::default(),
             time_index: OnceLock::new(),
+            wraps: Vec::new(),
             desc,
             part,
         };
@@ -350,12 +367,15 @@ impl PacketFile {
             .collect();
         me.info.time = match &me.desc.time {
             TimeSpec::Rate { rate_hz, .. } => TimeSource::Rate { hz: *rate_hz },
-            TimeSpec::Field { field, .. } => TimeSource::Column { name: field.clone() },
+            TimeSpec::Field { field, .. } | TimeSpec::Counter { field, .. } => {
+                TimeSource::Column { name: field.clone() }
+            }
             TimeSpec::Index => TimeSource::Index,
         };
+        me.wraps = manifest.wraps;
         let n = me.info.samples;
         (me.info.t_first, me.info.t_last) = match &me.desc.time {
-            TimeSpec::Field { .. } => (manifest.t_first, manifest.t_last),
+            TimeSpec::Field { .. } | TimeSpec::Counter { .. } => (manifest.t_first, manifest.t_last),
             _ if n > 0 => (Some(me.rate_times().at(0)), Some(me.rate_times().at(n - 1))),
             _ => (None, None),
         };
@@ -412,14 +432,43 @@ impl PacketFile {
         Some(out)
     }
 
-    /// The time of each record in `recs` (records as read), when time is a field.
-    fn times_of(&self, recs: &[u8]) -> Vec<Timestamp> {
-        let TimeSpec::Field { field, unit, t0_ns } = &self.desc.time else { return Vec::new() };
+    /// The time of each record in `recs` (records as read, the first being record `first` of the file), when time
+    /// is a field or a counter.
+    fn times_of(&self, recs: &[u8], first: usize) -> Vec<Timestamp> {
+        let (field, convert): (&String, ToTime) = match &self.desc.time {
+            TimeSpec::Field { field, unit, t0_ns } => {
+                let (scale, t0) = (unit.ns(), *t0_ns);
+                (field, Box::new(move |raw, _| t0.saturating_add(raw.saturating_mul(scale))))
+            }
+            TimeSpec::Counter { field, clock_hz, wraps_at, t0_ns } => {
+                let f = self.desc.fields.iter().find(|f| &f.name == field).expect("validated");
+                let range = counter_range(f, *wraps_at).expect("validated");
+                let (hz, t0) = (*clock_hz, *t0_ns);
+                (
+                    field,
+                    Box::new(move |raw, i| {
+                        let wraps = self.wraps.partition_point(|&p| p <= i) as i64;
+                        let ticks = raw.saturating_add(wraps.saturating_mul(range));
+                        t0.saturating_add((ticks as f64 * 1e9 / hz).round() as i64)
+                    }),
+                )
+            }
+            _ => return Vec::new(),
+        };
         let f = self.desc.fields.iter().find(|f| &f.name == field).expect("validated");
         let (off, big) = (f.offset as usize, self.big());
         recs.chunks_exact(self.stride())
-            .map(|r| t0_ns.saturating_add(read_int(&r[off..], f.dtype, big).saturating_mul(unit.ns())))
+            .enumerate()
+            .map(|(j, r)| convert(read_bits(&r[off..], f.dtype, f.bits, big), first + j))
             .collect()
+    }
+
+    /// The raw time field of each record in `recs` (records as read).
+    fn raws_of(&self, recs: &[u8]) -> Vec<i64> {
+        let Some(field) = self.desc.time.field() else { return Vec::new() };
+        let f = self.desc.fields.iter().find(|f| f.name == field).expect("validated");
+        let (off, big) = (f.offset as usize, self.big());
+        recs.chunks_exact(self.stride()).map(|r| read_bits(&r[off..], f.dtype, f.bits, big)).collect()
     }
 
     /// Scans the file and decompresses every packet (in parallel, a batch at a time) to count its records and check
@@ -435,37 +484,91 @@ impl PacketFile {
         let mut bad = framing.bad;
         let (mut t_first, mut t_last) = (None, None::<i64>);
         let field_time = matches!(self.desc.time, TimeSpec::Field { .. });
+        let counter = match &self.desc.time {
+            TimeSpec::Counter { field, wraps_at, .. } => {
+                let f = self.desc.fields.iter().find(|f| &f.name == field).expect("validated");
+                Some(counter_range(f, *wraps_at).expect("validated"))
+            }
+            _ => None,
+        };
+        let mut wraps = Vec::new();
+        let (mut first_raw, mut last_raw) = (None, 0i64);
+        let mut records_so_far = 0usize;
         for batch in framing.packets.chunks(SCAN_BATCH) {
             let decoded: Vec<Option<Scanned>> = batch
                 .par_iter()
                 .map(|f| {
                     let recs = self.records_of(f.offset, f.stored)?;
                     let n = u32::try_from(recs.len() / self.stride()).ok()?;
-                    if !field_time || n == 0 {
-                        return Some((n, None, true));
+                    if let Some(range) = counter {
+                        let raws = self.raws_of(&recs);
+                        let (mut inside, mut ordered) = (Vec::new(), true);
+                        for (j, w) in raws.windows(2).enumerate() {
+                            match wrapped(w[0], w[1], range) {
+                                Ok(true) => inside.push(j + 1),
+                                Ok(false) => {}
+                                Err(()) => ordered = false,
+                            }
+                        }
+                        let span = raws.first().zip(raws.last()).map(|(a, b)| (*a, *b));
+                        return Some((n, span, ordered, inside));
                     }
-                    let t = self.times_of(&recs);
+                    if !field_time || n == 0 {
+                        return Some((n, None, true, Vec::new()));
+                    }
+                    let t = self.times_of(&recs, 0);
                     let ordered = t.windows(2).all(|w| w[0] <= w[1]);
-                    Some((n, Some((t[0], t[t.len() - 1])), ordered))
+                    Some((n, Some((t[0], t[t.len() - 1])), ordered, Vec::new()))
                 })
                 .collect();
             for (f, d) in batch.iter().zip(decoded) {
-                let Some((records, span, ordered)) = d else {
+                let Some((records, span, ordered, inside)) = d else {
                     bad += 1;
                     continue;
                 };
                 if let Some((a, b)) = span {
-                    if !ordered || t_last.is_some_and(|l| a < l) {
-                        return Err(format_err(
-                            &path,
-                            format!("time goes backwards in the packet at byte {}", f.offset),
-                        ));
+                    if let Some(range) = counter {
+                        let crossed = match first_raw {
+                            None => false,
+                            Some(_) => wrapped(last_raw, a, range).map_err(|()| {
+                                format_err(
+                                    &path,
+                                    format!("the time counter goes backwards in the packet at byte {}", f.offset),
+                                )
+                            })?,
+                        };
+                        if !ordered {
+                            return Err(format_err(
+                                &path,
+                                format!("the time counter goes backwards in the packet at byte {}", f.offset),
+                            ));
+                        }
+                        if crossed {
+                            wraps.push(records_so_far);
+                        }
+                        wraps.extend(inside.iter().map(|j| records_so_far + j));
+                        first_raw.get_or_insert(a);
+                        last_raw = b;
+                    } else {
+                        if !ordered || t_last.is_some_and(|l| a < l) {
+                            return Err(format_err(
+                                &path,
+                                format!("time goes backwards in the packet at byte {}", f.offset),
+                            ));
+                        }
+                        t_first = t_first.or(Some(a));
+                        t_last = Some(b);
                     }
-                    t_first = t_first.or(Some(a));
-                    t_last = Some(b);
                 }
+                records_so_far += records as usize;
                 index.push(Entry { offset: f.offset, stored: f.stored as u32, records });
             }
+        }
+        if let (Some(first), TimeSpec::Counter { clock_hz, t0_ns, .. }) = (first_raw, &self.desc.time) {
+            let range = counter.expect("a counter");
+            let at = |ticks: i64| t0_ns.saturating_add((ticks as f64 * 1e9 / clock_hz).round() as i64);
+            t_first = Some(at(first));
+            t_last = Some(at(last_raw.saturating_add(range.saturating_mul(wraps.len() as i64))));
         }
         let other_bytes = framing.other_bytes;
         let used: u64 = index.iter().map(|e| p.header_size + p.checksum.size() + u64::from(e.stored)).sum::<u64>();
@@ -479,6 +582,7 @@ impl PacketFile {
             skipped_bytes: source_size.saturating_sub(used + other_bytes),
             t_first,
             t_last,
+            wraps: wraps.clone(),
         };
         write_index(dir, &manifest, &index)?;
         self.set_index(index);
@@ -538,12 +642,13 @@ impl PacketFile {
 struct PacketField<'a, V> {
     file: &'a PacketFile,
     offset: usize,
+    bits: Option<Bits>,
     _v: std::marker::PhantomData<V>,
 }
 
 impl<V: Pod> PacketField<'_, V> {
     fn decode(&self, b: &[u8]) -> V {
-        if self.file.big() { V::from_be(b) } else { V::from_le(b) }
+        decode(self.file.big(), self.bits, b)
     }
 }
 
@@ -580,7 +685,7 @@ impl Times for PacketTimes<'_> {
 
     fn at(&self, i: usize) -> Timestamp {
         let (p, at) = self.file.record(i);
-        self.file.times_of(&p[at..at + self.file.stride()])[0]
+        self.file.times_of(&p[at..at + self.file.stride()], i)[0]
     }
 
     fn lower_bound(&self, t: Timestamp) -> usize {
@@ -598,7 +703,7 @@ impl Times for PacketTimes<'_> {
         if k >= self.file.index.len() {
             return self.len();
         }
-        let times = self.file.times_of(&self.file.packet(k));
+        let times = self.file.times_of(&self.file.packet(k), self.file.first[k]);
         self.file.first[k] + times.partition_point(|&x| x < t)
     }
 }
@@ -618,13 +723,15 @@ impl Channels for PacketFile {
             file: &'a PacketFile,
             dtype: DType,
             offset: usize,
+            bits: Option<Bits>,
             held: &'a Held,
         }
         impl<O: ChannelOp> TimesOp for WithTimes<'_, O> {
             type Out = O::Out;
             fn run<T: Times + ?Sized>(self, times: &T) -> O::Out {
                 fn run<V: Pod, O: ChannelOp, T: Times + ?Sized>(w: WithTimes<O>, times: &T) -> O::Out {
-                    let base = PacketField::<V> { file: w.file, offset: w.offset, _v: std::marker::PhantomData };
+                    let base =
+                        PacketField::<V> { file: w.file, offset: w.offset, bits: w.bits, _v: std::marker::PhantomData };
                     w.op.run(times, &Chunked { base: &base, held: w.held })
                 }
                 match self.dtype {
@@ -642,7 +749,7 @@ impl Channels for PacketFile {
             }
         }
         let f = &self.desc.fields[self.channels[channel]];
-        self.dispatch_times(WithTimes { op, file: self, dtype: f.dtype, offset: f.offset as usize, held })
+        self.dispatch_times(WithTimes { op, file: self, dtype: f.dtype, offset: f.offset as usize, bits: f.bits, held })
     }
 
     fn chunked(&self, _channel: usize) -> bool {
@@ -663,7 +770,7 @@ impl Channels for PacketFile {
                     .map(|&c| {
                         let f = &self.desc.fields[self.channels[c]];
                         let mut words = vec![0u64; (len * f.dtype.size() as usize).div_ceil(8)];
-                        gather_tile(f.dtype, &recs, stride, f.offset as usize, big, &mut words, 0);
+                        gather_tile(f.dtype, &recs, stride, f.offset as usize, f.bits, big, &mut words, 0);
                         Chunk::new(words, len)
                     })
                     .collect()
@@ -680,7 +787,7 @@ impl Channels for PacketFile {
 
     fn dispatch_times<O: TimesOp>(&self, op: O) -> O::Out {
         match &self.desc.time {
-            TimeSpec::Field { .. } => {
+            TimeSpec::Field { .. } | TimeSpec::Counter { .. } => {
                 let times = PacketTimes { file: self };
                 match self.time_index.get() {
                     Some(index) => op.run(&Indexed { times: &times, index }),
@@ -692,7 +799,7 @@ impl Channels for PacketFile {
     }
 
     fn set_time_index(&self, index: TimeIndex) {
-        if matches!(self.desc.time, TimeSpec::Field { .. }) && index.0.len() == self.records().div_ceil(CHUNK_SAMPLES) {
+        if self.desc.time.field().is_some() && index.0.len() == self.records().div_ceil(CHUNK_SAMPLES) {
             let _ = self.time_index.set(index);
         }
     }
@@ -717,10 +824,16 @@ impl Channels for PacketFile {
         impl TimesOp for Op<'_> {
             type Out = Vec<Vec<Summary>>;
             fn run<T: Times + ?Sized>(self, times: &T) -> Vec<Vec<Summary>> {
-                fn one<V: Pod, T: Times + ?Sized>(op: &Op, times: &T, offset: usize, dtype: DType) -> Vec<Summary> {
+                fn one<V: Pod, T: Times + ?Sized>(
+                    op: &Op,
+                    times: &T,
+                    offset: usize,
+                    bits: Option<Bits>,
+                    dtype: DType,
+                ) -> Vec<Summary> {
                     let n = op.recs.len() / op.stride;
                     let mut words = vec![0u64; (n * V::SIZE).div_ceil(8)];
-                    gather_tile(dtype, op.recs, op.stride, offset, op.big, &mut words, 0);
+                    gather_tile(dtype, op.recs, op.stride, offset, bits, op.big, &mut words, 0);
                     let data = &bytemuck::cast_slice::<u64, V>(&words)[..n];
                     pyramid::summarize(times, &Shifted { offset: op.start, data }, op.start, op.start + n)
                 }
@@ -731,16 +844,16 @@ impl Channels for PacketFile {
                         let f = &self.me.desc.fields[fi];
                         let o = f.offset as usize;
                         match f.dtype {
-                            DType::I8 => one::<i8, T>(&self, times, o, f.dtype),
-                            DType::I16 => one::<i16, T>(&self, times, o, f.dtype),
-                            DType::I32 => one::<i32, T>(&self, times, o, f.dtype),
-                            DType::I64 => one::<i64, T>(&self, times, o, f.dtype),
-                            DType::U8 => one::<u8, T>(&self, times, o, f.dtype),
-                            DType::U16 => one::<u16, T>(&self, times, o, f.dtype),
-                            DType::U32 => one::<u32, T>(&self, times, o, f.dtype),
-                            DType::U64 => one::<u64, T>(&self, times, o, f.dtype),
-                            DType::F32 => one::<f32, T>(&self, times, o, f.dtype),
-                            DType::F64 => one::<f64, T>(&self, times, o, f.dtype),
+                            DType::I8 => one::<i8, T>(&self, times, o, f.bits, f.dtype),
+                            DType::I16 => one::<i16, T>(&self, times, o, f.bits, f.dtype),
+                            DType::I32 => one::<i32, T>(&self, times, o, f.bits, f.dtype),
+                            DType::I64 => one::<i64, T>(&self, times, o, f.bits, f.dtype),
+                            DType::U8 => one::<u8, T>(&self, times, o, f.bits, f.dtype),
+                            DType::U16 => one::<u16, T>(&self, times, o, f.bits, f.dtype),
+                            DType::U32 => one::<u32, T>(&self, times, o, f.bits, f.dtype),
+                            DType::U64 => one::<u64, T>(&self, times, o, f.bits, f.dtype),
+                            DType::F32 => one::<f32, T>(&self, times, o, f.bits, f.dtype),
+                            DType::F64 => one::<f64, T>(&self, times, o, f.bits, f.dtype),
                         }
                     })
                     .collect()
@@ -748,8 +861,8 @@ impl Channels for PacketFile {
         }
         match &self.desc.time {
             // the block's own times, so the summaries' first and last times need no packet lookups
-            TimeSpec::Field { .. } => {
-                let local = self.times_of(&recs);
+            TimeSpec::Field { .. } | TimeSpec::Counter { .. } => {
+                let local = self.times_of(&recs, start);
                 let times = ShiftedTimes { offset: start, data: &local, len: self.records() };
                 Op { me: self, recs: &recs, start, stride, big }.run(&times)
             }

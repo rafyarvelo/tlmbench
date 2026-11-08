@@ -694,6 +694,7 @@ mod tests_support {
             unit: None,
             scale: 1.0,
             value_offset: 0.0,
+            bits: None,
         };
         Descriptor {
             sequence: Some("seq".into()),

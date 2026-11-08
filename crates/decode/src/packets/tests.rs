@@ -14,6 +14,7 @@ fn desc(compression: Compression, checksum: Checksum) -> Descriptor {
         unit: None,
         scale: 1.0,
         value_offset: 0.0,
+        bits: None,
     };
     let mut w = field("w", DType::I16, 24);
     w.scale = 0.5;
@@ -41,6 +42,11 @@ fn desc(compression: Compression, checksum: Checksum) -> Descriptor {
 
 /// `packets` packets of `per` records each; record i has t = 1000·i µs, v = i / 4, w = i mod 100.
 fn bytes(d: &Descriptor, packets: usize, per: usize) -> Vec<u8> {
+    bytes_with(d, packets, per, |i| i * 1000)
+}
+
+/// [`bytes`] with record i's time field set to `time(i)`.
+fn bytes_with(d: &Descriptor, packets: usize, per: usize, time: impl Fn(u64) -> u64) -> Vec<u8> {
     let p = d.packets.as_ref().unwrap();
     let mut out = Vec::new();
     for k in 0..packets {
@@ -49,7 +55,7 @@ fn bytes(d: &Descriptor, packets: usize, per: usize) -> Vec<u8> {
         let mut payload = Vec::new();
         for j in 0..per {
             let i = (k * per + j) as u64;
-            payload.extend_from_slice(&(i * 1000).to_be_bytes());
+            payload.extend_from_slice(&time(i).to_be_bytes());
             payload.extend_from_slice(&(i as f32 / 4.0).to_be_bytes());
             payload.extend_from_slice(&((i % 100) as i16).to_be_bytes());
         }
@@ -343,5 +349,64 @@ fn packet_types_without_a_length_frame_by_the_types_size() {
         let (pd, part) = d.parts()[k].clone();
         let f = PacketFile::open(&path, pd, part, "flight", &tmp.path().join("cache")).unwrap();
         assert_eq!((f.info().samples, f.bad_packets, f.skipped_bytes), (want, 0, 0), "type {k}");
+    }
+}
+
+#[test]
+fn a_counter_time_base_is_unwrapped_across_and_inside_packets() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut d = desc(Compression::Zstd, Checksum::Crc16Ccitt);
+    // a counter of 100 000 ticks of 1 MHz: one wrap every 100 records, 1 ms a record
+    d.time = TimeSpec::Counter { field: "t".into(), clock_hz: 1e6, wraps_at: Some(100_000), t0_ns: 7 };
+    let data = bytes_with(&d, 300, 250, |i| i * 1000 % 100_000);
+    let f = open(tmp.path(), "counter.bin", &d, &data);
+    let n = 300 * 250;
+    assert_eq!(f.info().samples, n);
+    assert_eq!(f.info().time, TimeSource::Column { name: "t".into() });
+    assert_eq!((f.info().t_first, f.info().t_last), (Some(7), Some(7 + (n as i64 - 1) * 1_000_000)));
+    // a window over a wrap inside a packet (record 100) and one at a packet boundary (record 5000 = 20 × 250)
+    for at in [100i64, 5_000] {
+        let tr = f.trace(
+            0,
+            Viewport { t0: (at - 3) * 1_000_000 + 7, t1: (at + 3) * 1_000_000 + 7, width_px: 100, raw_max: 0 },
+        );
+        let want: Vec<i64> = (at - 4..=at + 3).map(|i| i * 1_000_000 + 7).collect(); // and the sample before
+        assert_eq!(&tr.t[..8], &want[..], "window at {at}");
+    }
+    // reopened from the index: the wraps come from the manifest
+    let again =
+        PacketFile::open(&tmp.path().join("counter.bin"), d.clone(), None, "bench", &tmp.path().join("cache")).unwrap();
+    assert_eq!(again.info().t_last, f.info().t_last);
+    // a counter that goes back by less than half its range is time going backwards
+    let bad = bytes_with(&d, 2, 3, |i| [10u64, 20, 5, 6, 7, 8][i as usize] * 1000);
+    let path = tmp.path().join("bad.bin");
+    fs::write(&path, &bad).unwrap();
+    let err = PacketFile::open(&path, d, None, "bench", &tmp.path().join("cache")).unwrap_err().to_string();
+    assert!(err.contains("counter goes backwards"), "{err}");
+}
+
+#[test]
+fn a_bitfield_in_a_packet_header_is_read_in_place() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut d = desc(Compression::None, Checksum::None);
+    // the packet counter (u32 at 4): its low 4 bits as a channel, and bits 4 to 9 signed
+    let mut low = d.fields[0].clone();
+    low.name = "low".into();
+    low.bits = Some(crate::descriptor::Bits { shift: 0, width: 4 });
+    let mut signed = d.fields[0].clone();
+    signed.name = "mid".into();
+    signed.dtype = DType::I32;
+    signed.bits = Some(crate::descriptor::Bits { shift: 4, width: 6 });
+    d.fields.extend([low, signed]);
+    let f = open(tmp.path(), "bits.bin", &d, &bytes(&d, 40, 10));
+    let h = Held::default();
+    let names: Vec<_> = f.info().channels.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["count", "v", "w", "low", "mid"]);
+    for k in [0usize, 7, 15, 16, 33, 39] {
+        let i = k * 10 + 3; // a record of packet k
+        let k = k as i64;
+        assert_eq!(f.value_at(3, i, &h), (k & 15) as f64, "low of packet {k}");
+        let mid = (k >> 4) & 63;
+        assert_eq!(f.value_at(4, i, &h), if mid >= 32 { mid - 64 } else { mid } as f64, "mid of packet {k}");
     }
 }

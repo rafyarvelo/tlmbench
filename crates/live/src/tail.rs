@@ -342,6 +342,7 @@ impl CsvParser {
                     unit: None,
                     scale: 1.0,
                     value_offset: 0.0,
+                    bits: None,
                 });
                 TimeSpec::Field { field: name, unit: TimeUnit::Ns, t0_ns: 0 }
             }
@@ -356,6 +357,7 @@ impl CsvParser {
                 unit: c.unit.clone(),
                 scale: 1.0,
                 value_offset: 0.0,
+                bits: None,
             });
         }
         Descriptor {

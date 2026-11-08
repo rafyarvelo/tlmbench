@@ -56,6 +56,7 @@ fn reference_file_text_output() {
             unit: Some("V".into()),
             scale: 1.0,
             value_offset: 0.0,
+            bits: None,
         }],
     };
     let mut data = Vec::new();

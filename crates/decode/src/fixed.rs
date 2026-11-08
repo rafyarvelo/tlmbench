@@ -14,10 +14,10 @@ use tlmbench_core::{
 };
 
 use crate::bytes::{self, Bytes, read_exact_at};
-use crate::descriptor::{DType, Descriptor, Endian, Field, TimeSpec};
+use crate::descriptor::{Bits, DType, Descriptor, Endian, Field, TimeSpec, counter_range};
 use crate::error::{Result, format_err};
 use crate::reference;
-use crate::strided::{FieldTimes, Pod, Strided};
+use crate::strided::{CounterTimes, FieldTimes, Pod, Strided, decode, wrap_positions};
 
 #[derive(Debug)]
 pub struct FixedWidth {
@@ -36,6 +36,8 @@ pub struct FixedWidth {
     spare_columns: Mutex<Vec<Vec<u64>>>,
     /// The chunk index of a time field, once the store has it.
     time_index: OnceLock<TimeIndex>,
+    /// The records where a counter time base wrapped, found once when the file opens.
+    counter_wraps: Vec<usize>,
 }
 
 /// Records `start..` read on another thread.
@@ -93,6 +95,7 @@ impl FixedWidth {
             spare_reads: Mutex::default(),
             spare_columns: Mutex::default(),
             time_index: OnceLock::new(),
+            counter_wraps: Vec::new(),
             info: RecordingInfo {
                 path: path.to_owned(),
                 format: format.to_owned(),
@@ -116,9 +119,18 @@ impl FixedWidth {
             .collect();
         me.info.time = match &me.desc.time {
             TimeSpec::Rate { rate_hz, .. } => TimeSource::Rate { hz: *rate_hz },
-            TimeSpec::Field { field, .. } => TimeSource::Column { name: field.clone() },
+            TimeSpec::Field { field, .. } | TimeSpec::Counter { field, .. } => {
+                TimeSource::Column { name: field.clone() }
+            }
             TimeSpec::Index => TimeSource::Index,
         };
+        if let TimeSpec::Counter { field, wraps_at, .. } = &me.desc.time {
+            let tf = me.desc.fields.iter().find(|x| &x.name == field).expect("validated");
+            let range = counter_range(tf, *wraps_at).expect("validated");
+            let raw = me.field_times(tf, 1, 0);
+            me.counter_wraps = wrap_positions(Times::len(&raw), range, |i| raw.raw(i))
+                .map_err(|i| format_err(path, format!("the time counter goes backwards at record {i}")))?;
+        }
         // fixed-rate and index times can't go backwards; a time field is checked record by record
         let check = matches!(me.desc.time, TimeSpec::Field { .. });
         let (first, last) = me
@@ -142,6 +154,7 @@ impl FixedWidth {
     fn contiguous(&self, field: &Field) -> bool {
         let size = field.dtype.size() as usize;
         self.desc.record_size as usize == size
+            && field.bits.is_none()
             && field.offset == 0
             && (self.desc.endian == Endian::Little) == cfg!(target_endian = "little")
             && (self.records_bytes().as_ptr() as usize).is_multiple_of(size)
@@ -163,6 +176,25 @@ impl FixedWidth {
         buf
     }
 
+    fn field_times(&self, tf: &Field, scale_ns: i64, t0_ns: i64) -> FieldTimes<'_> {
+        FieldTimes {
+            records: self.records_bytes(),
+            offset: tf.offset as usize,
+            stride: self.desc.record_size as usize,
+            big_endian: self.desc.endian == Endian::Big,
+            dtype: tf.dtype,
+            bits: tf.bits,
+            scale_ns,
+            t0_ns,
+        }
+    }
+
+    fn counter_times<'a>(&'a self, field: &str, clock_hz: f64, wraps_at: Option<u64>, t0_ns: i64) -> CounterTimes<'a> {
+        let tf = self.desc.fields.iter().find(|x| x.name == field).expect("validated");
+        let range = counter_range(tf, wraps_at).expect("validated");
+        CounterTimes { raw: self.field_times(tf, 1, 0), wraps: &self.counter_wraps, range, clock_hz, t0_ns }
+    }
+
     /// Calls `f` with this file's sample times, whichever kind they are.
     fn with_times<R>(&self, f: impl FnOnce(&dyn TimesRef) -> R) -> R {
         match &self.desc.time {
@@ -170,15 +202,10 @@ impl FixedWidth {
             TimeSpec::Index => f(&RateTimes::from_rate(0, 1.0, self.records)),
             TimeSpec::Field { field, unit, t0_ns } => {
                 let tf = self.desc.fields.iter().find(|x| &x.name == field).expect("validated");
-                f(&FieldTimes {
-                    records: self.records_bytes(),
-                    offset: tf.offset as usize,
-                    stride: self.desc.record_size as usize,
-                    big_endian: self.desc.endian == Endian::Big,
-                    dtype: tf.dtype,
-                    scale_ns: unit.ns(),
-                    t0_ns: *t0_ns,
-                })
+                f(&self.field_times(tf, unit.ns(), *t0_ns))
+            }
+            TimeSpec::Counter { field, clock_hz, wraps_at, t0_ns } => {
+                f(&self.counter_times(field, *clock_hz, *wraps_at, *t0_ns))
             }
         }
     }
@@ -221,6 +248,7 @@ impl Channels for FixedWidth {
             offset: usize,
             stride: usize,
             big: bool,
+            bits: Option<Bits>,
             contiguous: bool,
             held: &'a Held,
         }
@@ -233,7 +261,7 @@ impl Channels for FixedWidth {
                         return w.op.run(times, bytemuck::cast_slice::<u8, V>(w.records));
                     }
                     let (records, offset, stride, big_endian) = (w.records, w.offset, w.stride, w.big);
-                    let base = Strided::<V> { records, offset, stride, big_endian, _v: PhantomData };
+                    let base = Strided::<V> { records, offset, stride, big_endian, bits: w.bits, _v: PhantomData };
                     if w.held.is_empty() {
                         return w.op.run(times, &base);
                     }
@@ -253,7 +281,17 @@ impl Channels for FixedWidth {
                 }
             }
         }
-        self.dispatch_times(WithTimes { op, dtype: field.dtype, records, offset, stride, big, contiguous, held })
+        self.dispatch_times(WithTimes {
+            op,
+            dtype: field.dtype,
+            records,
+            offset,
+            stride,
+            big,
+            bits: field.bits,
+            contiguous,
+            held,
+        })
     }
 
     fn chunked(&self, channel: usize) -> bool {
@@ -292,7 +330,7 @@ impl Channels for FixedWidth {
                         let tile = &records[t * stride..((t + GATHER_TILE).min(b - a)) * stride];
                         for (&c, words) in channels.iter().zip(&mut cols) {
                             let field = &self.desc.fields[self.channels[c]];
-                            gather_tile(field.dtype, tile, stride, field.offset as usize, big, words, t);
+                            gather_tile(field.dtype, tile, stride, field.offset as usize, field.bits, big, words, t);
                         }
                     }
                     cols.into_iter().map(|w| Chunk::new(w, b - a)).collect()
@@ -314,15 +352,14 @@ impl Channels for FixedWidth {
             TimeSpec::Index => op.run(&RateTimes::from_rate(0, 1.0, self.records)),
             TimeSpec::Field { field, unit, t0_ns } => {
                 let tf = self.desc.fields.iter().find(|x| &x.name == field).expect("validated");
-                let times = FieldTimes {
-                    records: self.records_bytes(),
-                    offset: tf.offset as usize,
-                    stride: self.desc.record_size as usize,
-                    big_endian: self.desc.endian == Endian::Big,
-                    dtype: tf.dtype,
-                    scale_ns: unit.ns(),
-                    t0_ns: *t0_ns,
-                };
+                let times = self.field_times(tf, unit.ns(), *t0_ns);
+                match self.time_index.get() {
+                    Some(index) => op.run(&Indexed { times: &times, index }),
+                    None => op.run(&times),
+                }
+            }
+            TimeSpec::Counter { field, clock_hz, wraps_at, t0_ns } => {
+                let times = self.counter_times(field, *clock_hz, *wraps_at, *t0_ns);
                 match self.time_index.get() {
                     Some(index) => op.run(&Indexed { times: &times, index }),
                     None => op.run(&times),
@@ -332,7 +369,7 @@ impl Channels for FixedWidth {
     }
 
     fn set_time_index(&self, index: TimeIndex) {
-        if matches!(self.desc.time, TimeSpec::Field { .. }) && index.0.len() == self.records.div_ceil(CHUNK_SAMPLES) {
+        if self.desc.time.field().is_some() && index.0.len() == self.records.div_ceil(CHUNK_SAMPLES) {
             let _ = self.time_index.set(index);
         }
     }
@@ -379,7 +416,7 @@ impl Channels for FixedWidth {
                 fn one<V: Pod, T: Times + ?Sized>(op: &Op, times: &T, field: &Field) -> Vec<Summary> {
                     let (stride, big) = (op.me.desc.record_size as usize, op.me.desc.endian == Endian::Big);
                     let mut words = op.me.spare_columns.lock().unwrap().pop().unwrap_or_default();
-                    let n = gather::<V>(op.buf, stride, field.offset as usize, big, &mut words);
+                    let n = gather::<V>(op.buf, stride, field.offset as usize, field.bits, big, &mut words);
                     let data = &bytemuck::cast_slice::<u64, V>(&words)[..n];
                     let out = pyramid::summarize(times, &Shifted { offset: op.start, data }, op.start, op.start + n);
                     op.me.spare_columns.lock().unwrap().push(words);
@@ -441,10 +478,17 @@ impl Channels for FixedWidth {
 
 /// The field at `offset` of each `stride`-byte record in `records`, decoded into `words` as native `V`s; returns
 /// how many.
-fn gather<V: Pod>(records: &[u8], stride: usize, offset: usize, big: bool, words: &mut Vec<u64>) -> usize {
+fn gather<V: Pod>(
+    records: &[u8],
+    stride: usize,
+    offset: usize,
+    bits: Option<Bits>,
+    big: bool,
+    words: &mut Vec<u64>,
+) -> usize {
     let n = records.len() / stride;
     words.resize((n * V::SIZE).div_ceil(8), 0);
-    gather_into::<V>(records, stride, offset, big, words, 0);
+    gather_into::<V>(records, stride, offset, bits, big, words, 0);
     n
 }
 
@@ -464,35 +508,44 @@ impl Drop for Spare<'_> {
 const GATHER_TILE: usize = 1024;
 
 /// The field at `offset` of each record in `records`, decoded into `words` (as `V`s) from value `at` on.
-fn gather_into<V: Pod>(records: &[u8], stride: usize, offset: usize, big: bool, words: &mut [u64], at: usize) {
+fn gather_into<V: Pod>(
+    records: &[u8],
+    stride: usize,
+    offset: usize,
+    bits: Option<Bits>,
+    big: bool,
+    words: &mut [u64],
+    at: usize,
+) {
     let out = &mut bytemuck::cast_slice_mut::<u64, V>(words)[at..at + records.len() / stride];
     for (d, r) in out.iter_mut().zip(records.chunks_exact(stride)) {
-        let b = &r[offset..offset + V::SIZE];
-        *d = if big { V::from_be(b) } else { V::from_le(b) };
+        *d = decode(big, bits, &r[offset..offset + V::SIZE]);
     }
 }
 
 /// [`gather_into`] for a field of type `dtype`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn gather_tile(
     dtype: DType,
     records: &[u8],
     stride: usize,
     offset: usize,
+    bits: Option<Bits>,
     big: bool,
     words: &mut [u64],
     at: usize,
 ) {
     match dtype {
-        DType::I8 => gather_into::<i8>(records, stride, offset, big, words, at),
-        DType::I16 => gather_into::<i16>(records, stride, offset, big, words, at),
-        DType::I32 => gather_into::<i32>(records, stride, offset, big, words, at),
-        DType::I64 => gather_into::<i64>(records, stride, offset, big, words, at),
-        DType::U8 => gather_into::<u8>(records, stride, offset, big, words, at),
-        DType::U16 => gather_into::<u16>(records, stride, offset, big, words, at),
-        DType::U32 => gather_into::<u32>(records, stride, offset, big, words, at),
-        DType::U64 => gather_into::<u64>(records, stride, offset, big, words, at),
-        DType::F32 => gather_into::<f32>(records, stride, offset, big, words, at),
-        DType::F64 => gather_into::<f64>(records, stride, offset, big, words, at),
+        DType::I8 => gather_into::<i8>(records, stride, offset, bits, big, words, at),
+        DType::I16 => gather_into::<i16>(records, stride, offset, bits, big, words, at),
+        DType::I32 => gather_into::<i32>(records, stride, offset, bits, big, words, at),
+        DType::I64 => gather_into::<i64>(records, stride, offset, bits, big, words, at),
+        DType::U8 => gather_into::<u8>(records, stride, offset, bits, big, words, at),
+        DType::U16 => gather_into::<u16>(records, stride, offset, bits, big, words, at),
+        DType::U32 => gather_into::<u32>(records, stride, offset, bits, big, words, at),
+        DType::U64 => gather_into::<u64>(records, stride, offset, bits, big, words, at),
+        DType::F32 => gather_into::<f32>(records, stride, offset, bits, big, words, at),
+        DType::F64 => gather_into::<f64>(records, stride, offset, bits, big, words, at),
     }
 }
 
@@ -503,7 +556,7 @@ mod tests {
     use tlmbench_core::{Recording, TraceKind, Viewport};
 
     fn field(name: &str, dtype: DType, offset: u64) -> Field {
-        Field { name: name.into(), dtype, offset, unit: None, scale: 1.0, value_offset: 0.0 }
+        Field { name: name.into(), dtype, offset, unit: None, scale: 1.0, value_offset: 0.0, bits: None }
     }
 
     fn file(desc: &Descriptor, records: impl IntoIterator<Item = Vec<u8>>) -> FixedWidth {
@@ -765,5 +818,97 @@ mod tests {
         reference::write_header(&mut data, &desc).unwrap();
         data.truncate(40);
         assert!(FixedWidth::from_reference_bytes(data).is_err());
+    }
+
+    fn desc_of(record_size: u64, time: TimeSpec, fields: Vec<Field>) -> Descriptor {
+        Descriptor {
+            sequence: None,
+            files: Vec::new(),
+            packet_types: Vec::new(),
+            packets: None,
+            schema: 1,
+            name: None,
+            endian: Endian::Little,
+            header_size: 0,
+            record_size,
+            time,
+            fields,
+        }
+    }
+
+    #[test]
+    fn bitfields_are_read_in_place() {
+        use crate::descriptor::Bits;
+        // one u16 per record: three fields in it, so it isn't read as a slice even though it fills the record
+        let bits = |name: &str, dtype, shift, width| {
+            let mut f = field(name, dtype, 0);
+            f.bits = Some(Bits { shift, width });
+            f
+        };
+        let desc = desc_of(
+            2,
+            TimeSpec::Rate { rate_hz: 100.0, t0_ns: 0 },
+            vec![
+                bits("lo", DType::U16, 0, 4),
+                bits("mid", DType::U16, 4, 3),
+                bits("sx", DType::I16, 7, 5),
+                bits("top", DType::U16, 12, 4),
+            ],
+        );
+        let raw = |i: usize| ((i as u32).wrapping_mul(2654435761) >> 7) as u16;
+        let f = file(&desc, (0..5000usize).map(|i| raw(i).to_le_bytes().to_vec()));
+        let h = Held::default();
+        for i in [0usize, 1, 17, 999, 4999] {
+            let r = raw(i);
+            let sx = i64::from((r >> 7) & 31);
+            assert_eq!(f.value_at(0, i, &h), f64::from(r & 15));
+            assert_eq!(f.value_at(1, i, &h), f64::from((r >> 4) & 7));
+            assert_eq!(f.value_at(2, i, &h), (if sx >= 16 { sx - 32 } else { sx }) as f64);
+            assert_eq!(f.value_at(3, i, &h), f64::from(r >> 12));
+        }
+        // summaries (the pyramid's input) agree with values read one by one
+        let all = Channels::summarize_all(&f, 0, 5000);
+        let top_max = (0..5000).map(|i| f64::from(raw(i) >> 12)).fold(0.0, f64::max);
+        assert_eq!(all[3].iter().map(|s| s.max).fold(0.0, f64::max), top_max);
+        // a bitfield on a float, or past the type, is rejected
+        let mut d = desc.clone();
+        (d.fields[0].dtype, d.record_size) = (DType::F32, 4);
+        assert!(d.validate().unwrap_err().to_string().contains("bits need an integer"));
+        let mut d = desc.clone();
+        d.fields[3].bits = Some(Bits { shift: 13, width: 4 });
+        assert!(d.validate().unwrap_err().to_string().contains("don't fit in 16 bits"));
+    }
+
+    #[test]
+    fn a_wrapping_counter_is_unwrapped_into_times() {
+        // a u16 counter at 1 kHz, 3 ticks a record: it wraps every 21845 records, 3 ms a record
+        let time = TimeSpec::Counter { field: "c".into(), clock_hz: 1000.0, wraps_at: None, t0_ns: 11 };
+        let desc = desc_of(6, time, vec![field("c", DType::U16, 0), field("v", DType::F32, 2)]);
+        let n = 100_000usize;
+        let rec = |i: usize| [((i * 3) as u16).to_le_bytes().to_vec(), (i as f32).to_le_bytes().to_vec()].concat();
+        let f = file(&desc, (0..n).map(rec));
+        let at = |i: usize| 11 + i as i64 * 3_000_000;
+        assert_eq!((f.info().t_first, f.info().t_last), (Some(11), Some(at(n - 1))));
+        for centre in [21_845usize, 43_691, 99_990] {
+            let (a, b) = (centre - 2, (centre + 2).min(n - 1));
+            let tr = f.trace(0, Viewport { t0: at(a), t1: at(b), width_px: 100, raw_max: 0 });
+            let want: Vec<i64> = (a - 1..=b).map(at).collect(); // and the sample before the window
+            assert_eq!(&tr.t[..want.len()], &want[..], "around record {centre}");
+        }
+        // an explicit range counts in its own ticks, and a counter that steps back a little is an error
+        let mut d = desc.clone();
+        d.time = TimeSpec::Counter { field: "c".into(), clock_hz: 1000.0, wraps_at: Some(300), t0_ns: 0 };
+        let g = file(&d, (0..1000usize).map(|i| [((i * 3 % 300) as u16).to_le_bytes().to_vec(), vec![0; 4]].concat()));
+        assert_eq!(g.info().t_last, Some(999 * 3_000_000));
+        let bad = [[1u8, 0, 0, 0, 0, 0], [9, 0, 0, 0, 0, 0], [5, 0, 0, 0, 0, 0]];
+        let mut data = Vec::new();
+        reference::write_header(&mut data, &desc).unwrap();
+        data.extend(bad.concat());
+        let err = FixedWidth::from_reference_bytes(data).unwrap_err().to_string();
+        assert!(err.contains("counter goes backwards at record 2"), "{err}");
+        // a 64-bit counter needs its range
+        let mut d = desc.clone();
+        (d.fields[0].dtype, d.record_size) = (DType::U64, 12);
+        assert!(d.validate().unwrap_err().to_string().contains("wraps_at"));
     }
 }

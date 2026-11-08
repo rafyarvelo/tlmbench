@@ -31,6 +31,7 @@ fn recording(dir: &Path) -> PathBuf {
         unit: None,
         scale: 1.0,
         value_offset: 0.0,
+        bits: None,
     };
     let desc = Descriptor {
         sequence: None,
@@ -275,6 +276,7 @@ fn gap_factors_apply_per_channel() {
         unit: None,
         scale: 1.0,
         value_offset: 0.0,
+        bits: None,
     };
     let desc = Descriptor {
         sequence: None,

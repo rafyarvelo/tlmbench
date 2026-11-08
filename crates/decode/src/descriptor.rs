@@ -3,8 +3,8 @@
 //!
 //! Fixed-width records: byte order, header size, record size, the time source, and per field a name, type, byte
 //! offset, unit, scale and value offset. An optional `[packets]` table frames records in packets instead: a sync word,
-//! a length field, a checksum and a compressed payload holding whole records (see [`Packets`]). Bitfields and plugin
-//! fields come later, as new keys.
+//! a length field, a checksum and a compressed payload holding whole records (see [`Packets`]). A field can take a run of bits (`bits = { shift = 4, width = 3 }`), and the time can come from a
+//! wrapping tick counter (`source = "counter"`). Plugin fields come later, as new keys.
 //!
 //! ```toml
 //! schema = 1
@@ -16,10 +16,11 @@
 //! sequence = "seq"      # optional: an integer field counting frames, so a live source can count lost ones
 //!
 //! [time]
-//! source = "field"       # rate | field | index
+//! source = "field"       # rate | field | counter | index
 //! field = "t"            # an integer field, not a channel
 //! unit = "us"            # ns | us | ms | s
 //! # source = "rate": rate_hz = 1000.0, t0_ns = 1793491200000000000
+//! # source = "counter": field = "ticks", clock_hz = 1000000.0, wraps_at = 65536 (default: 2^bits of the field)
 //!
 //! [[fields]]
 //! name = "t"
@@ -258,11 +259,30 @@ pub enum TimeSpec {
         #[serde(default)]
         t0_ns: i64,
     },
+    /// A tick counter that wraps: `raw + wraps_at × (times it has wrapped)` ticks of `clock_hz`. A drop of more than
+    /// half the range is a wrap; a smaller one is time going backwards.
+    Counter {
+        field: String,
+        clock_hz: f64,
+        /// The counter's range; left out it is 2 to the power of the field's bits.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wraps_at: Option<u64>,
+        #[serde(default)]
+        t0_ns: i64,
+    },
     #[default]
     Index,
 }
 
 impl TimeSpec {
+    /// The field the time is read from, when it is one.
+    pub fn field(&self) -> Option<&str> {
+        match self {
+            TimeSpec::Field { field, .. } | TimeSpec::Counter { field, .. } => Some(field),
+            _ => None,
+        }
+    }
+
     fn is_index(&self) -> bool {
         *self == TimeSpec::Index
     }
@@ -302,6 +322,19 @@ pub struct Field {
     pub scale: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub value_offset: f64,
+    /// Only some bits of the stored integer: `bits = { shift = 4, width = 3 }` reads bits 4 to 6 (counting from the
+    /// least significant), as an unsigned number, or sign-extended from `width` bits when the type is signed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bits: Option<Bits>,
+}
+
+/// A run of bits inside an integer field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bits {
+    /// How many bits up from the least significant one the run starts.
+    pub shift: u32,
+    pub width: u32,
 }
 
 fn one() -> f64 {
@@ -332,6 +365,10 @@ pub enum DType {
 }
 
 impl DType {
+    pub fn bits(self) -> u32 {
+        self.size() as u32 * 8
+    }
+
     pub fn size(self) -> u64 {
         match self {
             DType::I8 | DType::U8 => 1,
@@ -479,10 +516,7 @@ impl Descriptor {
 
     /// The fields that are channels (all but the time field).
     pub fn channels(&self) -> impl Iterator<Item = (usize, &Field)> {
-        let time = match &self.time {
-            TimeSpec::Field { field, .. } => Some(field.as_str()),
-            _ => None,
-        };
+        let time = self.time.field();
         self.fields.iter().enumerate().filter(move |(_, f)| Some(f.name.as_str()) != time)
     }
 }
@@ -525,6 +559,23 @@ fn validate_layout(
         if !f.scale.is_finite() || f.scale == 0.0 || !f.value_offset.is_finite() {
             return bad(format!("field {:?}: scale must be finite and non-zero, value_offset finite", f.name));
         }
+        if let Some(b) = f.bits {
+            if f.dtype.is_float() {
+                return bad(format!("field {:?}: bits need an integer type", f.name));
+            }
+            if b.width == 0 || b.shift.checked_add(b.width).is_none_or(|end| end > f.dtype.bits()) {
+                return bad(format!(
+                    "field {:?}: bits shift {} and width {} don't fit in {} bits",
+                    f.name,
+                    b.shift,
+                    b.width,
+                    f.dtype.bits()
+                ));
+            }
+            if sequence == Some(f.name.as_str()) {
+                return bad(format!("sequence {:?} can't be a bitfield", f.name));
+            }
+        }
     }
     if let Some(seq) = sequence {
         match fields.iter().find(|f| f.name == seq) {
@@ -537,14 +588,42 @@ fn validate_layout(
         TimeSpec::Rate { rate_hz, .. } if !(rate_hz.is_finite() && *rate_hz > 0.0) => {
             bad(format!("time.rate_hz {rate_hz} must be a positive number"))
         }
-        TimeSpec::Field { field, .. } => match fields.iter().find(|f| &f.name == field) {
-            None => bad(format!("time.field {field:?} is not one of the fields")),
-            Some(f) if f.dtype.is_float() => bad(format!("time.field {field:?} must be an integer type")),
-            Some(_) if fields.len() == 1 => bad("the only field is the time field: no channels".into()),
-            Some(_) => Ok(()),
-        },
+        TimeSpec::Field { field, .. } | TimeSpec::Counter { field, .. } => {
+            match fields.iter().find(|f| &f.name == field) {
+                None => bad(format!("time.field {field:?} is not one of the fields")),
+                Some(f) if f.dtype.is_float() => bad(format!("time.field {field:?} must be an integer type")),
+                Some(_) if fields.len() == 1 => bad("the only field is the time field: no channels".into()),
+                Some(f) => match time {
+                    TimeSpec::Counter { clock_hz, .. } if !(clock_hz.is_finite() && *clock_hz > 0.0) => {
+                        bad(format!("time.clock_hz {clock_hz} must be a positive number"))
+                    }
+                    TimeSpec::Counter { wraps_at, .. } => match counter_range(f, *wraps_at) {
+                        Some(_) => Ok(()),
+                        None => bad(format!(
+                            "time.wraps_at for {field:?} must be between 2 and 2^63 (a 64-bit counter needs it)"
+                        )),
+                    },
+                    _ => Ok(()),
+                },
+            }
+        }
         _ => Ok(()),
     }
+}
+
+/// A counter field's range: `wraps_at`, else 2 to the power of its bits; `None` when that is under 2 or over 2^63.
+pub fn counter_range(f: &Field, wraps_at: Option<u64>) -> Option<i64> {
+    let range = match wraps_at {
+        Some(r) => r,
+        None => {
+            let bits = f.bits.map_or(f.dtype.bits(), |b| b.width);
+            if bits >= 63 {
+                return None;
+            }
+            1u64 << bits
+        }
+    };
+    (2..=1u64 << 63).contains(&range).then(|| i64::try_from(range).unwrap_or(i64::MAX))
 }
 
 /// A sync word that repeats at a fixed distance: what "Find frames" in the descriptor form proposes.
