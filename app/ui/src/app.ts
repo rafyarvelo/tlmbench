@@ -18,7 +18,7 @@ import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
-import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
+import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import {
@@ -414,6 +414,7 @@ function locked(): boolean {
 function setView(t0: bigint, t1: bigint, remember = false): void {
   const f = state.file;
   if (!f) return;
+  scheduleSessionSave();
   if (remember) {
     state.history.push([state.t0, state.t1]);
     state.future = [];
@@ -1183,6 +1184,7 @@ function scheduleMeasure(): void {
 async function refreshMeasure(): Promise<void> {
   const f = state.file;
   const seq = ++measureSeq;
+  scheduleSessionSave();
   ui.anyCursor = state.A != null || state.B != null;
   ui.cursors = state.A != null && state.B != null;
   play.canLoop = ui.cursors;
@@ -1568,17 +1570,88 @@ async function closeTab(key: number): Promise<void> {
   saveSession();
 }
 
-/** The open tabs, to reopen after a restart. */
+/** While a session is being put away or restored, tabs come and go without saving it. */
+let sessionBusy = false;
+let sessionTimer = 0;
+/** The view and cursors move often: save the session a moment after they stop. */
+function scheduleSessionSave(): void {
+  clearTimeout(sessionTimer);
+  sessionTimer = window.setTimeout(saveSession, 400);
+}
+
+/** The folder's session (its tabs, open files, each file's view and cursors), to reopen with the folder. */
 function saveSession(): void {
+  if (sessionBusy) return;
+  clearTimeout(sessionTimer);
   const front = frontTab();
   const active = front?.path ?? null;
   const files = [...new Set(tabs.list.filter((t) => !t.live).map((t) => t.path))];
-  const session: Settings['session'] = { files, active: active && files.includes(active) ? active : null };
+  const session: Session = { files, active: active && files.includes(active) ? active : null };
   const kept = tabs.list.filter((t) => !t.live);
   const ws = kept.flatMap((t, at) => (t.ws ? [{ path: t.path, name: t.ws, at, ...(t.shared ? { shared: t.shared } : {}) }] : []));
   if (ws.length) session.ws = ws;
   if (front?.ws) session.activeWs = front.ws;
-  setSetting('session', session);
+  // each file tab's time range and cursors
+  const views: NonNullable<Session['views']> = {};
+  for (const t of kept) {
+    if (t.ws) continue;
+    const d = t.key === tabs.active ? state : tabData.get(t.key);
+    if (!d || !d.t1) continue;
+    views[t.path] = { t0: String(d.t0), t1: String(d.t1), ...(d.A != null ? { A: String(d.A) } : {}), ...(d.B != null ? { B: String(d.B) } : {}) };
+  }
+  if (Object.keys(views).length) session.views = views;
+  session.at = Date.now();
+  setSetting('sessions', { ...settings.sessions, [settings.folder]: session });
+}
+
+/** Opens a session's tabs (and `front`, a file asked for, in front), each file at its view with its cursors. */
+async function restoreSession(s: Session | undefined, front: string | null = null): Promise<void> {
+  sessionBusy = true;
+  try {
+    const { files = [], active = null, ws, activeWs, views } = s ?? {};
+    const at = (path: string) => {
+      const v = views?.[path];
+      if (!v || state.file?.info.path !== path) return;
+      setView(BigInt(v.t0), BigInt(v.t1));
+      state.A = v.A != null ? BigInt(v.A) : null;
+      state.B = v.B != null ? BigInt(v.B) : null;
+      scheduleDraw();
+      void refreshMeasure();
+    };
+    for (const f of files) {
+      await openPath(f);
+      at(f);
+    }
+    if (ws?.some((w) => w.shared)) await loadShared().catch(() => {});
+    for (const w of ws ?? []) {
+      await openPath(w.path);
+      if (w.shared) await openShared(w.shared);
+      else await openWs(w.name);
+      // back where it was among the tabs
+      const k = tabs.list.findIndex((t) => t.ws === w.name && t.shared === w.shared);
+      if (k >= 0 && k !== w.at) tabs.list.splice(w.at, 0, ...tabs.list.splice(k, 1));
+    }
+    const wsFront = !front && activeWs ? tabs.list.find((t) => t.ws === activeWs) : null;
+    if (wsFront) await showTab(wsFront.key);
+    else if (front ?? active) await openPath((front ?? active)!);
+  } finally {
+    sessionBusy = false;
+  }
+  saveSession();
+}
+
+/** Puts the folder's session away (its tabs close quietly; live sources keep going), then opens folder `path`'s. */
+async function switchSession(path: string, list: () => Promise<void>): Promise<void> {
+  saveSession();
+  sessionBusy = true;
+  try {
+    for (const t of tabs.list.filter((t) => !t.live)) await closeTab(t.key);
+    await list();
+  } finally {
+    sessionBusy = false;
+  }
+  await restoreSession(settings.sessions[path]);
+  ui.note = '';
 }
 
 // ---------- Workspaces: saved layouts, each shown in a tab of its own on the file in front ----------
@@ -1839,7 +1912,13 @@ async function chooseFolder(): Promise<void> {
   if (typeof path === 'string') await showFolder(path);
 }
 
+/** Lists folder `path` in Explorer; a different folder brings its own session (the current one is kept for later). */
 async function showFolder(path: string): Promise<void> {
+  if (settings.folder !== path && !sessionBusy) return switchSession(path, () => listFolder(path));
+  await listFolder(path);
+}
+
+async function listFolder(path: string): Promise<void> {
   try {
     ui.folder = await invoke<FolderEntry>('list_folder', { path });
     if (settings.folder !== path) {
@@ -2431,6 +2510,15 @@ Object.assign(actions, {
     void (async () => {
       for (const t of tabs.list.filter((t) => t.path === path)) await closeTab(t.key);
     })(),
+  openSession: (folder: string) => {
+    if (folder === settings.folder) return;
+    if (folder) void showFolder(folder);
+    else
+      void switchSession('', async () => {
+        setSetting('folder', '');
+        ui.folder = null;
+      });
+  },
   openPaths: (paths: string[]) =>
     void (async () => {
       for (const p of paths) await openPath(p);
@@ -2610,22 +2698,8 @@ else if (launch.gate === '1' && launch.file) {
   await openPath(launch.file);
   await runGate(gateApi);
 } else {
-  // the tabs open when the app last closed, then a file it was asked to open (in front)
-  const { files, active, ws, activeWs } = settings.session;
-  for (const f of files) await openPath(f);
-  if (ws?.some((w) => w.shared)) await loadShared().catch(() => {});
-  for (const w of ws ?? []) {
-    await openPath(w.path);
-    if (w.shared) await openShared(w.shared);
-    else await openWs(w.name);
-    // back where it was among the tabs
-    const k = tabs.list.findIndex((t) => t.ws === w.name && t.shared === w.shared);
-    if (k >= 0 && k !== w.at) tabs.list.splice(w.at, 0, ...tabs.list.splice(k, 1));
-  }
-  const front = launch.file ?? active;
-  const wsFront = !launch.file && activeWs ? tabs.list.find((t) => t.ws === activeWs) : null;
-  if (wsFront) await showTab(wsFront.key);
-  else if (front) await openPath(front);
+  // the folder's session from when the app last closed, then a file it was asked to open (in front)
+  await restoreSession(settings.sessions[settings.folder], launch.file);
   ui.note = '';
   if (settings.showStart && !launch.file && tabs.list.length) ui.start = true;
 }

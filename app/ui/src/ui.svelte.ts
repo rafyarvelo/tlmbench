@@ -71,6 +71,8 @@ export const actions = {
   closeOtherTabs: (_key: number) => {},
   /** Closes a file: every tab showing it. */
   closePath: (_path: string) => {},
+  /** Opens a folder's session ('' : the files opened without a folder): its folder in Explorer and its tabs. */
+  openSession: (_folder: string) => {},
   /** Opens several files, each in a tab of its own (the last in front). */
   openPaths: (_paths: string[]) => {},
   /** Closes several files, with Undo. */

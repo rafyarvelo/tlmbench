@@ -65,7 +65,7 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   check('a file tab has no live strip', !(await visible('#liveStrip')) && !!(await p.$('.overview')));
   await p.click('#wsTabs .wstab[data-tip="tcp://127.0.0.1:9000"]');
   check('back in the live tab', await until(() => !!document.getElementById('liveStrip')) && (await text('#lvBadge')) === 'ENDED');
-  check('live tabs are not reopened at launch', !(await settingsLS()).session.files.includes(TCP), (await settingsLS()).session);
+  check('live tabs are not reopened at launch', !(await settingsLS()).sessions[''].files.includes(TCP), (await settingsLS()).sessions);
   await p.hover('#wsTabs .wstab[data-tip="tcp://127.0.0.1:9000"]');
   await p.click('#wsTabs .wstab[data-tip="tcp://127.0.0.1:9000"] .tx');
   check('closing the tab closes the source', await until((e) => ![...window.__tlmFake.open.values()].some((o) => o.r.path === e), TCP));

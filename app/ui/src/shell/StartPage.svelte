@@ -5,10 +5,22 @@
   import { live } from '../live.svelte';
   import { setSetting, settings } from '../settings.svelte';
   import { actions, ui } from '../ui.svelte';
+  import { tabs } from '../tabs.svelte';
 
   let { overlay = false }: { overlay?: boolean } = $props();
   const name = (p: string) => p.split(/[\\/]/).pop() ?? p;
   const dir = (p: string) => p.slice(0, Math.max(0, p.length - name(p).length - 1));
+  /** The folders' sessions with files open, the last used first. */
+  const sessions = $derived(Object.entries(settings.sessions).filter(([, s]) => s.files.length).sort((a, b) => (b[1].at ?? 0) - (a[1].at ?? 0)).slice(0, 6));
+  /** How long ago: "just now", "5 min ago", "3 h ago", "2 days ago". */
+  function ago(at: number): string {
+    const m = Math.round((Date.now() - at) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m} min ago`;
+    if (m < 60 * 24) return `${Math.round(m / 60)} h ago`;
+    const d = Math.round(m / 1440);
+    return `${d} day${d === 1 ? '' : 's'} ago`;
+  }
   const go = (f: () => void) => () => {
     ui.start = false;
     f();
@@ -27,12 +39,17 @@
       <button class="btn" data-start="open" onclick={go(actions.open)}>Open recording… <kbd>⌘O</kbd></button>
       <button class="btn" data-start="live" onclick={go(() => ((live.connect = true), (live.error = '')))}>Connect live source…</button>
     </div>
-    {#if settings.folder}
-      <h2>Folder</h2>
-      <button class="rec" data-start="lastfolder" onclick={go(() => (setSetting('leftPanel', 'explorer'), actions.openFolder()))}
-        >{@html ICON.folder}<span class="nm">{name(settings.folder)}</span><span class="dir muted">{dir(settings.folder)}</span></button
+    <h2>Recent sessions</h2>
+    {#each sessions as [key, s] (key)}
+      {@const current = key === settings.folder && tabs.list.length > 0}
+      <button class="rec sess" data-session={key} data-tip={key || 'Files opened without a folder'} onclick={go(() => actions.openSession(key))}
+        >{@html ICON.session}<span class="nm">{key ? name(key) : 'No folder'}</span><span class="dir muted"
+          >{s.files.length} file{s.files.length === 1 ? '' : 's'} · {s.files.slice(0, 2).map(name).join(', ')}{s.files.length > 2 ? ` +${s.files.length - 2}` : ''}</span
+        ><span class="when muted">{#if current}<span class="pill">current</span>{:else}{ago(s.at ?? 0)}{/if}</span></button
       >
-    {/if}
+    {:else}
+      <p class="muted none">No sessions yet. Opening a folder or a recording starts one, and it saves as you work.</p>
+    {/each}
     <h2>Recent recordings</h2>
     {#each settings.recent as r (r)}
       <button class="rec" data-recent={r} onclick={go(() => actions.openPath(r))}>{@html ICON.file}<span class="nm">{name(r)}</span><span class="dir muted">{dir(r)}</span></button>
@@ -116,6 +133,18 @@
     width: 14px;
     height: 14px;
     color: var(--fg-muted);
+  }
+  .rec .when {
+    flex: none;
+    margin-left: 8px;
+    font-size: 11.5px;
+  }
+  .pill {
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 11px;
   }
   .rec .dir {
     min-width: 0;

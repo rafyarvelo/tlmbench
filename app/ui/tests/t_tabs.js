@@ -67,7 +67,7 @@ run('tabs', async ({ p, check, fake, paneCount, plotAt, until, settingsLS, wait 
   await fake((f) => window.__tlmFake.drop([f]), C);
   await until(() => document.querySelectorAll('#wsTabs .wstab').length === 2);
   await p.click(tab(A));
-  check('saved', JSON.stringify((await settingsLS()).session) === JSON.stringify({ files: [A, C], active: A }), (await settingsLS()).session);
+  check('saved', ((s) => s && JSON.stringify(s.files) === JSON.stringify([A, C]) && s.active === A && !!s.views?.[A])((await settingsLS()).sessions['']), (await settingsLS()).sessions);
   await p.reload();
   check('the tabs come back', await until(() => document.querySelectorAll('#wsTabs .wstab').length === 2) && (await names()).join() === 'a.tlm*,c.tlm', await names());
   await p.click(tab(A), { button: 'right' });

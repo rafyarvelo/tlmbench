@@ -25,6 +25,17 @@ export interface PanelLayout {
 export const GROUP_OF: Record<PanelId, Exclude<LeftPanel, ''>> = { explorer: 'explorer', settings: 'settings', cur: 'measure', stats: 'measure' };
 export const PANEL_TITLE: Record<PanelId, string> = { explorer: 'Explorer', settings: 'Settings', cur: 'Cursors', stats: 'Stats' };
 
+/** A folder's session: the files open (in tab order), the one in front, the layouts shown in tabs, and each file's
+ *  view and cursors (nanoseconds as strings). `at`: when it was last saved. */
+export interface Session {
+  files: string[];
+  active: string | null;
+  ws?: { path: string; name: string; at: number; shared?: string }[];
+  activeWs?: string;
+  views?: Record<string, { t0: string; t1: string; A?: string; B?: string }>;
+  at?: number;
+}
+
 export interface Settings {
   mode: Mode;
   theme: Theme;
@@ -89,7 +100,9 @@ export interface Settings {
   folder: string;
   exExpanded: string[];
   /** The tabs open when the app last closed (their files, then layouts shown on them) and the one in front. */
-  session: { files: string[]; active: string | null; ws?: { path: string; name: string; at: number; shared?: string }[]; activeWs?: string };
+  /** A session per folder ('' for none, owner Nov 7): its tabs, open files, and each file's time range and cursors,
+   *  restored when the folder opens and listed under Recent sessions on the start page. */
+  sessions: Record<string, Session>;
   /** Your layouts (workspaces), this computer only. */
   workspaces: Workspace[];
   /** Each file's panes (their channel numbers and where they sit), by file path. */
@@ -139,7 +152,7 @@ export const DEFAULTS: Settings = {
   settingsAll: false,
   folder: '',
   exExpanded: [],
-  session: { files: [], active: null },
+  sessions: {},
   layouts: {},
   workspaces: [],
   gapFactors: {},
@@ -179,7 +192,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
