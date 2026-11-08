@@ -41,6 +41,8 @@
   /** The bar's width: under 900 px Clear, Back, Fit, Play and Lock move into ⋯. */
   let barW = $state(1200);
   const narrow = $derived(barW < 900);
+  /** a wide bar shows Remove every channel and Remove every pane as icons (the ⋯ menu keeps them otherwise) */
+  const wide = $derived(barW >= 1300);
   /** The menu on the time range: how times read. */
   let timeMenu = $state<HTMLElement | null>(null);
   /** The tab whose menu is open, and where; `naming` while Save as… asks for a name. */
@@ -224,6 +226,12 @@
   {#if !narrow}
     <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
   {/if}
+  {#if wide}
+    <div class="seg pact" role="group" aria-label="Pane actions">
+      <button class="tb" id="tb-clearch" aria-label="Remove every channel" disabled={!stack.panes.some((p) => p.channels.length)} data-tip="Remove every channel from every pane (panes stay)" onclick={clearChannels}>{@html ICON.clearChannels}</button>
+      <button class="tb" id="tb-rmpanes" aria-label="Remove every pane" disabled={!stack.panes.length} data-tip="Remove every pane" onclick={clearPanes}>{@html ICON.removePanes}</button>
+    </div>
+  {/if}
   <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.moreBar}</button>
   {#if tabMenu}
     <Menu class="tabmenu" label="Tab" anchor={tabMenu?.anchor} at={tabMenu?.at} onclose={() => (tabMenu = null)}>
@@ -364,6 +372,24 @@
     padding: 0 10px 0 0;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
+  }
+  /* the prototype's .pact: a group after a rule, icons only */
+  .pact {
+    margin-left: 4px;
+    padding-left: 6px;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+  }
+  .pact .tb {
+    padding: 0 8px;
+    min-height: 30px;
+    color: var(--fg-muted);
+  }
+  .pact .tb:hover {
+    color: var(--fg);
+  }
+  .pact .tb:disabled {
+    opacity: 0.4;
   }
   .wstabs {
     display: flex;

@@ -1,5 +1,5 @@
 // The top bar's Lock, the keyboard (arrows pan, + − ↑ ↓ zoom, T theme, L lock, Ctrl+. focus), the ⋯ menu's groups
-// (Remove every channel / pane with Undo), Clear cursors always on the bar, and Focus mode.
+// (Remove every channel / pane with Undo, as icons on a wide bar), Clear cursors always on the bar, and Focus mode.
 import { run } from './lib.js';
 
 run('controls', async ({ p, check, text, visible, plotAt, settingsLS, until, wait, paneCount }) => {
@@ -71,6 +71,18 @@ run('controls', async ({ p, check, text, visible, plotAt, settingsLS, until, wai
   check('Remove every pane', (await paneCount()) === 0);
   await p.click('#wsNote button:has-text("Undo")');
   check('Undo brings the panes back', (await paneCount()) === 3);
+  // a wide bar has them as icons too
+  check('the wide bar shows both as icons', (await visible('#tb-clearch')) && (await visible('#tb-rmpanes')));
+  await p.click('#tb-clearch');
+  check('the icon removes every channel', (await paneCount()) === 3 && (await p.$$eval('#stack .chip', (e) => e.length)) === 0);
+  check('...and then it is disabled', await p.isDisabled('#tb-clearch'));
+  await p.click('#wsNote button:has-text("Undo")');
+  await p.click('#tb-rmpanes');
+  check('the other removes every pane', (await paneCount()) === 0);
+  await p.click('#wsNote button:has-text("Undo")');
+  await p.setViewportSize({ width: 1200, height: 900 });
+  check('a narrower bar leaves them to ⋯', await until(() => !document.querySelector('#tb-clearch')));
+  await p.setViewportSize({ width: 1440, height: 900 });
 
   // focus mode
   await p.keyboard.press('ControlOrMeta+.');
