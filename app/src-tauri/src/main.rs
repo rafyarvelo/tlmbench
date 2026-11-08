@@ -1465,6 +1465,6 @@ mod view_tests {
         // Share… is the one write beside the data
         assert!(!dir.path().join(".tlmbench").exists());
         let out = rt(descriptor_share(p, d)).unwrap();
-        assert!(out.ends_with(".tlmbench/decoders/log.toml"), "{out}");
+        assert!(Path::new(&out).ends_with(Path::new(".tlmbench").join("decoders").join("log.toml")), "{out}");
     }
 }
