@@ -313,6 +313,33 @@
     return { n: got.rows.index ? Number(got.rows.index[k]) : got.rows.first + k, t: got.rows.times[k], v: got.rows.values.map((c) => c[k]) };
   }
 
+  // the rows on screen: a shaded band on the charts
+  $effect(() => {
+    let [a, b]: [bigint | null, bigint | null] = [null, null];
+    for (let r = lo; r < Math.min(hi, count); r++) {
+      const t = row(r)?.t;
+      if (t == null) continue;
+      if (a == null || t < a) a = t;
+      if (b == null || t > b) b = t;
+    }
+    const old = ui.bands[i];
+    if (a == null || b == null) {
+      if (old) {
+        delete ui.bands[i];
+        actions.redraw();
+      }
+    } else if (!old || old[0] !== a || old[1] !== b) {
+      ui.bands[i] = [a, b];
+      actions.redraw();
+    }
+  });
+  onDestroy(() => {
+    if (ui.bands[i]) {
+      delete ui.bands[i];
+      actions.redraw();
+    }
+  });
+
   /** Whether row `r` is the sample a cursor sits on (the last at or before it). */
   function at(r: number, c: string | null): boolean {
     const x = row(r);

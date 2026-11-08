@@ -869,7 +869,8 @@ function glideHatch(): void {
  * and hatching along the bottom). */
 function drawMarks(ctx: CanvasRenderingContext2D, r: Rect, tk: Record<string, string>): void {
   const m = ui.marks;
-  if (!m) return;
+  const bands = Object.values(ui.bands);
+  if (!m && !bands.length) return;
   const span = Number(state.t1 - state.t0);
   if (span <= 0) return;
   const px = (t: bigint) => r.x + (Number(t - state.t0) / span) * r.w;
@@ -882,6 +883,20 @@ function drawMarks(ctx: CanvasRenderingContext2D, r: Rect, tk: Record<string, st
   ctx.beginPath();
   ctx.rect(r.x, r.y, r.w, r.h);
   ctx.clip();
+  // the rows a table shows: a band with an edge line each side
+  for (const [a, b] of bands) {
+    if (b < state.t0 || a > state.t1) continue;
+    const [x0, x1] = wide(a, b);
+    ctx.fillStyle = css(tk['--accent'], 0.12);
+    ctx.fillRect(x0, r.y, x1 - x0, r.h);
+    ctx.fillStyle = css(tk['--accent'], 0.6);
+    ctx.fillRect(x0, r.y, 1, r.h);
+    ctx.fillRect(x1 - 1, r.y, 1, r.h);
+  }
+  if (!m) {
+    ctx.restore();
+    return;
+  }
   for (const [a, b] of m.hits) {
     if (b < state.t0 || a > state.t1) continue;
     const [x0, x1] = wide(a, b);
@@ -2764,6 +2779,7 @@ export const gateApi = {
   /** Per pane and channel: the connected stretches drawn dashed, and the solid runs. */
   dashes: () => state.layers.map((l) => (l ? [...l.traces.values()].map((t) => [t.gl.dashes.length, t.gl.runs.length]) : null)),
   /** The marks the charts draw: matches and rows left out. */
+  bands: () => Object.entries(ui.bands).map(([i, [a, b]]) => [Number(i), String(a), String(b)]),
   marks: () => (ui.marks ? { pane: ui.marks.pane, hits: ui.marks.hits.length, excluded: ui.marks.excluded.length } : null),
   /** How many sample markers each pane drew last. */
   markers: () => [...markers],

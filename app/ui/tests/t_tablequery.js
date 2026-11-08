@@ -22,6 +22,9 @@ run('tablequery', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   await p.click('#stack [data-pane="0"] [data-vmenu]');
   await p.click('.viewmenu [data-vm="table"]');
   check('unsorted: every row', await until(() => /200,000 rows in view/.test(document.querySelector('[data-table] [data-tstat]').textContent)), await stat());
+  check('the rows on screen show as a band on the charts', await until(() => window.__tlmApp.bands().length === 1), await p.evaluate(() => window.__tlmApp.bands()));
+  const band = await p.evaluate(() => window.__tlmApp.bands()[0]);
+  check('from the first row to the last one showing', band[0] === 0 && BigInt(band[2]) > BigInt(band[1]), band);
   check('a filter box under each name but the sample column', (await p.$$(`${T} .tfin`)).length >= 2 && !(await p.$(`${T} [data-col="n"] .tfin`)));
   check('no Clear button yet', !(await p.$(`${T} [data-clear]`)));
 
