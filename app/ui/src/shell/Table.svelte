@@ -13,7 +13,7 @@
   import { onDestroy, tick } from 'svelte';
   import { type ColumnDef, type ColumnSizingState, createTable, getCoreRowModel, type TableState } from '@tanstack/table-core';
 
-  import { timeLabel } from '../axes';
+  import { frequency, timeLabel } from '../axes';
   import { live } from '../live.svelte';
   import { settings } from '../settings.svelte';
   import { ICON } from '../icons';
@@ -356,6 +356,39 @@
     return x.t <= t && (next == null ? r === count - 1 || !got || r + 1 - got.offset >= got.rows.times.length : next.t > t);
   }
 
+  /** Whether row `r` lies between the cursors. */
+  function between(r: number): boolean {
+    const [a, b] = [ui.view.A, ui.view.B];
+    const x = row(r);
+    if (!x || a == null || b == null) return false;
+    const [lo, hi] = BigInt(a) < BigInt(b) ? [BigInt(a), BigInt(b)] : [BigInt(b), BigInt(a)];
+    return x.t > lo && x.t < hi;
+  }
+
+  /** The row menu: set a cursor here, clear them, centre the charts. */
+  let rowMenu = $state<null | { at: { x: number; y: number }; t: bigint }>(null);
+  const rowItems = (t: bigint): MenuItem[] => [
+    { heading: timeLabel(t, step) },
+    { label: 'Set cursor A here', run: () => actions.placeCursor('A', t), data: { rm: 'A' } },
+    { label: 'Set cursor B here', run: () => actions.placeCursor('B', t), data: { rm: 'B' } },
+    { label: 'Clear cursors', run: () => actions.clearCursors(), disabled: ui.view.A == null && ui.view.B == null, data: { rm: 'clear' } },
+    { sep: true },
+    { label: 'Centre the charts on this row', run: () => actions.centreOn(t), data: { rm: 'centre' } },
+  ];
+
+  /** The keys move the window a row or a page at a time. */
+  function keys(e: KeyboardEvent) {
+    if (!scroller || (e.target as HTMLElement).closest('input, button, [role="button"]')) return;
+    const page = Math.max(1, Math.floor((viewH - HEAD_H) / ROW_H) - 1);
+    const by = ({ ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page } as Record<string, number>)[e.key];
+    if (by) scroller.scrollTop += by * ROW_H;
+    else if (e.key === 'Home') scroller.scrollTop = 0;
+    else if (e.key === 'End') scroller.scrollTop = count * ROW_H;
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   /** Scrolls row `r` to the middle of the table. */
   function scrollToRow(r: number) {
     if (scroller) scroller.scrollTop = Math.max(0, r * ROW_H - viewH / 2);
@@ -512,7 +545,7 @@
   {/if}
   <div class="tbar">
     <span class="tstat" role="status" data-tstat
-      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}</span
+      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${frequency(1e9 / step)})`}{/if}</span
     >
     {#if sort.length || Object.keys(filters).length}
       <button class="tbtn" data-clear data-tip="Remove the sort and every filter" onclick={() => setTable(i, { sort: [], filters: {} })}>Clear sort and filters</button>
@@ -555,14 +588,17 @@
     </div>
   {/if}
   <div class="twrap">
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex (a scrolling region takes focus so the keys scroll it) -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (a scrolling region takes focus so the keys scroll it) -->
     <div
       class="tscroll"
+      role="region"
       tabindex="0"
       aria-label="Samples in view for pane {i + 1}. Click a row to place cursor A, Shift-click for B."
       bind:this={scroller}
       bind:clientHeight={viewH}
       onscroll={(e) => (scrollTop = (e.currentTarget as HTMLElement).scrollTop)}
+      onkeydown={keys}
+      onpointerleave={() => actions.hoverAt(null)}
     >
       <div class="tinner" role="grid" aria-rowcount={count} style="width: {total}px; height: {HEAD_H + count * ROW_H}px">
         <div class="thead" role="row">
@@ -633,12 +669,19 @@
               class="trw"
               class:ca={at(r, ui.view.A)}
               class:cb={at(r, ui.view.B)}
+              class:cab={between(r)}
               role="row"
               tabindex="-1"
               data-row={r}
               data-t={x ? String(x.t) : undefined}
               onclick={(e) => click(e, r)}
               ondblclick={() => dblclick(r)}
+              onpointerenter={() => x && actions.hoverAt(x.t)}
+              oncontextmenu={(e) => {
+                if (!x) return;
+                e.preventDefault();
+                rowMenu = { at: { x: e.clientX, y: e.clientY }, t: x.t };
+              }}
               onkeydown={(e) => e.key === 'Enter' && click(e as unknown as MouseEvent, r)}
             >
               {#each headers as { h, col }, c (col.id)}
@@ -660,6 +703,10 @@
     </div>
   </div>
 </div>
+
+{#if rowMenu}
+  <Menu class="rowmenu" at={rowMenu.at} label="Row" onclose={() => (rowMenu = null)} items={rowItems(rowMenu.t)} />
+{/if}
 
 {#if pop?.kind === 'autofit'}
   <Menu class="colmenu" anchor={pop.anchor} onclose={() => (pop = null)} items={autofitItems} label="Autofit" />
@@ -1015,6 +1062,12 @@
   }
   .trw:hover > span {
     background: var(--raised);
+  }
+  .trw.cab > span {
+    background: color-mix(in srgb, var(--accent) 7%, var(--plot-bg));
+  }
+  .trw.ca > span:first-child {
+    box-shadow: inset 3px 0 0 var(--cursor);
   }
   .trw.ca > span,
   .trw.cb > span {

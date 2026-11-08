@@ -102,6 +102,8 @@ export const actions = {
   centreOn: (_t: bigint) => {},
   /** The charts, overview and stats ask again (after what the core leaves out of them changed). */
   refreshViews: () => {},
+  /** The pointer is over a table row (a time), or left the table (null): the charts show it as a hover line. */
+  hoverAt: (_t: bigint | null) => {},
   /** The charts draw again (their marks changed). */
   redraw: () => {},
   /** Workspaces: Save as… (a layout of tab `key`, which then shows it; an error to show, or null), Save layout,

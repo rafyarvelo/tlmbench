@@ -13,7 +13,7 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
     await p.click(`#stack [data-pane="${i}"] [data-vmenu]`);
   };
   const T = '#stack [data-pane="0"] [data-table]';
-  const rowsInView = async () => Number((await text(`${T} [data-tstat]`)).replace(/\D/g, ''));
+  const rowsInView = async () => Number((await text(`${T} [data-tstat]`)).split(' · ')[0].replace(/\D/g, ''));
   const cell = (r, c) => text(`${T} [data-row="${r}"] span:nth-child(${c})`);
 
   await viewMenu(0);
@@ -60,7 +60,7 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   }
   check('zoomed in', BigInt((await app('view')).t1) - BigInt((await app('view')).t0) < 50_000_000_000n, await app('view'));
   // a row a few down from the top of the table, far enough from either end to centre on
-  const [n, at] = await p.$$eval(`${T} [data-row]`, (rs) => [Number(rs[4].querySelector('span').textContent.replace(/\D/g, '')), rs[4].dataset.row]);
+  const [n, at] = await p.$$eval(`${T} [data-row]`, (rs) => [Number(rs[4].querySelector('span').textContent.split(' · ')[0].replace(/\D/g, '')), rs[4].dataset.row]);
   await p.dblclick(`${T} [data-row="${at}"]`);
   const v = await app('view');
   const mid = (BigInt(v.t0) + BigInt(v.t1)) / 2n;
@@ -68,13 +68,13 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   const r1 = await p.$eval('#stack [data-pane="1"] .plot', (e) => { const b = e.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
   await p.mouse.move(r1.x, r1.y);
   for (let k = 0; k < 6; k++) await p.mouse.wheel(0, -200);
-  check('zooming in leaves fewer rows', await until(() => Number(document.querySelector('[data-table] [data-tstat]').textContent.replace(/\D/g, '')) < 200000), await rowsInView());
+  check('zooming in leaves fewer rows', await until(() => Number(document.querySelector('[data-table] [data-tstat]').textContent.split(' · ')[0].replace(/\D/g, '')) < 200000), await rowsInView());
   // once the zoom settles, the rows are the samples in [t0, t1)
   const rowsMatch = () => {
     const v = window.__tlmApp.view();
     const T0 = 1767225600000000000n;
     const lower = (t) => Math.ceil(Number(BigInt(t) - T0) / 1e6);
-    return Number(document.querySelector('[data-table] [data-tstat]').textContent.replace(/\D/g, '')) === lower(v.t1) - lower(v.t0);
+    return Number(document.querySelector('[data-table] [data-tstat]').textContent.split(' · ')[0].replace(/\D/g, '')) === lower(v.t1) - lower(v.t0);
   };
   check('the rows are the samples in [t0, t1)', await until(rowsMatch), [await rowsInView(), await app('view')]);
 

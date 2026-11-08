@@ -2159,6 +2159,8 @@ stackEl.addEventListener('pointermove', (e) => {
     const x = e.clientX - center.getBoundingClientRect().left;
     placeCursor(drag.which, tAt(drag.r, Math.max(drag.r.x, Math.min(drag.r.x + drag.r.w, x))));
   }
+  // over a table row, the row sets the hover time (see hoverAt)
+  if ((e.target as Element).closest?.('[data-table]')) return;
   const over = hit && hit.x >= hit.r.x && hit.x <= hit.r.x + hit.r.w;
   state.hoverT = over ? tAt(hit.r, hit.x) : null;
   void requestHover(state.hoverT);
@@ -2563,6 +2565,13 @@ function toggleFocus(on = !ui.focus): void {
 
 Object.assign(actions, {
   redraw: () => scheduleDraw(),
+  hoverAt: (t: bigint | null) => {
+    if (state.hoverT === t) return;
+    state.hoverT = t;
+    void requestHover(t);
+    updateChips();
+    scheduleDraw();
+  },
   refreshViews: () => {
     state.ovStale = true;
     void requestView('exact');

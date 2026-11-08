@@ -30,7 +30,7 @@ run('tablequery', async ({ p, check, text, until, settingsLS, wait, fake }) => {
 
   // filter
   await p.fill(`${T} [data-filter="c0"]`, '> 1.2');
-  check('the filter leaves the matching rows', await until((n) => document.querySelector('[data-table] [data-tstat]').textContent.replace(/\D/g, '') === n, `${over}200000`), [await stat(), over]);
+  check('the filter leaves the matching rows', await until((n) => document.querySelector('[data-table] [data-tstat]').textContent.split(' · ')[0].replace(/\D/g, '') === n, `${over}200000`), [await stat(), over]);
   check('it says how many of the rows in view', new RegExp(`^${over.toLocaleString()} of 200,000 rows in view`).test(await stat()), await stat());
   check('every row shown passes', await until(() => { const r = [...document.querySelectorAll('[data-table] [data-row] span:nth-child(3)')]; return r.length > 3 && r.every((c) => parseFloat(c.textContent) > 1.19); }));
   check('and the core was asked once for it', (await fake(() => window.__tlmFake.queriesRun.at(-1))).filters[0].expr === '> 1.2');
