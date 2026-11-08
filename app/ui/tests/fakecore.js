@@ -90,25 +90,27 @@
   // ---------- synthetic recordings ----------
 
   const T0 = 1767225600000000000n; // 2026-01-01T00:00:00Z
-  /** A recording: `rate` Hz for `samples` samples; channel k is a few sines, with NaNs where `gaps` says. */
-  function recording(path, { channels = ['accel_x', 'accel_y', 'roll', 'pitch', 'motor_rpm', 'motor_rpm_target'], units, samples = 200000, rate = 1000, built = true } = {}) {
+  /** A recording: `rate` Hz for `samples` samples; channel k is a few sines, with NaNs where `gaps` says. It starts
+   *  on 2026-01-01, or at 0 when `relative`; `time: 'index'` is a file with no time (a sample a second, as the core). */
+  function recording(path, { channels = ['accel_x', 'accel_y', 'roll', 'pitch', 'motor_rpm', 'motor_rpm_target'], units, samples = 200000, rate = 1000, built = true, relative = false, time = 'rate' } = {}) {
     const chans = channels.map((name, k) => ({ name, unit: units?.[k] ?? (name.includes('rpm') ? 'rpm' : name.startsWith('accel') ? 'g' : 'deg'), dtype: 'f32' }));
-    return { path, chans, samples, rate, built, done: built ? samples : 0, progress: null };
+    const index = time === 'index';
+    return { path, chans, samples, rate: index ? 1 : rate, built, done: built ? samples : 0, progress: null, t0: index || relative ? 0n : T0, index };
   }
   const dtNs = (r) => BigInt(Math.round(1e9 / r.rate));
-  const timeAt = (r, i) => T0 + BigInt(i) * dtNs(r);
+  const timeAt = (r, i) => (r.t0 ?? T0) + BigInt(i) * dtNs(r);
   const valueAt = (r, ch, i) => {
     const s = i / r.rate;
     return Math.fround((ch + 1) * Math.sin(s * (0.05 + 0.031 * ch)) + 0.3 * Math.sin(s * (1.7 + ch)));
   };
-  const indexAt = (r, t) => Number((BigInt(t) - T0) / dtNs(r));
+  const indexAt = (r, t) => Number((BigInt(t) - (r.t0 ?? T0)) / dtNs(r));
   const clampI = (r, i) => Math.max(0, Math.min(r.samples - 1, i));
 
   /** One channel over a viewport: raw samples (and one neighbour each side) up to 4W, else M4 per pixel column. */
   function reduce(r, ch, vp, upTo) {
     const lim = Math.min(r.samples, upTo);
     const a = clampI(r, indexAt(r, vp.t0));
-    const b = Math.min(lim - 1, Math.max(a, Math.ceil(Number(BigInt(vp.t1) - T0) / Number(dtNs(r)))));
+    const b = Math.min(lim - 1, Math.max(a, Math.ceil(Number(BigInt(vp.t1) - (r.t0 ?? T0)) / Number(dtNs(r)))));
     const t = [];
     const y = [];
     if (lim <= 0 || a >= lim) return { kind: 'raw', t, y };
@@ -188,7 +190,7 @@
       const id = nextFile++;
       const ch = progress && { id: progress.id ?? Number(String(progress).replace(/\D/g, '')), next: 0 };
       fake.open.set(id, { r, progress: ch });
-      const info = { path, format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
+      const info = { path, format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
       return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples } };
     },
     close({ file }) {
@@ -216,15 +218,15 @@
     values_at({ file, channels, t }) {
       const r = fake.open.get(file)?.r;
       if (!r) throw 'that file is not open';
-      const i = clampI(r, Math.round(Number(BigInt(t) - T0) / Number(dtNs(r))));
+      const i = clampI(r, Math.round(Number(BigInt(t) - (r.t0 ?? T0)) / Number(dtNs(r))));
       return channels.filter((ch) => ch < r.chans.length).map((ch) => ({ channel: ch, index: i, t: String(timeAt(r, i)), value: valueAt(r, ch, i) }));
     },
     stats({ file, channels, span }) {
       const r = fake.open.get(file)?.r;
       if (!r) throw 'that file is not open';
       if (!r.built) return null;
-      const a = clampI(r, Math.ceil(Number(BigInt(span.t0) - T0) / Number(dtNs(r))));
-      const b = clampI(r, Math.ceil(Number(BigInt(span.t1) - T0) / Number(dtNs(r))) - 1);
+      const a = clampI(r, Math.ceil(Number(BigInt(span.t0) - (r.t0 ?? T0)) / Number(dtNs(r))));
+      const b = clampI(r, Math.ceil(Number(BigInt(span.t1) - (r.t0 ?? T0)) / Number(dtNs(r))) - 1);
       return channels.map((ch) => {
         let [n, sum, sq, min, max, minI, maxI] = [0, 0, 0, Infinity, -Infinity, a, a];
         for (let i = a; i <= b; i++) {
@@ -243,7 +245,7 @@
     rows({ file, channels, span, offset, limit }) {
       const r = fake.open.get(file)?.r;
       if (!r) throw 'that file is not open';
-      const lower = (t) => Math.max(0, Math.min(r.samples, Math.ceil(Number(BigInt(t) - T0) / Number(dtNs(r)))));
+      const lower = (t) => Math.max(0, Math.min(r.samples, Math.ceil(Number(BigInt(t) - (r.t0 ?? T0)) / Number(dtNs(r)))));
       const a = lower(span.t0);
       const b = Math.max(a, lower(span.t1));
       const start = Math.min(b, a + offset);

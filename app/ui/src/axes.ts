@@ -26,7 +26,9 @@ function niceStep(span: number, maxTicks: number): number {
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0');
 
-export type TimeFormat = 'auto' | 'clock' | 's' | 'ms' | 'minsec' | 'h' | 'd' | 'wk' | 'yr';
+export type TimeFormat = 'auto' | 'clock' | 's' | 'ms' | 'minsec' | 'h' | 'd' | 'wk' | 'yr' | 'wall';
+/** How a file's times read: sample numbers (it has no time), dates and times (an absolute start), or offsets. */
+export type FileTime = 'samples' | 'absolute' | 'relative';
 /** The formats Settings and the range menu offer: the key, its name and an example. */
 export const TIME_FORMATS: [TimeFormat, string, string][] = [
   ['auto', 'Automatic', 'clock, dates or seconds, from the file'],
@@ -38,12 +40,37 @@ export const TIME_FORMATS: [TimeFormat, string, string][] = [
   ['d', 'Days', '0.03 d'],
   ['wk', 'Weeks', '2.5 wk'],
   ['yr', 'Years', '1.25 yr'],
+  ['wall', 'Wall clock', '14:03:27.380, dates past two days'],
 ];
 
-const timeFmt = { mode: 'auto' as TimeFormat, decimals: null as number | null, origin: () => 0n };
-/** Sets the time format every label uses: its decimals (null: from the step) and where "from start" counts from. */
-export function setTimeFormat(mode: TimeFormat, decimals: number | null, origin: () => bigint): void {
-  Object.assign(timeFmt, { mode, decimals, origin });
+const timeFmt = { mode: 'auto' as TimeFormat, decimals: null as number | null, origin: () => 0n, file: (): FileTime => 'relative', dur: () => 0 };
+/** Sets the time format every label uses: its decimals (null: from the step), where "from start" counts from, and
+ *  the open file's kind of time and length (a file with no time reads in sample numbers whatever the format). */
+export function setTimeFormat(mode: TimeFormat, decimals: number | null, origin: () => bigint, file: () => FileTime = () => 'relative', dur: () => number = () => 0): void {
+  Object.assign(timeFmt, { mode, decimals, origin, file, dur });
+}
+
+/** A file's kind of time: from its time source (an index is no time) and its first time. */
+export function fileTime(index: boolean, first: bigint): FileTime {
+  return index ? 'samples' : first >= BigInt(RELATIVE_BEFORE) ? 'absolute' : 'relative';
+}
+
+/** A whole number with thousands separators, as sample numbers read. */
+const int = (v: number) => Math.round(v).toLocaleString('en-US');
+
+/** A time on the wall clock (local time): the time of day, or the date for a recording two days long or more. */
+function wall(tNs: bigint, stepNs: number): string {
+  const d = new Date(Number(tNs / 1_000_000n));
+  const dur = timeFmt.dur();
+  if (dur >= 2 * 86400 * NS || stepNs >= 86400 * NS) {
+    if (dur > 2 * 31557600 * NS) return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+    const hm = d.getHours() || d.getMinutes() ? ` ${pad(d.getHours())}:${pad(d.getMinutes())}` : '';
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}${stepNs < 86400 * NS ? hm : ''}`;
+  }
+  const auto = Math.max(0, Math.min(3, Math.ceil(-Math.log10(stepNs / NS))));
+  const dec = Math.min(3, timeFmt.decimals ?? auto);
+  const ms = dec > 0 ? '.' + String(d.getMilliseconds()).padStart(3, '0').slice(0, dec) : '';
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${ms}`;
 }
 
 /** A time `rel` ns from the start of the file, in the chosen format. */
@@ -78,7 +105,11 @@ function fromStart(rel: bigint, stepNs: number): string {
 
 /** A time at the resolution `stepNs` calls for: a clock time for dates, seconds for relative recordings. */
 export function timeLabel(tNs: bigint, stepNs: number): string {
-  if (timeFmt.mode !== 'auto') return fromStart(tNs - timeFmt.origin(), stepNs);
+  const file = timeFmt.file();
+  // a file with no time: its times are sample numbers (a sample a second)
+  if (file === 'samples') return int(Number(tNs) / NS);
+  if (timeFmt.mode === 'wall' && file === 'absolute') return wall(tNs, stepNs);
+  if (timeFmt.mode !== 'auto' && timeFmt.mode !== 'wall') return fromStart(tNs - timeFmt.origin(), stepNs);
   if (tNs < BigInt(RELATIVE_BEFORE) && tNs > -BigInt(RELATIVE_BEFORE)) {
     const s = Number(tNs) / NS;
     const digits = Math.max(0, Math.min(9, Math.ceil(-Math.log10(stepNs / NS))));
@@ -102,6 +133,7 @@ export function readoutTime(tNs: bigint, spanNs: number): string {
 export function duration(ns: number): string {
   const a = Math.abs(ns);
   const sign = ns < 0 ? '−' : '';
+  if (timeFmt.file() === 'samples') return `${sign}${int(a / NS)} samples`;
   if (a < 1e3) return `${sign}${a.toFixed(0)} ns`;
   if (a < 1e6) return `${sign}${(a / 1e3).toPrecision(4)} µs`;
   if (a < 1e9) return `${sign}${(a / 1e6).toPrecision(4)} ms`;
@@ -114,6 +146,7 @@ export function duration(ns: number): string {
 /** How much time the view spans, in the unit that suits it: `2.00 h`, `3.33 min`, `10.00 s`, `250 ms`. */
 export function spanText(ns: number): string {
   const s = ns / NS;
+  if (timeFmt.file() === 'samples') return `${int(s)} samples`;
   if (s >= 3600) return `${(s / 3600).toFixed(2)} h`;
   if (s >= 60) return `${(s / 60).toFixed(2)} min`;
   if (s >= 1) return `${s.toFixed(2)} s`;

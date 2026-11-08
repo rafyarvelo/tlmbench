@@ -350,8 +350,11 @@
       anchor={timeMenu}
       onclose={() => (timeMenu = null)}
       items={[
-        { heading: 'Time format' },
-        ...TIME_FORMATS.map(([k, name, ex]) => ({ label: name, meta: ex, checked: settings.timeFormat === k, radio: true, data: { tf: k }, run: () => setSetting('timeFormat', k) })),
+        { heading: ui.time === 'samples' ? 'This file has no time: sample numbers' : 'Time format' },
+        ...TIME_FORMATS.map(([k, name, ex]) => {
+          const noClock = k === 'wall' && ui.time !== 'absolute';
+          return { label: noClock ? `${name} (needs a file with absolute time)` : name, meta: noClock ? undefined : ex, disabled: noClock, checked: settings.timeFormat === k, radio: true, data: { tf: k }, run: () => setSetting('timeFormat', k) };
+        }),
         { sep: true },
         { label: 'More in Settings…', run: () => (setSetting('settingsAll', true), setSetting('leftPanel', 'settings')) },
       ]}

@@ -1,5 +1,6 @@
 // What the shell shows about the app's state: app.ts writes it, the components render it.
 
+import type { FileTime } from './axes';
 import type { Workspace } from './workspaces';
 
 /** A listed folder or recording (the app's `list_folder`). */
@@ -21,6 +22,8 @@ export const ui = $state({
   /** Its channels' names and units. */
   channels: [] as { name: string; unit: string | null }[],
   path: '',
+  /** How the open file's times read: sample numbers, dates and times, or offsets from its start. */
+  time: 'relative' as FileTime,
   /** The view's time range, its span, and the pointer's time over a plot. */
   range: '',
   span: '',

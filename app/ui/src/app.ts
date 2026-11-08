@@ -12,7 +12,7 @@ import { mount, tick, unmount } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
-import { type AxesStyle, drawAxes, duration, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
+import { type AxesStyle, drawAxes, duration, fileTime, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3 } from './gate';
 import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { groupChannels, overrideKey } from './groups';
@@ -628,7 +628,7 @@ function forward(): void {
 
 function updateRange(): void {
   const span = Number(state.t1 - state.t0);
-  ui.range = state.file ? `${readoutTime(state.t0, span)} → ${readoutTime(state.t1, span)}` : '';
+  ui.range = state.file ? `${ui.time === 'samples' ? 'Sample ' : ''}${readoutTime(state.t0, span)} → ${readoutTime(state.t1, span)}` : '';
   ui.span = state.file ? `${spanText(span)} visible` : '';
   ui.canBack = state.history.length > 0;
 }
@@ -1277,6 +1277,7 @@ async function showTab(key: number): Promise<void> {
   Object.assign(live, { on: !!d.live, following: d.live?.following ?? true, win: d.live?.win ?? 30, sources: false, health: d.live?.health ?? null });
   ui.file = nameOf(d.file.info.path);
   ui.path = d.file.info.path;
+  ui.time = fileTime(d.file.info.time.kind === 'index', d.file.first);
   ui.measureDismissed = false;
   ui.channels = d.file.info.channels.map((c) => ({ name: c.name, unit: c.unit }));
   $('empty').hidden = true;
@@ -2413,7 +2414,13 @@ Object.assign(actions, {
 });
 /** Points the time labels at the settings and the open file's start. */
 function applyTimeFormat(): void {
-  setTimeFormat(settings.timeFormat, settings.timeDecimals === 'auto' ? null : Number(settings.timeDecimals), () => state.file?.first ?? 0n);
+  setTimeFormat(
+    settings.timeFormat,
+    settings.timeDecimals === 'auto' ? null : Number(settings.timeDecimals),
+    () => state.file?.first ?? 0n,
+    () => (state.file ? fileTime(state.file.info.time.kind === 'index', state.file.first) : 'relative'),
+    () => (state.file ? Number(state.file.last - state.file.first) : 0),
+  );
 }
 applyTimeFormat();
 
