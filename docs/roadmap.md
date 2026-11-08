@@ -70,6 +70,11 @@ The look and the shell, so that the app reads as the prototype before the big fe
   and filters, Columns list, Autofit, header ▾ menu, pinned columns, column selection, copy as CSV, row hover and
   right-click, the cursor line, slower channels held and dimmed, the status line, keyboard; the rows on screen as a
   band on the charts; the lock's "table sort and filter still work" setting.
+- **Gaps setting (owner, Nov 8):** a global switch in Settings, "Gaps in lines": break the line at a gap (the default,
+  as now) or connect across it with a straight line. It applies to every gap the charts show: time jumps, missing
+  values, and the rows Apply to charts leaves out. Connected stretches stay marked (a dashed segment) so a connected
+  gap is never mistaken for data. The core takes it as a flag on the view request (`connect_gaps`), so it also works
+  in `tlmbench query view` and the exports.
 - **Top bar:** all panes as Charts, Tables or Both.
 - **Budget:** a sort of 10M rows under 2 s on the M1 with progress; scrolling stays at 60 fps.
 - **Done when** `t_tables` covers each item, the prototype's table scenes match in the harness, and the CLI can sort

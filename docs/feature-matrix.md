@@ -139,6 +139,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Event markers on charts (washes, notches, tooltips) | v1 | ✓ | ✗ | 5.2 |
 | Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ✗ | 4.2 |
 | Table rows band on the charts | v1 | ✓ | ✗ | 4.2 |
+| Settings → Gaps in lines: break at gaps, or connect across them (dashed) | — (owner, Nov 8; needs a design entry) | ✗ | ✗ | 4.2 |
 | Hover readout snapping to samples; legend values | v1 | ✓ | ✓ | |
 | Overview: picker, range, window, gestures, top or bottom | v1 | ✓ | ✓ | |
 | Overview drawing: min/max band per channel with a midline | v1 | ✓ | ✓ |  |
