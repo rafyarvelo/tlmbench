@@ -4,6 +4,7 @@
      or collapses everything; the filter matches files and channels (a regex with .*); the open-files strip closes
      them. The folder is only read. -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { groupChannels } from '../groups';
   import { ICON } from '../icons';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
@@ -76,6 +77,27 @@
     }
     return out;
   }
+  /** The open file shows in the tree: the folders on its way open when it opens. */
+  $effect(() => {
+    const path = ui.path;
+    const way: string[] = [];
+    const find = (d: FolderEntry | null): boolean => !!d?.children.some((c) => (c.dir ? find(c) && !!way.push(c.path) : c.path === path));
+    if (!path || !find(ui.folder)) return;
+    // only when the file or the folder changes: folding its folder by hand afterwards sticks
+    untrack(() => {
+      const shut = way.filter((d) => !settings.exExpanded.includes(d));
+      if (shut.length) setSetting('exExpanded', [...settings.exExpanded, ...shut]);
+    });
+  });
+  /** The folders holding an open file (Collapse all keeps them open, as the prototype's). */
+  function openWays(): string[] {
+    const out: string[] = [];
+    const walk = (d: FolderEntry | null, up: string[]) =>
+      d?.children.forEach((c) => (c.dir ? walk(c, [...up, c.path]) : inTab(c.path) && out.push(...up)));
+    walk(ui.folder, []);
+    return [...new Set(out)];
+  }
+  const collapseAll = () => (setSetting('exExpanded', openWays()), setSetting('exFilesShut', openFiles.map((f) => f.path)));
   /** A file's channels are folded away (a filter shows them anyway). */
   const fileShut = (path: string) => !q.trim() && settings.exFilesShut.includes(path);
   function toggleFile(path: string) {
@@ -194,7 +216,7 @@
     <button class="ibtn exall" id="exCats" aria-label="Show categories" aria-pressed={settings.exCategories} data-tip={settings.exCategories ? 'Showing categories. Click for a flat list' : 'Showing a flat list. Click to group channels into categories'} onclick={() => setSetting('exCategories', !settings.exCategories)}>{@html ICON.cats}</button>
     <span class="exsep" aria-hidden="true"></span>
     <button class="ibtn exall" id="treeExpand" aria-label="Expand all" data-tip="Expand all folders and channel groups" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
-    <button class="ibtn exall" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all channel groups, and the folders without an open file" onclick={() => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path)))}>{@html ICON.collapse}</button>
+    <button class="ibtn exall" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all channel groups, and the folders without an open file" onclick={collapseAll}>{@html ICON.collapse}</button>
     <button class="ibtn pmove" id="swapSides" data-pmove aria-label="Move Explorer to the {otherSide} sidebar" data-tip="Move to the {otherSide} sidebar" onclick={() => movePanel('explorer', otherSide)}>{@html ICON.swap}</button>
   </div>
   <div class="exbody" hidden={closed}>
@@ -212,21 +234,23 @@
   </div>
 
   {#if tabs.list.length}
-    <div class="openstrip">
-      <span class="cap">Open · {openFiles.length}</span><span class="spacer"></span>
-      <button class="linkbtn" id="onlyOpen" aria-pressed={settings.exOnlyOpen} data-tip="List only the open files" onclick={() => setSetting('exOnlyOpen', !settings.exOnlyOpen)}>{settings.exOnlyOpen ? 'Show all' : 'Show only these'}</button>
-      <button class="linkbtn" id="closeAll" onclick={actions.closeFile}>Close all</button>
-    </div>
-    <div class="openfiles" id="openFiles">
-      {#each openFiles as f (f.path)}
-        <span class="ofile" class:on={f.front} data-tip={f.path}>
-          <button class="ofnm" onclick={() => actions.showTab(f.tab.key)}>{f.name}</button><button
-            class="ofx"
-            aria-label="Close {f.name}"
-            onclick={() => actions.closePath(f.path)}>{@html ICON.close}</button
-          >
-        </span>
-      {/each}
+    <div class="exopen">
+      <div class="exoh">
+        <span>Open · {openFiles.length}</span><span class="spacer"></span>
+        <button class="exotog" class:on={settings.exOnlyOpen} id="onlyOpen" aria-pressed={settings.exOnlyOpen} data-tip="List only the open files" onclick={() => setSetting('exOnlyOpen', !settings.exOnlyOpen)}>{settings.exOnlyOpen ? 'Show all' : 'Show only these'}</button>
+        <button class="linkbtn" id="closeAll" onclick={actions.closeFile}>Close all</button>
+      </div>
+      <div class="exol" id="openFiles">
+        {#each openFiles as f (f.path)}
+          <span class="ofile" class:on={f.front} data-tip={f.path}>
+            <button class="ofnm" onclick={() => actions.showTab(f.tab.key)}>{f.name}</button><button
+              class="ofx"
+              aria-label="Close {f.name}"
+              onclick={() => actions.closePath(f.path)}>{@html ICON.close}</button
+            >
+          </span>
+        {/each}
+      </div>
     </div>
   {/if}
 
@@ -245,8 +269,7 @@
           {/if}
         {/each}
       {/snippet}
-      <div class="row dir root" style="--d: 0" data-path={ui.folder.path}>{@html ICON.folder}<span class="nm">{ui.folder.name}</span></div>
-      {@render dir(ui.folder, 1)}
+      {@render dir(ui.folder, 0)}
     {:else if ui.file}
       {@render file(ui.path, ui.file, 0)}
     {:else}
@@ -281,8 +304,10 @@
     items={[
       { label: 'Open folder…', data: { ex: 'open-folder' }, run: actions.openFolder },
       { label: 'Open recording…', kbd: '⌘O', data: { ex: 'open-file' }, run: actions.open },
+      { sep: true },
       { label: 'Expand all folders', data: { ex: 'expand' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])) },
-      { label: 'Collapse all folders', data: { ex: 'collapse' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path))) },
+      { label: 'Collapse all folders', data: { ex: 'collapse' }, disabled: !ui.folder, run: collapseAll },
+      { sep: true },
       { label: 'Remove the folder from Explorer', data: { ex: 'remove' }, disabled: !ui.folder, run: () => (setSetting('folder', ''), (ui.folder = null)) },
       { label: 'Close all files', data: { ex: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
     ]}
@@ -295,13 +320,12 @@
     anchor={more}
     onclose={() => (more = null)}
     items={[
+      { heading: `${shownChans.length} channel${shownChans.length === 1 ? '' : 's'}${q.trim() ? ' match' : ''}` },
       { label: `Add all ${shownChans.length} channels to pane ${stack.sel + 1}`, data: { ex: 'add-all' }, disabled: !shownChans.length, run: () => addChannels(shownChans) },
       { label: 'Open them in a new chart', data: { ex: 'new-chart' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans) },
       { label: 'Open them in a new table', data: { ex: 'new-table' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans, 'table') },
       { sep: true },
-      { label: 'Group channels into categories', checked: settings.exCategories, data: { ex: 'cats' }, run: () => setSetting('exCategories', !settings.exCategories) },
       { label: `Show files that can't be opened${hidden ? ` (${hidden} hidden)` : ''}`, checked: settings.exShowAll, data: { ex: 'showall' }, run: () => setSetting('exShowAll', !settings.exShowAll) },
-      { label: `Move Explorer to the ${otherSide} sidebar`, data: { ex: 'swap' }, run: () => movePanel('explorer', otherSide) },
     ]}
   />
 {/if}
@@ -445,12 +469,6 @@
     background: var(--accent-soft);
     color: var(--accent);
   }
-  .openstrip {
-    display: flex;
-    align-items: center;
-    margin: 0 14px 4px;
-    font-size: 11.5px;
-  }
   .cap {
     color: var(--fg-muted);
     font-size: 11px;
@@ -458,25 +476,69 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
-  .openstrip .linkbtn {
-    color: var(--accent);
-    font-size: 11.5px;
+  /* the open files, as the prototype's .exopen: a raised box, its heading row, then the files as chips */
+  .exopen {
+    margin: 0 10px 6px;
+    padding: 6px 8px 8px;
+    border-radius: 8px;
+    background: var(--raised);
   }
-  .openfiles {
+  .exoh {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    color: var(--fg-muted);
+    font: 600 11px var(--font-ui);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .exoh .linkbtn {
+    color: var(--accent);
+    font: 500 12px var(--font-ui);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .exotog {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--accent);
+    font: 500 12px var(--font-ui);
+    letter-spacing: 0;
+    text-transform: none;
+    cursor: pointer;
+  }
+  .exotog:hover {
+    background: var(--accent-soft);
+  }
+  .exotog.on {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+  }
+  .exol {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
-    margin: 0 12px 8px;
   }
   .ofile {
     display: inline-flex;
     align-items: center;
+    gap: 2px;
     max-width: 100%;
-    min-height: 24px;
+    height: 24px;
+    padding: 0 2px 0 8px;
     border: 1px solid var(--border);
     border-radius: 4px;
-    background: var(--raised);
-    font-size: 13px;
+    background: var(--plot-bg);
+    font: 13px var(--font-ui);
+    cursor: pointer;
   }
   .ofile.on {
     border-color: var(--accent-line);
@@ -485,21 +547,29 @@
   .ofnm {
     min-width: 0;
     overflow: hidden;
-    padding: 2px 4px 2px 8px;
+    padding: 0;
     border: 0;
     background: transparent;
+    font: inherit;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .ofx {
-    display: inline-grid;
-    place-items: center;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
     width: 20px;
     height: 20px;
     padding: 0;
     border: 0;
+    border-radius: 4px;
     background: transparent;
     color: var(--fg-muted);
+  }
+  .ofx:hover {
+    background: var(--surface);
+    color: var(--fg);
   }
   .ofx :global(svg) {
     width: 10px;
@@ -548,9 +618,6 @@
   }
   .row.file.open .nm {
     color: var(--accent);
-    font-weight: 600;
-  }
-  .row.root {
     font-weight: 600;
   }
   .chev {

@@ -18,7 +18,7 @@ run('explorer', async ({ p, check, text, visible, fake, paneCount, until, settin
   await fake((d) => (window.__tlmFake.pickFolder = d), DIR);
   await p.click('#exFolder');
   check('Open folder lists it, its folders expanded', await until(() => document.querySelectorAll('#explorer .row.file').length === 3), await rows());
-  check('folders then files, by name', (await rows()).join() === 'flights,2026-10-12,flight.tlm,hover.csv,bench,esc_bench.csv', await rows());
+  check('folders then files, by name', (await rows()).join() === '2026-10-12,flight.tlm,hover.csv,bench,esc_bench.csv', await rows());
   check('no sizes beside files', !/MB|KB/.test(await text('#explorer .row.file')));
 
   // select first: a click selects and offers Open; double-click opens
@@ -44,9 +44,9 @@ run('explorer', async ({ p, check, text, visible, fake, paneCount, until, settin
 
   // filter: names, channels, regex
   await p.fill('#explorer input[type=search]', 'esc');
-  check('filter by file name', (await rows()).join() === 'flights,bench,esc_bench.csv', await rows());
+  check('filter by file name', (await rows()).join() === 'bench,esc_bench.csv', await rows());
   await p.fill('#explorer input[type=search]', 'motor');
-  check('filter by a channel of the open file', (await rows()).join() === 'flights,2026-10-12,flight.tlm,motor,motor_rpm,motor_rpm_target', await rows());
+  check('filter by a channel of the open file', (await rows()).join() === '2026-10-12,flight.tlm,motor,motor_rpm,motor_rpm_target', await rows());
   await p.click('#explorer .rx');
   await p.fill('#explorer input[type=search]', '^accel_[xy]$');
   check('regex', (await p.$$eval('#explorer .row.chan .nm', (r) => r.map((x) => x.textContent))).join() === 'accel_x,accel_y');
@@ -56,11 +56,11 @@ run('explorer', async ({ p, check, text, visible, fake, paneCount, until, settin
 
   // collapse and expand all
   await p.click('#treeCollapse');
-  check('Collapse all', (await rows()).join() === 'flights,2026-10-12,bench', await rows());
+  check('Collapse all: the folders with open files stay open, the channels fold', (await rows()).join() === '2026-10-12,flight.tlm,hover.csv,bench,esc_bench.csv', await rows());
   await p.click('#explorer .row.dir[data-path$="bench"]');
-  check('a folder row toggles', (await rows()).includes('esc_bench.csv'));
+  check('a folder row toggles', !(await rows()).includes('esc_bench.csv'), await rows());
   await p.click('#treeExpand');
-  check('Expand all', (await rows()).length === 15, await rows());
+  check('Expand all', (await rows()).length === 14, await rows());
 
   // Close all, and the folder after a reload
   await p.click('#closeAll');

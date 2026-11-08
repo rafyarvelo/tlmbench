@@ -34,8 +34,15 @@ export async function openProto({ viewport = { width: 1440, height: 900 }, dpr =
   return { b, p, errs, close: () => b.close() };
 }
 
+/** The app's first screen, as the prototype's: a folder of recordings (flights, bench) with a flight open. */
+const FOLDER = '/data/recordings';
+const FILES = {
+  [`${FOLDER}/flights/2026-10-12/synthetic_flight.tlm`]: {},
+  [`${FOLDER}/bench/esc_bench_1412.csv`]: { channels: ['esc_rpm', 'esc_temp', 'esc_volts'], units: ['rpm', '°C', 'V'] },
+};
+
 export async function openAppPage({ viewport = { width: 1440, height: 900 }, dpr = 1, colorScheme = 'dark', settings } = {}) {
-  const env = await openApp({ viewport, dpr, colorScheme, settings, wait: 900 });
+  const env = await openApp({ viewport, dpr, colorScheme, settings: { folder: FOLDER, ...settings }, files: FILES, wait: 900 });
   await env.p.evaluate(() => document.fonts.ready);
   return { ...env, close: async () => { await env.b.close(); env.server.close(); } };
 }

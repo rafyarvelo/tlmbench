@@ -457,7 +457,8 @@ input.sel {
 .plot {
   position: relative;
   flex: none;
-  height: var(--ph, 150px);
+  /* the chart's height, and room for the time labels under it when it has them (as the prototype's axis) */
+  height: calc(var(--ph, 150px) + var(--pb, 4px) - 4px);
   touch-action: none;
 }
 
@@ -943,11 +944,16 @@ input[role='switch']:checked::after {
 }
 
 /* the overview's header: what it shows, its range, and the switch for showing it on top */
-.ovsel {
-  min-height: 22px;
+/* as the prototype's #ovCh: 24 px, monospace */
+.ovhead .ovsel {
+  width: auto;
+  max-width: 260px;
+  min-height: 24px;
+  height: 24px;
+  margin-left: 4px;
   padding: 0 4px;
-  font-size: 11.5px;
   border-radius: 4px;
+  font: 12px var(--font-data);
 }
 
 .ovrange {

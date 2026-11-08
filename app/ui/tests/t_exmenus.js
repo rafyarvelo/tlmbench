@@ -1,5 +1,5 @@
 // Explorer's menus: the folder menu (open, expand and collapse all, remove the folder, close all files), the ⋯ menu
-// (add every channel shown, a new chart or table, categories, files that can't be opened, swapping sides), the filter
+// (how many channels, add every channel shown, a new chart or table, files that can't be opened), the filter
 // matching units and categories, "Open only this", and the title row (Add shown, Categories) and folder button.
 import { run } from './lib.js';
 
@@ -32,10 +32,10 @@ run('exmenus', async ({ p, check, text, visible, fake, paneCount, until, setting
   check('the folder button shows the folder\'s name', (await text('#exFolder')) === 'flights' && (await p.getAttribute('#exFolder', 'aria-haspopup')) === 'menu', await text('#exFolder'));
   await p.click('#exFolder');
   await p.click('.exmenu [data-ex="collapse"]');
-  check('Collapse all folders (menu)', (await rows()).join() === 'flights,a' || (await rows()).length <= 3, await rows());
+  check('Collapse all folders (menu)', (await rows()).join() === 'a', await rows());
   await p.click('#exFolder');
   await p.click('.exmenu [data-ex="expand"]');
-  check('Expand all folders (menu)', (await rows()).length >= 4, await rows());
+  check('Expand all folders (menu)', (await rows()).join() === 'a,flight.tlm,hover.csv', await rows());
 
   // open one, then ⋯ adds
   await p.click('#explorer .row.file[data-path$="flight.tlm"]');
@@ -69,12 +69,10 @@ run('exmenus', async ({ p, check, text, visible, fake, paneCount, until, setting
   check('and categories', (await p.$$('#explorer .row.chan')).length === 2, await rows());
   await p.fill('#explorer .exfilter input', '');
 
-  // categories off from ⋯
+  // ⋯ says how many channels it acts on, as the prototype's
   await p.click('#exMore');
-  await p.click('.exmenu [data-ex="cats"]');
-  check('Categories off lists channels flat', (await p.$$('#explorer .row.cat')).length === 0 && (await settingsLS()).exCategories === false);
-  await p.click('#exMore');
-  await p.click('.exmenu [data-ex="cats"]');
+  check('⋯ heads its items with the channels shown', /^6 channels/i.test(await text('.exmenu')), await text('.exmenu'));
+  await p.keyboard.press('Escape');
 
   // Open only this
   await p.dblclick('#explorer .row.file[data-path$="hover.csv"]');

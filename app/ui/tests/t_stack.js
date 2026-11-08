@@ -4,15 +4,17 @@
 import { run } from './lib.js';
 
 run('stack', async ({ p, check, wait, until, paneCount }) => {
+  // the bottom chart has room for the time labels under it (18 px more)
   const heights = () => p.$$eval('#stack .plot', (e) => e.map((x) => Math.round(x.getBoundingClientRect().height)));
-  check('three rows: 150 px charts', (await heights()).every((h) => h === 150) && (await heights()).length === 3, await heights());
+  const all = (hs, h) => hs.slice(0, -1).every((x) => x === h) && hs.at(-1) === h + 18;
+  check('three rows: 150 px charts', all(await heights(), 150) && (await heights()).length === 3, await heights());
   await p.click('#addPane');
-  check('four rows: 125 px', await until(() => [...document.querySelectorAll('#stack .plot')].every((x) => Math.round(x.getBoundingClientRect().height) === 125)), await heights());
+  check('four rows: 125 px', await until(() => [...document.querySelectorAll('#stack .plot')].slice(0, -1).every((x) => Math.round(x.getBoundingClientRect().height) === 125)) && all(await heights(), 125), await heights());
   await p.click('#addPane');
-  check('five rows: still 125 px', (await heights()).every((h) => h === 125), await heights());
+  check('five rows: still 125 px', all(await heights(), 125), await heights());
   await p.click('#addPane');
   await p.click('#addPane');
-  check('seven rows: 105 px, and they keep it', await until(() => [...document.querySelectorAll('#stack .plot')].every((x) => Math.round(x.getBoundingClientRect().height) === 105)), await heights());
+  check('seven rows: 105 px, and they keep it', await until(() => [...document.querySelectorAll('#stack .plot')].slice(0, -1).every((x) => Math.round(x.getBoundingClientRect().height) === 105)) && all(await heights(), 105), await heights());
   check('seven panes', (await paneCount()) === 7);
 
   const geo = () => p.evaluate(() => {
