@@ -181,7 +181,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Table rows band | The rows a table shows are a shaded band on the charts (`tableWins 4308`) | — | Missing | 4 | In the follow-ups. |
 | Box zoom | ≥ 4 px zooms; the box turns solid when release will zoom; a box too small fades with "Drag wider to zoom" the first 3 times (`5460-5476`) | ≥ 4 px zooms; the box turns solid when release will zoom; a box too small says "Drag wider to zoom" the first 3 times | Ported | 3 | Fixed Nov 3. |
 | Maximum zoom note | "Maximum zoom" at the pointer (`zoomNote 5384`) | "Maximum zoom" at the pointer | Ported | 3 | Fixed Nov 3. |
-| Pan | Pan mode, Shift- or middle-drag, ← → keys (`6936-6937`) | Pan mode, Shift- or middle-drag, ← → keys (`app.ts:1718`, `panBy`) | Ported | 3 | Fixed Nov 3. |
+| Pan | Pan mode, Shift- or middle-drag, ← → keys; stops at the recording's ends (`6936-6937`, `setView 5241`) | Pan mode, Shift- or middle-drag, ← → keys; stops at the recording's ends (`app.ts` `setView`, `panBy`) | Ported | 3 | Fixed Nov 3; the ends Nov 7. |
 | Wheel zoom | At the pointer, speed from settings; off makes Ctrl+wheel zoom (`5407-5450`) | At the pointer, speed from settings; Settings → Scroll wheel zooms (off: the wheel pans, Ctrl+wheel zooms); horizontal wheel pans | Ported | 3 | Fixed Nov 3. |
 | Keyboard zoom | + − ↑ ↓ (`6938-6939`) | ← → pan 15%, + − ↑ ↓ zoom 0.7× / 1.43× (`app.ts` `panBy`, `zoomBy`) | Ported | 3 | Fixed Nov 3. |
 | Double-click fits | Setting dblFit | Same (`app.ts:1783`) | Ported | 3 | |
@@ -401,9 +401,14 @@ Phase 3 needs the core or a decision; it is listed in `docs/follow-ups.md`.
 After review (Nov 3): a file's channels fold under it (chevron, ← →, Collapse all); a folder with no file open shows
 "No file open" with a Start page button, not the start page itself; plot lines are drawn as quads 1.25 CSS pixels wide, as
 the prototype's are (WebGL's own lines are one device pixel, half as wide on a Retina display). Software GL, as the UI
-tests use, keeps the thin lines because quads draw slowly there; `t_lines` forces each and compares them. The line width
-is 1.5 CSS pixels (`LINE_WIDTH` in `gl.ts`): the prototype's 1.25 looks heavier once its canvas has antialiased the edges. The
+tests use, keeps the thin lines because quads draw slowly there; `t_lines` forces each and compares them. The
 page no longer scrolls or bounces past the app (`overflow: hidden`, `overscroll-behavior: none` on `html` and `body`).
+
+Measured (Nov 7): at 1.25 CSS pixels the quads draw the same ink per unit length as the prototype's 1.25 px uPlot lines
+(within 0.5% in WKWebView and in Chrome on Metal, both with 4x MSAA, at 1x and 2x), so `LINE_WIDTH` is back to 1.25
+from 1.5. The view stays inside the recording, as the prototype's does: at most all of it, and a pan (drag, trackpad,
+wheel, keys) stops at either end (`setView` in `app.ts`; `t_view`). A row's double-click no longer loses to a zoom
+still gliding.
 
 ## 9. Look and feel
 

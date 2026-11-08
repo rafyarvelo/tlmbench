@@ -47,11 +47,24 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   await p.click(`${T} [data-row="${row + 5}"]`, { modifiers: ['Shift'] });
   check('Shift-click places B', (await app('cursors')).B === timeOf(100005), await app('cursors'));
 
-  // double-click centres the view on the row; the table follows the view
+  // double-click centres the view on the row (zoomed in: a view of the whole file can't move); the table follows the view
+  const whole = await app('view');
   await p.dblclick(`${T} [data-row="${row + 2}"]`);
+  check('with the whole file in view, double-click keeps it', (await app('view')).t0 === whole.t0 && (await app('view')).t1 === whole.t1, [await app('view'), whole]);
+  await p.mouse.move(5, 5);
+  const settled = () => until(() => { const v = window.__tlmApp.view(), k = v.t0 + v.t1, same = window.__last === k; window.__last = k; return same; });
+  for (let k = 0; k < 4; k++) {
+    await p.keyboard.press('=');
+    await wait(100);
+    await settled();
+  }
+  check('zoomed in', BigInt((await app('view')).t1) - BigInt((await app('view')).t0) < 50_000_000_000n, await app('view'));
+  // a row a few down from the top of the table, far enough from either end to centre on
+  const [n, at] = await p.$$eval(`${T} [data-row]`, (rs) => [Number(rs[4].querySelector('span').textContent.replace(/\D/g, '')), rs[4].dataset.row]);
+  await p.dblclick(`${T} [data-row="${at}"]`);
   const v = await app('view');
   const mid = (BigInt(v.t0) + BigInt(v.t1)) / 2n;
-  check('double-click centres the view', mid - BigInt(timeOf(100002)) < 2n && BigInt(timeOf(100002)) - mid < 2n, [v, timeOf(100002)]);
+  check('double-click centres the view', mid - BigInt(timeOf(n)) < 2n && BigInt(timeOf(n)) - mid < 2n, [v, timeOf(n)]);
   const r1 = await p.$eval('#stack [data-pane="1"] .plot', (e) => { const b = e.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
   await p.mouse.move(r1.x, r1.y);
   for (let k = 0; k < 6; k++) await p.mouse.wheel(0, -200);

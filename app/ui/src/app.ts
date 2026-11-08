@@ -416,16 +416,19 @@ function setView(t0: bigint, t1: bigint, remember = false): void {
     state.history.push([state.t0, state.t1]);
     state.future = [];
   }
-  const full = f.last - f.first || 1n;
+  // the view stays inside the recording, as in the prototype: at most all of it, and a pan stops at either end
+  const [lo, hi] = [f.first, f.last + 1n];
   let span = t1 - t0;
   const minSpan = 1000n; // 1 µs
-  const maxSpan = full * 3n;
+  const maxSpan = hi - lo;
   if (span < minSpan || span > maxSpan) {
     if (span < minSpan && lastPointer) flash('Maximum zoom', lastPointer.clientX, lastPointer.clientY);
     const mid = t0 + span / 2n;
     span = span < minSpan ? minSpan : maxSpan;
     t0 = mid - span / 2n;
   }
+  if (t0 < lo) t0 = lo;
+  if (t0 + span > hi) t0 = hi - span;
   state.t0 = t0;
   state.t1 = t0 + span;
   // any view you choose stops following the playhead (it keeps going); Follow brings it back
@@ -2304,8 +2307,9 @@ Object.assign(actions, {
     return y.log ? [10 ** y.min, 10 ** y.max] : [y.min, y.max];
   },
   centreOn: (t: bigint) => {
-    const half = (state.t1 - state.t0) / 2n;
-    setView(t - half, t + half, true);
+    stopGlide();
+    const span = state.t1 - state.t0;
+    setView(t - span / 2n, t - span / 2n + span, true);
   },
 });
 /** Points the time labels at the settings and the open file's start. */

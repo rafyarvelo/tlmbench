@@ -51,6 +51,31 @@ run('view', async ({ p, check, text, panes, paneCount, plotAt, settingsLS, until
   await p.click('#b-fit');
   for (let k = 0; k < 30 && span(await app('view')) !== span(full); k++) await wait(100);
   check('Fit shows the whole file', span(await app('view')) === span(full), await app('view'));
+  // the view stays inside the recording: zooming out stops at all of it, a pan stops at either end
+  await p.mouse.move(c.x, c.y);
+  await p.mouse.wheel(0, 600);
+  await wait(200);
+  check('zooming out stops at the whole file', (await app('view')).t0 === full.t0 && (await app('view')).t1 === full.t1, [await app('view'), full]);
+  await p.mouse.wheel(0, -300);
+  await wait(200);
+  for (let k = 0; k < 8; k++) await p.mouse.wheel(4000, 0);
+  await wait(200);
+  check('a trackpad pan stops at the end', (await app('view')).t1 === full.t1 && span(await app('view')) === span(z), [await app('view'), full]);
+  await p.keyboard.press('p');
+  const l = await plotAt(0, 0.1);
+  const r = await plotAt(0, 0.9);
+  for (let k = 0; k < 4; k++) {
+    await p.mouse.move(l.x, l.y);
+    await p.mouse.down();
+    await p.mouse.move(r.x, r.y, { steps: 4 });
+    await p.mouse.up();
+  }
+  await wait(200);
+  check('a drag pan stops at the start', (await app('view')).t0 === full.t0 && span(await app('view')) === span(z), [await app('view'), full]);
+  await p.mouse.move(5, 5);
+  await p.keyboard.press('b');
+  await p.click('#b-fit');
+  for (let k = 0; k < 30 && span(await app('view')) !== span(full); k++) await wait(100);
 
   // hover: a time line and every chip's value
   const h = await plotAt(1, 0.4);
