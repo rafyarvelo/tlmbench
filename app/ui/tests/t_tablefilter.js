@@ -41,11 +41,17 @@ run('tablefilter', async ({ p, check, text, until, settingsLS, wait, fake }) => 
   await p.click(`${T} [data-fstep="-1"]`);
   check('▲ steps back, wrapping to the last', await until((n) => document.querySelector('[data-table] [data-fpos]')?.textContent === n, `${hits.length.toLocaleString()} of ${hits.length.toLocaleString()}`), await text(`${T} [data-fpos]`));
 
+  // the matches are marked on the charts (those in the view)
+  check('the charts mark the matches', await until(() => (window.__tlmApp.marks()?.hits ?? 0) > 0 && window.__tlmApp.marks().excluded === 0), await p.evaluate(() => window.__tlmApp.marks()));
+  const asked = await fake(() => window.__tlmFake.marksAsked.at(-1));
+  check('asked for the view and the width', asked.t0 === (await p.evaluate(() => window.__tlmApp.view().t0)) && asked.widthPx >= 200, asked);
+
   // Apply to charts
   check('no chip yet', !(await p.$('[data-fchip]')));
   await p.click(`${T} [data-fapply]`);
   check('the core leaves the other rows out', await until(() => window.__tlmFake.masks.size === 1));
   check('of every row in the file', (await fake(() => [...window.__tlmFake.masks.values()]))[0] === N - over, await fake(() => [...window.__tlmFake.masks.values()]));
+  check('the charts mark the rows left out instead of the matches', await until(() => window.__tlmApp.marks()?.excluded > 0 && window.__tlmApp.marks().hits === 0), await p.evaluate(() => window.__tlmApp.marks()));
   check('a chip on the charts says how many', await until((n) => document.querySelector('[data-fchip]')?.textContent.includes(n), `${(N - over).toLocaleString()} rows hidden`), await text('[data-fchip]'));
   check('Apply forces Whole file', (await p.getAttribute(`${T} [data-fscope="view"]`, 'disabled')) !== null);
   check('saved with the layout', JSON.stringify((await settingsLS()).layouts['/data/flight.tlm'][0].tfilt) === '{"scope":"file","apply":true}', (await settingsLS()).layouts['/data/flight.tlm'][0].tfilt);
@@ -54,10 +60,12 @@ run('tablefilter', async ({ p, check, text, until, settingsLS, wait, fake }) => 
   await p.click('[data-fchip] button');
   check('× shows every row again', await until(() => window.__tlmFake.masks.size === 0 && !document.querySelector('[data-fchip]')));
   check('and unticks Apply', !(await p.isChecked(`${T} [data-fapply]`)));
+  check('the hatching goes with it', await until(() => window.__tlmApp.marks()?.excluded === 0));
 
   // clearing the filter takes the strip away; turning Apply on and deleting the filter lifts the mask
   await p.click(`${T} [data-fapply]`);
   await until(() => window.__tlmFake.masks.size === 1);
   await p.click(`${T} [data-clear]`);
   check('clearing the filters lifts the mask and the strip', await until(() => window.__tlmFake.masks.size === 0 && !document.querySelector('[data-fchip]') && !document.querySelector('[data-table] [data-tfilt]')));
+  check('and the marks', await until(() => window.__tlmApp.marks() === null));
 });

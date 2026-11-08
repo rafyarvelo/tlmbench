@@ -202,6 +202,39 @@
     }
   });
 
+  // what the charts mark: the matches (unless Apply to charts took the other rows away) and the rows left out
+  let marksTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const f = ui.view.file;
+    const [t0, t1] = [ui.view.t0, ui.view.t1];
+    const token = q?.token;
+    const apply = !!tfilt.apply;
+    const held = !!ui.filtered; // read always: the marks are asked again when the mask is set or lifted
+    const active = good.length > 0 && (apply ? held : !!q?.hits);
+    clearTimeout(marksTimer);
+    if (f == null || !active) {
+      if (ui.marks?.pane === i) {
+        ui.marks = null;
+        actions.redraw();
+      }
+      return;
+    }
+    marksTimer = setTimeout(async () => {
+      try {
+        const m = await invoke<{ hits: [string, string][]; excluded: [string, string][] }>('table_marks', { file: f, token: apply ? null : (token ?? null), t0, t1, widthPx: Math.max(200, window.innerWidth) });
+        const run = ([a, b]: [string, string]): [bigint, bigint] => [BigInt(a), BigInt(b)];
+        ui.marks = { pane: i, hits: m.hits.map(run), excluded: m.excluded.map(run) };
+        actions.redraw();
+      } catch {
+        /* the file closed meanwhile */
+      }
+    }, 120);
+  });
+  onDestroy(() => {
+    clearTimeout(marksTimer);
+    if (ui.marks?.pane === i) ui.marks = null;
+  });
+
   // ---------- the filter strip ----------
 
   /** The match the last step landed on (-1: none yet). */

@@ -39,6 +39,9 @@ export const ui = $state({
   focus: false,
   /** The open file's id, the time view and the cursors (exact ns as decimal strings), for table panes. */
   view: { file: null as number | null, t0: '0', t1: '1', first: '0', end: '1', A: null as string | null, B: null as string | null },
+  /** What the charts mark: where the filter of table pane `pane` matches, and the rows Apply to charts leaves out,
+   * as runs of time (ns). */
+  marks: null as null | { pane: number; hits: [bigint, bigint][]; excluded: [bigint, bigint][] },
   /** A table's Apply to charts is on: how many rows it leaves out, and the pane that holds it. */
   filtered: null as null | { rows: number; pane: number },
   /** Both cursors are placed; any is. */
@@ -97,6 +100,8 @@ export const actions = {
   centreOn: (_t: bigint) => {},
   /** The charts, overview and stats ask again (after what the core leaves out of them changed). */
   refreshViews: () => {},
+  /** The charts draw again (their marks changed). */
+  redraw: () => {},
   /** Workspaces: Save as… (a layout of tab `key`, which then shows it; an error to show, or null), Save layout,
    * Revert changes, Delete layout, open one in a tab (on the file in front), and a new empty one. */
   saveAs: (_key: number, _name: string): string | null => null,

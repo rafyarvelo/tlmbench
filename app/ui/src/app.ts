@@ -720,6 +720,7 @@ function draw(): void {
       markers[i] = chans.length === 1 ? drawMarkers(ctx, r, main, chans[0], ranges[keyOf.get(chans[0])!], tk) : 0;
       for (const key of keys) if (axisOf(i, key).range === 'robust') drawClipped(ctx, r, main, chans.filter((ch) => keyOf.get(ch) === key), ranges[key], tk);
     }
+    drawMarks(ctx, r, tk);
     drawBuilding(ctx, r, i === 0);
     drawCursors(ctx, r, tk);
     drawPlayhead(ctx, r, tk);
@@ -863,6 +864,59 @@ function glideHatch(): void {
   state.hatchFrom = step > 0n ? from + step : target;
   scheduleDraw();
 }
+
+/** A table filter's matches (a light shade and a tick along the top) and the rows Apply to charts leaves out (a veil
+ * and hatching along the bottom). */
+function drawMarks(ctx: CanvasRenderingContext2D, r: Rect, tk: Record<string, string>): void {
+  const m = ui.marks;
+  if (!m) return;
+  const span = Number(state.t1 - state.t0);
+  if (span <= 0) return;
+  const px = (t: bigint) => r.x + (Number(t - state.t0) / span) * r.w;
+  // a run under two pixels wide still shows
+  const wide = (a: bigint, b: bigint): [number, number] => {
+    const [x0, x1] = [px(a), px(b)];
+    return x1 - x0 < 2 ? [(x0 + x1) / 2 - 1, (x0 + x1) / 2 + 1] : [x0, x1];
+  };
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.clip();
+  for (const [a, b] of m.hits) {
+    if (b < state.t0 || a > state.t1) continue;
+    const [x0, x1] = wide(a, b);
+    ctx.fillStyle = css(tk['--fg'], 0.07);
+    ctx.fillRect(x0, r.y, x1 - x0, r.h);
+    ctx.fillStyle = css(tk['--fg'], 0.6);
+    ctx.fillRect(x0, r.y, x1 - x0, 3);
+  }
+  if (m.excluded.length) {
+    if (!hatch) {
+      const pc = document.createElement('canvas');
+      pc.width = pc.height = 8;
+      const g = pc.getContext('2d')!;
+      g.strokeStyle = 'rgba(128,128,128,.7)';
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(0, 8);
+      g.lineTo(8, 0);
+      g.stroke();
+      hatch = ctx.createPattern(pc, 'repeat');
+    }
+    for (const [a, b] of m.excluded) {
+      if (b < state.t0 || a > state.t1) continue;
+      const [x0, x1] = wide(a, b);
+      ctx.fillStyle = css(tk['--fg-muted'], 0.06);
+      ctx.fillRect(x0, r.y, x1 - x0, r.h);
+      if (hatch) {
+        ctx.fillStyle = hatch;
+        ctx.fillRect(x0, r.y + r.h - 7, x1 - x0, 7);
+      }
+    }
+  }
+  ctx.restore();
+}
+let hatch: CanvasPattern | null = null;
 
 /** Hatches the part of the view not summarized yet. */
 function drawBuilding(ctx: CanvasRenderingContext2D, r: Rect, label: boolean, t0 = state.t0, t1 = state.t1): void {
@@ -2493,6 +2547,7 @@ function toggleFocus(on = !ui.focus): void {
 }
 
 Object.assign(actions, {
+  redraw: () => scheduleDraw(),
   refreshViews: () => {
     state.ovStale = true;
     void requestView('exact');
@@ -2708,6 +2763,8 @@ export const gateApi = {
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
   /** Per pane and channel: the connected stretches drawn dashed, and the solid runs. */
   dashes: () => state.layers.map((l) => (l ? [...l.traces.values()].map((t) => [t.gl.dashes.length, t.gl.runs.length]) : null)),
+  /** The marks the charts draw: matches and rows left out. */
+  marks: () => (ui.marks ? { pane: ui.marks.pane, hits: ui.marks.hits.length, excluded: ui.marks.excluded.length } : null),
   /** How many sample markers each pane drew last. */
   markers: () => [...markers],
   /** The overview's channels as last drawn: columns with values and those with a band. */

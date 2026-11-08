@@ -177,6 +177,9 @@
     rowsAsked: [],
     queries: new Map(),
     masks: new Map(),
+    /** The runs of time each mask leaves out, [t0, t1] ns, by owner. */
+    maskRuns: new Map(),
+    marksAsked: [],
     maskCalls: [],
     queriesRun: [],
     /** The precision each `view` asked for. */
@@ -359,12 +362,26 @@
       const preds = filters.map((f) => [f.col, parseFilter(f.expr).test]);
       const val = (col, i) => (col === 't' ? Number(timeAt(r, i)) : valueAt(r, Number(col.slice(1)), i));
       let kept = 0;
-      for (let i = 0; i < r.samples; i++) if (preds.every(([c, t]) => t(val(c, i)))) kept++;
+      const runs = [];
+      for (let i = 0; i < r.samples; i++) {
+        if (preds.every(([c, t]) => t(val(c, i)))) kept++;
+        else if (runs.length && runs.at(-1)[2] === i - 1) [runs.at(-1)[1], runs.at(-1)[2]] = [timeAt(r, i), i];
+        else runs.push([timeAt(r, i), timeAt(r, i), i]);
+      }
       fake.masks.set(owner, r.samples - kept);
+      fake.maskRuns.set(owner, runs.map(([a, b]) => [a, b]));
       return { matched: kept, total: r.samples, done: true, hits: 0 };
+    },
+    // what the charts mark: the query's matches and what the masks leave out, in the span
+    table_marks({ token, t0, t1, widthPx }) {
+      fake.marksAsked.push({ token, t0, t1, widthPx });
+      const [a, b] = [BigInt(t0), BigInt(t1)];
+      const within = (runs) => runs.filter(([x, y]) => y >= a && x < b).map(([x, y]) => [String(x), String(y)]);
+      return { hits: within(fake.queries.get(token)?.hits ?? []), excluded: within([...fake.maskRuns.values()].flat()) };
     },
     table_unmask({ owner }) {
       fake.masks.delete(owner);
+      fake.maskRuns.delete(owner);
     },
     table_query({ file, span, filters, sort, token, dropToken }) {
       const r = fake.open.get(file)?.r;

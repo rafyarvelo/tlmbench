@@ -565,6 +565,63 @@ fn table_hit(file: u32, token: u32, k: u64, files: State<'_, Files>) -> Result<O
     Ok(Some(Hit { t0: t0.to_string(), t1: t1.to_string(), pos: pos as u64 }))
 }
 
+const MARKS_MAX: usize = 4000;
+
+/// What the charts mark over a span: where a table's filter matches and where Apply to charts leaves rows out, as
+/// runs of time (ns as text).
+#[derive(Serialize)]
+struct Marks {
+    hits: Vec<(String, String)>,
+    excluded: Vec<(String, String)>,
+}
+
+/// The runs (sorted, not overlapping) that touch `[t0, t1)`, with those closer than `min_gap` joined, and joined
+/// further until at most `cap` are left.
+fn runs_in(runs: &[(i64, i64)], t0: i64, t1: i64, min_gap: i64, cap: usize) -> Vec<(i64, i64)> {
+    let a = runs.partition_point(|r| r.1 < t0);
+    let b = a + runs[a..].partition_point(|r| r.0 < t1);
+    let mut gap = min_gap.max(0);
+    loop {
+        let mut out: Vec<(i64, i64)> = Vec::new();
+        for &(x, y) in &runs[a..b] {
+            match out.last_mut() {
+                Some(last) if x - last.1 <= gap => last.1 = y,
+                _ => out.push((x, y)),
+            }
+        }
+        if out.len() <= cap {
+            return out;
+        }
+        gap = (gap * 2).max(1);
+    }
+}
+
+/// The marks for a span drawn `width_px` wide: the filter matches of a query (`token`, none without a filter) and
+/// the rows any table's Apply to charts leaves out. Runs under a pixel apart are joined, and there are at most 4000
+/// of each.
+#[tauri::command]
+fn table_marks(
+    file: u32,
+    token: Option<u32>,
+    t0: String,
+    t1: String,
+    width_px: u32,
+    files: State<'_, Files>,
+) -> Result<Marks, String> {
+    let o = files.get(file)?;
+    let (t0, t1) = (parse_time(&t0)?, parse_time(&t1)?);
+    let px = ((t1 as i128 - t0 as i128) / i128::from(width_px.max(1))).clamp(1, i64::MAX as i128) as i64;
+    let text = |v: Vec<(i64, i64)>| v.into_iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+    let hits = token
+        .and_then(|t| files.queries.lock().unwrap().get(&t).cloned())
+        .map(|q| runs_in(&q.hits, t0, t1, px, MARKS_MAX))
+        .unwrap_or_default();
+    let rec = o.recording();
+    let mask = o.mask();
+    let timed: Vec<(i64, i64)> = mask.runs().iter().map(|r| (rec.time_at(r.start), rec.time_at(r.end - 1))).collect();
+    Ok(Marks { hits: text(hits), excluded: text(runs_in(&timed, t0, t1, px, MARKS_MAX)) })
+}
+
 /// Apply to charts: leaves the rows the filters don't pass out of every chart, statistic and value of the file
 /// (`owner` names the table; a new call replaces its last). Always over the whole file. `table_unmask` takes it back.
 #[tauri::command]
@@ -1044,6 +1101,7 @@ fn main() {
             table_query,
             table_cancel,
             table_hit,
+            table_marks,
             table_mask,
             table_unmask,
             filter_check,
@@ -1086,6 +1144,15 @@ mod tests {
         assert_eq!(times, (2..6).map(|i| rec.time_at(i)).collect::<Vec<_>>());
         let b: Vec<f64> = (0..4).map(|k| f64::from_bits(u64_at(32 + 64 + 8 * k))).collect();
         assert_eq!(b, vec![4.0, 1.0, 8.0, 5.0], "b = i * 7 % 10 at rows 2..6");
+    }
+
+    #[test]
+    fn marks_join_runs_under_a_pixel_and_stay_capped() {
+        let runs = [(0, 10), (12, 20), (100, 110), (300, 310)];
+        assert_eq!(runs_in(&runs, 0, 1000, 5, 10), [(0, 20), (100, 110), (300, 310)]);
+        assert_eq!(runs_in(&runs, 50, 200, 0, 10), [(100, 110)], "only what touches the span");
+        assert_eq!(runs_in(&runs, 20, 21, 0, 10), [(12, 20)], "a run ending at the span's start touches it");
+        assert_eq!(runs_in(&runs, 0, 1000, 0, 2).len(), 2, "joined further to fit the cap");
     }
 
     #[test]
