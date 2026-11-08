@@ -213,6 +213,8 @@ pub fn encode_packet(p: &Packets, big: bool, header: &[u8], payload: &[u8]) -> R
 struct Framed {
     offset: u64,
     stored: u64,
+    /// Whether its checksum matched (always, unless the scan was asked to keep packets that fail it).
+    ok: bool,
 }
 
 /// The framing scan's result.
@@ -234,6 +236,22 @@ fn frame(
     part: Option<&Part>,
     sync: &[u8],
     big: bool,
+) -> Framing {
+    frame_checked(data, start, p, record_size, part, sync, big, false)
+}
+
+/// [`frame`], optionally keeping the packets whose checksum fails (marked `ok: false`): the descriptor form's
+/// preview shows them.
+#[allow(clippy::too_many_arguments)]
+fn frame_checked(
+    data: &[u8],
+    start: usize,
+    p: &Packets,
+    record_size: u64,
+    part: Option<&Part>,
+    sync: &[u8],
+    big: bool,
+    keep_bad: bool,
 ) -> Framing {
     let hs = p.header_size as usize;
     let cks = p.checksum.size() as usize;
@@ -268,10 +286,12 @@ fn frame(
         // an id no type claims can't be framed by size, but can by its length field
         let unframed = p.length.is_none() && part.is_some() && known.is_none();
         let end = (!unframed && (0..=MAX_PAYLOAD as i64).contains(&stored)).then(|| pos + hs + cks + stored as usize);
+        let mut sum_ok = true;
         let good = match end {
             Some(e) if e <= data.len() => {
                 let body = pos + hs + stored as usize;
-                cks == 0 || read_uint(&data[body..], cks, big) == checksum(p.checksum, &data[pos..body])
+                sum_ok = cks == 0 || read_uint(&data[body..], cks, big) == checksum(p.checksum, &data[pos..body]);
+                sum_ok || keep_bad
             }
             Some(_) if finder.is_none() => break, // runs past the end: a partial last packet
             _ => false,
@@ -280,14 +300,14 @@ fn frame(
             (true, Some(e)) => {
                 match (part, known) {
                     (Some(q), Some(_)) if id == Some(q.id) => {
-                        out.packets.push(Framed { offset: pos as u64, stored: stored as u64 })
+                        out.packets.push(Framed { offset: pos as u64, stored: stored as u64, ok: sum_ok })
                     }
                     (Some(_), Some(_)) => out.other_bytes += (e - pos) as u64,
                     (Some(_), None) => {
                         out.bad += usize::from(counts);
                         out.other_bytes += (e - pos) as u64;
                     }
-                    (None, _) => out.packets.push(Framed { offset: pos as u64, stored: stored as u64 }),
+                    (None, _) => out.packets.push(Framed { offset: pos as u64, stored: stored as u64, ok: sum_ok }),
                 }
                 pos = e;
             }
@@ -301,6 +321,52 @@ fn frame(
         }
     }
     out
+}
+
+/// The records of the packet at `offset` of `data` with `stored` payload bytes, as read: the packet header, then
+/// the record, for each. `None` when the payload doesn't decompress to whole records.
+fn packet_records(data: &[u8], p: &Packets, record_size: u64, offset: u64, stored: u64) -> Option<Vec<u8>> {
+    let (hs, at) = (p.header_size as usize, offset as usize);
+    let header = &data[at..at + hs];
+    let payload = decompress(p.compression, &data[at + hs..at + hs + stored as usize])?;
+    let rs = record_size as usize;
+    if payload.len() % rs != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(payload.len() / rs * (hs + rs));
+    for r in payload.chunks_exact(rs) {
+        out.extend_from_slice(header);
+        out.extend_from_slice(r);
+    }
+    Some(out)
+}
+
+/// What the descriptor form's preview reads from the first bytes of a file laid out as packets: each packet's
+/// start, its records as read (header then record), whether its checksum matched, and how many bytes came before
+/// the first packet.
+pub(crate) struct HeadPackets {
+    pub packets: Vec<(usize, Vec<u8>, bool)>,
+    pub skipped: usize,
+    /// How many bytes the first packet takes in all.
+    pub first_len: usize,
+}
+
+/// The first `max` packets in `head` that decode (a descriptor without `[[packet_types]]`).
+pub(crate) fn head_packets(head: &[u8], d: &Descriptor, max: usize) -> Result<HeadPackets> {
+    let p = packets_of(d);
+    let sync = p.sync_bytes()?;
+    let big = d.endian == Endian::Big;
+    let framing = frame_checked(head, d.header_size as usize, p, d.record_size, None, &sync, big, true);
+    let mut out = HeadPackets { packets: Vec::new(), skipped: 0, first_len: 0 };
+    for f in framing.packets.iter().take(max) {
+        let Some(recs) = packet_records(head, p, d.record_size, f.offset, f.stored) else { continue };
+        if out.packets.is_empty() {
+            out.skipped = f.offset as usize - d.header_size as usize;
+            out.first_len = (p.header_size + p.checksum.size() + f.stored) as usize;
+        }
+        out.packets.push((f.offset as usize, recs, f.ok));
+    }
+    Ok(out)
 }
 
 impl PacketFile {
@@ -416,20 +482,7 @@ impl PacketFile {
 
     /// The records of the packet at `offset` with `stored` payload bytes, as read (header then record, each).
     fn records_of(&self, offset: u64, stored: u64) -> Option<Vec<u8>> {
-        let p = packets_of(&self.desc);
-        let (hs, at) = (p.header_size as usize, offset as usize);
-        let header = &self.bytes[at..at + hs];
-        let payload = decompress(p.compression, &self.bytes[at + hs..at + hs + stored as usize])?;
-        let rs = self.desc.record_size as usize;
-        if payload.len() % rs != 0 {
-            return None;
-        }
-        let mut out = Vec::with_capacity(payload.len() / rs * (hs + rs));
-        for r in payload.chunks_exact(rs) {
-            out.extend_from_slice(header);
-            out.extend_from_slice(r);
-        }
-        Some(out)
+        packet_records(&self.bytes, packets_of(&self.desc), self.desc.record_size, offset, stored)
     }
 
     /// The time of each record in `recs` (records as read, the first being record `first` of the file), when time

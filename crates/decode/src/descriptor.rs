@@ -678,27 +678,108 @@ pub fn name_matches(pattern: &str, name: &str) -> bool {
     tail.len() >= last.len() && tail.ends_with(last)
 }
 
+/// A descriptor file the app knows: one in a folder's `.tlmbench/decoders/` (shared with the folder) or in the app
+/// cache's `decoders/` (this machine's).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Known {
+    /// The file's name without `.toml`.
+    pub id: String,
+    pub path: std::path::PathBuf,
+    /// In the data's folder rather than the app cache.
+    pub shared: bool,
+    pub descriptor: Descriptor,
+}
+
+/// The descriptors in `dir`'s `.tlmbench/decoders/` and then in the app cache's `decoders/` (`cache_root`), each in
+/// name order. A file that doesn't parse is skipped.
+pub fn known(dir: &std::path::Path, cache_root: &std::path::Path) -> Vec<Known> {
+    let mut out = Vec::new();
+    for (folder, shared) in [(dir.join(".tlmbench").join("decoders"), true), (cache_root.join("decoders"), false)] {
+        let Ok(rd) = std::fs::read_dir(&folder) else { continue };
+        let mut files: Vec<_> =
+            rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        files.sort_by_key(|p| p.file_stem().map(std::ffi::OsStr::to_owned));
+        for path in files {
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let Ok(descriptor) = Descriptor::parse(&text) else { continue };
+            let id = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            out.push(Known { id, path, shared, descriptor });
+        }
+    }
+    out
+}
+
 /// The descriptor for a file, found by the `files = [...]` patterns of the descriptors in the folder's
 /// `.tlmbench/decoders/` and then in the app cache's `decoders/` (`cache_root`): the first match in name order,
 /// the folder's before the cache's. A descriptor that doesn't parse is skipped.
 pub fn discover(path: &std::path::Path, cache_root: &std::path::Path) -> Option<std::path::PathBuf> {
     let name = path.file_name()?.to_str()?;
-    let folder = path.parent().map(|p| p.join(".tlmbench").join("decoders"));
-    for dir in folder.into_iter().chain([cache_root.join("decoders")]) {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-        let mut files: Vec<_> =
-            rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
-        files.sort();
-        for f in files {
-            let Ok(text) = std::fs::read_to_string(&f) else { continue };
-            if let Ok(d) = Descriptor::parse(&text)
-                && d.files.iter().any(|pat| name_matches(pat, name))
-            {
-                return Some(f);
-            }
+    known(path.parent()?, cache_root)
+        .into_iter()
+        .find(|k| k.descriptor.files.iter().any(|p| name_matches(p, name)))
+        .map(|k| k.path)
+}
+
+/// A file name for a descriptor called `name`: lower case, letters and digits joined by dashes (`esc-telemetry`).
+pub fn slug(name: &str) -> String {
+    let s: String = name
+        .to_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if s.is_empty() { "decoder".into() } else { s }
+}
+
+/// Writes `d` to the app cache's `decoders/` (never beside the data) and returns where it went. `replace` is the id
+/// of a descriptor being edited: it is written over (and renamed when the name changed, the old file removed);
+/// otherwise a name that is taken gets a number.
+pub fn save(d: &Descriptor, replace: Option<&str>, cache_root: &std::path::Path) -> Result<Known> {
+    d.validate()?;
+    let dir = cache_root.join("decoders");
+    std::fs::create_dir_all(&dir).map_err(crate::error::io_err(&dir))?;
+    let base = slug(d.name.as_deref().unwrap_or(""));
+    let bare = |id: &str| !id.is_empty() && !id.contains(['/', '\\']) && !id.starts_with('.');
+    let id = match replace.filter(|r| bare(r)) {
+        // an edited descriptor keeps its file unless it was renamed
+        Some(r)
+            if dir.join(format!("{r}.toml")).exists() && slug_of_file(&dir, r).as_deref() == Some(base.as_str()) =>
+        {
+            r.to_owned()
         }
+        other => {
+            let mut id = base.clone();
+            let mut n = 2;
+            while dir.join(format!("{id}.toml")).exists() && other != Some(id.as_str()) {
+                id = format!("{base}-{n}");
+                n += 1;
+            }
+            id
+        }
+    };
+    let path = dir.join(format!("{id}.toml"));
+    std::fs::write(&path, d.to_toml()).map_err(crate::error::io_err(&path))?;
+    if let Some(old) = replace.filter(|r| bare(r) && *r != id) {
+        let _ = std::fs::remove_file(dir.join(format!("{old}.toml")));
     }
-    None
+    Ok(Known { id, path, shared: false, descriptor: d.clone() })
+}
+
+/// The slug of the name inside descriptor file `id` in `dir`.
+fn slug_of_file(dir: &std::path::Path, id: &str) -> Option<String> {
+    let d = Descriptor::load(&dir.join(format!("{id}.toml"))).ok()?;
+    Some(slug(d.name.as_deref().unwrap_or("")))
+}
+
+/// Share…: writes `d` to `folder/.tlmbench/decoders/<name>.toml` so everyone with the folder decodes its files the
+/// same way. Only ever called for a user's action; returns the file written.
+pub fn share(d: &Descriptor, folder: &std::path::Path) -> Result<std::path::PathBuf> {
+    d.validate()?;
+    let dir = folder.join(".tlmbench").join("decoders");
+    std::fs::create_dir_all(&dir).map_err(crate::error::io_err(&dir))?;
+    let path = dir.join(format!("{}.toml", slug(d.name.as_deref().unwrap_or(""))));
+    std::fs::write(&path, d.to_toml()).map_err(crate::error::io_err(&path))?;
+    Ok(path)
 }
 
 #[cfg(test)]
@@ -768,6 +849,43 @@ mod tests {
         assert_eq!(discover(&file("esc_1.bin"), &cache), Some(local.join("z.toml")));
         assert_eq!(discover(&file("other.bin"), &cache), Some(cache.join("decoders/a.toml")));
         assert_eq!(discover(&file("other.dat"), &cache), None);
+    }
+
+    #[test]
+    fn descriptors_are_saved_to_the_cache_and_shared_to_the_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (data, cache) = (tmp.path().join("rec"), tmp.path().join("cache"));
+        std::fs::create_dir_all(&data).unwrap();
+        assert_eq!(slug("ESC telemetry (v2)"), "esc-telemetry-v2");
+        assert_eq!(slug("  "), "decoder");
+        let d = Descriptor::parse(EXAMPLE).unwrap();
+        let a = save(&d, None, &cache).unwrap();
+        assert_eq!((a.id.as_str(), a.shared), ("bench-logger", false));
+        assert!(a.path.starts_with(cache.join("decoders")));
+        // the same name again is a different descriptor; editing one writes over it
+        assert_eq!(save(&d, None, &cache).unwrap().id, "bench-logger-2");
+        let mut edited = d.clone();
+        edited.files = vec!["*.bin".into()];
+        assert_eq!(save(&edited, Some("bench-logger"), &cache).unwrap().id, "bench-logger");
+        assert_eq!(
+            known(&data, &cache).iter().map(|k| k.id.as_str()).collect::<Vec<_>>(),
+            ["bench-logger", "bench-logger-2"]
+        );
+        // a rename moves the file
+        edited.name = Some("Renamed".into());
+        assert_eq!(save(&edited, Some("bench-logger"), &cache).unwrap().id, "renamed");
+        assert!(!cache.join("decoders/bench-logger.toml").exists());
+        // only share() writes into the folder, and it's found there before the cache's
+        assert!(!data.join(".tlmbench").exists());
+        let shared = share(&edited, &data).unwrap();
+        assert_eq!(shared, data.join(".tlmbench/decoders/renamed.toml"));
+        let k = known(&data, &cache);
+        assert_eq!((k[0].shared, k[0].id.as_str()), (true, "renamed"));
+        assert_eq!(discover(&data.join("x.bin"), &cache), Some(shared));
+        // an invalid descriptor is refused and writes nothing
+        let mut bad = d.clone();
+        bad.fields[1].offset = 15;
+        assert!(save(&bad, None, &cache).is_err() && share(&bad, &data).is_err());
     }
 
     #[test]

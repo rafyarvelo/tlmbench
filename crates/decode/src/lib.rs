@@ -19,6 +19,7 @@ pub mod fixed;
 pub mod packets;
 pub mod parquet;
 mod parquet_pages;
+pub mod preview;
 pub mod profile;
 pub mod reference;
 mod strided;
@@ -26,6 +27,11 @@ mod strided;
 use std::path::{Path, PathBuf};
 
 pub use bytes::resident_share;
+
+/// The first `n` bytes of a file (fewer if it is shorter).
+pub fn read_head(path: &Path, n: usize) -> Result<Vec<u8>> {
+    bytes::read_head(path, n)
+}
 pub use error::{Error, Result};
 use tlmbench_core::Recording;
 

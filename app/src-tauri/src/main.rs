@@ -994,26 +994,48 @@ struct FolderEntry {
     bytes: u64,
     /// Files: whether the app can open it (a recording format); the others are listed so Explorer can offer to show them.
     openable: bool,
+    /// A binary file no descriptor claims: opening it asks for a descriptor (the form).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    needs_descriptor: bool,
     /// Folders: what they hold, recordings and the folders that lead to some.
     children: Vec<FolderEntry>,
 }
 
+/// Extensions of files that are likely a logger's binary format (a file without one counts too): these are looked
+/// into, and offered the descriptor form when nothing claims them.
+fn binary_ext(ext: Option<&str>) -> bool {
+    matches!(ext, None | Some("bin" | "dat" | "raw" | "pkt" | "log" | "tlmbin" | "frames"))
+}
+
 /// The files under `path`, in their folders, sorted by name (recordings are `openable`: CSV, TSV, TXT, .tlm and
-/// Parquet); folders without any file, and hidden ones, are left out. Only reads the folder (Explorer's Open folder).
+/// Parquet, and files a descriptor's `files` patterns name; a binary file nothing claims is `needs_descriptor`);
+/// folders without any file, and hidden ones, are left out. Only reads the folder (Explorer's Open folder).
 #[tauri::command]
-async fn list_folder(path: String) -> Result<FolderEntry, String> {
-    fn walk(p: &Path, depth: u32) -> Option<FolderEntry> {
+async fn list_folder(path: String, files: State<'_, Files>) -> Result<FolderEntry, String> {
+    use tlmbench_decode::descriptor::{Known, known, name_matches};
+    fn walk(p: &Path, depth: u32, root: &Path) -> Option<FolderEntry> {
         let name = p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned());
         let meta = std::fs::metadata(p).ok()?;
         if !meta.is_dir() {
             let ext = p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
-            let openable = matches!(ext.as_deref(), Some("csv" | "tsv" | "txt" | "tlm" | "parquet"));
+            let mut openable = matches!(ext.as_deref(), Some("csv" | "tsv" | "txt" | "tlm" | "parquet"));
+            let mut needs_descriptor = false;
+            if !openable {
+                let claimed: Vec<Known> = p.parent().map(|d| known(d, root)).unwrap_or_default();
+                openable = claimed.iter().any(|k| k.descriptor.files.iter().any(|g| name_matches(g, &name)));
+                if !openable && binary_ext(ext.as_deref()) {
+                    let head = tlmbench_decode::read_head(p, 512).unwrap_or_default();
+                    needs_descriptor = !head.is_empty() && tlmbench_decode::preview::looks_binary(&head);
+                    openable = needs_descriptor;
+                }
+            }
             return Some(FolderEntry {
                 path: p.display().to_string(),
                 name,
                 dir: false,
                 bytes: meta.len(),
                 openable,
+                needs_descriptor,
                 children: Vec::new(),
             });
         }
@@ -1022,7 +1044,7 @@ async fn list_folder(path: String) -> Result<FolderEntry, String> {
                 .ok()?
                 .flatten()
                 .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
-                .filter_map(|e| walk(&e.path(), depth + 1))
+                .filter_map(|e| walk(&e.path(), depth + 1, root))
                 .collect()
         } else {
             Vec::new()
@@ -1034,12 +1056,109 @@ async fn list_folder(path: String) -> Result<FolderEntry, String> {
             dir: true,
             bytes: 0,
             openable: false,
+            needs_descriptor: false,
             children,
         })
     }
-    spawn_blocking(move || walk(Path::new(&path), 0).ok_or_else(|| format!("{path} isn't a folder that can be read")))
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        walk(Path::new(&path), 0, &root).ok_or_else(|| format!("{path} isn't a folder that can be read"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ---------- format descriptors: the form on a binary file nothing claims ----------
+
+/// Whether `path` is a binary file no descriptor claims (the form is offered for it).
+#[tauri::command]
+async fn needs_descriptor(path: String, files: State<'_, Files>) -> Result<bool, String> {
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        let p = Path::new(&path);
+        let head = tlmbench_decode::read_head(p, 4096).unwrap_or_default();
+        !head.is_empty()
+            && tlmbench_decode::preview::looks_binary(&head)
+            && tlmbench_decode::descriptor::discover(p, &root).is_none()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The descriptors that could decode a file: its folder's `.tlmbench/decoders/` and the app cache's `decoders/`.
+#[tauri::command]
+async fn descriptor_list(
+    path: String,
+    files: State<'_, Files>,
+) -> Result<Vec<tlmbench_decode::descriptor::Known>, String> {
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        Path::new(&path).parent().map(|d| tlmbench_decode::descriptor::known(d, &root)).unwrap_or_default()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// A descriptor as the form edits it (the JSON of `Descriptor`).
+fn parse_descriptor(d: serde_json::Value) -> Result<tlmbench_decode::descriptor::Descriptor, String> {
+    serde_json::from_value(d).map_err(|e| e.to_string())
+}
+
+/// The first records of `path` decoded through `descriptor`, the TOML it makes, and the problems it has.
+#[tauri::command]
+async fn descriptor_preview(
+    path: String,
+    descriptor: serde_json::Value,
+) -> Result<tlmbench_decode::preview::Preview, String> {
+    spawn_blocking(move || {
+        let head = tlmbench_decode::read_head(Path::new(&path), tlmbench_decode::preview::HEAD_BYTES)
+            .map_err(|e| e.to_string())?;
+        Ok(match parse_descriptor(descriptor) {
+            Ok(d) => tlmbench_decode::preview::preview(&head, &d),
+            Err(e) => tlmbench_decode::preview::Preview { problem: Some(e), ..Default::default() },
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// A sync word and frame length that repeat in the first bytes of `path` (Find frames).
+#[tauri::command]
+async fn descriptor_find_frames(path: String) -> Result<Option<tlmbench_decode::descriptor::Frames>, String> {
+    spawn_blocking(move || {
+        let head = tlmbench_decode::read_head(Path::new(&path), tlmbench_decode::preview::HEAD_BYTES)
+            .map_err(|e| e.to_string())?;
+        Ok(tlmbench_decode::descriptor::find_frames(&head))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Save: writes a descriptor to the app cache's `decoders/` (`replace` is the id of the one being edited).
+#[tauri::command]
+async fn descriptor_save(
+    descriptor: serde_json::Value,
+    replace: Option<String>,
+    files: State<'_, Files>,
+) -> Result<tlmbench_decode::descriptor::Known, String> {
+    let (root, d) = (files.store.root().to_owned(), parse_descriptor(descriptor)?);
+    spawn_blocking(move || tlmbench_decode::descriptor::save(&d, replace.as_deref(), &root).map_err(|e| e.to_string()))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Share…: writes a descriptor to `<the file's folder>/.tlmbench/decoders/`, a write beside the data, only when the
+/// person asks.
+#[tauri::command]
+async fn descriptor_share(path: String, descriptor: serde_json::Value) -> Result<String, String> {
+    let d = parse_descriptor(descriptor)?;
+    spawn_blocking(move || {
+        let folder = Path::new(&path).parent().ok_or("that file has no folder")?;
+        let out = tlmbench_decode::descriptor::share(&d, folder).map_err(|e| e.to_string())?;
+        Ok(out.display().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// What the status bar shows about the core: its memory, the chunk cache's share of it and budget, and the CPU time
@@ -1178,6 +1297,12 @@ fn main() {
             table_unmask,
             filter_check,
             list_folder,
+            needs_descriptor,
+            descriptor_list,
+            descriptor_preview,
+            descriptor_find_frames,
+            descriptor_save,
+            descriptor_share,
             shared_views,
             share_view,
             export_view,
@@ -1277,5 +1402,39 @@ mod view_tests {
         for bad in ["../x.tlmview.json", "x.json", "a/b.tlmview.json"] {
             assert!(rt(share_view(folder.clone(), bad.into(), serde_json::json!({}))).is_err(), "{bad}");
         }
+    }
+
+    /// The form's descriptor is the JSON of `Descriptor`: the preview decodes through it, a half-edited one reports
+    /// its problem, and Share… writes only on its own.
+    #[test]
+    fn the_descriptor_form_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("log.bin");
+        // 12 frames: sync A55A, a u16 counter, 20 bytes
+        let frames: Vec<u8> =
+            (0..12u8).flat_map(|k| [0xA5, 0x5A, k, 0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 6, 7, k]).collect();
+        std::fs::write(&path, &frames).unwrap();
+        let p = path.display().to_string();
+        let f = rt(descriptor_find_frames(p.clone())).unwrap().unwrap();
+        assert_eq!((f.sync.as_str(), f.stride, f.start), ("A55A", 22, 0));
+        let d = serde_json::json!({
+            "schema": 1, "name": "Log", "files": ["log*.bin"], "endian": "little", "record_size": 20,
+            "time": { "source": "rate", "rate_hz": 100.0 },
+            "fields": [ { "name": "n", "type": "u16", "offset": 2 }, { "name": "tail", "type": "u8", "offset": 21, "bits": { "shift": 0, "width": 4 } } ],
+            "packets": { "sync": "A55A", "header_size": 2 },
+        });
+        let pv = rt(descriptor_preview(p.clone(), d.clone())).unwrap();
+        assert!(pv.problem.is_none(), "{:?}", pv.problem);
+        assert_eq!((pv.rows.len(), pv.stride), (8, 22));
+        assert_eq!(pv.rows[3].values, [Some(3.0), Some(3.0)]);
+        let mut half = d.clone();
+        half["fields"][0]["offset"] = serde_json::json!(40);
+        assert!(rt(descriptor_preview(p.clone(), half)).unwrap().problem.unwrap().contains("runs past"));
+        let junk = serde_json::json!({ "schema": 1, "endian": "sideways" });
+        assert!(rt(descriptor_preview(p.clone(), junk)).unwrap().problem.is_some());
+        // Share… is the one write beside the data
+        assert!(!dir.path().join(".tlmbench").exists());
+        let out = rt(descriptor_share(p, d)).unwrap();
+        assert!(out.ends_with(".tlmbench/decoders/log.toml"), "{out}");
     }
 }
