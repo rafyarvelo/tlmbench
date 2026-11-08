@@ -72,7 +72,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | + menu: what each layout needs ("needs file 2"), slot picker | v1 | ✓ | ✗ | 5.6 |
 | Time range (click to change the format), span in words | v1 | ✓ | ✓ | |
 | Mouse modes, Clear, Back, Fit, Play back, Lock | v1 | ✓ | ✓ | |
-| All panes as charts, tables or both (top bar) | v1 | ✓ | ✗ | 4.2 |
+| All panes as charts, tables or both (top bar) | v1 | ✓ | ✓ built (`t_allmodes`; panes of values keep their view) | 4.2 |
 | Event markers toggle (top bar, E) | v1 | ✓ | ✗ | 5.2 |
 | Remove every channel / every pane (top bar) | v1 | ✓ | ✓ (icons at 1300 px and wider, ⋯ otherwise) |  |
 | ⋯ menu: View, All panes, Window groups | v1 | ✓ | ✓ | |

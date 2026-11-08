@@ -7,10 +7,15 @@
   import { play, playActions } from '../play.svelte';
   import { moveTab, tabs } from '../tabs.svelte';
   import { TIME_FORMATS } from '../axes';
-  import { addPaneBelow, clearChannels, clearPanes, stack } from '../stack.svelte';
+  import { addPaneBelow, allMode, clearChannels, clearPanes, setAllModes, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
 
+  const ALL: ['chart' | 'table' | 'both', string, string, string][] = [
+    ['chart', 'Charts', ICON.vchart, 'Show every pane as a chart'],
+    ['table', 'Tables', ICON.vtable, 'Show every pane as a table of the samples in view'],
+    ['both', 'Both', ICON.vboth, 'Show every pane as a chart with its table below'],
+  ];
   const MODES: [Mode, string, string][] = [
     ['box', 'Box zoom', 'Drag across a plot to zoom into that range (B)'],
     ['pan', 'Pan', 'Drag to pan (P). In other modes, Shift-drag or middle-drag pans.'],
@@ -90,6 +95,7 @@
     { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
     { label: 'Overview above the panes', checked: settings.overviewTop, run: () => setSetting('overviewTop', !settings.overviewTop) },
     { heading: 'All panes' },
+    ...ALL.map(([m, label, , tip]): MenuItem => ({ label: `Every pane as ${m === 'both' ? 'chart and table' : label.toLowerCase().replace(/s$/, '')}`, checked: allMode() === m, radio: true, data: { allmode: m }, tip, run: () => setAllModes(m) })),
     { label: 'New pane', kbd: '⌘⇧N', data: { more: 'addpane' }, disabled: !ui.file, run: () => addPaneBelow(Math.max(0, stack.panes.length - 1)) },
     { label: 'Remove every channel', data: { more: 'nochan' }, disabled: !stack.panes.some((p) => p.channels.length), run: clearChannels },
     { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: !stack.panes.length, run: clearPanes },
@@ -225,6 +231,13 @@
   {#if !narrow}<span class="vsep" aria-hidden="true"></span>{/if}
   {#if !narrow}
     <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
+  {/if}
+  {#if barW >= 1200}
+    <div class="seg allmodes" role="group" aria-label="All panes view">
+      {#each ALL as [m, label, icon, tip] (m)}
+        <button class="tb" data-allmode={m} aria-pressed={allMode() === m} disabled={settings.locked && settings.lockLayout} aria-label={label} data-tip={tip} onclick={() => setAllModes(m)}>{@html icon}</button>
+      {/each}
+    </div>
   {/if}
   {#if wide}
     <div class="seg pact" role="group" aria-label="Pane actions">
@@ -377,21 +390,28 @@
     background: var(--surface);
   }
   /* the prototype's .pact: a group after a rule, icons only */
-  .pact {
+  .pact,
+  .allmodes {
     margin-left: 4px;
     padding-left: 6px;
     border-left: 1px solid var(--border);
     border-radius: 0;
   }
-  .pact .tb {
+  .pact .tb,
+  .allmodes .tb {
     padding: 0 8px;
     min-height: 30px;
     color: var(--fg-muted);
   }
-  .pact .tb:hover {
+  .allmodes .tb[aria-pressed='true'] {
     color: var(--fg);
   }
-  .pact .tb:disabled {
+  .pact .tb:hover,
+  .allmodes .tb:hover {
+    color: var(--fg);
+  }
+  .pact .tb:disabled,
+  .allmodes .tb:disabled {
     opacity: 0.4;
   }
   .wstabs {

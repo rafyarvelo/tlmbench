@@ -381,6 +381,19 @@ export function movePane(from: number, to: number): void {
   });
 }
 
+/** Every pane with channels as a chart, a table or both (panes of values keep their view). */
+export function setAllModes(mode: 'chart' | 'table' | 'both'): void {
+  edit(() => {
+    for (const p of stack.panes) if (p.mode !== 'values') p.mode = mode;
+  });
+}
+
+/** The view every pane shares, when they do (else null). */
+export function allMode(): null | 'chart' | 'table' | 'both' {
+  const ms = new Set(stack.panes.filter((p) => p.channels.length && p.mode !== 'values').map((p) => p.mode ?? 'chart'));
+  return ms.size === 1 ? ([...ms][0] as 'chart' | 'table' | 'both') : null;
+}
+
 export function setMode(i: number, mode: PaneMode): void {
   edit(() => {
     stack.panes[i].mode = mode;
