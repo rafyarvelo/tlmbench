@@ -31,6 +31,7 @@ run('tablefilter', async ({ p, check, text, until, settingsLS, wait, fake }) => 
   // Whole file asks about every row
   await p.click(`${T} [data-fscope="file"]`);
   check('Whole file is on', await until(() => document.querySelector('[data-table] [data-fscope="file"]')?.getAttribute('aria-pressed') === 'true'));
+  check('Whole file also marks the matches on the overview', await until(() => window.__tlmApp.marks()?.overview > 0), await p.evaluate(() => window.__tlmApp.marks()));
   const whole = await fake(() => window.__tlmFake.queriesRun.at(-1));
   check('and the core looks at the whole file', whole.span.t0 === String(T0) && BigInt(whole.span.t1) > T0 + BigInt(N - 1) * 1000000n - 1n, whole.span);
 

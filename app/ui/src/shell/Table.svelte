@@ -214,6 +214,7 @@
     const [t0, t1] = [ui.view.t0, ui.view.t1];
     const token = q?.token;
     const apply = !!tfilt.apply;
+    const overviewToo = whole && !apply;
     const held = !!ui.filtered; // read always: the marks are asked again when the mask is set or lifted
     const active = good.length > 0 && (apply ? held : !!q?.hits);
     clearTimeout(marksTimer);
@@ -228,7 +229,9 @@
       try {
         const m = await invoke<{ hits: [string, string][]; excluded: [string, string][] }>('table_marks', { file: f, token: apply ? null : (token ?? null), t0, t1, widthPx: Math.max(200, window.innerWidth) });
         const run = ([a, b]: [string, string]): [bigint, bigint] => [BigInt(a), BigInt(b)];
-        ui.marks = { pane: i, hits: m.hits.map(run), excluded: m.excluded.map(run) };
+        // Whole file: the overview marks the matches over every row
+        const ov = overviewToo ? await invoke<{ hits: [string, string][] }>('table_marks', { file: f, token: token ?? null, t0: ui.view.first, t1: ui.view.end, widthPx: 800 }) : null;
+        ui.marks = { pane: i, hits: m.hits.map(run), excluded: m.excluded.map(run), overview: ov ? ov.hits.map(run) : [] };
         actions.redraw();
       } catch {
         /* the file closed meanwhile */

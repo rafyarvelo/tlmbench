@@ -1103,6 +1103,13 @@ function drawOverview(ctx: CanvasRenderingContext2D, tk: Record<string, string>)
   const span = Number(t1 - t0);
   const ov = state.ov;
   if (ov && span > 0) drawOverviewBands(ctx, r, ov, t0, span);
+  // a Whole-file filter's matches over the file: a tick along the top for each
+  for (const [a, b] of ui.marks?.overview ?? []) {
+    const x0 = r.x + (Number(a - t0) / span) * r.w;
+    const x1 = Math.max(x0 + 2, r.x + (Number(b - t0) / span) * r.w);
+    ctx.fillStyle = css(tk['--fg'], 0.6);
+    ctx.fillRect(x0, r.y, x1 - x0, 3);
+  }
   drawBuilding(ctx, r, false, t0, t1);
   drawPlayhead(ctx, r, tk, t0, t1);
   // the window on the current view
@@ -2789,7 +2796,7 @@ export const gateApi = {
   dashes: () => state.layers.map((l) => (l ? [...l.traces.values()].map((t) => [t.gl.dashes.length, t.gl.runs.length]) : null)),
   /** The marks the charts draw: matches and rows left out. */
   bands: () => Object.entries(ui.bands).map(([i, [a, b]]) => [Number(i), String(a), String(b)]),
-  marks: () => (ui.marks ? { pane: ui.marks.pane, hits: ui.marks.hits.length, excluded: ui.marks.excluded.length } : null),
+  marks: () => (ui.marks ? { pane: ui.marks.pane, hits: ui.marks.hits.length, excluded: ui.marks.excluded.length, overview: ui.marks.overview.length } : null),
   /** How many sample markers each pane drew last. */
   markers: () => [...markers],
   /** The overview's channels as last drawn: columns with values and those with a band. */

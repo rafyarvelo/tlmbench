@@ -41,7 +41,7 @@ export const ui = $state({
   view: { file: null as number | null, t0: '0', t1: '1', first: '0', end: '1', A: null as string | null, B: null as string | null },
   /** What the charts mark: where the filter of table pane `pane` matches, and the rows Apply to charts leaves out,
    * as runs of time (ns). */
-  marks: null as null | { pane: number; hits: [bigint, bigint][]; excluded: [bigint, bigint][] },
+  marks: null as null | { pane: number; hits: [bigint, bigint][]; excluded: [bigint, bigint][]; overview: [bigint, bigint][] },
   /** The time span of the rows each table pane shows, by pane: a shaded band on the charts. */
   bands: {} as Record<number, [bigint, bigint]>,
   /** A table's Apply to charts is on: how many rows it leaves out, and the pane that holds it. */
