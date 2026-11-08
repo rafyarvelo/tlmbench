@@ -53,6 +53,8 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   check('a ticked setting shows its tick', (await p.getAttribute('.moremenu [role=menuitemcheckbox]:has-text("Overview above")', 'aria-checked')) === 'true');
   await p.click('.moremenu >> text=Show performance details');
   check('status bar with the last view', await until(() => /points · (M4|raw) · \d+ ms/.test(document.getElementById('status')?.textContent ?? '')), await text('#status'));
+  check('...the core\'s memory and the chunk cache\'s share', await until(() => document.getElementById('stMem')?.textContent === 'Memory 412 MB · chunks 96 MB'), await text('#stMem'));
+  check('...and its CPU load, about once a second', await until(() => /^Load (2[0-9]|30)%$/.test(document.getElementById('stLoad')?.textContent ?? ''), null, 4000), await text('#stLoad'));
   await p.click('#b-more');
   await p.keyboard.press('Escape');
   check('Esc closes ⋯', !(await visible('.moremenu')));

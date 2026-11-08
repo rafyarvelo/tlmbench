@@ -21,6 +21,7 @@
   import { actions, measureShown, ui } from './ui.svelte';
   import { tabs } from './tabs.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { invoke } from '@tauri-apps/api/core';
 
   const L = $derived(settings.panelLayout);
   /** The left sidebar shows one rail group at a time; the right one all its panels. */
@@ -37,6 +38,25 @@
   $effect(() => {
     document.title = title;
     getCurrentWindow().setTitle(title).catch(() => {});
+  });
+
+  /** The status bar's core figures, about once a second while it shows: memory (the chunk cache's share) and load. */
+  const usage = $state({ mem: '', load: '' });
+  const mb = (b: number) => (b >= 10 * 2 ** 30 ? `${(b / 2 ** 30).toFixed(0)} GB` : b >= 2 ** 30 ? `${(b / 2 ** 30).toFixed(1)} GB` : `${Math.round(b / 2 ** 20)} MB`);
+  $effect(() => {
+    if (!settings.showPerf) return;
+    let last: { cpu: number; at: number } | null = null;
+    const poll = async () => {
+      const u = await invoke<{ memory: number | null; chunks: number; chunkBudget: number; cpuSeconds: number | null }>('usage').catch(() => null);
+      if (!u) return;
+      usage.mem = u.memory != null ? `Memory ${mb(u.memory)} · chunks ${mb(u.chunks)}` : `Chunks ${mb(u.chunks)}`;
+      const at = performance.now();
+      if (u.cpuSeconds != null && last) usage.load = `Load ${Math.max(0, Math.round(((u.cpuSeconds - last.cpu) / ((at - last.at) / 1000)) * 100))}%`;
+      if (u.cpuSeconds != null) last = { cpu: u.cpuSeconds, at };
+    };
+    void poll();
+    const id = setInterval(poll, 1000);
+    return () => clearInterval(id);
   });
 
   /** Under 980 px the sidebars wrap onto rows of their own above and below the panes. */
@@ -134,7 +154,7 @@
       </aside>
     </div>
     {#if settings.showPerf}
-      <footer class="statusbar" id="statusBar"><span class="sdot" class:busy={ui.perf.startsWith('Reading')} aria-hidden="true"></span><span id="state">{ui.perf.startsWith('Reading') ? 'Reading the file' : ui.file ? 'Ready' : 'No file open'}</span><span id="status" class="num">{ui.perf}</span></footer>
+      <footer class="statusbar" id="statusBar"><span class="sdot" class:busy={ui.perf.startsWith('Reading')} aria-hidden="true"></span><span id="state">{ui.perf.startsWith('Reading') ? 'Reading the file' : ui.file ? 'Ready' : 'No file open'}</span>{#if usage.mem}<span id="stMem" class="num" data-tip="The core's memory, and the chunk cache's share of it">{usage.mem}</span>{/if}{#if usage.load}<span id="stLoad" class="num" data-tip="The core's CPU load (100%: one core busy)">{usage.load}</span>{/if}<span id="status" class="num">{ui.perf}</span></footer>
     {/if}
   </div>
 </div>

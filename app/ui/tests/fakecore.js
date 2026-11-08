@@ -343,6 +343,11 @@
       return handler;
     },
     'plugin:event|unlisten': () => null,
+    // the core's memory and CPU time: the CPU time grows by a quarter second a second (a load of 25%)
+    usage() {
+      const now = performance.now() / 1000;
+      return { memory: 412 * 2 ** 20, chunks: 96 * 2 ** 20, chunkBudget: 2 * 2 ** 30, cpuSeconds: now * 0.25 };
+    },
     'plugin:window|set_title'({ value }) {
       fake.title = value;
       return null;
