@@ -547,6 +547,42 @@ fn validate_layout(
     }
 }
 
+/// A sync word that repeats at a fixed distance: what "Find frames" in the descriptor form proposes.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Frames {
+    /// The sync word, as upper-case hex (`A55A`).
+    pub sync: String,
+    /// Bytes from one sync word to the next: the packet's whole length.
+    pub stride: usize,
+    /// Where the first one starts (bytes before it belong to a file header).
+    pub start: usize,
+}
+
+/// Looks in the first bytes of a file for a 2- or 4-byte word that comes back at the same distance at least six
+/// times in a row (the first such word, the one starting earliest). `None` when there is none.
+pub fn find_frames(head: &[u8]) -> Option<Frames> {
+    const REPEATS: usize = 6;
+    let head = &head[..head.len().min(64 << 10)];
+    for start in 0..head.len().min(512) {
+        for len in [4usize, 2] {
+            let Some(word) = head.get(start..start + len) else { continue };
+            // a word of one repeated byte (zeros, 0xFF) is padding, not a sync word
+            if word.iter().all(|&b| b == word[0]) {
+                continue;
+            }
+            let Some(next) = memchr::memmem::find(&head[start + len..], word) else { continue };
+            let stride = len + next;
+            if stride < len + 2 {
+                continue;
+            }
+            if (1..REPEATS).all(|k| head.get(start + k * stride..start + k * stride + len) == Some(word)) {
+                return Some(Frames { sync: word.iter().map(|b| format!("{b:02X}")).collect(), stride, start });
+            }
+        }
+    }
+    None
+}
+
 /// True when `name` matches `pattern`, where `*` stands for any text (including none). Names are compared
 /// as written (case matters).
 pub fn name_matches(pattern: &str, name: &str) -> bool {
@@ -610,6 +646,21 @@ mod tests {
         unit = "V"
         scale = 0.001
     "#;
+
+    #[test]
+    fn frames_are_found_by_their_repeating_sync_word() {
+        let mut file = vec![0u8; 8]; // a file header
+        for k in 0..12u8 {
+            file.extend([0xA5, 0x5A]);
+            file.extend((0..22).map(|i| k.wrapping_mul(7).wrapping_add(i * 3 + 1)));
+        }
+        let f = find_frames(&file).unwrap();
+        assert_eq!((f.sync.as_str(), f.stride, f.start), ("A55A", 24, 8));
+        // too few repeats, or only padding: nothing
+        assert_eq!(find_frames(&file[..8 + 24 * 4]), None);
+        assert_eq!(find_frames(&[0u8; 4096]), None);
+        assert_eq!(find_frames(&[]), None);
+    }
 
     #[test]
     fn name_patterns() {
