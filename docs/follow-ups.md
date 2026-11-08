@@ -38,6 +38,13 @@ When needed:
 - **A mask belongs to the file, not the tab.** Two tabs of one file share it (the tab model keeps one file per
   tab today). Revisit if tabs ever hold different filters for one file.
 - **Save as rule** (filter strip) waits for Event rules (step 5).
+- **Slower channels hold, dimmed** waits for files with several rates (packet types, step 4.3): within one
+  recording every channel shares its times, so a table has nothing to hold.
+- **The overview doesn't mark Whole-file matches yet** (the design says it does). `table_marks` could return the
+  matches over the whole file for the overview's width.
+- **Panes of values keep their view** under the top bar's Charts, Tables, Both; a new pane doesn't follow the last
+  choice (the prototype's `newMode`).
+- **Copy as CSV** is open: see the question to the owner (what is copied).
 
 ## Phase 1 loose ends
 

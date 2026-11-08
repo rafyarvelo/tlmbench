@@ -33,6 +33,7 @@ run('tablerows', async ({ p, check, text, until, wait }) => {
   await p.click(`${T} [data-row="6"]`, { button: 'right' });
   await p.click('.rowmenu [data-rm="B"]');
   check('Set cursor B here', await until((t) => window.__tlmApp.cursors().B === t, t6), await cursors());
+  check('the table bar reads A, B and Δt', await until(() => /A .* · B .* · Δt/.test(document.querySelector('[data-table] [data-tcur]')?.textContent ?? '')), await text(`${T} [data-tcur]`));
   check('the rows between are shaded', await until(() => ['4', '5'].every((r) => document.querySelector(`[data-table] [data-row="${r}"]`)?.classList.contains('cab')) && !document.querySelector('[data-table] [data-row="6"]').classList.contains('cab')), await p.evaluate(() => [...document.querySelectorAll('[data-table] [data-row]')].map((e) => e.dataset.row + ':' + e.className)));
   // zoom in on the second chart (the table's own pane is first) so there is room to centre
   const c = await p.evaluate(() => { const r = document.querySelectorAll('#stack section.pane .plot')[1].getBoundingClientRect(); return { x: r.left + 200, y: r.top + r.height / 2 }; });
@@ -49,10 +50,13 @@ run('tablerows', async ({ p, check, text, until, wait }) => {
   await p.click(`${T} [data-row="4"]`, { button: 'right' });
   await p.click('.rowmenu [data-rm="clear"]');
   check('Clear cursors', await until(() => window.__tlmApp.cursors().A === null && window.__tlmApp.cursors().B === null), await cursors());
+  check('and the readout goes', await until(() => !document.querySelector('[data-table] [data-tcur]')));
 
   // keys
   await p.click(`${T} [data-row="3"]`);
   await p.focus(`${T} .tscroll`);
+  await p.keyboard.press('Home');
+  await until(() => document.querySelector('[data-table] .tscroll').scrollTop === 0);
   await p.keyboard.press('ArrowDown');
   check('ArrowDown moves a row', (await top()) === 26, await top());
   await p.keyboard.press('PageDown');

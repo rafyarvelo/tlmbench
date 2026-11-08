@@ -79,4 +79,20 @@ run('tablecols', async ({ p, check, text, until, settingsLS }) => {
   await p.click(`${T} [data-colmenu="c0"]`);
   await p.click('.colmenu [data-hm="hide"]');
   check('Hide this column', await until(() => document.querySelectorAll('#stack [data-pane="0"] [data-table] .thead [data-col]').length === 2));
+
+  // Click a column header to sort: off, a click selects (Shift a range, Ctrl/⌘ adds) and sorting is in the ▾ menu
+  await p.click(`${T} [data-cols]`);
+  await p.click('.colpop [data-all]');
+  await p.click('.colpop [data-done]');
+  await p.click('#b-settings');
+  await p.click('#setPanel [data-sv="all"]');
+  await p.uncheck('[data-set="tableClickSort"]');
+  await p.click('#b-settings');
+  check('the setting is saved', (await settingsLS()).tableClickSort === false);
+  await p.click(`${T} [data-col="c0"] .thtop`);
+  check('a click selects the column and does not sort', (await text(`${T} [data-selbar]`)).includes('1 selected') && (await p.getAttribute(`${T} [data-col="c0"]`, 'aria-sort')) === 'none');
+  await p.click(`${T} [data-col="c1"] .thtop`, { modifiers: ['Shift'] });
+  check('Shift-click selects a range', (await text(`${T} [data-selbar]`)).includes('2 selected'), await text(`${T} [data-selbar]`));
+  await p.click(`${T} [data-sc="clear"]`);
+  check('× clears the selection', !(await p.$(`${T} [data-selbar]`)));
 });

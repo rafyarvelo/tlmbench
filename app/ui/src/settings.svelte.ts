@@ -48,6 +48,8 @@ export interface Settings {
   lockLayout: boolean;
   /** A locked view still lets tables sort and filter (off: each table keeps its sort and filters). */
   lockSortFilter: boolean;
+  /** A click on a table header sorts (off: it selects the column, and sorting is in the header's menu). */
+  tableClickSort: boolean;
   /** The wheel zooms the charts (off: Ctrl+wheel zooms and the wheel pans). */
   wheelZoom: boolean;
   /** A channel dropped where a new pane goes makes a chart, or the same view as the pane it came from. */
@@ -126,6 +128,7 @@ export const DEFAULTS: Settings = {
   lockCursors: true,
   lockLayout: false,
   lockSortFilter: true,
+  tableClickSort: true,
   wheelZoom: true,
   dropNewView: 'chart',
   showHints: true,

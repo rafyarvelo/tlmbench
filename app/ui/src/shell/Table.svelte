@@ -13,7 +13,7 @@
   import { onDestroy, tick } from 'svelte';
   import { type ColumnDef, type ColumnSizingState, createTable, getCoreRowModel, type TableState } from '@tanstack/table-core';
 
-  import { frequency, timeLabel } from '../axes';
+  import { duration, frequency, timeLabel } from '../axes';
   import { live } from '../live.svelte';
   import { settings } from '../settings.svelte';
   import { ICON } from '../icons';
@@ -475,6 +475,26 @@
   const chosen = $derived(picked.filter((c) => channels.includes(c)));
   const toggle = (ch: number) => (picked = picked.includes(ch) ? picked.filter((c) => c !== ch) : [...picked, ch]);
 
+  /** The last column picked, where a Shift-click range starts. */
+  let anchor = $state<number | null>(null);
+  /** A click on a header: sorts, or selects (Ctrl/⌘ toggles, Shift picks a range from the last pick). */
+  function headClick(e: MouseEvent, col: Col) {
+    const ch = col.ch;
+    const select = ch != null && (!settings.tableClickSort || e.ctrlKey || e.metaKey || (e.shiftKey && anchor != null && chosen.length > 0));
+    if (!select) {
+      if (settings.tableClickSort) sortBy(col.id, e.shiftKey);
+      return;
+    }
+    if (ch == null) return;
+    if (e.shiftKey && anchor != null && channels.includes(anchor)) {
+      const [a, b] = [channels.indexOf(anchor), channels.indexOf(ch)];
+      const range = channels.slice(Math.min(a, b), Math.max(a, b) + 1);
+      picked = e.ctrlKey || e.metaKey ? [...new Set([...picked, ...range])] : range;
+    } else if (e.ctrlKey || e.metaKey) toggle(ch);
+    else picked = picked.length === 1 && picked[0] === ch ? [] : [ch];
+    anchor = ch;
+  }
+
   /** Brings a column into the horizontal view, just right of the pinned Sample and Time. */
   async function goCol(id: string) {
     const ch = id.startsWith('c') ? Number(id.slice(1)) : null;
@@ -547,6 +567,11 @@
     <span class="tstat" role="status" data-tstat
       >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${frequency(1e9 / step)})`}{/if}</span
     >
+    {#if ui.view.A != null || ui.view.B != null}
+      <span class="tcur" data-tcur data-tip="Cursors: in Cursors mode click a row to set A, then B. In any mode, right-click a row, or press A or B with the pointer over it."
+        >{#if ui.view.A != null}<b class="ca">A</b> {timeLabel(BigInt(ui.view.A), step)}{/if}{#if ui.view.A != null && ui.view.B != null}{' · '}{/if}{#if ui.view.B != null}<b class="cb">B</b> {timeLabel(BigInt(ui.view.B), step)}{/if}{#if ui.view.A != null && ui.view.B != null}{` · Δt ${duration(Math.abs(Number(BigInt(ui.view.B) - BigInt(ui.view.A))))}`}{/if}</span
+      >
+    {/if}
     {#if sort.length || Object.keys(filters).length}
       <button class="tbtn" data-clear data-tip="Remove the sort and every filter" onclick={() => setTable(i, { sort: [], filters: {} })}>Clear sort and filters</button>
     {/if}
@@ -620,9 +645,9 @@
                 class="thtop"
                 role="button"
                 tabindex="-1"
-                data-tip={col.id === 'n' ? undefined : 'Sort. Click again to reverse, once more to clear. Shift-click adds a column.'}
-                onclick={(e) => (col.ch != null && (e.metaKey || e.ctrlKey) ? toggle(col.ch) : sortBy(col.id, e.shiftKey))}
-                onkeydown={(e) => e.key === 'Enter' && sortBy(col.id, e.shiftKey)}
+                data-tip={col.id === 'n' ? undefined : settings.tableClickSort ? 'Sort. Click again to reverse, once more to clear. Shift-click adds a column. Ctrl/⌘-click selects.' : 'Select this column. Shift-click selects a range, Ctrl/⌘-click adds. Sort from the ▾ menu.'}
+                onclick={(e) => headClick(e, col)}
+                onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), headClick(e as unknown as MouseEvent, col))}
               >
                 {#if col.ch != null}<i style="background: var(--trace-{colorIdx(col.ch) + 1})"></i>{/if}
                 <span class="tlab">{col.label}{#if col.unit}&nbsp;<span class="tunit">{col.unit}</span>{/if}</span>
@@ -960,6 +985,26 @@
     from {
       background: color-mix(in srgb, var(--accent) 35%, var(--plot-bg));
     }
+  }
+  .tcur {
+    margin-left: 4px;
+    white-space: nowrap;
+  }
+  .tcur b {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    margin-right: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--bg);
+    background: var(--cursor);
+    border-radius: 4px;
+  }
+  .tcur b.cb {
+    background: var(--accent);
   }
   .tselbar {
     display: flex;

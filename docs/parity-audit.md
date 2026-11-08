@@ -25,9 +25,9 @@ app look and feel most unlike the prototype:
   so they render at 13.33 px.
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 173 ·
-Partial 29 · Different 12 · Missing 68** (282 rows; counts as of Nov 8, after step 4.1). Of the missing rows, 2 belong to Phase 3 (the shell port
-that was due), 30 to Phase 4 and 34 to Phase 5. A row tagged with several phases counts under its first.
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 187 ·
+Partial 30 · Different 12 · Missing 53** (282 rows; counts as of Nov 8, during step 4.2). Of the missing rows, 2 belong to Phase 3 (the shell port
+that was due), 15 to Phase 4 and 34 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
 looks or behaves otherwise; this includes app-only items. **Missing** is absent from the app. Phase is the roadmap
@@ -60,7 +60,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Back | Backspace; no forward (`1565`, `6974`) | Alt+← and Backspace; Alt+→ forward | Ported | 3 | Fixed Nov 3: Backspace added to the design's Alt+←/→. |
 | Fit | F and the button, glides (`1564`, `5488`) | Same (`app.ts:580`) | Ported | 3 | |
 | Play back button | Toggles the transport (`6579`) | Same (`shell/TopBar.svelte:164`) | Ported | 3 | |
-| All panes as charts, tables or both | Segmented control (`1568-1572`, `setAllModes 5058`) | — | Missing | 4 | The follow-ups list the pane view switch under Phase 4. |
+| All panes as charts, tables or both | Segmented control (`1568-1572`, `setAllModes 5058`) | Top bar group (Charts, Tables, Both) from 1200 px wide, and ⋯ → All panes; panes of values keep their view (`TopBar.svelte`) | Ported | 4 | Fixed Nov 8 (step 4.2). |
 | Lock button | Lock icon, turns warn-coloured when on; L (`1555`, `5495-5560`) | Lock icon, on the bar after Back/Fit/Play; pressed state; L (`TopBar.svelte`, `app.ts` `locked()`) | Ported | 3 | Fixed Nov 3. |
 | Event markers toggle | Flag icon, E (`1573`, `toggleEvents 4172`) | — | Missing | 5 | |
 | Remove every channel / Remove every pane | Two icons, each with Undo (`6582-6586`, `clearPanes 6956`) | Two icons on the top bar at 1300 px and wider, and in ⋯ → All panes, each with Undo | Ported | 3 | Fixed Nov 8 (step 4.1). |
@@ -177,8 +177,8 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Event markers | Flags and shaded ranges on every chart, a tooltip on hover (`showEvTip 4146`), per-pane toggle | — | Missing | 5 | |
 | Limit lines | Dashed warn and alarm levels from channel limits | — | Missing | 5 | |
 | Gaps | Missing values become gaps everywhere (channel settings) | Lines break at time jumps over the gap factor (`app.ts:219`) | Different | 2 (missing values: 5) | |
-| Table filter on charts | Matches shaded with a tick; Apply to charts hides rows with hatching and a chip (`5255-5365`) | — | Missing | 4 | |
-| Table rows band | The rows a table shows are a shaded band on the charts (`tableWins 4308`) | — | Missing | 4 | In the follow-ups. |
+| Table filter on charts | Matches shaded with a tick; Apply to charts hides rows with hatching and a chip (`5255-5365`) | Matches shaded with a tick; Apply to charts hatches the rows left out, with a chip (`drawMarks`, `table_marks`) | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Table rows band | The rows a table shows are a shaded band on the charts (`tableWins 4308`) | The rows a table shows are a shaded band on the charts (`ui.bands`) | Ported | 4 | Fixed Nov 8 (step 4.2). |
 | Box zoom | ≥ 4 px zooms; the box turns solid when release will zoom; a box too small fades with "Drag wider to zoom" the first 3 times (`5460-5476`) | ≥ 4 px zooms; the box turns solid when release will zoom; a box too small says "Drag wider to zoom" the first 3 times | Ported | 3 | Fixed Nov 3. |
 | Maximum zoom note | "Maximum zoom" at the pointer (`zoomNote 5384`) | "Maximum zoom" at the pointer | Ported | 3 | Fixed Nov 3. |
 | Pan | Pan mode, Shift- or middle-drag, ← → keys; stops at the recording's ends (`6936-6937`, `setView 5241`) | Pan mode, Shift- or middle-drag, ← → keys; stops at the recording's ends (`app.ts` `setView`, `panBy`) | Ported | 3 | Fixed Nov 3; the ends Nov 7. |
@@ -198,23 +198,23 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Item | Prototype | App | Status | Phase | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Rows in view | Samples in the time view, virtualised; rows follow the fastest channel (`4298-4310`) | Same, read a window at a time from the core (`shell/Table.svelte:94-120`) | Ported | 4 | |
-| Status line | "7,200,001 rows in view · one per accel_x sample (1 kHz) · slower channels show their latest sample, dimmed when unchanged" | "200,000 rows in view" (`shell/Table.svelte:190`) | Partial | 4 | |
+| Status line | "7,200,001 rows in view · one per accel_x sample (1 kHz) · slower channels show their latest sample, dimmed when unchanged" | "200,000 rows in view · one per accel_x sample (1000.000 Hz)" (`shell/Table.svelte`) | Partial | 4 | Fixed Nov 8 (step 4.2) except the slower-channels part, which waits for files with several rates (4.3). |
 | Slower channels dimmed | Last sample held, dimmed where unchanged | Can't tell: the fake recordings have one rate, and `Table.svelte` has no dimming | Missing | 4 | Read from the code, not seen. |
 | Value format | The channel's decimals (`0.030`) | Each channel's decimals, learned from the first axis range that drew it (or the rows a table read): four digits at its largest magnitude | Ported | 3 | Fixed Nov 3. The prototype's decimals come from its data; the core has no per-channel decimals yet (the channel editor, Phase 5, sets them). |
 | Event column | Event tags; click reveals the event (`4857`) | — | Missing | 5 | |
-| Sort | Header click (setting) or the ▾ menu: ascending, descending, clear; several columns | — | Missing | 4 | In the follow-ups (sort in Rust). |
-| Filter row | An input under each header ("e.g. > 1.5"); and/or, ranges, blank (`4310-4340`) | — | Missing | 4 | |
-| Filter strip | In view / Whole file, ▲ ▼ through matches, Save as rule, Apply to charts, Clear (`4518-4600`) | — | Missing | 4 (Save as rule: 5) | |
-| Clear sort and filters | Button (`4518`) | — | Missing | 4 | |
-| Columns | Popover: show or hide each column, Show all, Hide all, click a name to scroll to it (`openColumnsPop 4453`) | — | Missing | 4 | |
-| Autofit | Fit the columns in view, Fit all to contents, Fit all to headers, Reset widths | — | Missing | 4 | |
+| Sort | Header click (setting) or the ▾ menu: ascending, descending, clear; several columns | Header click (the Click a column header to sort setting) or the ▾ menu: ascending, descending, clear; Shift adds a column; sorted in the core | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Filter row | An input under each header ("e.g. > 1.5"); and/or, ranges, blank (`4310-4340`) | An input under each header; the core's filter language (`> 1.5`, `1..2`, `blank`, and, or) | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Filter strip | In view / Whole file, ▲ ▼ through matches, Save as rule, Apply to charts, Clear (`4518-4600`) | In view / Whole file, ▲ ▼ through matches, Apply to charts; Save as rule waits for Event rules | Partial | 4 (Save as rule: 5) | Fixed Nov 8 (step 4.2) except Save as rule (5). |
+| Clear sort and filters | Button (`4518`) | Button in the table bar | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Columns | Popover: show or hide each column, Show all, Hide all, click a name to scroll to it (`openColumnsPop 4453`) | Popover: tick each column, Show all, Hide all, a name scrolls to it (`Table.svelte`) | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Autofit | Fit the columns in view, Fit all to contents, Fit all to headers, Reset widths | Fit the columns in view, Fit all to contents, Fit all to headers, Reset widths | Ported | 4 | Fixed Nov 8 (step 4.2). |
 | Column resize | Drag; widths kept | Same, kept with the layout; double-click resets one column (`shell/Table.svelte:205-226`) | Ported | 4 | |
-| Header ▾ menu | Sort ascending, Sort descending, Clear sort, Autofit this column, Hide this column, Select this column | — | Missing | 4 | |
-| Column selection | Click selects (Shift range, Ctrl add); a bar to Hide, Open in a new table, Plot in a new chart | — | Missing | 4 | |
-| Pinned columns | Sample and Time stay put while scrolling sideways (`pinLeft 4685`) | Sticky header only (`shell/Table.svelte:300-303`) | Missing | 4 | |
-| Cursor line | A and B times and Δt in the table bar (`4518`) | — | Missing | 4 | |
+| Header ▾ menu | Sort ascending, Sort descending, Clear sort, Autofit this column, Hide this column, Select this column | Sort ascending, Sort descending, Clear sort, Autofit this column, Select this column, Hide this column | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Column selection | Click selects (Shift range, Ctrl add); a bar to Hide, Open in a new table, Plot in a new chart | Ctrl/⌘-click toggles, Shift-click a range; a bar to Chart, Table, Hide, clear | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Pinned columns | Sample and Time stay put while scrolling sideways (`pinLeft 4685`) | Sample and Time are sticky while scrolling sideways | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Cursor line | A and B times and Δt in the table bar (`4518`) | A, B and Δt in the table bar; rows between the cursors are shaded | Ported | 4 | Fixed Nov 8 (step 4.2). |
 | Go to A / Go to B | `4518` | `shell/Table.svelte:192-193` | Ported | 4 | |
-| Row click | Cursors mode: A, then B, then alternating; right-click menu; double-click centres (`4808-4822`) | Click places A, Shift-click B, double-click centres (`shell/Table.svelte:150-156`) | Different | 4 | The app follows the design ("A, Shift: B"). |
+| Row click | Cursors mode: A, then B, then alternating; right-click menu; double-click centres (`4808-4822`) | Click places A, Shift-click B, double-click centres, right-click opens a row menu (set A or B, clear, centre), A and B keys over a row (`shell/Table.svelte`) | Different | 4 | The app follows the design ("A, Shift: B"). |
 | Row right-click | Set cursor A here, Set cursor B here, Zoom the charts to this row, Clear cursors (`4816-4820`) | — | Missing | 4 | |
 | Row hover | Crosshair follows on the charts (`syncCrosshair`, `4822`) | — | Missing | 4 | |
 | Rows inside events tinted | Setting eventsTables (`1695`) | — | Missing | 5 | |
@@ -258,8 +258,8 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Lock the time view | `1676` | `shell/Settings.svelte` | Ported | 3 | Fixed Nov 3. |
 | Cursors still work while locked | `1677` | `shell/Settings.svelte` | Ported | 3 | Fixed Nov 3. |
 | Also lock the layout | `1678` | Settings → Also lock the layout | Ported | 3 | Fixed Nov 3. |
-| Table sort and filter still work while locked | `1679` | — | Missing | 4 | |
-| Click a column header to sort | `1683` | — | Missing | 4 | |
+| Table sort and filter still work while locked | `1679` | Settings → View lock | Ported | 4 | Fixed Nov 8 (step 4.2). |
+| Click a column header to sort | `1683` | Settings → Files | Ported | 4 | Fixed Nov 8 (step 4.2). |
 | Mouse mode | `1687` | `shell/Settings.svelte:16` | Ported | 3 | |
 | Double-click fits the whole recording | `1688` | `shell/Settings.svelte:18` | Ported | 3 | |
 | Zoom speed | `1689` | `shell/Settings.svelte:17` | Ported | 3 | |
@@ -354,8 +354,8 @@ status bar is 28 px. Still open in those items: the sidebar's drag-to-resize (1)
 The same day: Lock (button, L, the three-state note with Unlock, and the two lock settings), the keyboard (← → pan, + − ↑ ↓
 zoom, T theme, L lock, Ctrl/Cmd+. focus mode, Ctrl/Cmd+D duplicate, Ctrl/Cmd+Shift+N new pane), Focus mode with
 Exit focus, Clear cursors always on the bar, and the ⋯ menu's groups with Remove every channel and Remove every pane
-(Undo). `t_controls` covers them. "Also lock the layout" isn't done, and the lock doesn't yet cover the table
-sort and filter (Phase 4).
+(Undo). `t_controls` covers them. "Also lock the layout" and "Table sort and filter still work while locked" came with
+step 4.2 (`t_tablelock`).
 
 Measure, then the sidebars (Nov 3): Measure has the prototype's two collapsible panels: Cursors (tiles A, B, Δt, 1/Δt and
 a Channel, A, B, Δ table) and Stats (a channel picker, Samples, Min, Max, Mean, RMS, Std dev, Computed in), over the
