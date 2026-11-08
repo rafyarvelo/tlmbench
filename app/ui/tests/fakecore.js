@@ -138,6 +138,7 @@
   // ---------- IPC ----------
 
   const fake = {
+    cache: [{ bytes: 900 * 2 ** 20, open: false }, { bytes: 300 * 2 ** 20, open: false }, { bytes: 64 * 2 ** 20, open: true }],
     files: {},
     launch: null,
     pick: null,
@@ -343,6 +344,13 @@
       return handler;
     },
     'plugin:event|unlisten': () => null,
+    // the cache: `cache` is its entries (bytes each; open: in use, kept by Clear)
+    cache_info: () => ({ path: '/Users/me/Library/Caches/tlmbench', bytes: fake.cache.reduce((a, e) => a + e.bytes, 0), cap: 20 * 2 ** 30 }),
+    cache_clear() {
+      const gone = fake.cache.filter((e) => !e.open);
+      fake.cache = fake.cache.filter((e) => e.open);
+      return gone.length;
+    },
     // the core's memory and CPU time: the CPU time grows by a quarter second a second (a load of 25%)
     usage() {
       const now = performance.now() / 1000;

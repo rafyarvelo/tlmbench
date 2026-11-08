@@ -6,6 +6,7 @@
   import { movePanel, resetSettings, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { ICON } from '../icons';
+  import { invoke } from '@tauri-apps/api/core';
   import { actions } from '../ui.svelte';
 
   interface Row {
@@ -53,6 +54,19 @@
   const rows = $derived(q.trim() ? ROWS.filter((r) => text(r).includes(q.trim().toLowerCase())) : ROWS.filter((r) => settings.settingsAll || r.basic));
   const sections = $derived([...new Set(rows.map((r) => r.section))]);
   const closed = $derived(settings.panelsClosed.includes('settings'));
+  /** The cache: where it is, what it holds and its cap (from the core, read when Settings shows). */
+  let cache = $state<null | { path: string; bytes: number; cap: number }>(null);
+  let cleared = $state('');
+  const size = (b: number) => (b >= 2 ** 30 ? `${(b / 2 ** 30).toFixed(1)} GB` : b >= 2 ** 20 ? `${Math.round(b / 2 ** 20)} MB` : `${Math.round(b / 1024)} KB`);
+  const readCache = async () => (cache = await invoke<{ path: string; bytes: number; cap: number }>('cache_info').catch(() => null));
+  $effect(() => {
+    if (!closed) void readCache();
+  });
+  async function clearCache() {
+    const n = await invoke<number>('cache_clear').catch(() => 0);
+    cleared = n ? `Removed ${n} cache ${n === 1 ? 'entry' : 'entries'}. The open files keep theirs.` : 'Nothing to remove: the open files keep theirs.';
+    await readCache();
+  }
   const other = $derived(sideOf('settings') === 'left' ? 'right' : 'left');
 </script>
 
@@ -92,6 +106,11 @@
     <p class="setnone">No setting matches “{q.trim()}”.</p>
   {/each}
   <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span id="sessTxt">{settings.sessions[settings.folder]?.files.length ? 'Session saved · only you (app cache)' : 'Session saves automatically'}</span><button class="tbtn" id="setResetSession" data-tip="Close this folder's tabs and forget its saved session" onclick={actions.resetSession}>Reset session</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
+  <section class="cache"><h3>Cache</h3>
+    <p class="cpath" id="cachePath" data-tip={cache?.path}>{cache?.path ?? '…'}</p>
+    <div class="urow"><span id="cacheSize" class="num">{cache ? `${size(cache.bytes)} of ${size(cache.cap)}` : ''}</span><button class="tbtn" id="cacheClear" disabled={!cache?.bytes} data-tip="Remove the summaries of files that aren't open; they are rebuilt when a file opens again" onclick={clearCache}>Clear cache</button></div>
+    {#if cleared}<p class="muted" id="cacheNote">{cleared}</p>{/if}
+  </section>
   <footer><span>Saved as you change them</span><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
   {/if}
 </div>
@@ -149,6 +168,14 @@
     text-transform: uppercase;
   }
   .row,
+  .cpath {
+    margin: 0;
+    overflow: hidden;
+    color: var(--fg-muted);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .urow {
     display: flex;
     align-items: center;
