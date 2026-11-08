@@ -40,6 +40,7 @@ use serde::Serialize;
 use tlmbench_core::chunks::{CHUNK_SAMPLES, Held, chunk_of};
 use tlmbench_core::gaps::{DEFAULT_FACTOR, MIN_FACTOR};
 use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Pyramid, Stats};
+use tlmbench_core::table::{self, Col, Filter, Query, Rows, SortKey};
 use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
 use tlmbench_decode::OpenOptions;
 
@@ -552,6 +553,29 @@ impl Opened {
         let held = self.hold(channels, &[chunk_of(pick)], true);
         let values = channels.iter().zip(&held).map(|(&c, held)| self.rec.value_at(c, pick, held)).collect();
         Some((pick, self.rec.time_at(pick), values))
+    }
+
+    /// The rows with times in `[t0, t1)` that pass `filters` (every one) in `sort` order (see
+    /// [`tlmbench_core::table::select`]): the index of the span's first sample, and the row ids as offsets from it.
+    /// `progress(done)` goes 0..=1 and returns false to cancel (the result is then `None`).
+    pub fn select_rows(
+        &self,
+        (t0, t1): (Timestamp, Timestamp),
+        filters: Vec<(Col, Filter)>,
+        sort: Vec<SortKey>,
+        progress: &(dyn Fn(f64) -> bool + Sync),
+    ) -> Option<(usize, Rows)> {
+        let first = self.rec.lower_bound(t0);
+        let count = self.rec.lower_bound(t1).max(first) - first;
+        let read = |col: Col, r: std::ops::Range<usize>| match col {
+            Col::Time => self.rec.read_times(r.start, r.end).into_iter().map(|t| t as f64).collect(),
+            Col::Channel(c) => {
+                let (scale, offset) = self.rec.scale_offset(c);
+                self.rec.read(c, r.start, r.end).to_f64(scale, offset)
+            }
+        };
+        let q = Query { first, count, filters, sort };
+        table::select(&q, &read, progress).map(|rows| (first, rows))
     }
 
     /// The sample nearest `t` (see [`Opened::values_at`]), as (index, time, shown value).

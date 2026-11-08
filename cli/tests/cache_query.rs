@@ -127,3 +127,44 @@ fn concurrent_builds_share_one_entry() {
     assert_eq!(list.lines().count(), 1);
     assert!(list.contains("\"building\":false"));
 }
+
+#[test]
+fn rows_filtered_and_sorted() {
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path(), 200_000);
+    let file = path.to_str().unwrap();
+    let c = cache.path();
+    let rows = |extra: &[&str]| {
+        let mut args = vec!["query", "rows", file, "-c", "volts", "-c", "amps"];
+        args.extend_from_slice(extra);
+        text(&run(c, &args))
+    };
+
+    let spike = rows(&["--filter", "volts=> 5"]);
+    assert_eq!(spike.lines().count(), 2);
+    assert!(spike.starts_with("row,time_ns,volts,amps\n77777,1767225607777700000,"), "{spike}");
+
+    // the last two rows with amps = 999, newest first
+    let newest = rows(&["--filter", "amps=999", "--sort", "time:desc", "--limit", "2"]);
+    let firsts: Vec<&str> = newest.lines().skip(1).map(|l| l.split(',').next().unwrap()).collect();
+    assert_eq!(firsts, ["199999", "198999"]);
+
+    // two sort keys, and offset after sorting: amps descending, then time descending
+    let two = rows(&["--sort", "amps:desc", "--sort", "time:desc", "--limit", "3", "--offset", "1"]);
+    let firsts: Vec<&str> = two.lines().skip(1).map(|l| l.split(',').next().unwrap()).collect();
+    assert_eq!(firsts, ["198999", "197999", "196999"]);
+
+    // or, and the time column (absolute ns: the first 5 ms hold rows 0..50)
+    let either = rows(&["--filter", "amps=0 or 1", "--filter", "time=< 1767225600005000000"]);
+    let firsts: Vec<&str> = either.lines().skip(1).map(|l| l.split(',').next().unwrap()).collect();
+    assert_eq!(firsts, ["0", "1"]);
+
+    let bad = Command::new(env!("CARGO_BIN_EXE_tlmbench"))
+        .args(["query", "rows", file, "--filter", "amps=> x", "--cache"])
+        .arg(c)
+        .output()
+        .unwrap();
+    assert_eq!(bad.status.code(), Some(3));
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("can't read \"> x\""));
+}

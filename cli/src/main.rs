@@ -15,6 +15,7 @@ use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
 use tlmbench_core::datetime::{format_duration, format_time, parse_decimal, parse_iso};
 use tlmbench_core::gaps::DEFAULT_FACTOR;
+use tlmbench_core::table::{Col, Filter, SortKey};
 use tlmbench_core::{RecordingInfo, TimeSource, Timestamp, Viewport};
 use tlmbench_store::{Opened, Precision, Status, Store};
 
@@ -226,6 +227,28 @@ enum Query {
         /// The time, as for --from of `query view`
         #[arg(long)]
         at: String,
+    },
+    /// The rows of the span a table shows, filtered and sorted over the whole span, as CSV: row, time_ns, then the
+    /// channels (`row` is the sample index)
+    Rows {
+        #[command(flatten)]
+        pick: Pick,
+        #[command(flatten)]
+        span: Span,
+        /// A column filter, `channel=expression` (repeat; all must pass): `> 1.5`, `1..2`, `blank`, joined with
+        /// `and` / `or`. The channel `time` filters the time in ns
+        #[arg(long = "filter")]
+        filters: Vec<String>,
+        /// A sort key: a channel (or `time`), `:desc` after it for descending, as `volts:desc` (repeat for several;
+        /// the first is the main key)
+        #[arg(long = "sort")]
+        sort: Vec<String>,
+        /// Rows to skip, after sorting
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        /// Rows to print at most
+        #[arg(long, default_value_t = 1000)]
+        limit: usize,
     },
     /// Exact count, min, max, mean and standard deviation over a span, as CSV (builds the pyramid first)
     Stats {
@@ -484,6 +507,49 @@ fn query(what: Query, common: &Common) -> Result<(), Fail> {
                     w(&mut out, format!("{},{i},{ts},{v}", csv_field(name)))?;
                 }
             }
+        }
+        Query::Rows { pick, span, filters, sort, offset, limit } => {
+            let (o, chans) = open(&pick)?;
+            let (t0, t1) = span_of(&o, &span)?;
+            let col = |name: &str| -> Result<Col, Fail> {
+                if name == "time" { Ok(Col::Time) } else { Ok(Col::Channel(channels(&o, &[name.to_owned()])?[0])) }
+            };
+            let filters = filters
+                .iter()
+                .map(|f| {
+                    let (c, expr) =
+                        f.split_once('=').ok_or_else(|| Fail(3, format!("--filter {f:?}: use channel=expression")))?;
+                    let parsed = Filter::parse(expr).map_err(|e| Fail(3, format!("--filter {f:?}: {e}")))?;
+                    parsed.map(|p| col(c.trim()).map(|c| (c, p))).transpose()
+                })
+                .collect::<Result<Vec<_>, Fail>>()?
+                .into_iter()
+                .flatten()
+                .collect();
+            let sort = sort
+                .iter()
+                .map(|k| {
+                    let (name, descending) = match k.strip_suffix(":desc") {
+                        Some(c) => (c, true),
+                        None => (k.strip_suffix(":asc").unwrap_or(k), false),
+                    };
+                    col(name).map(|col| SortKey { col, descending })
+                })
+                .collect::<Result<Vec<_>, Fail>>()?;
+            let Some((first, rows)) = o.select_rows((t0, t1), filters, sort, &|_| true) else {
+                return Err(Fail(2, "too many rows to sort in one go".into()));
+            };
+            let names: Vec<String> = chans.iter().map(|&c| csv_field(&o.recording().info().channels[c].name)).collect();
+            w(&mut out, format!("row,time_ns,{}", names.join(",")))?;
+            for &id in rows.ids.iter().skip(offset).take(limit) {
+                let i = first + id as usize;
+                let vals = (0..chans.len()).map(|k| {
+                    let v = o.recording().value_at(chans[k], i, &Default::default());
+                    if v.is_nan() { String::new() } else { v.to_string() }
+                });
+                w(&mut out, format!("{i},{},{}", o.recording().time_at(i), vals.collect::<Vec<_>>().join(",")))?;
+            }
+            eprintln!("{} rows match", rows.ids.len());
         }
         Query::Stats { pick, span } => {
             let (o, chans) = open(&pick)?;

@@ -387,3 +387,32 @@ mod tests {
         assert!(runs(&[], s).is_empty());
     }
 }
+
+#[cfg(test)]
+mod budget {
+    use super::*;
+
+    /// Step 4.2's budget: a sort of 10M rows under 2 s on the M1. `cargo test --release -p tlmbench-core -- --ignored
+    /// --nocapture table::budget`
+    #[test]
+    #[ignore = "timing: run in release"]
+    fn sort_of_10m_rows() {
+        let n = 10_000_000usize;
+        let v: Vec<f64> = (0..n).map(|i| ((i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 11) as f64).collect();
+        let read = |_: Col, r: Range<usize>| v[r].to_vec();
+        let q = |sort: Vec<SortKey>, filters| Query { first: 0, count: n, filters, sort };
+        let by = |d| SortKey { col: Col::Channel(0), descending: d };
+        for (name, query) in [
+            ("one key", q(vec![by(false)], vec![])),
+            ("two keys", q(vec![by(true), by(false)], vec![])),
+            (
+                "filter half, then sort",
+                q(vec![by(false)], vec![(Col::Channel(0), Filter::parse("> 4.5e15").unwrap().unwrap())]),
+            ),
+        ] {
+            let t = std::time::Instant::now();
+            let rows = select(&query, &read, &|_| true).unwrap();
+            println!("{name}: {} rows in {:?}", rows.ids.len(), t.elapsed());
+        }
+    }
+}
