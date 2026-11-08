@@ -44,9 +44,9 @@ void main() {
   color = u_color;
 }`;
 
-/** A plot line's width in CSS pixels. The prototype's canvas lines are 1.25 nominally, and look a little heavier once the
- * canvas has antialiased their edges; quads need the same weight. */
-export const LINE_WIDTH = 1.5;
+/** A plot line's width in CSS pixels, as the prototype's uPlot lines: with 4x MSAA, quads this wide draw the same ink per
+ * unit length as a 1.25 px canvas stroke (measured in WKWebView and Chrome at 1x and 2x). */
+export const LINE_WIDTH = 1.25;
 
 export interface Rect {
   x: number;
