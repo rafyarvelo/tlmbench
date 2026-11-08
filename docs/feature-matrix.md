@@ -1,6 +1,6 @@
 # Feature matrix: design, prototype and app
 
-Nov 7, 2026, on `main` at 523a185. Every v1 feature in `docs/design.md`, and every feature the prototype or the app has,
+Nov 7, 2026, on `main` at 523a185; the App column updated Nov 8 after step 4.1. Every v1 feature in `docs/design.md`, and every feature the prototype or the app has,
 compared across the three. `docs/roadmap.md` turns the gaps into steps; the last column names the step that closes
 each one. `docs/parity-audit.md` holds the finer, control-by-control comparison of the app's UI against the prototype.
 
@@ -9,7 +9,7 @@ the design). **Prototype** and **App**: ✓ done, ◐ partly, ✗ missing, **sim
 synthesized in the page, so there is no real file I/O), **n/a** doesn't apply. A ✓ in the App column means it works as
 in the prototype and the design, not just that something exists.
 
-Totals over the 203 rows below: the app has 61 ✓, 28 ◐ and 114 ✗. The prototype has 158 ✓, 6 ◐ and 12 ✗, and 27 rows
+Totals over the 203 rows below: the app has 76 ✓, 21 ◐ and 106 ✗. The prototype has 158 ✓, 6 ◐ and 12 ✗, and 27 rows
 are simulated or don't apply to it. Its gaps are the parts only real software can have (multiple windows, plugins,
 alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
@@ -33,7 +33,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Min/max pyramid, resumable background build | v1 | n/a | ✓ | |
 | M4 views, pixel-exact, gaps from the gap index | v1 | n/a | ✓ | |
 | LRU chunk store | v1 | n/a | ✓ | |
-| Cache cap and low-disk eviction; Settings shows path, size, Clear | v1 | n/a | ◐ (eviction; Settings has no cache section) | 4.1 |
+| Cache cap and low-disk eviction; Settings shows path, size, Clear | v1 | n/a | ◐ (Settings → Cache: folder, size, Clear cache; Open folder awaits the owner) | 4.1 |
 | Scale and offset per channel (before the pyramid) | v1 | ✓ | ◐ (from descriptors only) | 5.2 |
 | Missing values per channel (raw values, range, Missing when) | v1 | ✓ | ✗ | 5.2 |
 | Derived channels computed in the core, cached with a pyramid | v1 | sim | ✗ | 5.1 |
@@ -52,10 +52,10 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Panes fill in left to right on a first open ("Reading 43%") | v1 | ✓ | ✓ (hatch differs: audit row "Building hatch") | 4.1 |
 | "coarse" label after 0.3 s | v1 | n/a | ✓ | |
 | Min/max envelope fill under a line | v1 | ✗ | ✗ | 5.4 |
-| Markers when zoomed past ~6 px per sample | v1 | ✓ | ✗ | 4.1 |
-| Draw every sample (setting) | v1 | ✓ | ✗ (needs core) | 4.1 |
+| Markers when zoomed past ~6 px per sample | v1 | ✓ | ✓ |  |
+| Draw every sample (setting) | v1 | ✓ | ✓ (core: `Viewport::raw_max`; CLI `--raw-max`) |  |
 | Canvas 2D fallback renderer | v1 | n/a | ✗ (thin lines on software GL only) | 5.10 |
-| Stack that scrolls when panes don't fit (GL scissored to the stack) | — | ✓ | ✗ (panes spill over Add pane) | 4.1 |
+| Stack that scrolls when panes don't fit (GL scissored to the stack) | — | ✓ | ✓ |  |
 | Gates 1–3 (100M points at 60 fps; 10 GB first paint; 4M samples/s live) | v1 | n/a | ✓ | |
 | Benchmark tracking across commits | — | n/a | ✗ (in follow-ups) | 4.1 |
 
@@ -74,7 +74,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Mouse modes, Clear, Back, Fit, Play back, Lock | v1 | ✓ | ✓ | |
 | All panes as charts, tables or both (top bar) | v1 | ✓ | ✗ | 4.2 |
 | Event markers toggle (top bar, E) | v1 | ✓ | ✗ | 5.2 |
-| Remove every channel / every pane (top bar) | v1 | ✓ | ◐ (in ⋯ only) | 4.1 |
+| Remove every channel / every pane (top bar) | v1 | ✓ | ✓ (icons at 1300 px and wider, ⋯ otherwise) |  |
 | ⋯ menu: View, All panes, Window groups | v1 | ✓ | ✓ | |
 | ⋯ menu: Export group (data, image, HTML) | v1 | ✓ | ✗ | 4.4, 5.10 |
 | Narrow window moves groups into ⋯ | v1 | ✓ | ✓ | |
@@ -82,20 +82,20 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Tooltips: data-tip, retire after 3 uses, Short / Full / Off | v1 | ✓ | ✓ | |
 | IBM Plex fonts, tokens (sizes, radii) | v1 | ✓ | ✓ | |
 | Icons with the prototype's drawings and sizes | — | ✓ | ✓ | |
-| Motion: glides on a spring, menus grow, dialogs rise, reduced motion | v1 | ✓ | ◐ (glides and menus; dialogs don't rise over a scrim everywhere) | 4.1 |
+| Motion: glides on a spring, menus grow, dialogs rise, reduced motion | v1 | ✓ | ✓ |  |
 | Focus mode (⌘.) | v1 | ✓ | ✓ | |
 | View lock with its settings (layout, cursors, table sort) | v1 | ✓ | ◐ (table sort and filter rows wait for tables) | 4.2 |
-| Status bar: query and draw times, drawing level | v1 | ✓ | ◐ (no memory or load figures) | 4.1 |
+| Status bar: query and draw times, drawing level | v1 | ✓ | ✓ (and the core's memory, the chunk cache's share, CPU load) |  |
 | Start page: open folder, open recording, connect, recent recordings | v1 | ✓ | ✓ | |
-| Start page: recent sessions (one per folder), saved connections, layouts | v1 | ✓ | ◐ (one session; no saved connections or layouts) | 4.1, 5.5 |
-| Window title follows the tab | — | ✓ | ✗ | 4.1 |
+| Start page: recent sessions (one per folder), saved connections, layouts | v1 | ✓ | ◐ (sessions per folder; no saved connections or layouts) | 5.5 |
+| Window title follows the tab | — | ✓ | ✓ |  |
 | Drop a file on the window | v1 | ✓ | ◐ (opens; no import step) | 4.3 |
-| Settings: Basic and All, ⓘ explanations, Reset, Reset UI layout | v1 | ✓ | ◐ (Basic set differs; some rows missing) | 4.1 |
-| Settings: time formats Samples and Wall clock | v1 | ✓ | ✗ | 4.1 |
+| Settings: Basic and All, ⓘ explanations, Reset, Reset UI layout | v1 | ✓ | ✓ (rows for later steps' features come with them) |  |
+| Settings: time formats Samples and Wall clock | v1 | ✓ | ✓ |  |
 | Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ✗ | 5.1, 5.2 |
 | Settings: Record live sessions to | v1 | ✓ | ✗ | 5.5 |
 | Sidebars: collapse, move, resize, swap sides | v1 | ✓ | ✓ | |
-| Drag a sidebar panel to reorder it | v1 | ✓ | ✗ (decided Nov 7: add it) | 4.1 |
+| Drag a sidebar panel to reorder it | v1 | ✓ | ✓ (and to the other sidebar) |  |
 
 ## 4. Explorer
 
@@ -103,14 +103,14 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Folder tree, files a decoder recognizes, files that can't be opened | v1 | ✓ | ✓ | |
 | Title row: add shown channels, Expand all, Collapse all | v1 | ✓ | ✓ | |
-| Title row: New derived channel, Categories toggle | v1 | ✓ | ✗ | 4.1, 5.1 |
-| Folder button with the folder's name and menu (recordings ▾) | v1 | ✓ | ◐ (icon buttons instead) | 4.1 |
+| Title row: New derived channel, Categories toggle | v1 | ✓ | ◐ (Categories; New derived channel waits for 5.1) | 5.1 |
+| Folder button with the folder's name and menu (recordings ▾) | v1 | ✓ | ✓ |  |
 | Folder menu: Import all, recipes and profiles | v1 | ✓ | ✗ | 4.3, 5.1 |
 | Filter with regex, matching units and categories | v1 | ✓ | ✓ | |
 | Open files strip: Show only these, Close all | v1 | ✓ | ✓ | |
 | `.tlmbench` entry at the top (shared views count) | v1 | ✓ | ✗ | 4.4 |
 | Categories by name prefix, your own categories, counts | v1 | ✓ | ✓ | |
-| Multi-select, selection bar (Add, Chart, Table, Remove) | v1 | ✓ | ◐ (one file at a time; no Derive in the bar) | 4.1, 5.1 |
+| Multi-select, selection bar (Add, Chart, Table, Remove) | v1 | ✓ | ◐ (channels and files; no Derive in the bar) | 5.1 |
 | Drag channels to panes | v1 | ✓ | ✓ | |
 | File right-click: Open, Open only this, Close | v1 | ✓ | ✓ | |
 | File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ✗ | 4.3, 5.6 |
@@ -133,15 +133,15 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ✗ | 5.1, 5.3, 5.4 |
 | Axis and scale: a unit's axis each, range, include zero, decimals, label, log | v1 | ✓ | ✓ | |
 | Ignore outliers (clip and mark) | v1 | ✓ | ✓ | |
-| Y zoom: Shift + scroll, drag on the y-axis | v1 | ✓ | ✗ | 4.1 |
-| Fixed pane heights and a height grip, as the prototype | v1 | ✓ | ◐ (panes stretch to fill) | 4.1 |
+| Y zoom: Shift + scroll, drag on the y-axis | v1 | ✓ | ✓ (sets the axis's fixed range; owner, Nov 8) |  |
+| Fixed pane heights and a height grip, as the prototype | v1 | ✓ | ✓ |  |
 | Limit lines and shading past warn and alarm | v1 | ✓ | ✗ | 5.2 |
 | Event markers on charts (washes, notches, tooltips) | v1 | ✓ | ✗ | 5.2 |
 | Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ✗ | 4.2 |
 | Table rows band on the charts | v1 | ✓ | ✗ | 4.2 |
 | Hover readout snapping to samples; legend values | v1 | ✓ | ✓ | |
 | Overview: picker, range, window, gestures, top or bottom | v1 | ✓ | ✓ | |
-| Overview drawing: min/max band per channel with a midline | v1 | ✓ | ◐ (each trace scaled to its range; band decided Nov 7) | 4.1 |
+| Overview drawing: min/max band per channel with a midline | v1 | ✓ | ✓ |  |
 | Overview event ticks | v1 | ✓ | ✗ | 5.2 |
 | Values view: tiles at the pointer, cursor A or the end of the view | v1 | ✓ | ✓ | |
 | Values tiles coloured by limits | v1 | ✓ | ✗ | 5.2 |
@@ -171,7 +171,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Cursors A and B (mode, keys over plots and rows), Esc clears | v1 | ✓ | ✓ | |
 | Measure: values at A and B, Δt, 1/Δt, exact stats, channel picker | v1 | ✓ | ✓ | |
 | Measure: Missing count and duration | v1 | ✓ | ✗ (needs core) | 5.2 |
-| Measure: Δy and frequency | v1 | ✓ | ◐ | 4.1 |
+| Measure: Δy and frequency | v1 | ✓ | ✓ |  |
 
 ## 8. Time modes: Play and Live
 
@@ -186,7 +186,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Live tab is a file tab whose files grow; every view works | v1 | ✓ | ✓ | |
 | Live strip: badge, REC time, scrubber, presets, Following, Sources | v1 | ✓ | ◐ (no session name, PAUSED/STOPPED) | 5.5 |
 | Sources panel: a card per source with health, Pause/Resume/Stop/Remove | v1 | ✓ | ◐ | 5.5 |
-| Connect dialog: the prototype's two-column layout, kinds, forms | v1 | ✓ | ◐ (a different, simpler form) | 4.1 |
+| Connect dialog: the prototype's two-column layout, kinds, forms | v1 | ✓ | ◐ (the layout, kinds and copy; its new fields are 5.5) | 5.5 |
 | Connect dialog: name, record switch, decode preview, save the connection | v1 | ✓ | ✗ | 5.5 |
 | + Add source to a session; several sources on one clock | v1 | ✓ | ◐ (core yes; no Add source) | 5.5 |
 | Trigger (level or edge, pre/post, single or repeat) | v1 | ✓ | ✗ | 5.5 |
