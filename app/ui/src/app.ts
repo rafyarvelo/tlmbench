@@ -46,6 +46,7 @@ import {
 import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
 import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
 import { type ExportContext, exp, FORMATS, img } from './exports.svelte';
+import { SvgContext, svg } from './svgctx';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
@@ -180,7 +181,7 @@ let tokenCache: Record<string, string> | null = null;
 function tokens(): Record<string, string> {
   if (tokenCache) return tokenCache;
   const css = getComputedStyle(document.documentElement);
-  const names = ['--plot-bg', '--grid', '--fg', '--fg-muted', '--accent', '--cursor', '--border', '--font-data', '--warn'];
+  const names = ['--plot-bg', '--grid', '--fg', '--fg-muted', '--accent', '--cursor', '--border', '--font-data', '--font-ui', '--warn'];
   for (let i = 1; i <= 8; i++) names.push(`--trace-${i}`);
   tokenCache = Object.fromEntries(names.map((n) => [n, css.getPropertyValue(n).trim()]));
   return tokenCache;
@@ -2350,6 +2351,172 @@ async function exportGo(): Promise<void> {
     exp.busy = false;
   }
 }
+
+/** Where each pane to save sits on the overlay: its plot with the margins for the axis labels. */
+function imagePanes(): { i: number; box: Rect; plot: Rect }[] {
+  const which = settings.exportImage.what === 'sel' ? [stack.sel] : stack.panes.map((_, i) => i);
+  return which.filter((i) => hasPlot(i)).map((i) => {
+    const plot = plotRect(i);
+    return { i, plot, box: { x: plot.x - PAD.left, y: plot.y - 4, w: plot.w + PAD.left + rightPad(), h: plot.h + 4 + (labelled(i) ? PAD.timeLabels : 4) } };
+  });
+}
+
+const IMAGE_LEGEND = 22;
+const IMAGE_GAP = 8;
+
+/** Opens Save the view as an image…. */
+function imageOpen(): void {
+  const f = state.file;
+  if (!f) return;
+  Object.assign(img, { open: true, busy: false, error: '', result: '', panes: stack.panes.length, sel: stack.sel, base: nameOf(f.info.path).replace(/\.[^.]*$/, '') + (f.info.part ? `.${f.info.part}` : '') });
+}
+
+/** The panes as a PNG: the plot canvases as they are drawn now (traces, axes, cursors, markers), a legend over each. */
+function imagePng(boxes: ReturnType<typeof imagePanes>, scale: number): Promise<Uint8Array> {
+  const tk = tokens();
+  const dpr = window.devicePixelRatio || 1;
+  const gl = $<HTMLCanvasElement>('gl');
+  const width = Math.max(...boxes.map((b) => b.box.w));
+  const height = boxes.reduce((a, b) => a + IMAGE_LEGEND + b.box.h + IMAGE_GAP, 0) - IMAGE_GAP;
+  const out = document.createElement('canvas');
+  out.width = Math.round(width * scale);
+  out.height = Math.round(height * scale);
+  const c = out.getContext('2d')!;
+  c.fillStyle = tk['--plot-bg'];
+  c.fillRect(0, 0, out.width, out.height);
+  c.scale(scale, scale);
+  draw(); // the GL canvas is only readable in the task that drew it
+  let y = 0;
+  for (const { i, box } of boxes) {
+    drawLegend(c, panes()[i], 0, y, tk);
+    const src = [box.x * dpr, box.y * dpr, box.w * dpr, box.h * dpr] as const;
+    c.drawImage(gl, ...src, 0, y + IMAGE_LEGEND, box.w, box.h);
+    c.drawImage(overlay, ...src, 0, y + IMAGE_LEGEND, box.w, box.h);
+    y += IMAGE_LEGEND + box.h + IMAGE_GAP;
+  }
+  return new Promise((ok, no) =>
+    out.toBlob((b) => {
+      if (b) void b.arrayBuffer().then((a) => ok(new Uint8Array(a)));
+      else no(new Error('the browser made no image'));
+    }, 'image/png'),
+  );
+}
+
+/** A pane's channels as a legend row: a swatch, the name and unit of each. */
+function drawLegend(c: CanvasRenderingContext2D, chans: number[], x: number, y: number, tk: Record<string, string>): void {
+  c.save();
+  c.font = `12px ${tk['--font-ui']}`;
+  c.textBaseline = 'middle';
+  let at = x + PAD.left;
+  for (const ch of chans) {
+    const info = state.file?.info.channels[ch];
+    if (!info) continue;
+    c.fillStyle = colorOf(ch);
+    c.fillRect(at, y + IMAGE_LEGEND / 2 - 4, 8, 8);
+    c.fillStyle = tk['--fg'];
+    const label = info.unit ? `${info.name} (${info.unit})` : info.name;
+    c.fillText(label, at + 13, y + IMAGE_LEGEND / 2);
+    at += 13 + c.measureText(label).width + 16;
+  }
+  c.restore();
+}
+
+/** The panes as SVG: the same axes and cursors the screen draws (recorded from the same functions), and each trace
+ * as a line from the points the core sent. */
+function imageSvg(boxes: ReturnType<typeof imagePanes>): string {
+  const tk = tokens();
+  const style: AxesStyle = { grid: tk['--grid'], muted: tk['--fg-muted'], mono: tk['--font-data'], timeLabels: false };
+  const span = Number(state.t1 - state.t0);
+  const width = Math.max(...boxes.map((b) => b.box.w));
+  const height = boxes.reduce((a, b) => a + IMAGE_LEGEND + b.box.h + IMAGE_GAP, 0) - IMAGE_GAP;
+  const parts: string[] = [svg.rect(0, 0, width, height, tk['--plot-bg'])];
+  let y = 0;
+  boxes.forEach(({ i, box, plot }, k) => {
+    const inner: string[] = [];
+    // legend
+    let at = PAD.left;
+    for (const ch of panes()[i]) {
+      const info = state.file?.info.channels[ch];
+      if (!info) continue;
+      const label = info.unit ? `${info.name} (${info.unit})` : info.name;
+      inner.push(svg.rect(at, IMAGE_LEGEND / 2 - 4, 8, 8, colorOf(ch)), svg.text(label, at + 13, IMAGE_LEGEND / 2, tk['--fg'], 12));
+      at += 13 + label.length * 6.6 + 16;
+    }
+    // the plot, in its own coordinates: the box's corner is the origin
+    const r: Rect = { x: plot.x - box.x, y: plot.y - box.y + IMAGE_LEGEND, w: plot.w, h: plot.h };
+    const ctx = new SvgContext();
+    const ranges = paneY[i];
+    if (ranges) {
+      drawAxes(ctx as unknown as CanvasRenderingContext2D, r, { t0: state.t0, t1: state.t1, left: ranges.u0, right: ranges.u1 }, { ...style, timeLabels: labelled(i) });
+      const main = state.layers[i];
+      const keys = ranges.u1 ? ['u0', 'u1'] : ['u0'];
+      const keyOf = new Map(panes()[i].map((ch) => [ch, keys.length > 1 ? axisKey(i, ch) : 'u0']));
+      inner.push(...ctx.out);
+      if (main && span > 0) {
+        const clipId = `clip${k}`;
+        const lines: string[] = [];
+        for (const ch of panes()[i]) {
+          const t = main.traces.get(ch);
+          const yr = ranges[keyOf.get(ch) ?? 'u0'];
+          if (!t || !yr || t.log !== !!yr.log) continue;
+          const xa = (2 * main.xScaleNs) / span;
+          const xb = (2 * Number(main.originNs - state.t0)) / span - 1;
+          const ya = 2 / (yr.max - yr.min);
+          const yb = (-2 * yr.min) / (yr.max - yr.min) - 1;
+          let run: string[] = [];
+          const flush = () => {
+            if (run.length > 1) lines.push(svg.polyline(run.join(' '), colorOf(ch)));
+            run = [];
+          };
+          for (let p = 0; p < t.x.length; p++) {
+            const yv = t.y[p];
+            if (!Number.isFinite(yv)) {
+              flush();
+              continue;
+            }
+            const px = r.x + ((xa * t.x[p] + xb + 1) / 2) * r.w;
+            const py = r.y + (1 - (ya * yv + yb + 1) / 2) * r.h;
+            run.push(`${Math.round(px * 100) / 100},${Math.round(py * 100) / 100}`);
+          }
+          flush();
+        }
+        inner.push(svg.group(0, 0, lines, [r.x, r.y, r.w, r.h], clipId));
+      }
+      const cur = new SvgContext();
+      drawCursors(cur as unknown as CanvasRenderingContext2D, r, tk);
+      inner.push(...cur.out);
+    }
+    parts.push(svg.group(0, y, inner));
+    y += IMAGE_LEGEND + box.h + IMAGE_GAP;
+  });
+  return svg.doc(width, height, parts);
+}
+
+/** Save: asks where, then writes the image the core gives no part in: the page makes it and the core writes the bytes. */
+async function imageGo(): Promise<void> {
+  const o = settings.exportImage;
+  if (img.busy) return;
+  const boxes = imagePanes();
+  if (!boxes.length) {
+    img.error = 'No pane with a chart to save.';
+    return;
+  }
+  img.error = '';
+  img.result = '';
+  const name = `${img.base}${o.what === 'all' ? '' : `-pane-${stack.sel + 1}`}.${o.format}`;
+  const path = await saveDialog({ defaultPath: name, filters: [{ name: o.format === 'png' ? 'PNG image' : 'SVG drawing', extensions: [o.format] }] });
+  if (!path) return;
+  img.busy = true;
+  try {
+    const bytes = o.format === 'png' ? await imagePng(boxes, o.scale) : new TextEncoder().encode(imageSvg(boxes));
+    await invoke('save_file', { path, bytes: Array.from(bytes) });
+    img.result = `Saved ${nameOf(path)} (${boxes.length} pane${boxes.length === 1 ? '' : 's'}).`;
+  } catch (e) {
+    img.error = `Couldn't save the image: ${e}`;
+  } finally {
+    img.busy = false;
+  }
+}
 // ---------- interaction ----------
 
 const setMode = (m: Mode) => setSetting('mode', m);
@@ -2941,8 +3108,8 @@ Object.assign(actions, {
   exportClose: () => {
     exp.open = false;
   },
-  imageOpen: () => {},
-  imageGo: () => {},
+  imageOpen,
+  imageGo: () => void imageGo(),
   imageClose: () => {
     img.open = false;
   },

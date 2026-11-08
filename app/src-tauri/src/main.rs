@@ -1061,6 +1061,14 @@ async fn export_data(req: ExportRequest, files: State<'_, Files>) -> Result<Expo
     .map_err(|e| e.to_string())?
 }
 
+/// Save the view as an image…: writes the bytes the page made (a PNG or SVG) to the file the person chose.
+#[tauri::command]
+async fn save_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    spawn_blocking(move || std::fs::write(&path, bytes).map_err(|e| format!("can't write {path}: {e}")))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Export file…: writes a view to a `.json` file the person chose in the save dialog.
 #[tauri::command]
 async fn export_view(path: String, view: serde_json::Value) -> Result<(), String> {
@@ -1413,6 +1421,7 @@ fn main() {
             share_view,
             export_view,
             export_data,
+            save_file,
             live_connect,
             live_state,
             live_stop,

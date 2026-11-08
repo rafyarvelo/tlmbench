@@ -1,12 +1,17 @@
-<!-- Export data… (the prototype's): the samples of this tab's channels (or every channel) in the time view, between the
+<!-- Export data… and Save the view as an image… (the prototype's). Export data…: the samples of this tab's channels (or every channel) in the time view, between the
      cursors or for the whole recording, written by the core with the same writers as `tlmbench convert`: CSV, Parquet,
      Arrow IPC, HDF5 or MAT v7.3, wide or long, at each sample or resampled, plus <name>.channels.csv. The person chooses
      the folder when they press Export; the core reads the full data (masks and filters are views). -->
 <script lang="ts">
   import { ICON } from '../icons';
   import { actions } from '../ui.svelte';
-  import { exp, FORMATS } from '../exports.svelte';
+  import { exp, FORMATS, img } from '../exports.svelte';
   import { setSetting, settings } from '../settings.svelte';
+
+  const io = $derived(settings.exportImage);
+  const seti = <K extends keyof typeof io>(k: K, v: (typeof io)[K]) => setSetting('exportImage', { ...io, [k]: v });
+  const imgName = $derived(`${img.base}${io.what === 'all' ? '' : `-pane-${img.sel + 1}`}.${io.format}`);
+  const imgPanes = $derived(io.what === 'all' ? img.panes : 1);
 
   const o = $derived(settings.exportData);
   const ctx = $derived(exp.ctx);
@@ -41,12 +46,13 @@
   function key(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       e.stopPropagation();
-      actions.exportClose();
+      if (img.open) actions.imageClose();
+      else actions.exportClose();
     }
   }
 </script>
 
-<svelte:window onkeydowncapture={(e) => exp.open && key(e)} />
+<svelte:window onkeydowncapture={(e) => (exp.open || img.open) && key(e)} />
 
 {#if exp.open && ctx}
   <div class="scrim" role="presentation" onclick={actions.exportClose}></div>
@@ -102,6 +108,38 @@
     <footer><span class="muted">You choose the folder</span><span class="spacer"></span>
       <button class="tbtn" onclick={actions.exportClose}>{exp.result ? 'Close' : 'Cancel'}</button>
       <button class="tbtn primary" id="exGo" disabled={!ready} onclick={actions.exportGo}>Export…</button></footer>
+  </div>
+{/if}
+
+{#if img.open}
+  <div class="scrim" role="presentation" onclick={actions.imageClose}></div>
+  <div class="dlg recdlg" id="imageDlg" role="dialog" aria-label="Save the view as an image">
+    <header><b>Save the view as an image</b><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={actions.imageClose}>{@html ICON.close}</button></header>
+    <div class="recbody">
+      <p class="muted">The panes as they look now: traces, axes, cursors and markers, in the current theme.</p>
+      <div class="lvrow">
+        <label class="lvf"><span>Format</span>
+          <select class="sel" id="imFormat" value={io.format} onchange={(e) => seti('format', e.currentTarget.value as typeof io.format)}>
+            <option value="png">PNG (picture)</option><option value="svg">SVG (drawing, scales without blur)</option>
+          </select></label>
+        <label class="lvf"><span>What</span>
+          <select class="sel" id="imWhat" value={io.what} onchange={(e) => seti('what', e.currentTarget.value as typeof io.what)}>
+            <option value="all">Every pane ({img.panes})</option><option value="sel">The selected pane ({img.sel + 1})</option>
+          </select></label>
+        {#if io.format === 'png'}
+          <label class="lvf"><span>Size</span>
+            <select class="sel" id="imScale" value={String(io.scale)} onchange={(e) => seti('scale', +e.currentTarget.value as typeof io.scale)}>
+              <option value="1">As on screen</option><option value="2">Twice as sharp</option>
+            </select></label>
+        {/if}
+      </div>
+      <div class="exfiles"><div><code>{imgName}</code> <span class="muted">{imgPanes} pane{imgPanes === 1 ? '' : 's'}</span></div></div>
+      {#if img.error}<p class="recstat bad" id="imErr">{img.error}</p>{/if}
+      {#if img.result}<p class="recstat" id="imDone" role="status">{img.result}</p>{/if}
+    </div>
+    <footer><span class="muted">You choose where</span><span class="spacer"></span>
+      <button class="tbtn" onclick={actions.imageClose}>{img.result ? 'Close' : 'Cancel'}</button>
+      <button class="tbtn primary" id="imGo" disabled={!img.panes || img.busy} onclick={actions.imageGo}>Save…</button></footer>
   </div>
 {/if}
 

@@ -174,6 +174,7 @@
     savePick: null,
     exported: [],
     dataExports: [],
+    saved_files: [],
     exportFails: null,
     /** Rows each `rows` call returned. */
     rowsAsked: [],
@@ -647,6 +648,10 @@
       fake.dataExports.push(req);
       if (fake.exportFails) throw fake.exportFails;
       return { path: req.out, channelsFile: req.out.replace(/\.[^.]+$/, '.channels.csv'), rows: 1234, bytes: 99999 };
+    },
+    save_file({ path, bytes }) {
+      fake.saved_files.push({ path, bytes });
+      return null;
     },
     export_view({ path, view }) {
       fake.exported.push({ path, view });
