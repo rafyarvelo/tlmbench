@@ -43,6 +43,7 @@ import {
   stack,
   units,
 } from './stack.svelte';
+import { applyProfile, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
@@ -52,6 +53,8 @@ interface ChannelInfo {
   name: string;
   unit: string | null;
   dtype: string;
+  /** A group from an import profile. */
+  category?: string | null;
 }
 
 export interface RecordingInfo {
@@ -1428,7 +1431,7 @@ async function showTab(key: number): Promise<void> {
   ui.path = d.file.info.path;
   ui.time = fileTime(d.file.info.time.kind === 'index', d.file.first);
   ui.measureDismissed = false;
-  ui.channels = d.file.info.channels.map((c) => ({ name: c.name, unit: c.unit }));
+  ui.channels = d.file.info.channels.map((c) => ({ name: c.name, unit: c.unit, category: c.category }));
   $('empty').hidden = true;
   saveSession();
   await tick();
@@ -1560,7 +1563,7 @@ async function pollLive(): Promise<void> {
   try {
     const st = await invoke<LiveState>('live_state', { file: f.id });
     if (state.file !== f || !st.range) return;
-    if (st.info.channels.length !== f.info.channels.length) ui.channels = st.info.channels.map((c) => ({ name: c.name, unit: c.unit }));
+    if (st.info.channels.length !== f.info.channels.length) ui.channels = st.info.channels.map((c) => ({ name: c.name, unit: c.unit, category: c.category }));
     f.info = st.info;
     f.first = BigInt(st.range[0]);
     f.last = BigInt(st.range[1]);
@@ -2039,8 +2042,114 @@ function emptyWindow(): void {
 }
 
 async function chooseFile(): Promise<void> {
-  const path = await openDialog({ multiple: false, filters: [{ name: 'Recordings', extensions: ['csv', 'tsv', 'tlm', 'parquet'] }] });
-  if (typeof path === 'string') await openPath(path);
+  const picked = await openDialog({ multiple: true, filters: [{ name: 'Recordings', extensions: ['csv', 'tsv', 'txt', 'tlm', 'parquet'] }] });
+  const paths = typeof picked === 'string' ? [picked] : Array.isArray(picked) ? picked : [];
+  if (paths.length) await openWithImport(paths);
+}
+
+// ---------- CSV import: the dialog on a first open, the core's profile after ----------
+
+/** Files that need no dialog (a profile for their header is saved, or they aren't CSV): opened once the dialog is done. */
+let importDirect: string[] = [];
+/** A file whose import settings are being changed again: it reopens with them. */
+let importRedo: string | null = null;
+
+/** Opens files the user chose (Explorer, Open…, a drop). A CSV whose header has no saved profile asks first. */
+async function openWithImport(paths: string[]): Promise<void> {
+  // files already in a tab only come to the front
+  const fresh = paths.filter((p) => !tabs.list.some((t) => t.path === p && !t.ws));
+  for (const p of paths) if (!fresh.includes(p)) await openPath(p);
+  paths = fresh;
+  if (!paths.length) return;
+  let found: Inspected[];
+  try {
+    found = await invoke<Inspected[]>('import_inspect', { paths });
+  } catch {
+    for (const p of paths) await openPath(p);
+    return;
+  }
+  const direct: string[] = [];
+  const groups = new Map<string, { paths: string[]; i: Inspected }>();
+  for (const f of found) {
+    if (!f.inspection || f.found.exact) direct.push(f.path);
+    else {
+      const g = groups.get(f.inspection.header_key);
+      if (g) g.paths.push(f.path);
+      else groups.set(f.inspection.header_key, { paths: [f.path], i: f });
+    }
+  }
+  if (!groups.size) {
+    for (const p of direct) await openPath(p);
+    return;
+  }
+  importDirect = direct;
+  importRedo = null;
+  Object.assign(imp, { jobs: [...groups.values()].map((g) => makeJob(g.paths, g.i.inspection!, g.i.found.near)), sel: 0, bad: [], error: '', busy: false, open: true, where: settings.importWhere });
+}
+
+/** The import dialog again for a file that has settings: they are filled in; saving reopens the file with them. */
+async function importAgain(path: string): Promise<void> {
+  let f: Inspected | undefined;
+  try {
+    f = (await invoke<Inspected[]>('import_inspect', { paths: [path] }))[0];
+  } catch {
+    f = undefined;
+  }
+  if (!f?.inspection) return note(`${nameOf(path)} isn't a CSV: it has no import settings.`);
+  const job = makeJob([path], f.inspection, f.found.near);
+  if (f.found.exact) applyProfile(job, f.found.exact, 'its saved settings');
+  importDirect = [];
+  importRedo = path;
+  Object.assign(imp, { jobs: [job], sel: 0, bad: [], error: '', busy: false, open: true, where: 'tabs' });
+}
+
+const headerOf = (job: Job) => job.insp.columns.map((c) => c.source);
+
+async function importGo(): Promise<void> {
+  if (imp.busy) return;
+  imp.busy = true;
+  imp.error = '';
+  try {
+    for (const job of imp.jobs) await invoke('profile_save', { header: headerOf(job), profile: toProfile(job) });
+  } catch (e) {
+    imp.busy = false;
+    imp.error = `Couldn't save the settings: ${e}`;
+    return;
+  }
+  const paths = imp.jobs.flatMap((j) => j.paths);
+  const where = imp.where;
+  const redo = importRedo;
+  const direct = importDirect;
+  imp.open = false;
+  imp.busy = false;
+  setSetting('importWhere', where);
+  if (redo) {
+    // the same file with its new settings: close its tabs and open it again
+    const front = frontTab()?.path === redo;
+    for (const t of tabs.list.filter((t) => t.path === redo && !t.ws)) await closeTab(t.key);
+    await openPath(redo);
+    if (!front) ui.note = '';
+    return;
+  }
+  for (const p of direct) await openPath(p);
+  if (where === 'tabs') for (const p of paths) await openPath(p);
+  else {
+    // Explorer only: the settings are kept and nothing opens. The files show in Explorer when they are in its folder
+    // (their own folder is listed when no folder or tab is open); otherwise the settings are saved for their next open.
+    const who = paths.length === 1 ? nameOf(paths[0]) : `${paths.length} files`;
+    if (!ui.folder && !tabs.list.length) {
+      const dir = paths[0].replace(/[\\/][^\\/]*$/, '');
+      if (dir) await showFolder(dir);
+    }
+    const shown = ui.folder && paths.every((p) => p.startsWith(ui.folder!.path));
+    note(shown ? `Added ${who} to Explorer. ${paths.length === 1 ? 'It opens' : 'They open'} with these settings, without asking.` : `Saved the import settings for ${who}. ${paths.length === 1 ? 'It opens' : 'They open'} without asking from now on.`);
+  }
+}
+
+function importCancel(): void {
+  imp.open = false;
+  importDirect = [];
+  importRedo = null;
 }
 
 // ---------- interaction ----------
@@ -2586,7 +2695,7 @@ Object.assign(actions, {
   },
   open: () => void chooseFile(),
   openFolder: () => void chooseFolder(),
-  openPath: (p: string) => void openPath(p),
+  openPath: (p: string) => void openWithImport([p]),
   openOnly: (p: string) =>
     void (async () => {
       await openPath(p);
@@ -2624,10 +2733,10 @@ Object.assign(actions, {
         ui.folder = null;
       });
   },
-  openPaths: (paths: string[]) =>
-    void (async () => {
-      for (const p of paths) await openPath(p);
-    })(),
+  openPaths: (paths: string[]) => void openWithImport(paths),
+  importAgain: (p: string) => void importAgain(p),
+  importGo: () => void importGo(),
+  importCancel,
   closePaths: (paths: string[]) =>
     void (async () => {
       const gone = paths.filter((p) => tabs.list.some((t) => t.path === p));
@@ -2715,7 +2824,7 @@ stackEl.addEventListener('scroll', scheduleDraw, { passive: true });
 void getCurrentWebview().onDragDropEvent((e) => {
   const p = e.payload;
   center.classList.toggle('drop', p.type === 'over' || p.type === 'enter');
-  if (p.type === 'drop' && p.paths.length) void openPath(p.paths[0]);
+  if (p.type === 'drop' && p.paths.length) void openWithImport(p.paths);
 });
 
 // tooltips: `data-tip` (CLAUDE.md); the native title for now

@@ -81,6 +81,8 @@ export interface Settings {
   /** The start page shows at launch, and the recordings opened last (newest first). */
   showStart: boolean;
   recent: string[];
+  /** Where files go after the import dialog: each in a tab, or just into Explorer. */
+  importWhere: 'tabs' | 'none';
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
@@ -149,6 +151,7 @@ export const DEFAULTS: Settings = {
   tipsSeen: {},
   showStart: true,
   recent: [],
+  importWhere: 'tabs',
   exCategories: true,
   exCatClosed: [],
   catOverride: {},
@@ -204,7 +207,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

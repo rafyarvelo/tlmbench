@@ -1,7 +1,7 @@
 # The app's UI tests
 
 The built UI (`app/ui/dist`) in headless Chromium, with `fakecore.js` answering the Tauri commands the UI calls
-(`launch`, `open`, `close`, `view`, `values_at`, `stats`, `rows`, `shared_views`, `share_view`, `export_view`, `list_folder`, `live_connect`, `live_state`, `live_stop`, `usage`, `cache_info`, `cache_clear`, the window title, the file
+(`launch`, `open`, `import_inspect`, `profile_save`, `close`, `view`, `values_at`, `stats`, `rows`, `shared_views`, `share_view`, `export_view`, `list_folder`, `live_connect`, `live_state`, `live_stop`, `usage`, `cache_info`, `cache_clear`, the window title, the file
 and folder dialogs and drag and drop) from synthetic
 recordings. Tests check behaviour and state, not pixels; check visual changes with a screenshot.
 
@@ -54,6 +54,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_markers | a ring per sample in a one-channel chart once samples are 6 px apart, none with two channels or zoomed out; Settings → Draw every sample asking the core for raw samples up to its budget |
 | t_filesel | Explorer picking several files (Cmd/Ctrl-click, Shift-click a range): the bar with Open (each in a tab of its own; Enter too) and Close (with Undo), Esc clearing it |
 | t_sessions | a session per folder: opening another folder puts the session away and brings its own, each file at its time range with its cursors; Recent sessions on the start page (the current one marked) opening one; the folder's session at launch; Settings → Reset session |
+| t_import | the CSV import dialog: asked on the first open of a CSV (a drop, Open…, Explorer) and not for other files or a header with a saved profile; the core's detection filled in (time column and unit, rate, columns, types); name, unit, type and category choices, Resample and No time rates (a rate must be above zero), saved as the header's profile with only the changes in it; a profile for a nearly equal header offered and not applied until chosen; files with one header in one job; Explorer only (settings kept, no tab, later opens skip the dialog); Import settings… on a file; a profile's category grouping channels in Explorer |
 
 `node shots.js [dir]` writes the README's screenshots (`docs/images/`) from the built UI and the fake core.
 

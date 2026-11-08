@@ -188,6 +188,7 @@
   const fileItems = (path: string): MenuItem[] => [
     { label: 'Open', data: { fm: 'open' }, disabled: isOpen(path), run: () => actions.openPath(path) },
     { label: 'Open only this', data: { fm: 'only' }, disabled: !listedPath(path), run: () => actions.openOnly(path) },
+    { label: 'Import settings…', data: { fm: 'import' }, disabled: !/\.(csv|tsv|txt)$/i.test(path), run: () => actions.importAgain(path) },
     { label: 'Close this file', data: { fm: 'close' }, disabled: !inTab(path), run: () => actions.closePath(path) },
     { label: 'Close all files', data: { fm: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
   ];

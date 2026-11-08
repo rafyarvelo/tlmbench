@@ -25,6 +25,7 @@ use tauri::{AppHandle, Emitter, State};
 use tlmbench_core::gaps::DEFAULT_FACTOR;
 use tlmbench_core::table::{self, Col, Filter, SortKey};
 use tlmbench_core::{RecordingInfo, Viewport, wire};
+use tlmbench_decode::profile::ImportProfile;
 use tlmbench_store::{Opened as StoreOpened, Precision, Request, Status, Store};
 
 /// Open files, by id, and live sources (each a file that grows). Each window keeps its own view; files are shared.
@@ -100,13 +101,82 @@ fn parse_time(s: &str) -> Result<i64, String> {
     s.parse::<i64>().map_err(|e| format!("time {s:?}: {e}"))
 }
 
+/// The saved import profile for a CSV file's header, if there is exactly one (the app applies it on every open).
+fn saved_profile(root: &Path, path: &Path) -> Option<ImportProfile> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    if !matches!(ext.as_str(), "csv" | "tsv" | "txt") {
+        return None;
+    }
+    let i = tlmbench_decode::csv::inspect_file(path).ok()?;
+    let header: Vec<String> = i.columns.into_iter().map(|c| c.source).collect();
+    tlmbench_decode::profile::find(root, &header).exact
+}
+
+/// What the import dialog needs about one file: its columns and first rows as the core reads them, and the saved
+/// profile for its header (exact: applied without asking; near: offered).
+#[derive(Serialize)]
+struct Inspected {
+    path: String,
+    inspection: Option<tlmbench_decode::csv::Inspection>,
+    error: Option<String>,
+    found: tlmbench_decode::profile::Found,
+}
+
 #[tauri::command]
-async fn open(path: String, progress: Channel<Progress>, files: State<'_, Files>) -> Result<Opened, String> {
-    let store = files.store.clone();
-    let o = spawn_blocking(move || store.open(Path::new(&path), None))
+async fn import_inspect(paths: Vec<String>, files: State<'_, Files>) -> Result<Vec<Inspected>, String> {
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        paths
+            .into_iter()
+            .map(|path| {
+                let p = Path::new(&path);
+                let ext = p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+                if !matches!(ext.as_deref(), Some("csv" | "tsv" | "txt")) {
+                    let error = Some("not a CSV, TSV or TXT file".to_owned());
+                    return Inspected { path, inspection: None, error, found: Default::default() };
+                }
+                match tlmbench_decode::csv::inspect_file(p) {
+                    Ok(i) => {
+                        let header: Vec<String> = i.columns.iter().map(|c| c.source.clone()).collect();
+                        let found = tlmbench_decode::profile::find(&root, &header);
+                        Inspected { path, inspection: Some(i), error: None, found }
+                    }
+                    Err(e) => {
+                        Inspected { path, inspection: None, error: Some(e.to_string()), found: Default::default() }
+                    }
+                }
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Keeps an import profile for a header in the app cache (`header` as the core names the columns).
+#[tauri::command]
+async fn profile_save(header: Vec<String>, profile: ImportProfile, files: State<'_, Files>) -> Result<(), String> {
+    profile.validate()?;
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || tlmbench_decode::profile::save(&root, &header, &profile).map_err(|e| e.to_string()))
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+}
+
+#[tauri::command]
+async fn open(
+    path: String,
+    profile: Option<ImportProfile>,
+    progress: Channel<Progress>,
+    files: State<'_, Files>,
+) -> Result<Opened, String> {
+    let store = files.store.clone();
+    let o = spawn_blocking(move || {
+        let profile = profile.or_else(|| saved_profile(store.root(), Path::new(&path)));
+        store.with_profile(profile).open(Path::new(&path), None)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
     let o = Arc::new(o);
     let id = files.next.fetch_add(1, Ordering::Relaxed) + 1;
     let info = o.recording().info().clone();
@@ -1089,6 +1159,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open,
+            import_inspect,
+            profile_save,
             usage,
             cache_info,
             cache_clear,

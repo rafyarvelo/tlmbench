@@ -188,6 +188,17 @@
     gapAt: null,
     connectAsked: [],
     open: new Map(),
+    /** CSV files the import dialog sees, by path: `fake.csv(path, names, opts)`; the profiles saved by header, what
+     * each open was given, and every profile_save. */
+    csvs: {},
+    profiles: {},
+    openedWith: [],
+    saved: [],
+    csv(path, names, o = {}) {
+      const time = o.time === undefined ? 0 : o.time;
+      const columns = names.map((n, i) => ({ source: n, name: n, unit: o.units?.[n] ?? null, kind: i === time ? 'time' : (o.text ?? []).includes(n) ? 'text' : 'number' }));
+      fake.csvs[path] = { header_key: [...names].sort().join('\u0000'), delimiter: o.delimiter ?? ',', columns, time, time_unit: time == null ? null : (o.unit ?? 's'), preview: [], rows: o.rows ?? 1000, rows_exact: true, rate_hz: time == null ? null : (o.rate ?? 10) };
+    },
     recording,
     /** Moves `path`'s pyramid build to `fraction` (1 finishes it), sending progress like the core. */
     build(path, fraction) {
@@ -236,10 +247,42 @@
   let nextFile = 1;
   const commands = {
     launch: () => ({ file: fake.launch, gate: null, gateMode: null }),
-    open({ path, progress }) {
+    import_inspect({ paths }) {
+      return paths.map((path) => {
+        const insp = fake.csvs[path];
+        if (!insp) return { path, inspection: null, error: 'not a CSV, TSV or TXT file', found: { exact: null, near: null } };
+        const names = insp.columns.map((c) => c.source);
+        const exact = fake.profiles[insp.header_key]?.profile ?? null;
+        let near = null;
+        if (!exact) {
+          for (const saved of Object.values(fake.profiles)) {
+            const share = names.filter((n) => saved.header.includes(n)).length / Math.max(names.length, saved.header.length);
+            if (share >= 0.6 && (!near || share > near[0])) near = [share, saved];
+          }
+        }
+        return { path, inspection: insp, error: null, found: { exact, near } };
+      });
+    },
+    profile_save({ header, profile }) {
+      fake.saved.push({ header, profile });
+      fake.profiles[[...header].sort().join('\u0000')] = { header, profile };
+      return null;
+    },
+    open({ path, profile: given, progress }) {
+      // the core applies the header's saved profile when none is given
+      const profile = given ?? fake.profiles[fake.csvs[path]?.header_key]?.profile ?? null;
+      fake.openedWith.push({ path, profile });
       const spec = fake.files[path];
       if (!spec) throw `couldn't open ${path}: no such file`;
       const r = recording(path, spec);
+      // a profile's names, units and categories land on the channels in order (the core does this when it decodes)
+      const numeric = (fake.csvs[path]?.columns ?? []).filter((c) => c.kind === 'number').map((c) => c.source);
+      r.chans.forEach((c, k) => {
+        const ch = profile?.columns?.find((x) => x.source === numeric[k]);
+        if (ch?.name) c.name = ch.name;
+        if (ch?.unit != null) c.unit = ch.unit || null;
+        if (ch?.category) c.category = ch.category;
+      });
       const id = nextFile++;
       const ch = progress && { id: progress.id ?? Number(String(progress).replace(/\D/g, '')), next: 0 };
       fake.open.set(id, { r, progress: ch });

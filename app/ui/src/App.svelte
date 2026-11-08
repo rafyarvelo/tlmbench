@@ -12,6 +12,7 @@
   import Transport from './shell/Transport.svelte';
   import LiveStrip from './shell/LiveStrip.svelte';
   import Connect from './shell/Connect.svelte';
+  import ImportDialog from './shell/ImportDialog.svelte';
   import { live } from './live.svelte';
   import { play } from './play.svelte';
   import { ICON } from './icons';
@@ -106,6 +107,7 @@
 {/snippet}
 
 {#if live.connect}<Connect />{/if}
+<ImportDialog />
 
 <div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>
   <Rail />

@@ -20,7 +20,7 @@ export const ui = $state({
   /** The folder Explorer lists (null: none open). */
   folder: null as FolderEntry | null,
   /** Its channels' names and units. */
-  channels: [] as { name: string; unit: string | null }[],
+  channels: [] as { name: string; unit: string | null; category?: string | null }[],
   path: '',
   /** How the open file's times read: sample numbers, dates and times, or offsets from its start. */
   time: 'relative' as FileTime,
@@ -84,6 +84,11 @@ export const actions = {
   openSession: (_folder: string) => {},
   /** Opens several files, each in a tab of its own (the last in front). */
   openPaths: (_paths: string[]) => {},
+  /** Shows a file's import dialog again (its saved settings first); a recording that isn't a CSV opens as it is. */
+  importAgain: (_path: string) => {},
+  /** The import dialog: Open / Add to Explorer, and Cancel. */
+  importGo: () => {},
+  importCancel: () => {},
   /** Closes several files, with Undo. */
   closePaths: (_paths: string[]) => {},
   saveSession: () => {},
