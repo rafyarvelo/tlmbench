@@ -23,7 +23,7 @@ use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, State};
 use tlmbench_core::gaps::DEFAULT_FACTOR;
-use tlmbench_core::table::{Col, Filter, SortKey};
+use tlmbench_core::table::{self, Col, Filter, SortKey};
 use tlmbench_core::{RecordingInfo, Viewport, wire};
 use tlmbench_store::{Opened as StoreOpened, Precision, Request, Status, Store};
 
@@ -421,6 +421,8 @@ struct RowQuery {
     /// Index of the span's first sample; `ids` are offsets from it.
     first: usize,
     ids: Vec<u32>,
+    /// The filter's matches as runs of time `(first, last)` ns, those closer than 0.25 s joined; empty without a filter.
+    hits: Vec<(i64, i64)>,
 }
 
 /// One column of a table query: `t` (the time) or `c<channel>`.
@@ -451,6 +453,8 @@ struct QueryDone {
     total: u64,
     /// False when it was cancelled (nothing is kept then).
     done: bool,
+    /// Matches to step through (runs closer than 0.25 s count as one); 0 without a filter.
+    hits: u64,
 }
 
 /// Sorts and filters the rows with times in `[t0, t1)` over their whole columns (`token` names the result, which
@@ -497,19 +501,101 @@ async fn table_query(
             !flag.load(Ordering::Relaxed)
         };
         let total = o.recording().lower_bound(t1).saturating_sub(o.recording().lower_bound(t0)) as u64;
-        o.select_rows((t0, t1), fs, sort, &report).map(|(first, rows)| (total, first, rows))
+        let filtered = !fs.is_empty();
+        o.select_rows((t0, t1), fs, sort, &report).map(|(first, rows)| {
+            let hits = if filtered { match_runs(o.recording(), first, &rows.ids) } else { Vec::new() };
+            (total, first, rows, hits)
+        })
     })
     .await
     .map_err(|e| e.to_string())?;
     files.cancels.lock().unwrap().remove(&token);
     match got {
-        None => Ok(QueryDone { matched: 0, total: 0, done: false }),
-        Some((total, first, rows)) => {
+        None => Ok(QueryDone { matched: 0, total: 0, done: false, hits: 0 }),
+        Some((total, first, rows, hits)) => {
             let matched = rows.ids.len() as u64;
-            files.queries.lock().unwrap().insert(token, Arc::new(RowQuery { first, ids: rows.ids }));
-            Ok(QueryDone { matched, total, done: true })
+            let n = hits.len() as u64;
+            files.queries.lock().unwrap().insert(token, Arc::new(RowQuery { first, ids: rows.ids, hits }));
+            Ok(QueryDone { matched, total, done: true, hits: n })
         }
     }
+}
+
+/// The matches of a filter as runs of time: `ids` (offsets from `first`, in any order) sorted by row, then rows
+/// closer than 0.25 s joined, as event rules join theirs.
+fn match_runs(rec: &dyn tlmbench_core::Recording, first: usize, ids: &[u32]) -> Vec<(i64, i64)> {
+    let mut asc;
+    let ids = if ids.is_sorted() {
+        ids
+    } else {
+        asc = ids.to_vec();
+        asc.sort_unstable();
+        &asc
+    };
+    let times: Vec<i64> = ids.iter().map(|&i| rec.time_at(first + i as usize)).collect();
+    table::runs(&times, 250_000_000)
+}
+
+/// The `k`th match (a run of time, ns as text) of a table query's filter, for stepping with ▲ ▼.
+#[tauri::command]
+fn table_hit(token: u32, k: u64, files: State<'_, Files>) -> Option<(String, String)> {
+    let q = files.queries.lock().unwrap().get(&token).cloned()?;
+    q.hits.get(k as usize).map(|h| (h.0.to_string(), h.1.to_string()))
+}
+
+/// Apply to charts: leaves the rows the filters don't pass out of every chart, statistic and value of the file
+/// (`owner` names the table; a new call replaces its last). Always over the whole file. `table_unmask` takes it back.
+#[tauri::command]
+async fn table_mask(
+    file: u32,
+    owner: u32,
+    filters: Vec<ColSpec>,
+    token: u32,
+    app: AppHandle,
+    files: State<'_, Files>,
+) -> Result<QueryDone, String> {
+    let o = files.get(file)?;
+    let mut fs = Vec::new();
+    for f in &filters {
+        if let Some(p) = Filter::parse(&f.expr)? {
+            fs.push((col_of(&f.col)?, p));
+        }
+    }
+    if fs.is_empty() {
+        o.set_mask(owner, None);
+        return Ok(QueryDone { matched: 0, total: 0, done: true, hits: 0 });
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    files.cancels.lock().unwrap().insert(token, stop.clone());
+    let info = o.recording().info().clone();
+    let (t0, t1) = (info.t_first.unwrap_or(0), info.t_last.map_or(1, |t| t + 1));
+    let o2 = o.clone();
+    let got = spawn_blocking(move || {
+        let report = move |done: f64| {
+            let _ = app.emit("table-progress", serde_json::json!({ "token": token, "done": done }));
+            !stop.load(Ordering::Relaxed)
+        };
+        o2.filter_mask((t0, t1), fs, &report)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    files.cancels.lock().unwrap().remove(&token);
+    match got {
+        None => Ok(QueryDone { matched: 0, total: 0, done: false, hits: 0 }),
+        Some(mask) => {
+            let total = info.samples as u64;
+            let excluded = mask.excluded() as u64;
+            o.set_mask(owner, Some(mask));
+            Ok(QueryDone { matched: total - excluded, total, done: true, hits: 0 })
+        }
+    }
+}
+
+/// Takes back what `table_mask` left out.
+#[tauri::command]
+fn table_unmask(file: u32, owner: u32, files: State<'_, Files>) -> Result<(), String> {
+    files.get(file)?.set_mask(owner, None);
+    Ok(())
 }
 
 /// Stops a running `table_query`.
@@ -935,6 +1021,9 @@ fn main() {
             rows,
             table_query,
             table_cancel,
+            table_hit,
+            table_mask,
+            table_unmask,
             filter_check,
             list_folder,
             shared_views,
@@ -964,7 +1053,7 @@ mod tests {
         let opts = tlmbench_decode::OpenOptions { cache_dir: Some(dir.path().join("cache")), ..Default::default() };
         let rec = tlmbench_decode::open(&path, &opts).unwrap();
         // rows 2..8 of the file, ids as offsets from 2: (b descending) then the ones 3, 4, 5 are consecutive
-        let q = RowQuery { first: 2, ids: vec![5, 0, 1, 2, 3] };
+        let q = RowQuery { first: 2, ids: vec![5, 0, 1, 2, 3], hits: Vec::new() };
         let out = encode_query_rows(rec.as_ref(), &[1], &q, 1, 10);
         let u32_at = |o: usize| u32::from_le_bytes(out[o..o + 4].try_into().unwrap());
         let u64_at = |o: usize| u64::from_le_bytes(out[o..o + 8].try_into().unwrap());
