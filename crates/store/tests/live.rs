@@ -79,6 +79,7 @@ fn same(live: &Opened, whole: &Opened) {
             channels: vec![0, 1],
             gap_factors: vec![4.0, 4.0],
             vp: Viewport { t0: a, t1: b, width_px: w, raw_max: 0 },
+            connect_gaps: false,
         };
         for precision in [Precision::Exact, Precision::Coarse] {
             let (l, o) = (

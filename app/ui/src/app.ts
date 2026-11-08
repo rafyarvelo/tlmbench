@@ -260,7 +260,7 @@ function upload(layer: Layer | null, reply: Reply, logOf: (ch: number) => boolea
       yMin = t.yMin > 0 ? Math.log10(t.yMin) : y.reduce((a, v) => (v < a ? v : a), Infinity);
     }
     next.traces.set(t.channel, {
-      gl: renderer.upload(t.x, y, old?.gl),
+      gl: renderer.upload(t.x, y, old?.gl, t.dashed),
       x: t.x,
       y,
       log,
@@ -278,7 +278,7 @@ function upload(layer: Layer | null, reply: Reply, logOf: (ch: number) => boolea
 /** A pane's or the overview's request: its channels with their gap factors, over its own width. */
 /** One pane's (or the overview's) part of a view request; `rawMax`: Draw every sample up to this many in view. */
 function entry(id: number, channels: number[], t0: bigint, t1: bigint, width: number, rawMax = 0) {
-  return { id, channels, gapFactors: channels.map(gapFactor), t0: t0.toString(), t1: t1.toString(), widthPx: width, rawMax };
+  return { id, channels, gapFactors: channels.map(gapFactor), t0: t0.toString(), t1: t1.toString(), widthPx: width, rawMax, connectGaps: settings.gapLines === 'connect' };
 }
 
 const LIVE_VIEW_EVERY_MS = 33;
@@ -2613,7 +2613,8 @@ onSetting((key) => {
     applyTheme();
     tokenCache = null;
     renderPanes();
-  } else if (key === 'drawRaw') {
+  } else if (key === 'drawRaw' || key === 'gapLines') {
+    if (key === 'gapLines') state.ovStale = true;
     void requestView();
   } else if (key === 'overviewTop') {
     renderOverviewHead();
@@ -2705,6 +2706,8 @@ export const gateApi = {
   sel: () => stack.sel,
   mode: () => settings.mode,
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
+  /** Per pane and channel: the connected stretches drawn dashed, and the solid runs. */
+  dashes: () => state.layers.map((l) => (l ? [...l.traces.values()].map((t) => [t.gl.dashes.length, t.gl.runs.length]) : null)),
   /** How many sample markers each pane drew last. */
   markers: () => [...markers],
   /** The overview's channels as last drawn: columns with values and those with a band. */

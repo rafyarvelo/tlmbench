@@ -16,7 +16,9 @@ uniform vec2 u_y;
 uniform vec2 u_vp;
 uniform float u_w;
 uniform bool u_points;
+out float v_s;
 void main() {
+  v_s = 0.0;
   vec2 p0 = vec2(a_x0 * u_x.x + u_x.y, a_y0 * u_y.x + u_y.y);
   if (u_points) {
     gl_Position = vec4(p0, 0.0, 1.0);
@@ -34,13 +36,19 @@ void main() {
   float along = gl_VertexID < 2 ? -1.0 : 1.0;
   vec2 off = (n * side + d * along) * (u_w * 0.5);
   gl_Position = vec4(base + off * 2.0 / u_vp, 0.0, 1.0);
+  // device pixels along the segment, for dashes
+  v_s = (gl_VertexID < 2 ? 0.0 : len) + along * u_w * 0.5;
 }`;
 
 const FRAG = `#version 300 es
 precision mediump float;
 uniform vec4 u_color;
+uniform float u_dash;
+in float v_s;
 out vec4 color;
 void main() {
+  // u_dash is the dash length in device pixels (0: solid); a dash is followed by a gap of the same length
+  if (u_dash > 0.0 && mod(v_s, u_dash * 2.0) > u_dash) discard;
   color = u_color;
 }`;
 
@@ -69,6 +77,8 @@ export interface GlTrace {
   bufs: WebGLBuffer[];
   /** [start, count] of each run without NaN */
   runs: [number, number][];
+  /** Each k ends a connected stretch: the segment from point k - 1 to k is drawn dashed. */
+  dashes: number[];
 }
 
 export class Renderer {
@@ -80,6 +90,7 @@ export class Renderer {
   private uVp: WebGLUniformLocation;
   private uW: WebGLUniformLocation;
   private uPoints: WebGLUniformLocation;
+  private uDash: WebGLUniformLocation;
   /** Lines as quads (a width of CSS pixels), or WebGL's own one-pixel lines: software GL (headless test browsers) draws quads slowly. */
   quads: boolean;
   private loc: Record<'a_x0' | 'a_y0' | 'a_x1' | 'a_y1', number>;
@@ -99,6 +110,7 @@ export class Renderer {
     this.uVp = gl.getUniformLocation(this.prog, 'u_vp')!;
     this.uW = gl.getUniformLocation(this.prog, 'u_w')!;
     this.uPoints = gl.getUniformLocation(this.prog, 'u_points')!;
+    this.uDash = gl.getUniformLocation(this.prog, 'u_dash')!;
     this.loc = Object.fromEntries((['a_x0', 'a_y0', 'a_x1', 'a_y1'] as const).map((n) => [n, gl.getAttribLocation(this.prog, n)])) as Renderer['loc'];
   }
 
@@ -117,9 +129,9 @@ export class Renderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
-  upload(x: Float32Array, y: Float32Array, reuse?: GlTrace): GlTrace {
+  upload(x: Float32Array, y: Float32Array, reuse?: GlTrace, dashed?: Uint32Array): GlTrace {
     const gl = this.gl;
-    const t = reuse ?? { vao: gl.createVertexArray()!, bufs: [gl.createBuffer()!, gl.createBuffer()!], runs: [] };
+    const t = reuse ?? { vao: gl.createVertexArray()!, bufs: [gl.createBuffer()!, gl.createBuffer()!], runs: [], dashes: [] };
     gl.bindVertexArray(t.vao);
     for (const [k, data] of [[0, x], [1, y]] as const) {
       gl.bindBuffer(gl.ARRAY_BUFFER, t.bufs[k]);
@@ -127,14 +139,17 @@ export class Renderer {
     }
     gl.bindVertexArray(null);
     t.runs = [];
+    t.dashes = dashed ? [...dashed] : [];
+    const joins = new Set(t.dashes);
+    // solid runs: stretches without NaN, cut where a connected stretch joins two points
     let start = -1;
     for (let i = 0; i <= y.length; i++) {
-      const gap = i === y.length || Number.isNaN(y[i]);
-      if (!gap && start < 0) start = i;
-      if (gap && start >= 0) {
+      const ok = i < y.length && !Number.isNaN(y[i]);
+      if (start >= 0 && (!ok || joins.has(i))) {
         t.runs.push([start, i - start]);
         start = -1;
       }
+      if (ok && start < 0) start = i;
     }
     return t;
   }
@@ -147,7 +162,7 @@ export class Renderer {
   /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. `width` is in CSS pixels.
    *  Nothing is drawn outside `clip` (the stack's visible part, when panes scroll). */
   draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = LINE_WIDTH, clip?: Rect): void {
-    if (!t.runs.length || rect.w <= 0 || rect.h <= 0) return;
+    if ((!t.runs.length && !t.dashes.length) || rect.w <= 0 || rect.h <= 0) return;
     const gl = this.gl;
     const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
     const [vx, vw, vh] = [Math.round(rect.x * dpr), Math.round(rect.w * dpr), Math.round(rect.h * dpr)];
@@ -179,6 +194,7 @@ export class Renderer {
       gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, at * 4);
       gl.vertexAttribDivisor(loc, divisor);
     };
+    gl.uniform1f(this.uDash, 0);
     for (const [start, count] of t.runs) {
       if (count > 1 && !this.quads) {
         gl.uniform1i(this.uPoints, 1);
@@ -202,6 +218,20 @@ export class Renderer {
         point(a_y1, t.bufs[1], start + 1, 1);
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count - 1);
       }
+    }
+    // connected stretches: dashed quads (software GL draws them as faint solid lines)
+    if (t.dashes.length) {
+      gl.uniform1i(this.uPoints, 0);
+      gl.uniform1f(this.uDash, this.quads ? 4 * dpr : 0);
+      if (!this.quads) gl.uniform4f(this.uColor, rgba[0], rgba[1], rgba[2], rgba[3] * 0.5);
+      for (const k of t.dashes) {
+        point(a_x0, t.bufs[0], k - 1, 1);
+        point(a_y0, t.bufs[1], k - 1, 1);
+        point(a_x1, t.bufs[0], k, 1);
+        point(a_y1, t.bufs[1], k, 1);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+      }
+      gl.uniform1f(this.uDash, 0);
     }
     gl.bindVertexArray(null);
     gl.disable(gl.SCISSOR_TEST);

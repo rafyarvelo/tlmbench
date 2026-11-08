@@ -248,9 +248,9 @@ fn a_batch_answers_like_its_entries_alone() {
     let zoomed = |w| Viewport { t0: t(1_000_000), t1: t(1_400_000), width_px: w, raw_max: 0 };
     let whole = Viewport { t0: t(0), t1: t(N - 1) + 1, width_px: 1200, raw_max: 0 };
     let requests = [
-        Request { channels: vec![0], gap_factors: vec![4.0], vp: zoomed(900) },
-        Request { channels: vec![1, 0], gap_factors: vec![], vp: zoomed(437) },
-        Request { channels: vec![1], gap_factors: vec![4.0], vp: whole },
+        Request { channels: vec![0], gap_factors: vec![4.0], vp: zoomed(900), connect_gaps: false },
+        Request { channels: vec![1, 0], gap_factors: vec![], vp: zoomed(437), connect_gaps: false },
+        Request { channels: vec![1], gap_factors: vec![4.0], vp: whole, connect_gaps: false },
     ];
     for p in [Precision::Coarse, Precision::Exact] {
         let batch = o.view_batch(&requests, p);

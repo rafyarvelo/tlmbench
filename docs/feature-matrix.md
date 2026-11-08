@@ -139,7 +139,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Event markers on charts (washes, notches, tooltips) | v1 | ✓ | ✗ | 5.2 |
 | Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ◐ (Apply to charts and its chip work, the core leaves the rows out; match marks and hatching are next) | 4.2 |
 | Table rows band on the charts | v1 | ✓ | ✗ | 4.2 |
-| Settings → Gaps in lines: break at gaps, or connect across them (dashed) | — (owner, Nov 8; needs a design entry) | ✗ | ✗ | 4.2 |
+| Settings → Gaps in lines: break at gaps, or connect across them (dashed) | — (owner, Nov 8; needs a design entry) | ✗ | ✓ built (`t_gaps`; core `connect_gaps`, `query view --connect-gaps`) | 4.2 |
 | Hover readout snapping to samples; legend values | v1 | ✓ | ✓ | |
 | Overview: picker, range, window, gestures, top or bottom | v1 | ✓ | ✓ | |
 | Overview drawing: min/max band per channel with a midline | v1 | ✓ | ✓ |  |

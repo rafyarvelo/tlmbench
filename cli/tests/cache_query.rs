@@ -73,6 +73,11 @@ fn build_list_query_clear() {
     assert_eq!(built, raw, "the pyramid answers exactly like the raw samples");
     assert!(built.lines().count() > 1500 && built.starts_with("channel,time_ns,value\nvolts,"));
     assert!(built.lines().any(|l| l.ends_with(',')), "the dropout is a gap");
+    // Connected gaps: no empty value, and the join is marked dashed
+    let joined = text(&run(c, &[&view[..], &["--connect-gaps"]].concat()));
+    assert!(joined.starts_with("channel,time_ns,value,dashed\nvolts,"));
+    assert!(!joined.lines().any(|l| l.contains(",,")), "no gaps left");
+    assert_eq!(joined.lines().filter(|l| l.ends_with(",1")).count(), 1, "one connected stretch");
     // Draw every sample: up to --raw-max in the span come back raw (2M here, and a neighbour each side), not reduced
     let every = text(&run(c, &[&view[..], &["--raw-max", "3000000"]].concat()));
     assert!(every.lines().count() == 2_000_003, "every sample: {}", every.lines().count());

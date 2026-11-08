@@ -278,6 +278,9 @@ struct ViewEntry {
     /// Draw every sample: up to this many in view come back raw (0: only up to four per pixel column).
     #[serde(default)]
     raw_max: u32,
+    /// Connect lines across gaps (dashed) instead of breaking them (Settings → Gaps in lines).
+    #[serde(default)]
+    connect_gaps: bool,
 }
 
 /// Every pane of a tab and the overview, each reduced over its own span and width under one generation, as a
@@ -311,7 +314,7 @@ async fn view(
             .map(|(i, &c)| (c as usize, e.gap_factors.get(i).copied().unwrap_or(DEFAULT_FACTOR)))
             .unzip();
         ids.push(e.id);
-        requests.push(Request { channels, gap_factors, vp });
+        requests.push(Request { channels, gap_factors, vp, connect_gaps: e.connect_gaps });
     }
     let bytes = spawn_blocking(move || {
         let started = Instant::now();
@@ -332,6 +335,7 @@ async fn view(
                         reduce_us: us,
                         coarse: v.coarse,
                         from_pyramid: v.from_pyramid,
+                        dashed: &v.dashed,
                     })
                     .collect();
                 (id, wire::encode(generation, r.vp, built_until, &outs))

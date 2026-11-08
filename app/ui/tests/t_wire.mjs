@@ -24,7 +24,7 @@ const ov = { t0: '0', t1: '1000', widthPx: 3 };
 const mine = encodeBatch(7, [
   [0, encode(7, pane, t0 + 5000n, [
     { channel: 2, kind: 'm4', coarse: true, fromPyramid: true, reduceUs: 11, t: [t0 - 500n, t0, t0 + 2500n, t0 + 7499n, t0 + 10000n], y: [1.5, -2, NaN, 3.25, 0.5] },
-    { channel: 5, kind: 'raw', coarse: false, fromPyramid: false, reduceUs: 3, t: [t0 + 1000n, t0 + 9000n], y: [-1, 1] },
+    { channel: 5, kind: 'raw', coarse: false, fromPyramid: false, reduceUs: 3, t: [t0 + 1000n, t0 + 9000n], y: [-1, 1], dashed: [1, 2, 3] },
   ])],
   [0xffffffff, encode(7, ov, null, [{ channel: 0, kind: 'raw', coarse: false, fromPyramid: true, reduceUs: 1, t: [0n, 999n], y: [4, 4] }])],
 ]);
@@ -45,6 +45,7 @@ check('times come back as buckets from the origin', [...m.x].join() === [-0.2, 0
 check('a NaN is a gap', Number.isNaN(m.y[2]) && m.y[3] === 3.25, [...m.y]);
 check('y range covers only samples inside the view', m.yMin === -2 && m.yMax === 3.25, [m.yMin, m.yMax]);
 check('raw trace', r.channel === 5 && r.kind === 'raw' && !r.coarse && !r.fromPyramid && [...r.y].join() === '-1,1', r);
+check('connected stretches come back as a list', [...r.dashed].join() === '1,2,3' && m.dashed.length === 0, [...r.dashed]);
 check('overview entry', o.traces[0].yMin === 4 && o.traces[0].yMax === 4 && o.xScaleNs === 333, o.traces[0]);
 
 console.log(`${failed ? 'FAIL' : 'PASS'} wire: ${passed} ok, ${failed} failed`);

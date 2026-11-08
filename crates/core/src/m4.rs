@@ -68,6 +68,28 @@ impl Trace {
     }
 }
 
+/// Connects a trace across its gaps: each run of NaNs is dropped, and the index of the point after it is returned
+/// (the segment from the point before to that one is the connected stretch, to be drawn dashed). A gap at either
+/// end has nothing to connect to and is only dropped.
+pub fn connect_gaps(trace: &Trace) -> (Trace, Vec<u32>) {
+    let mut out = Trace { kind: trace.kind, bucket_ns: trace.bucket_ns, t: Vec::new(), y: Vec::new() };
+    let mut dashed = Vec::new();
+    let mut after_gap = false;
+    for (&t, &y) in trace.t.iter().zip(&trace.y) {
+        if y.is_nan() {
+            after_gap = !out.t.is_empty();
+            continue;
+        }
+        if after_gap {
+            dashed.push(out.t.len() as u32);
+            after_gap = false;
+        }
+        out.t.push(t);
+        out.y.push(y);
+    }
+    (out, dashed)
+}
+
 /// What the reduction emits, before times and values are looked up.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Emit {
@@ -505,6 +527,22 @@ mod tests {
             assert!(tr.t[gap - 1] <= times[49] && tr.t[gap + 1] >= times[50], "width {width_px}: {:?}", tr.t);
             assert_eq!(tr.y.iter().filter(|y| y.is_nan()).count(), 1);
         }
+    }
+
+    #[test]
+    fn connecting_gaps_drops_the_nans_and_marks_the_joins() {
+        let nan = f32::NAN;
+        let tr = Trace {
+            kind: TraceKind::Raw,
+            bucket_ns: 1,
+            t: vec![0, 1, 2, 3, 4, 5, 6, 7],
+            y: vec![nan, 1.0, nan, nan, 2.0, 3.0, nan, 4.0],
+        };
+        let (c, dashed) = connect_gaps(&tr);
+        assert_eq!((c.t, c.y), (vec![1, 4, 5, 7], vec![1.0, 2.0, 3.0, 4.0]));
+        assert_eq!(dashed, [1, 3]);
+        let (c, dashed) = connect_gaps(&Trace { y: vec![nan; 8], ..tr });
+        assert!(c.is_empty() && dashed.is_empty());
     }
 
     #[test]

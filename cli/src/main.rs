@@ -17,7 +17,7 @@ use tlmbench_core::datetime::{format_duration, format_time, parse_decimal, parse
 use tlmbench_core::gaps::DEFAULT_FACTOR;
 use tlmbench_core::table::{Col, Filter, SortKey};
 use tlmbench_core::{RecordingInfo, TimeSource, Timestamp, Viewport};
-use tlmbench_store::{Opened, Precision, Status, Store};
+use tlmbench_store::{Opened, Precision, Request, Status, Store};
 
 #[derive(Parser, Debug)]
 #[command(name = "tlmbench", version, about = "TelemetryBench on the command line")]
@@ -219,6 +219,10 @@ enum Query {
         /// column)
         #[arg(long, default_value_t = 0)]
         raw_max: u32,
+        /// Connect the line across gaps (time jumps, missing values) instead of breaking it; adds a `dashed` column
+        /// (1: the segment ending at this point is a connected gap)
+        #[arg(long)]
+        connect_gaps: bool,
     },
     /// Each channel's sample nearest a time, as CSV: channel, index, time_ns, value
     Values {
@@ -482,17 +486,28 @@ fn query(what: Query, common: &Common) -> Result<(), Fail> {
         writeln!(out, "{line}").map_err(|e| Fail(2, e.to_string()))
     };
     match what {
-        Query::View { pick, span, width, gap_factor, coarse, raw_max } => {
+        Query::View { pick, span, width, gap_factor, coarse, raw_max, connect_gaps } => {
             let (o, chans) = open(&pick)?;
             let (t0, t1) = span_of(&o, &span)?;
-            w(&mut out, "channel,time_ns,value".into())?;
+            w(&mut out, if connect_gaps { "channel,time_ns,value,dashed" } else { "channel,time_ns,value" }.into())?;
             let precision = if coarse { Precision::Coarse } else { Precision::Exact };
             let factors = vec![gap_factor; chans.len()];
-            for v in o.views(&chans, Viewport { t0, t1, width_px: width.max(1), raw_max }, &factors, precision) {
+            let req = Request {
+                channels: chans,
+                gap_factors: factors,
+                vp: Viewport { t0, t1, width_px: width.max(1), raw_max },
+                connect_gaps,
+            };
+            for v in o.view_batch(std::slice::from_ref(&req), precision).pop().unwrap_or_default() {
                 let name = &o.recording().info().channels[v.channel].name;
-                for (t, y) in v.trace.t.iter().zip(&v.trace.y) {
+                for (i, (t, y)) in v.trace.t.iter().zip(&v.trace.y).enumerate() {
                     let y = if y.is_nan() { String::new() } else { y.to_string() };
-                    w(&mut out, format!("{},{t},{y}", csv_field(name)))?;
+                    let dash = if connect_gaps {
+                        format!(",{}", u8::from(v.dashed.contains(&(i as u32))))
+                    } else {
+                        String::new()
+                    };
+                    w(&mut out, format!("{},{t},{y}{dash}", csv_field(name)))?;
                 }
             }
         }

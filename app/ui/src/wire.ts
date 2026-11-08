@@ -13,6 +13,8 @@ export interface Trace {
   yMax: number;
   x: Float32Array;
   y: Float32Array;
+  /** With gaps connected: the points that end a connected stretch (the segment from the point before is dashed). */
+  dashed: Uint32Array;
 }
 
 export interface Reply {
@@ -27,7 +29,7 @@ export interface Reply {
 }
 
 const HEADER = 40;
-const TRACE_HEADER = 24;
+const TRACE_HEADER = 32;
 
 export interface Batch {
   generation: number;
@@ -56,12 +58,13 @@ export function decodeBatch(buf: ArrayBuffer): Batch {
 export function decode(buf: ArrayBuffer, at = 0, len = buf.byteLength): Reply {
   const v = new DataView(buf, at, len);
   const magic = String.fromCharCode(v.getUint8(0), v.getUint8(1), v.getUint8(2), v.getUint8(3));
-  if (magic !== 'TLMV' || v.getUint16(4, true) !== 2) throw new Error('not a viewport reply');
+  if (magic !== 'TLMV' || v.getUint16(4, true) !== 3) throw new Error('not a viewport reply');
   const count = v.getUint32(12, true);
   const traces: Trace[] = [];
   let o = HEADER;
   for (let i = 0; i < count; i++) {
     const n = v.getUint32(o + 4, true);
+    const d = v.getUint32(o + 24, true);
     const kind = v.getUint32(o + 8, true);
     const data = at + o + TRACE_HEADER;
     traces.push({
@@ -74,8 +77,9 @@ export function decode(buf: ArrayBuffer, at = 0, len = buf.byteLength): Reply {
       yMax: v.getFloat32(o + 20, true),
       x: new Float32Array(buf, data, n),
       y: new Float32Array(buf, data + 4 * n, n),
+      dashed: new Uint32Array(buf, data + 8 * n, d),
     });
-    o += TRACE_HEADER + 8 * n; // x and y are 4n bytes each, so traces stay 8-byte aligned
+    o += TRACE_HEADER + 8 * n + ((4 * d + 7) & ~7); // x and y are 4n bytes each, so the dashed list stays 8-byte aligned
   }
   return {
     generation: v.getUint32(8, true),

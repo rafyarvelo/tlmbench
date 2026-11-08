@@ -306,6 +306,9 @@ pub struct Request {
     /// least [`MIN_FACTOR`]).
     pub gap_factors: Vec<f64>,
     pub vp: Viewport,
+    /// Connect the line across its gaps (time jumps, missing values, excluded rows) instead of breaking it; the
+    /// connected stretches come back in [`View::dashed`].
+    pub connect_gaps: bool,
 }
 
 /// How [`Opened::view_batch`] answers one request.
@@ -333,6 +336,9 @@ impl Plan {
 pub struct View {
     pub channel: usize,
     pub trace: Trace,
+    /// With `connect_gaps`: the index of each point that ends a connected stretch (the segment from the point
+    /// before it is drawn dashed).
+    pub dashed: Vec<u32>,
     /// Answered (at least partly) from the pyramid.
     pub from_pyramid: bool,
     /// Coarse: summaries counted whole at pixel edges (it moves at most a quarter pixel); show it labelled.
@@ -393,7 +399,7 @@ impl Opened {
     /// [`Opened::view`] of several channels, in parallel (cold reads of different files overlap), each with its
     /// gap factor (`gap_factors[i]` for `channels[i]`; missing ones are [`DEFAULT_FACTOR`]).
     pub fn views(&self, channels: &[usize], vp: Viewport, gap_factors: &[f64], precision: Precision) -> Vec<View> {
-        let req = Request { channels: channels.to_vec(), gap_factors: gap_factors.to_vec(), vp };
+        let req = Request { channels: channels.to_vec(), gap_factors: gap_factors.to_vec(), vp, connect_gaps: false };
         self.view_batch(std::slice::from_ref(&req), precision).pop().expect("one request")
     }
 
@@ -517,7 +523,9 @@ impl Opened {
                     _ if !masked.is_empty() => self.rec.view_masked(channel, vp, &masked, breaks, held),
                     _ => self.rec.view(channel, vp, pyr.as_ref(), breaks, held),
                 };
-                View { channel, trace, from_pyramid: pyr.is_some(), coarse, built_until }
+                let (trace, dashed) =
+                    if r.connect_gaps { tlmbench_core::connect_gaps(&trace) } else { (trace, Vec::new()) };
+                View { channel, trace, dashed, from_pyramid: pyr.is_some(), coarse, built_until }
             })
             .collect()
     }

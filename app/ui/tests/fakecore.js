@@ -12,7 +12,7 @@
   // ---------- wire format ----------
 
   const HEADER = 40;
-  const TRACE_HEADER = 24;
+  const TRACE_HEADER = 32;
   const BATCH_HEADER = 16;
   const BATCH_ENTRY = 16;
   const up8 = (n) => (n + 7) & ~7;
@@ -24,14 +24,14 @@
 
   /** One reply: `traces` are { channel, kind: 'raw'|'m4', coarse, fromPyramid, reduceUs, t: bigint[], y: number[] }. */
   function encode(generation, vp, builtUntil, traces) {
-    const size = HEADER + traces.reduce((a, t) => a + TRACE_HEADER + 8 * t.t.length, 0);
+    const size = HEADER + traces.reduce((a, t) => a + TRACE_HEADER + 8 * t.t.length + up8(4 * (t.dashed?.length ?? 0)), 0);
     const buf = new ArrayBuffer(size);
     const v = new DataView(buf);
     const t0 = BigInt(vp.t0);
     const t1 = BigInt(vp.t1);
     const scale = Number(bucketNs(vp));
     [...'TLMV'].forEach((c, i) => v.setUint8(i, c.charCodeAt(0)));
-    v.setUint16(4, 2, true);
+    v.setUint16(4, 3, true);
     v.setUint16(6, builtUntil != null ? 1 : 0, true);
     v.setUint32(8, generation, true);
     v.setUint32(12, traces.length, true);
@@ -54,10 +54,12 @@
       v.setUint32(o + 12, t.reduceUs ?? 0, true);
       v.setFloat32(o + 16, lo, true);
       v.setFloat32(o + 20, hi, true);
+      v.setUint32(o + 24, t.dashed?.length ?? 0, true);
       const d = o + TRACE_HEADER;
       t.t.forEach((ts, i) => v.setFloat32(d + 4 * i, Number(ts - t0) / scale, true));
       t.y.forEach((y, i) => v.setFloat32(d + 4 * n + 4 * i, y, true));
-      o += TRACE_HEADER + 8 * n;
+      (t.dashed ?? []).forEach((k, i) => v.setUint32(d + 8 * n + 4 * i, k, true));
+      o += TRACE_HEADER + 8 * n + up8(4 * (t.dashed?.length ?? 0));
     }
     return buf;
   }
@@ -135,6 +137,23 @@
     return { kind: 'm4', t, y };
   }
 
+  /** The fake's one time jump, as the core shows it: a NaN before the jump, or the line joined and the join listed. */
+  function gaps(r, e, tr) {
+    if (fake.gapAt == null) return tr;
+    const at = timeAt(r, fake.gapAt);
+    const t = [];
+    const y = [];
+    const dashed = [];
+    tr.t.forEach((ts, i) => {
+      if (i && tr.t[i - 1] < at && ts >= at) {
+        if (e.connectGaps) dashed.push(t.length);
+        else [t[t.length], y[y.length]] = [tr.t[i - 1] + 1n, NaN];
+      }
+      [t[t.length], y[y.length]] = [ts, tr.y[i]];
+    });
+    return { ...tr, t, y, dashed };
+  }
+
   // ---------- IPC ----------
 
   const fake = {
@@ -162,6 +181,9 @@
     queriesRun: [],
     /** The precision each `view` asked for. */
     precisions: [],
+    /** A time jump the fake recording has (a sample index: the line breaks before it), and each view entry's connectGaps. */
+    gapAt: null,
+    connectAsked: [],
     open: new Map(),
     recording,
     /** Moves `path`'s pyramid build to `fraction` (1 finishes it), sending progress like the core. */
@@ -232,13 +254,14 @@
       const cold = !!fake.files[r.path]?.cold;
       const coarse = precision === 'coarse' && cold;
       fake.precisions.push(precision);
+      for (const e of entries) fake.connectAsked.push(!!e.connectGaps);
       // a cold file's exact view reads the file: slow, as in the core
       if (cold && !coarse) await new Promise((ok) => setTimeout(ok, fake.files[r.path]?.exactMs ?? 800));
       const builtUntil = r.built ? null : r.done ? timeAt(r, r.done - 1) : BigInt(entries[0]?.t0 ?? 0);
       const parts = entries.map((e) => {
         const traces = e.channels
           .filter((ch) => ch < r.chans.length)
-          .map((ch) => ({ channel: ch, coarse, fromPyramid: true, reduceUs: 5, ...reduce(r, ch, e, r.done || 0) }));
+          .map((ch) => ({ channel: ch, coarse, fromPyramid: true, reduceUs: 5, ...gaps(r, e, reduce(r, ch, e, r.done || 0)) }));
         return [e.id, encode(generation, e, builtUntil, traces)];
       });
       return encodeBatch(generation, parts);

@@ -96,6 +96,8 @@ export interface Settings {
   showPerf: boolean;
   /** Draw every sample up to this many in view per channel ('0': only when there are at most four per pixel). */
   drawRaw: string;
+  /** What a line does at a gap (a time jump, a missing value, rows Apply to charts leaves out): break, or connect with a dashed segment. */
+  gapLines: 'break' | 'connect';
   /** Settings shows every setting, not just the everyday ones. */
   settingsAll: boolean;
   /** The folder Explorer lists, and its folders (and open files) shown expanded. */
@@ -152,6 +154,7 @@ export const DEFAULTS: Settings = {
   measureAuto: true,
   showPerf: false,
   drawRaw: '0',
+  gapLines: 'break',
   settingsAll: false,
   folder: '',
   exExpanded: [],
