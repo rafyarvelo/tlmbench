@@ -17,6 +17,7 @@ export interface WsPane {
   /** Table sort and filters, with columns named as `widths` does. */
   sort?: { col: string; desc: boolean }[];
   filters?: Record<string, string>;
+  tfilt?: { scope?: 'file'; apply?: boolean };
 }
 
 export interface Workspace {
@@ -50,6 +51,7 @@ export function toWorkspace(name: string, panes: Pane[], names: string[]): Works
       const colName = (c: string) => (c.startsWith('c') ? `c:${names[Number(c.slice(1))]}` : c);
       if (p.sort?.length) w.sort = p.sort.map((k) => ({ col: colName(k.col), desc: k.desc }));
       if (p.filters) w.filters = Object.fromEntries(Object.entries(p.filters).map(([k, v]) => [colName(k), v]));
+      if (p.tfilt) w.tfilt = { ...p.tfilt };
       return w;
     }),
   };
@@ -86,6 +88,7 @@ export function fromWorkspace(ws: Workspace, names: string[]): { panes: Pane[]; 
     if (sort.length) p.sort = sort;
     const filters = Object.fromEntries(Object.entries(w.filters ?? {}).flatMap(([k, v]) => (colId(k) ? [[colId(k)!, v]] : [])));
     if (Object.keys(filters).length) p.filters = filters;
+    if (w.tfilt) p.tfilt = { ...w.tfilt };
     return p;
   });
   return { panes, missing: [...missing] };

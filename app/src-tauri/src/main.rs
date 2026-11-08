@@ -536,11 +536,29 @@ fn match_runs(rec: &dyn tlmbench_core::Recording, first: usize, ids: &[u32]) -> 
     table::runs(&times, 250_000_000)
 }
 
-/// The `k`th match (a run of time, ns as text) of a table query's filter, for stepping with ▲ ▼.
+/// The `k`th match of a table query's filter, for stepping with ▲ ▼: its run of time (ns as text) and the place of
+/// its first row in the query's list.
+#[derive(Serialize)]
+struct Hit {
+    t0: String,
+    t1: String,
+    pos: u64,
+}
+
 #[tauri::command]
-fn table_hit(token: u32, k: u64, files: State<'_, Files>) -> Option<(String, String)> {
-    let q = files.queries.lock().unwrap().get(&token).cloned()?;
-    q.hits.get(k as usize).map(|h| (h.0.to_string(), h.1.to_string()))
+fn table_hit(file: u32, token: u32, k: u64, files: State<'_, Files>) -> Result<Option<Hit>, String> {
+    let o = files.get(file)?;
+    let Some(q) = files.queries.lock().unwrap().get(&token).cloned() else { return Ok(None) };
+    let Some(&(t0, t1)) = q.hits.get(k as usize) else { return Ok(None) };
+    let row = (o.recording().lower_bound(t0).saturating_sub(q.first)) as u32;
+    // the list is in row order unless sorted; either way the first row of the run is the first id at or after `row`
+    let pos = if q.ids.is_sorted() {
+        q.ids.partition_point(|&i| i < row)
+    } else {
+        let row = q.ids.iter().copied().filter(|&i| i >= row).min().unwrap_or(row);
+        q.ids.iter().position(|&i| i == row).unwrap_or(0)
+    };
+    Ok(Some(Hit { t0: t0.to_string(), t1: t1.to_string(), pos: pos as u64 }))
 }
 
 /// Apply to charts: leaves the rows the filters don't pass out of every chart, statistic and value of the file

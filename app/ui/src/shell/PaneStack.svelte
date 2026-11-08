@@ -25,6 +25,7 @@
     rows,
     setMode,
     setPlotH,
+    setTable,
     splitDown,
     splitRight,
     stack,
@@ -307,6 +308,12 @@
               {:else if p.mode === 'table'}
                 <Table {i} />
               {:else}
+                {#if ui.filtered && ui.filtered.pane !== i}
+                  <div class="fchip" data-fchip>
+                    Filtered · {ui.filtered.rows.toLocaleString()} rows hidden
+                    <button aria-label="Show all rows again" data-tip="Show every row again" onclick={() => setTable(ui.filtered!.pane, { tfilt: { ...stack.panes[ui.filtered!.pane]?.tfilt, apply: undefined } })}>{@html ICON.close}</button>
+                  </div>
+                {/if}
                 <div class="plot" style="--pb: {labelled(i) ? PAD.timeLabels : 4}px; --pr: {rightPad()}px"></div>
                 {#if p.mode !== 'both'}
                   <div
@@ -464,6 +471,40 @@
   .cx:hover {
     background: var(--raised);
     color: var(--fg);
+  }
+  .pane {
+    position: relative;
+  }
+  .fchip {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 4;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 2px 4px 2px 8px;
+    font-size: 11.5px;
+    color: var(--fg);
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .fchip button {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    color: var(--fg-muted);
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+  }
+  .fchip button:hover {
+    color: var(--fg);
+    background: var(--grid);
   }
   .chip:hover .cx,
   .cx:focus-visible {

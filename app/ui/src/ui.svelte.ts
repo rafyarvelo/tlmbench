@@ -38,7 +38,9 @@ export const ui = $state({
   /** Focus mode: only the panes and the range show. */
   focus: false,
   /** The open file's id, the time view and the cursors (exact ns as decimal strings), for table panes. */
-  view: { file: null as number | null, t0: '0', t1: '1', A: null as string | null, B: null as string | null },
+  view: { file: null as number | null, t0: '0', t1: '1', first: '0', end: '1', A: null as string | null, B: null as string | null },
+  /** A table's Apply to charts is on: how many rows it leaves out, and the pane that holds it. */
+  filtered: null as null | { rows: number; pane: number },
   /** Both cursors are placed; any is. */
   cursors: false,
   anyCursor: false,
@@ -93,6 +95,8 @@ export const actions = {
   placeCursor: (_which: 'A' | 'B', _t: bigint) => {},
   /** Centres the time view on a time, keeping its span. */
   centreOn: (_t: bigint) => {},
+  /** The charts, overview and stats ask again (after what the core leaves out of them changed). */
+  refreshViews: () => {},
   /** Workspaces: Save as… (a layout of tab `key`, which then shows it; an error to show, or null), Save layout,
    * Revert changes, Delete layout, open one in a tab (on the file in front), and a new empty one. */
   saveAs: (_key: number, _name: string): string | null => null,

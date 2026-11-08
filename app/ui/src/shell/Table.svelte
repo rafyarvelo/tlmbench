@@ -88,7 +88,7 @@
   /** Filter texts the core can't read, by column id. */
   let errors = $state<Record<string, string>>({});
   /** The sorted and filtered list the core holds for this table: its token and the rows it left. */
-  let q = $state<null | { token: number; matched: number; total: number; key: string }>(null);
+  let q = $state<null | { token: number; matched: number; total: number; hits: number; key: string }>(null);
   /** The running query's token and progress (0..1). */
   let running = $state<null | { token: number; done: number }>(null);
 
@@ -107,13 +107,19 @@
     const { [id]: _, ...rest } = filters;
     setTable(i, { filters: text.trim() ? { ...rest, [id]: text } : rest });
   }
+  const tfilt = $derived(pane?.tfilt ?? {});
+  /** The filters the core can read, as the query takes them. */
+  let good = $state<{ col: string; expr: string }[]>([]);
+  /** The filter looks at every row (Whole file, or Apply to charts), not just the rows in view. */
+  const whole = $derived(good.length > 0 && (tfilt.scope === 'file' || !!tfilt.apply));
+  const owner = ++nextToken;
   /** Whether a sort or a valid filter is set, so the rows come from a query. */
   const querying = $derived(sort.length > 0 || Object.entries(filters).some(([id, t]) => t.trim() && !errors[id]));
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     const f = ui.view.file;
-    const spec = { t0: ui.view.t0, t1: ui.view.t1 };
+    const spec = whole ? { t0: ui.view.first, t1: ui.view.end } : { t0: ui.view.t0, t1: ui.view.t1 };
     const texts = { ...filters };
     const keys = sort.map((k) => ({ col: k.col, desc: k.desc }));
     clearTimeout(timer);
@@ -125,9 +131,10 @@
         if (e) bad[id] = e;
       }
       errors = bad;
-      const good = Object.entries(texts).filter(([id, t]) => t.trim() && !bad[id]).map(([col, expr]) => ({ col, expr }));
+      const ok = Object.entries(texts).filter(([id, t]) => t.trim() && !bad[id]).map(([col, expr]) => ({ col, expr }));
+      if (JSON.stringify(ok) !== JSON.stringify(good)) good = ok;
       if (running) void invoke('table_cancel', { token: running.token });
-      if (!good.length && !keys.length) {
+      if (!ok.length && !keys.length) {
         if (q) void invoke('table_query', { file: f, span: spec, filters: [], sort: [], token: ++nextToken, dropToken: q.token }).catch(() => {});
         q = null;
         running = null;
@@ -137,10 +144,11 @@
       running = { token, done: 0 };
       const was = q?.token ?? null;
       try {
-        const r = await invoke<{ matched: number; total: number; done: boolean }>('table_query', { file: f, span: spec, filters: good, sort: keys, token, dropToken: was });
+        const r = await invoke<{ matched: number; total: number; done: boolean; hits: number }>('table_query', { file: f, span: spec, filters: ok, sort: keys, token, dropToken: was });
         if (running?.token !== token) return;
         running = null;
-        if (r.done) q = { token, matched: r.matched, total: r.total, key: `${f}|${spec.t0}|${spec.t1}` };
+        if (r.done) stepK = -1;
+        if (r.done) q = { token, matched: r.matched, total: r.total, hits: r.hits, key: `${f}|${spec.t0}|${spec.t1}` };
       } catch {
         if (running?.token === token) running = null;
       }
@@ -150,10 +158,67 @@
   void listen<{ token: number; done: number }>('table-progress', (e) => {
     if (running && e.payload.token === running.token) running = { token: running.token, done: e.payload.done };
   }).then((u) => (unlisten = u));
+
+  // Apply to charts: the core leaves the rows the filter doesn't pass out of the charts, statistics and values
+  let masked = false;
+  let maskTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const f = ui.view.file;
+    const on = !!tfilt.apply && good.length > 0;
+    const filtersNow = good;
+    clearTimeout(maskTimer);
+    maskTimer = setTimeout(async () => {
+      if (f == null) return;
+      if (!on) {
+        if (masked) {
+          masked = false;
+          await invoke('table_unmask', { file: f, owner }).catch(() => {});
+          if (ui.filtered?.pane === i) ui.filtered = null;
+          actions.refreshViews();
+        }
+        return;
+      }
+      const token = ++nextToken;
+      try {
+        const r = await invoke<{ matched: number; total: number; done: boolean }>('table_mask', { file: f, owner, filters: filtersNow, token });
+        if (!r.done) return;
+        masked = true;
+        ui.filtered = { rows: r.total - r.matched, pane: i };
+        actions.refreshViews();
+      } catch {
+        /* the filter went bad meanwhile: the next run sorts it out */
+      }
+    }, 250);
+  });
   onDestroy(() => {
     unlisten?.();
     clearTimeout(timer);
+    clearTimeout(maskTimer);
+    const f = ui.view.file;
+    if (masked && f != null) {
+      void invoke('table_unmask', { file: f, owner }).catch(() => {});
+      if (ui.filtered?.pane === i) ui.filtered = null;
+      actions.refreshViews();
+    }
   });
+
+  // ---------- the filter strip ----------
+
+  /** The match the last step landed on (-1: none yet). */
+  let stepK = $state(-1);
+  async function stepMatch(dir: 1 | -1) {
+    const f = ui.view.file;
+    if (!q || !q.hits || f == null) return;
+    stepK = stepK < 0 ? (dir > 0 ? 0 : q.hits - 1) : (stepK + dir + q.hits) % q.hits;
+    const hit = await invoke<null | { t0: string; t1: string; pos: number }>('table_hit', { file: f, token: q.token, k: stepK });
+    if (!hit) return;
+    const a = BigInt(hit.t0);
+    actions.placeCursor('A', a);
+    // with Whole file the charts follow to the match; with In view they stay put
+    if (whole && (a < BigInt(ui.view.t0) || BigInt(hit.t1) > BigInt(ui.view.t1))) actions.centreOn(a);
+    scrollToRow(hit.pos);
+  }
+  const fpos = $derived(!q || !q.hits ? 'No matches' : stepK >= 0 ? `${(stepK + 1).toLocaleString()} of ${q.hits.toLocaleString()}` : `${q.hits.toLocaleString()} ${q.hits === 1 ? 'match' : 'matches'}`);
 
   // ---------- rows ----------
 
@@ -290,6 +355,28 @@
     <button class="tbtn" data-go="A" disabled={ui.view.A == null} data-tip="Scroll the table to cursor A" onclick={() => goTo('A')}>Go to A</button>
     <button class="tbtn" data-go="B" disabled={ui.view.B == null} data-tip="Scroll the table to cursor B" onclick={() => goTo('B')}>Go to B</button>
   </div>
+  {#if good.length}
+    <div class="tfilt" data-tfilt>
+      <span class="fseg" role="group" aria-label="Rows the filter looks at">
+        <button
+          class="fb"
+          aria-pressed={!whole}
+          data-fscope="view"
+          disabled={!!tfilt.apply}
+          data-tip={tfilt.apply ? 'Apply to charts filters the whole file' : 'Filter the rows in the time view'}
+          onclick={() => setTable(i, { tfilt: { ...tfilt, scope: undefined } })}>In view</button
+        ><button class="fb" aria-pressed={whole} data-fscope="file" data-tip="Filter every row of the file" onclick={() => setTable(i, { tfilt: { ...tfilt, scope: 'file' } })}>Whole file</button>
+      </span>
+      <button class="fb" data-fstep="-1" aria-label="Previous match" data-tip="Previous match" disabled={!q?.hits} onclick={() => stepMatch(-1)}>▲</button>
+      <span class="fpos num" data-fpos>{fpos}</span>
+      <button class="fb" data-fstep="1" aria-label="Next match" data-tip="Next match" disabled={!q?.hits} onclick={() => stepMatch(1)}>▼</button>
+      <span class="spacer"></span>
+      <label class="fapply" data-tip="Leave the rows this filter doesn't pass out of this tab's charts, autoscale, stats and value tiles">
+        <input type="checkbox" data-fapply checked={!!tfilt.apply} onchange={(e) => setTable(i, { tfilt: { ...tfilt, apply: e.currentTarget.checked || undefined } })} />
+        <span>Apply to charts</span>
+      </label>
+    </div>
+  {/if}
   <div class="twrap">
     <!-- svelte-ignore a11y_no_noninteractive_tabindex (a scrolling region takes focus so the keys scroll it) -->
     <div
@@ -408,6 +495,53 @@
   .tbar .tbtn:disabled {
     opacity: 0.45;
     cursor: default;
+  }
+  .tfilt {
+    display: flex;
+    align-items: center;
+    gap: 4px 8px;
+    padding: 4px 8px;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    background: var(--surface);
+    border-bottom: 1px solid var(--grid);
+  }
+  .fseg {
+    display: flex;
+    gap: 2px;
+  }
+  .fb {
+    padding: 2px 8px;
+    font: inherit;
+    color: var(--fg-muted);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+  }
+  .fb:hover:not(:disabled) {
+    color: var(--fg);
+    background: var(--raised);
+  }
+  .fb[aria-pressed='true'] {
+    color: var(--fg);
+    background: var(--raised);
+    border-color: var(--border);
+  }
+  .fb:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .fpos {
+    min-width: 72px;
+    text-align: center;
+    font-family: var(--font-data);
+  }
+  .fapply {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    cursor: pointer;
   }
   .twrap {
     position: relative;

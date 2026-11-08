@@ -157,6 +157,8 @@
     /** Rows each `rows` call returned. */
     rowsAsked: [],
     queries: new Map(),
+    masks: new Map(),
+    maskCalls: [],
     queriesRun: [],
     /** The precision each `view` asked for. */
     precisions: [],
@@ -316,11 +318,36 @@
     // table sort and filter: the same language as the core's, over the fake's samples
     filter_check: ({ expr }) => (parseFilter(expr).error ?? null),
     table_cancel() {},
+    table_hit({ file, token, k }) {
+      const q = fake.queries.get(token);
+      const h = q?.hits[k];
+      if (!h) return null;
+      const r = fake.open.get(file).r;
+      const row = Math.max(0, Number((h[0] - (r.t0 ?? T0)) / dtNs(r)) - q.first);
+      const asc = [...q.ids].sort((x, y) => x - y);
+      const first = asc.find((id) => id >= row) ?? row;
+      return { t0: String(h[0]), t1: String(h[1]), pos: q.ids.indexOf(first) };
+    },
+    // Apply to charts: the rows the filters don't pass are left out; the fake only counts them
+    table_mask({ file, owner, filters }) {
+      const r = fake.open.get(file)?.r;
+      if (!r) throw 'that file is not open';
+      fake.maskCalls.push({ owner, filters });
+      const preds = filters.map((f) => [f.col, parseFilter(f.expr).test]);
+      const val = (col, i) => (col === 't' ? Number(timeAt(r, i)) : valueAt(r, Number(col.slice(1)), i));
+      let kept = 0;
+      for (let i = 0; i < r.samples; i++) if (preds.every(([c, t]) => t(val(c, i)))) kept++;
+      fake.masks.set(owner, r.samples - kept);
+      return { matched: kept, total: r.samples, done: true, hits: 0 };
+    },
+    table_unmask({ owner }) {
+      fake.masks.delete(owner);
+    },
     table_query({ file, span, filters, sort, token, dropToken }) {
       const r = fake.open.get(file)?.r;
       if (!r) throw 'that file is not open';
       fake.queries.delete(dropToken);
-      fake.queriesRun.push({ filters, sort });
+      fake.queriesRun.push({ filters, sort, span });
       const lower = (t) => Math.max(0, Math.min(r.samples, Math.ceil(Number(BigInt(t) - (r.t0 ?? T0)) / Number(dtNs(r)))));
       const a = lower(span.t0);
       const b = Math.max(a, lower(span.t1));
@@ -337,8 +364,18 @@
         return x - y;
       };
       if (sort.length) ids.sort(cmp);
-      fake.queries.set(token, { first: a, ids });
-      return { matched: ids.length, total: b - a, done: true };
+      // matches as runs of time, those closer than 0.25 s joined
+      const hits = [];
+      if (preds.length) {
+        for (const id of [...ids].sort((x, y) => x - y)) {
+          const t = timeAt(r, a + id);
+          const last = hits.at(-1);
+          if (last && t - last[1] <= 250000000n) last[1] = t;
+          else hits.push([t, t]);
+        }
+      }
+      fake.queries.set(token, { first: a, ids, hits });
+      return { matched: ids.length, total: b - a, done: true, hits: hits.length };
     },
     // a live source: a recording that grows with the clock at its rate, until stopped
     live_connect({ endpoint, descriptor }) {

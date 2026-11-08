@@ -29,6 +29,16 @@ When needed:
 - Settings → Record live sessions to (the folder for live recordings) is step 5.5, with the Connect dialog's new
   fields.
 
+## Left from step 4.2 (so far)
+
+- **Masked views read every sample in view.** With Apply to charts on, charts are reduced from raw samples (the
+  pyramid can't tell which of its samples are left). Stats are exact from the pyramid over each kept stretch. A
+  whole-file view of a very large recording with Apply on is slow; answering buckets that touch no excluded run from
+  the pyramid would fix it.
+- **A mask belongs to the file, not the tab.** Two tabs of one file share it (the tab model keeps one file per
+  tab today). Revisit if tabs ever hold different filters for one file.
+- **Save as rule** (filter strip) waits for Event rules (step 5).
+
 ## Phase 1 loose ends
 
 - The CI image doesn't include the app UI's npm packages; the Linux job installs them on each run.

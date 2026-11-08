@@ -641,7 +641,8 @@ function syncView(): void {
   const file = state.file?.id ?? null;
   const [t0, t1] = [state.t0.toString(), state.t1.toString()];
   const [A, B] = [state.A?.toString() ?? null, state.B?.toString() ?? null];
-  if (v.file !== file || v.t0 !== t0 || v.t1 !== t1 || v.A !== A || v.B !== B) ui.view = { file, t0, t1, A, B };
+  const [first, end] = [state.file?.first.toString() ?? '0', state.file ? (state.file.last + 1n).toString() : '1'];
+  if (v.file !== file || v.t0 !== t0 || v.t1 !== t1 || v.first !== first || v.end !== end || v.A !== A || v.B !== B) ui.view = { file, t0, t1, first, end, A, B };
   if (v.file !== file) assignColors();
 }
 
@@ -2492,6 +2493,11 @@ function toggleFocus(on = !ui.focus): void {
 }
 
 Object.assign(actions, {
+  refreshViews: () => {
+    state.ovStale = true;
+    void requestView('exact');
+    void refreshMeasure();
+  },
   open: () => void chooseFile(),
   openFolder: () => void chooseFolder(),
   openPath: (p: string) => void openPath(p),

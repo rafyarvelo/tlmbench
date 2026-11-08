@@ -38,6 +38,9 @@ export interface Pane {
   sort?: { col: string; desc: boolean }[];
   /** Table filters by column id: the text typed (`> 1.5`, `1..2`, `blank`, joined with and / or). */
   filters?: Record<string, string>;
+  /** Where a table's filter looks: `scope` 'file' for every row (else the rows in view), and `apply` to leave the rows it
+   *  filters out from this file's charts, statistics and values (always over the whole file). */
+  tfilt?: { scope?: 'file'; apply?: boolean };
   beside?: boolean;
   under?: boolean;
 }
@@ -391,12 +394,12 @@ export function setPlotH(i: number, h: number | undefined): void {
 }
 
 /** Sets a pane's table widths or height (undefined: back to the default). */
-export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH' | 'sort' | 'filters'>>): void {
+export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH' | 'sort' | 'filters' | 'tfilt'>>): void {
   edit(() => {
     const p = stack.panes[i];
     if (!p) return;
     for (const [k, v] of Object.entries(patch) as [keyof typeof patch, never][]) {
-      if (v === undefined || ((k === 'widths' || k === 'filters') && !Object.keys(v).length) || (k === 'sort' && !(v as unknown[]).length)) delete p[k];
+      if (v === undefined || ((k === 'widths' || k === 'filters' || k === 'tfilt') && !Object.keys(v).length) || (k === 'sort' && !(v as unknown[]).length)) delete p[k];
       else p[k] = v;
     }
   });

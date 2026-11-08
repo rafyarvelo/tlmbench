@@ -137,7 +137,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Fixed pane heights and a height grip, as the prototype | v1 | ✓ | ✓ |  |
 | Limit lines and shading past warn and alarm | v1 | ✓ | ✗ | 5.2 |
 | Event markers on charts (washes, notches, tooltips) | v1 | ✓ | ✗ | 5.2 |
-| Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ✗ | 4.2 |
+| Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ◐ (Apply to charts and its chip work, the core leaves the rows out; match marks and hatching are next) | 4.2 |
 | Table rows band on the charts | v1 | ✓ | ✗ | 4.2 |
 | Settings → Gaps in lines: break at gaps, or connect across them (dashed) | — (owner, Nov 8; needs a design entry) | ✗ | ✗ | 4.2 |
 | Hover readout snapping to samples; legend values | v1 | ✓ | ✓ | |
@@ -156,7 +156,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Column widths and the table's height saved with the layout | v1 | ✓ | ✓ | |
 | Slower channels hold, dimmed where unchanged; gaps flagged | v1 | ✓ | ✗ | 4.2 |
 | Sort (multi-column) and filter in the core, with progress | v1 | ✓ | ✓ (`tlmbench query rows` too) | 4.2 |
-| Filter row (`> 1.5`, `1..2`, `blank`, and/or), filter strip (In view / Whole file, ▲▼) | v1 | ✓ | ◐ (filter row done; the strip is next) | 4.2 |
+| Filter row (`> 1.5`, `1..2`, `blank`, and/or), filter strip (In view / Whole file, ▲▼) | v1 | ✓ | ◐ (filter row, scope, ▲▼ and Apply to charts done; Save as rule waits for Event rules) | 4.2 |
 | Save as rule (from the filter strip) | v1 | ✓ | ✗ | 5.3 |
 | Clear sort and filters, Columns list, Autofit, header ▾ menu | v1 | ✓ | ◐ (Clear sort and filters done) | 4.2 |
 | Pinned columns, column selection, copy a selection as CSV | v1 | ◐ (no copy) | ✗ | 4.2 |
