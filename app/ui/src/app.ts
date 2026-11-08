@@ -1179,7 +1179,7 @@ async function refreshMeasure(): Promise<void> {
     `<h2>Measure<span class="spacer"></span><button class="ibtn" data-clear data-tip="Clear cursors (Esc)" aria-label="Clear cursors"${ui.anyCursor ? '' : ' disabled'}><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></h2>` +
     `<details class="mpanel" data-panel="cur"${settings.panelsClosed.includes('measure.cur') ? '' : ' open'}><summary>Cursors</summary>` +
     (state.A == null && state.B == null ? `<p class="mnote howto">Place cursors A and B: press C, then click a chart twice. A and B also place them at the pointer.</p>` : '') +
-    `<div class="mtiles">${tile('A', state.A != null ? readoutTime(state.A, span) : '—')}${tile('B', state.B != null ? readoutTime(state.B, span) : '—')}${tile('Δt', dt != null ? duration(dt) : '—', true)}${tile('1/Δt', dt ? frequency(1e9 / Math.abs(dt)) : '—')}</div>` +
+    `<div class="mtiles">${tile('A', state.A != null ? readoutTime(state.A, span) : '—')}${tile('B', state.B != null ? readoutTime(state.B, span) : '—')}${tile('Δt', dt != null ? duration(dt) : '—', true)}${tile('1 / Δt', dt ? frequency(1e9 / Math.abs(dt)) : '—')}</div>` +
     `<table class="mtab"><thead><tr><th>Channel</th><th>A</th><th>B</th><th>Δ</th></tr></thead><tbody>${rowsHtml}</tbody></table></details>` +
     `<details class="mpanel" data-panel="stats"${settings.panelsClosed.includes('measure.stats') ? '' : ' open'}><summary>Stats · ${both ? 'between cursors' : 'visible range'}</summary>` +
     (chans.length ? `<div class="mpick">${pick}</div>` : '') +

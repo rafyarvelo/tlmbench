@@ -131,11 +131,10 @@ export function value(v: number | null | undefined): string {
 }
 
 /** A frequency: `12.5 Hz`, `1.2 kHz`. */
+/** A frequency as the prototype's Measure shows 1 / Δt: hertz to three decimals, millihertz under 1 Hz. */
 export function frequency(hz: number): string {
   if (!Number.isFinite(hz)) return '—';
-  if (hz >= 1e6) return `${(hz / 1e6).toPrecision(4)} MHz`;
-  if (hz >= 1e3) return `${(hz / 1e3).toPrecision(4)} kHz`;
-  return `${hz.toPrecision(4)} Hz`;
+  return hz >= 1 ? `${hz.toFixed(3)} Hz` : `${(hz * 1000).toFixed(2)} mHz`;
 }
 
 function numberLabel(v: number, step: number): string {
