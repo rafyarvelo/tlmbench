@@ -186,6 +186,56 @@ export const SCENES = [
     focus: ['#liveDlg', '#importDlg'],
   },
   {
+    name: 'descriptor',
+    about: 'The descriptor form on a binary file nothing claims, with the ESC logger\'s descriptor picked: framing, time, fields, the hex of the first bytes, the decoded rows and the TOML, over a scrim.',
+    proto: async (p) => {
+      await p.dblclick('.fitem[data-file="escbin"] .fname');
+      await p.waitForSelector('#liveDlg .dscfields');
+      await p.selectOption('#liveDlg [data-dpick]', 'esc_telemetry');
+      await p.evaluate(() => { document.querySelector('#liveDlg details.dscview').open = true; });
+    },
+    app: async (p) => {
+      await p.evaluate(() => {
+        const f = window.__tlmFake;
+        f.bin('/data/recordings/bench/esc_bench_0930.bin');
+        f.decoders.esc = { schema: 1, name: 'ESC telemetry', files: [], endian: 'little', header_size: 0, record_size: 20, time: { source: 'field', field: 'timestamp_us', unit: 'us' },
+          fields: [{ name: 'seq', type: 'u16', offset: 2 }, { name: 'timestamp_us', type: 'u32', offset: 4 }, { name: 'motor_rpm', type: 'u16', offset: 8, unit: 'rpm' }, { name: 'throttle_pct', type: 'u8', offset: 10, unit: '%', scale: 0.5 }, { name: 'status', type: 'u8', offset: 11 }, { name: 'current_a', type: 'i16', offset: 12, unit: 'A', scale: 0.01 }, { name: 'battery_v', type: 'u16', offset: 14, unit: 'V', scale: 0.001 }, { name: 'esc_temp_1', type: 'i8', offset: 16, unit: '°C' }, { name: 'esc_temp_2', type: 'i8', offset: 17, unit: '°C' }],
+          packets: { sync: 'A55A', header_size: 2, checksum: 'crc16-ccitt', compression: 'none' } };
+        f.drop(['/data/recordings/bench/esc_bench_0930.bin']);
+      });
+      await p.waitForSelector('#dscDlg .dscfields');
+      await p.selectOption('#dscPick', '/cache/decoders/esc.toml');
+      await p.evaluate(() => { document.querySelector('#dscDlg details.dscview').open = true; });
+      await p.waitForSelector('#dscTable tbody tr');
+    },
+    pairs: [
+      ['dialog', '#liveDlg', '#dscDlg'],
+      ['heading', '#liveDlg > header', '#dscDlg > header'],
+      ['main', '.impmain', '.impmain'],
+      ['section heading', '.impmain h4', '.impmain h4'],
+      ['note', '.impmain .lvnote', '.impmain .lvnote'],
+      ['field label', '.impmain .lvf > span', '.impmain .lvf > span'],
+      ['select', '.impmain .lvf .sel', '.impmain .lvf .sel'],
+      ['link button', '.impbar .linkbtn', '.impbar .linkbtn'],
+      ['field list', '.dscfields', '.dscfields'],
+      ['field list heading', '.dscf.head', '.dscf.head'],
+      ['field row', '.dscf:not(.head)', '.dscf:not(.head)'],
+      ['field name', '.dscf [data-ff=name]', '.dscf [data-ff=name]'],
+      ['field type', '.dscf select', '.dscf select'],
+      ['field offset', '.dscf [data-ff=offset]', '.dscf [data-ff=offset]'],
+      ['hex', '.dschex', '.dschex'],
+      ['hex byte', '.dschex span:not(.at)', '.dschex span:not(.at)'],
+      ['rows table', '.dsctab', '.dsctab'],
+      ['column heading', '.dsctab th', '.dsctab th'],
+      ['cell', '.dsctab td', '.dsctab td'],
+      ['TOML', '.dsctoml', '.dsctoml'],
+      ['footer', '#liveDlg > footer', '#dscDlg > footer'],
+      ['button', '#liveDlg > footer .tbtn:not(.primary)', '#dscDlg > footer .tbtn:not(.primary)'],
+      ['primary button', '#liveDlg > footer .tbtn.primary, #liveDlg [data-dopen]', '#dscDlg > footer .tbtn.primary'],
+    ],
+    focus: ['#liveDlg', '#dscDlg'],
+  },
+  {
     name: 'axis-dialog',
     about: 'Axis and scale… from a pane\'s ⋯ menu.',
     proto: async (p) => { await hoverPane(p, 0); await p.click('#stack [data-pmenu]'); await p.click('[role=menu] .mi:has-text("Axis and scale")'); },

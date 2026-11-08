@@ -56,8 +56,10 @@ When needed:
 - **Parity harness artefacts in the `import` scene:** the section heading count (the prototype has "When it opens"
   and "Derived channels"), the last field label and select (the prototype's last row holds several fields, ours one),
   the column name and input widths (ours has a Category column), the note size.
-- **Not done yet:** the descriptor form (the core's `descriptor::find_frames` is there for its Find frames; the app has no command for it yet), bitfields, counter time bases with wraparound, packet
-  types in the app (a recording per type; "same tab" needs several recordings in a tab), `t_descriptor`'s port, and slower channels held in tables (they need a tab with several rates).
+- **Done Nov 8:** the descriptor form, bitfields, counter time bases with wraparound, packet types as a tab per type (owner, Nov 8: until 5.6 puts several recordings in one tab), `t_descriptor` and `t_packets`.
+- **Still open:** slower channels held in tables (dimmed where unchanged, gaps flagged) need one tab with several rates, so they wait for 5.6. A session remembers a packet file by its path, so restoring it opens every type and keeps only one view for the file. The form doesn't edit `[[packet_types]]` (it keeps them; edit the TOML). The counter's wrap positions are found when a fixed-width file opens (one pass over the counter, like the time check already made) and are kept in the packet index for packet files; a 10 GB fixed-width file with a counter hasn't been timed.
+- **Parity harness artefacts in the `descriptor` scene:** the field name's width (the app's added Bits column) and the TOML's height (the fake core writes a short TOML); the hex bytes differ (the prototype's data is random). Fixed: the Find frames link's colour and padding, the × on field rows (hover only, 26 px).
+
 
 ## Phase 1 loose ends
 

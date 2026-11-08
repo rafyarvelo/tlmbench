@@ -22,13 +22,13 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | CSV files with `#` comment lines | Prop. | ✗ | ✓ (CLI and core) | |
 | Parquet input | v1 | n/a | ✓ (core; the app opens it) | |
 | `.tlm` reference format (descriptor in the header) | v1 | sim | ✓ | |
-| Fixed-width binary with a separate descriptor | v1 | sim | ◐ (core; the app can't pick a descriptor) | 4.3 |
-| Packet files: sync, length, checksum, zstd/lz4/gzip, cached index | v1 | sim | ◐ (core and CLI; not opened in the app) | 4.3 |
-| Packet types: one recording per type (`flight.bin · gps`) | v1 | ✗ | ◐ (core and CLI) | 4.3 |
-| Packets without a length field | v1 | ✓ | ✗ | 4.3 |
+| Fixed-width binary with a separate descriptor | v1 | sim | ✓ (the descriptor form picks or writes one; Save to the app cache, Share to the folder) | |
+| Packet files: sync, length, checksum, zstd/lz4/gzip, cached index | v1 | sim | ✓ (opened through the descriptor form, compressed payloads previewed by the core) | |
+| Packet types: one recording per type (`flight.bin · gps`) | v1 | ✗ | ◐ (core, CLI and app, a tab per type until several recordings share a tab, 5.6) | 5.6 |
+| Packets without a length field | v1 | ✓ | ✓ | |
 | Descriptor `files = [...]` name patterns | v1 | ✓ | ◐ (core and CLI find descriptors in `.tlmbench/decoders/` and the app cache's `decoders/`; the app's open path uses it) | 4.3 |
-| Bitfields in descriptors | v1 | ✗ | ✗ | 4.3 |
-| Time bases: column, rate, counter, arrival, index | v1 | sim | ◐ (column, rate, index; no counter wraparound; arrival for live) | 4.3 |
+| Bitfields in descriptors | v1 | ✗ | ✓ (core, CLI and the form's Bits column) | |
+| Time bases: column, rate, counter, arrival, index | v1 | sim | ✓ (column, rate, counter with wraparound, index; arrival for live) | |
 | Time going backwards flagged in the index | v1 | ✗ | ✗ (an error, as decided for now) | 5.10 |
 | Min/max pyramid, resumable background build | v1 | n/a | ✓ | |
 | M4 views, pixel-exact, gaps from the gap index | v1 | n/a | ✓ | |
@@ -113,12 +113,12 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Multi-select, selection bar (Add, Chart, Table, Remove) | v1 | ✓ | ◐ (channels and files; no Derive in the bar) | 5.1 |
 | Drag channels to panes | v1 | ✓ | ✓ | |
 | File right-click: Open, Open only this, Close | v1 | ✓ | ✓ | |
-| File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ✗ | 4.3, 5.6 |
+| File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ◐ (Format descriptor…; the rest wait for 5.6) | 5.6 |
 | Channel right-click: category, gap factor | v1 | ✓ | ✓ | |
 | Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ✗ | 5.1–5.3 |
 | Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ✗ | 5.1–5.3 |
 | Data rate shown on imported files; "primary" with several open | v1 | ✓ | ◐ (the rate chip on an open CSV's row, a click shows its import settings; primary waits for 5.6) | 4.3, 5.6 |
-| Import a local folder (browser snapshot in the prototype) | v1 | ✓ | ✗ | 4.3 |
+| Import a local folder (browser snapshot in the prototype) | v1 | ✓ | ✓ (Open folder reads the disk; Import all in the folder menu) | |
 
 ## 5. Pane stack and charts
 
@@ -201,7 +201,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | CSV import dialog (time column, rate, columns, types, categories) | v1 | ✓ | ◐ (built; Panes, prefix and derived channels wait for 5.1 and 5.6, one tab for several files for 5.6) | 4.3 |
 | Import profiles keyed by the header (with recipes and a layout) | v1 | ✓ | ◐ (core and app: names, units, types, categories, time, rate, kept in the app cache; recipes and layout wait for 5.1) | 4.3, 5.1 |
-| Descriptor form on an unclaimed binary file (preview, Find frames, TOML) | v1 | ✓ | ✗ | 4.3 |
+| Descriptor form on an unclaimed binary file (preview, Find frames, TOML) | v1 | ✓ | ✓ | |
 | Layouts by channel name in app data; Save, Save as, Revert, Delete | v1 | ✓ | ✓ | |
 | Shared views in `.tlmbench/views/`; Share with this folder; Export file | v1 | ✓ | ✓ | |
 | Share dialog (what gets written, read-only folders) | v1 | ✓ | ✗ | 5.7 |
