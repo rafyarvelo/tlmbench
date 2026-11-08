@@ -26,7 +26,7 @@
 
   const ROW_H = 26;
   /** The header's height: names, then the filter row. */
-  const HEAD_H = 56;
+  const HEAD_H = 60;
   /** Rows read beyond each edge of the window, so short scrolls need no new read. */
   const MARGIN = 100;
 
@@ -740,7 +740,7 @@
   <Menu class="colmenu" anchor={pop.anchor} onclose={() => (pop = null)} items={headItems(pop.col)} label="Column {pop.col.label}" />
 {:else if pop?.kind === 'cols'}
   <Menu class="colpop" anchor={pop.anchor} onclose={() => (pop = null)} label="Columns">
-    <div class="cphead"><b>Columns · pane {i + 1}</b></div>
+    <div class="cphead"><b>Columns · pane {i + 1}</b><button class="cpx" aria-label="Close" onclick={() => (pop = null)}>{@html ICON.close}</button></div>
     <input class="cpq" type="search" data-q placeholder="Filter columns" aria-label="Filter columns" bind:value={colQ} />
     <div class="cplist">
       <label class="colrow muted"><input type="checkbox" disabled checked /><span>Sample, Time</span><small>always shown</small></label>
@@ -780,6 +780,12 @@
     color: var(--fg-muted);
     background: var(--surface);
     border-bottom: 1px solid var(--grid);
+  }
+  .tbar .tbtn {
+    min-height: 24px;
+    padding: 0 8px;
+    font: 500 11.5px var(--font-ui);
+    border-radius: 4px;
   }
   .tbar .tbtn:disabled {
     opacity: 0.45;
@@ -863,7 +869,8 @@
     display: flex;
     flex: none;
     flex-direction: column;
-    height: 56px;
+    height: 60px;
+    font-family: var(--font-ui);
     overflow: hidden;
     font-size: 12px;
     font-weight: 500;
@@ -900,12 +907,12 @@
   }
   .tfin {
     flex: none;
-    height: 24px;
-    margin: 0 4px 4px;
+    height: 25px;
+    margin: 3px 4px 4px;
     padding: 0 6px;
     font: 12px var(--font-data);
     color: var(--fg);
-    background: var(--plot-bg);
+    background: var(--raised);
     border: 1px solid var(--border);
     border-radius: 4px;
   }
@@ -1018,14 +1025,40 @@
     height: 14px;
     margin-right: 4px;
   }
+  :global(.menu.colpop) {
+    width: min(300px, calc(100vw - 32px));
+    padding: 0;
+  }
   .cphead {
-    padding: 4px 8px;
-    font-size: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-height: 43px;
+    padding: 8px 10px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--grid);
+  }
+  .cpx {
+    width: 30px;
+    height: 30px;
+    margin-left: auto;
+    color: var(--fg-muted);
+    cursor: pointer;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+  }
+  .cpx :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+  .cphead b {
+    font-weight: 600;
   }
   .cpq {
     width: calc(100% - 16px);
-    height: 24px;
-    margin: 0 8px 4px;
+    min-height: 30px;
+    margin: 8px 8px 4px;
     padding: 0 6px;
     font-size: 12px;
     color: var(--fg);
@@ -1042,8 +1075,13 @@
     display: flex;
     gap: 8px;
     align-items: center;
-    padding: 3px 8px;
-    font-size: 12px;
+    min-height: 30px;
+    padding: 0 4px;
+    font-size: 13px;
+    border-radius: 4px;
+  }
+  .colrow:hover {
+    background: var(--raised);
   }
   .colrow.muted {
     color: var(--fg-muted);
@@ -1074,7 +1112,7 @@
     display: flex;
     gap: 4px;
     align-items: center;
-    padding: 6px 8px 2px;
+    padding: 8px 10px;
     border-top: 1px solid var(--grid);
   }
   .tbody {

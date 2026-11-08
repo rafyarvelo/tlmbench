@@ -21,6 +21,14 @@ const menu = (pm, am) => [
 const PM = '[role=menu]';
 const AM = '[role=menu]';
 
+/** Pane 1 as a table, as the pane's view menu does it. */
+const tableOpen = (side) => async (p) => {
+  await hoverPane(p, 0);
+  await p.click(side === 'proto' ? '#stack [data-viewmenu]' : '#stack [data-vmenu]');
+  await p.locator('[role=menu] .mi').filter({ hasText: /^Table/ }).first().click();
+  await p.waitForSelector('.trw');
+};
+
 export const SCENES = [
   {
     name: 'main',
@@ -176,6 +184,57 @@ export const SCENES = [
       ['chip remove', '#stack .phead .chip .x, #stack .phead [data-rm]', '#stack .phead .chip .x, #stack .phead [data-rm]'],
     ],
     focus: ['#stack .phead:hover', '#stack .phead:hover'],
+  },
+  {
+    name: 'table',
+    about: 'A pane as a table: header, filter row, rows, the bar above.',
+    proto: tableOpen('proto'),
+    app: tableOpen('app'),
+    pairs: [
+      ['table bar', '.tbar', '.tbar'],
+      ['status', '.tbar .tstat', '.tbar .tstat'],
+      ['bar button', '.tbar .tbtn', '.tbar .tbtn'],
+      ['header cell', '.thead .tth, .tth', '.thead .tth'],
+      ['header name', '.tth .tlab', '.tth .tlab'],
+      ['filter box', '.tfl input', '.tfin'],
+      ['row', '.trw', '.trw'],
+      ['cell', '.trw > span', '.trw > span'],
+    ],
+    focus: ['.twrap', '.ptable'],
+  },
+  {
+    name: 'table-columns',
+    about: 'The Columns popover of a table.',
+    proto: async (p) => { await tableOpen('proto')(p); await p.click('[data-cols]'); },
+    app: async (p) => { await tableOpen('app')(p); await p.click('[data-cols]'); },
+    pairs: [
+      ['popover', '.colpop', '.colpop'],
+      ['heading', '.colpop header', '.colpop .cphead'],
+      ['row', '.colpop .colrow', '.colpop .colrow'],
+      ['footer button', '.colpop footer button', '.colpop .cpfoot button'],
+    ],
+    focus: ['.colpop', '.colpop'],
+  },
+  {
+    name: 'table-autofit',
+    about: 'The Autofit menu of a table.',
+    proto: async (p) => { await tableOpen('proto')(p); await p.click('[data-autofit]'); },
+    app: async (p) => { await tableOpen('app')(p); await p.click('[data-autofit]'); },
+    pairs: menu('.colmenu', '.colmenu'),
+    focus: ['.colmenu', '.colmenu'],
+  },
+  {
+    name: 'table-filter',
+    about: 'A table with a filter typed: the strip under the bar.',
+    proto: async (p) => { await tableOpen('proto')(p); await p.locator('.tfl input').nth(2).fill('> 0.5'); },
+    app: async (p) => { await tableOpen('app')(p); await p.locator('[data-filter]').nth(1).fill('> 0.5'); },
+    pairs: [
+      ['strip', '.tfilt', '.tfilt'],
+      ['scope button', '.tfilt .fb, .tfilt button', '.tfilt .fb'],
+      ['match count', '.tfilt .fpos, .tfilt span', '.tfilt .fpos'],
+      ['filter box', '.tfl input', '.tfin'],
+    ],
+    focus: ['.ptable, .tbar', '.ptable'],
   },
   {
     name: 'settings',
