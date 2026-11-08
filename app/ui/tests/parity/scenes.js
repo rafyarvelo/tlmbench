@@ -106,7 +106,7 @@ export const SCENES = [
     name: 'folder-menu',
     about: 'Explorer\'s folder menu.',
     proto: click('#exFolder'),
-    app: click('#exFolderMenu'),
+    app: click('#exFolder'),
     pairs: menu(PM, AM),
     focus: [PM, AM],
   },

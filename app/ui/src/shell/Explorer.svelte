@@ -141,6 +141,7 @@
     { label: 'Close all files', data: { fm: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
   ];
   const inSel = (ch: number) => stack.panes[stack.sel]?.channels.includes(ch) ?? false;
+  const addShownTip = $derived(shownChans.length ? `Add ${q.trim() ? `the ${shownChans.length} matching` : `all ${shownChans.length}`} channels to pane ${stack.sel + 1}` : 'No channels shown');
 
   function key(e: KeyboardEvent, row: { kind: 'file'; path: string } | { kind: 'chan'; ch: number }) {
     if (row.kind === 'file' && isOpen(row.path) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
@@ -158,21 +159,25 @@
 <div class="explorer" id="explorer">
   <div class="phd">
     <button class="phtog" id="exToggle" aria-expanded={!closed} aria-label="Explorer panel" data-tip="Collapse or expand this panel" onclick={() => setPanelOpen('explorer', closed)}><span class="chv" class:shut={closed}>{@html ICON.chev}</span>Explorer</button><span class="spacer"></span>
-    <button class="ibtn" id="swapSides" aria-label="Move to the other side" data-tip="Swap Explorer and Measure" onclick={() => setSetting('sidesSwapped', !settings.sidesSwapped)}>{@html ICON.swap}</button>
-    <button class="ibtn" id="exFolder" aria-label="Open folder" data-tip="Open a folder of recordings (only read)" onclick={actions.openFolder}>{@html ICON.folder}</button>
-    <button class="ibtn" id="exOpen" aria-label="Open recording" data-tip="Open a CSV or .tlm file (⌘O)" onclick={actions.open}>{@html ICON.open}</button>
-    <button class="ibtn" id="exAddShown" aria-label="Add the shown channels" disabled={!ui.file || !shownChans.length} data-tip="Plot the channels shown below in the selected pane" onclick={() => addChannels(shownChans)}>{@html ICON.add}</button>
-    <button class="ibtn" id="treeExpand" aria-label="Expand all" data-tip="Expand all" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
-    <button class="ibtn" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all" onclick={() => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path)))}>{@html ICON.collapse}</button>
+    <button class="ibtn exall" id="exAddShown" aria-label={addShownTip} disabled={!ui.file || !shownChans.length} data-tip={addShownTip} onclick={() => addChannels(shownChans)}>{@html ICON.add}</button>
+    <button class="ibtn exall" id="exCats" aria-label="Show categories" aria-pressed={settings.exCategories} data-tip={settings.exCategories ? 'Showing categories. Click for a flat list' : 'Showing a flat list. Click to group channels into categories'} onclick={() => setSetting('exCategories', !settings.exCategories)}>{@html ICON.cats}</button>
+    <span class="exsep" aria-hidden="true"></span>
+    <button class="ibtn exall" id="treeExpand" aria-label="Expand all" data-tip="Expand all folders and channel groups" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
+    <button class="ibtn exall" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all channel groups, and the folders without an open file" onclick={() => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path)))}>{@html ICON.collapse}</button>
+    <button class="ibtn pmove" id="swapSides" aria-label="Move Explorer to the other sidebar" data-tip="Move to the other sidebar" onclick={() => setSetting('sidesSwapped', !settings.sidesSwapped)}>{@html ICON.swap}</button>
   </div>
   <div class="exbody" hidden={closed}>
   <div class="exrow">
+    {#if ui.folder}
+      <button class="exfolder" id="exFolder" aria-haspopup="menu" aria-expanded={!!fold} data-tip="Folders: open a folder of recordings, expand or collapse, close all files" onclick={(e) => ((more = null), (fold = fold ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.folder}<span>{ui.folder.name}</span>{@html ICON.chev}</button>
+    {:else}
+      <button class="exfolder" id="exFolder" data-tip="Open a folder of recordings (only read)" onclick={actions.openFolder}>{@html ICON.folder}<span>Open folder</span></button>
+    {/if}
     <label class="exfilter">
-      <input type="search" placeholder="Filter files and channels" aria-label="Filter files and channels" aria-invalid={!matcher.ok} bind:value={q} />
+      <input type="search" placeholder="Filter" aria-label="Filter files and channels" aria-invalid={!matcher.ok} bind:value={q} />
       <button class="rx" aria-pressed={regex} aria-label="Regular expression" data-tip="Regular expression" onclick={() => (regex = !regex)}>.*</button>
     </label>
-    <button class="ibtn" id="exFolderMenu" aria-haspopup="menu" aria-label="Folder menu" data-tip="The folder: open, expand, collapse, close all files" aria-expanded={!!fold} onclick={(e) => ((more = null), (fold = fold ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.folder}</button>
-    <button class="ibtn" id="exMore" aria-haspopup="menu" aria-label="Explorer menu" data-tip="Add every channel shown, categories, sides" aria-expanded={!!more} onclick={(e) => ((fold = null), (more = more ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.more}</button>
+    <button class="ibtn" id="exMore" aria-haspopup="menu" aria-label="Explorer actions" data-tip="Add all, open in a new pane, categories" aria-expanded={!!more} onclick={(e) => ((fold = null), (more = more ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.more}</button>
   </div>
 
   {#if tabs.list.length}
@@ -369,13 +374,13 @@
     width: 10px;
     height: 10px;
   }
+  .phd .pmove :global(svg) {
+    width: 13px;
+    height: 13px;
+  }
   #exMore :global(svg) {
     width: 12px;
     height: 12px;
-  }
-  #exFolderMenu :global(svg) {
-    width: 14px;
-    height: 14px;
   }
   .chv {
     display: inline-grid;
@@ -599,14 +604,82 @@
   .row.cant {
     opacity: 0.5;
   }
+  /* the folder row (the prototype's .exhead): folder ▾, the filter, ⋯ */
   .exrow {
     display: flex;
     align-items: center;
-    margin: 0 6px 0 0;
+    gap: 6px;
+    margin: 0 10px 6px;
   }
   .exrow .exfilter {
     flex: 1;
     min-width: 0;
+    margin: 0;
+  }
+  .exfolder {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    max-width: 45%;
+    height: 30px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fg);
+    font: 500 13px var(--font-ui);
+    cursor: pointer;
+  }
+  .exfolder:hover {
+    background: var(--raised);
+  }
+  .exfolder span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .exfolder :global(svg) {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--fg-muted);
+  }
+  .exfolder :global(svg:last-child) {
+    width: 12px;
+    height: 12px;
+  }
+  /* the title row's buttons are always there (row buttons appear on hover); ⇄ shows on hover */
+  .phd .exall:hover,
+  .phd .pmove:hover {
+    background: var(--raised);
+    color: var(--fg);
+  }
+  .phd .exall:disabled {
+    opacity: 0.35;
+    background: transparent;
+  }
+  .phd .exall[aria-pressed='true'] {
+    color: var(--accent);
+  }
+  .exsep {
+    flex: none;
+    width: 1px;
+    height: 14px;
+    margin: 0 2px;
+    background: var(--grid);
+  }
+  .phd .pmove {
+    opacity: 0;
+  }
+  .explorer:hover .pmove,
+  .pmove:focus-visible {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .phd .pmove {
+      opacity: 1;
+    }
   }
   .where {
     flex: none;

@@ -1,6 +1,6 @@
 // Explorer's menus: the folder menu (open, expand and collapse all, remove the folder, close all files), the ⋯ menu
 // (add every channel shown, a new chart or table, categories, files that can't be opened, swapping sides), the filter
-// matching units and categories, and "Open only this".
+// matching units and categories, "Open only this", and the title row (Add shown, Categories) and folder button.
 import { run } from './lib.js';
 
 const DIR = '/data/flights';
@@ -28,11 +28,12 @@ run('exmenus', async ({ p, check, text, visible, fake, paneCount, until, setting
   await p.click('#exMore');
   await p.click('.exmenu [data-ex="showall"]');
 
-  // folder menu
-  await p.click('#exFolderMenu');
+  // folder menu: the folder's name and ▾ (with no folder the button opens one)
+  check('the folder button shows the folder\'s name', (await text('#exFolder')) === 'flights' && (await p.getAttribute('#exFolder', 'aria-haspopup')) === 'menu', await text('#exFolder'));
+  await p.click('#exFolder');
   await p.click('.exmenu [data-ex="collapse"]');
   check('Collapse all folders (menu)', (await rows()).join() === 'flights,a' || (await rows()).length <= 3, await rows());
-  await p.click('#exFolderMenu');
+  await p.click('#exFolder');
   await p.click('.exmenu [data-ex="expand"]');
   check('Expand all folders (menu)', (await rows()).length >= 4, await rows());
 
@@ -41,6 +42,12 @@ run('exmenus', async ({ p, check, text, visible, fake, paneCount, until, setting
   check('a selected file offers Only this', await visible('#explorer .row.file.sel .tbtn[data-tip]'));
   await p.dblclick('#explorer .row.file[data-path$="flight.tlm"]');
   await until(() => document.querySelectorAll('#explorer .row.chan').length === 6);
+  // the title row: Add shown says what it adds, Categories toggles the grouping (saved)
+  check('Add shown names the count and the pane', (await p.getAttribute('#exAddShown', 'data-tip')) === 'Add all 6 channels to pane 1', await p.getAttribute('#exAddShown', 'data-tip'));
+  check('Categories is on', (await p.getAttribute('#exCats', 'aria-pressed')) === 'true' && (await p.$$('#explorer .row.cat')).length > 1);
+  await p.click('#exCats');
+  check('Categories off: a flat list, saved', (await p.$$('#explorer .row.cat')).length === 0 && (await settingsLS()).exCategories === false);
+  await p.click('#exCats');
   await p.click('[data-file-chev]');
   check('a file\'s channels fold away under it', (await p.$$('#explorer .row.chan')).length === 0 && (await settingsLS()).exFilesShut.length === 1);
   await p.click('[data-file-chev]');
@@ -76,7 +83,7 @@ run('exmenus', async ({ p, check, text, visible, fake, paneCount, until, setting
   await p.click('.filemenu [data-fm="only"]').catch(() => {});
   await wait(400);
   check('Open only this closes the other tabs', (await p.$$('#wsTabs .wstab')).length === 1 && (await text('#wsTabs .nm')) === 'flight.tlm', await text('#wsTabs'));
-  await p.click('#exFolderMenu');
+  await p.click('#exFolder');
   await p.click('.exmenu [data-ex="remove"]');
   check('Remove the folder empties the tree but not the tabs', (await settingsLS()).folder === '' && (await p.$$('#wsTabs .wstab')).length === 1);
 }, { files, launch: null });

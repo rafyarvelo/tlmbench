@@ -12,7 +12,7 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
 
   // Open… asks the dialog; ⌘O too
   await fake((a) => (window.__tlmFake.pick = a), A);
-  await p.click('#exOpen');
+  await p.click('#explorer .exnone button:last-of-type'); // the empty Explorer's "recording" link
   check('Open… opens the picked file', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'flight.tlm'));
   check('empty state hidden', !(await visible('#empty')) && (await paneCount()) === 3);
   await fake((b) => (window.__tlmFake.pick = b), B);

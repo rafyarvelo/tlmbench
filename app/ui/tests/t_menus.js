@@ -33,7 +33,7 @@ run('menus', async ({ p, check, until, wait }) => {
   check('Explorer ⋯ opens', await until(() => !!document.querySelector('.exmenu')));
   await p.mouse.click(900, 300);
   check('a press outside closes it', await until(() => !document.querySelector('.exmenu')));
-  await p.click('#exFolderMenu');
+  await p.click('#exFolder');
   await p.keyboard.press('Escape');
   check('Esc closes the folder menu', await until(() => !document.querySelector('.exmenu')));
 

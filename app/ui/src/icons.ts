@@ -44,6 +44,8 @@ export const ICON = {
   plus: s('<path d="M12 5v14M5 12h14"/>', 'fill="none" stroke="currentColor" stroke-width="2.2"'),
   /** Explorer's add-the-shown-channels */
   add: s('<path d="M12 5v14M5 12h14"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
+  /** Explorer's categories on/off */
+  cats: s('<path d="M4 5h6M4 12h0M8 12h12M8 19h12M7 5v14"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   trash: s('<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
   open: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M12 11v6M9 14l3 3 3-3"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"'),
 };
