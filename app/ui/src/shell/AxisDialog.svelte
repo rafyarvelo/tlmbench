@@ -19,7 +19,7 @@
 </script>
 
 <div class="dlg axdlg" role="dialog" aria-label="Axes of pane {i + 1}" style="left: {x}px; top: {y}px">
-  <header><b>Pane {i + 1} axes</b><span class="spacer"></span><button class="ibtn" data-close aria-label="Close" onclick={onclose}>×</button></header>
+  <header><b>Pane {i + 1} settings</b><span class="muted">axes</span><span class="spacer"></span><button class="ibtn" data-close aria-label="Close" onclick={onclose}>×</button></header>
   <div class="dbody">
     {#each axes as { unit, key, ax } (key)}
       <section class="axsec" data-axis={key}>
@@ -69,52 +69,84 @@
         </div>
       </section>
     {/each}
-    <p class="dnote">Kept with the pane, so saved layouts keep their axes. A fixed range turns off auto-fit; double-click still fits the time axis.</p>
+    <p class="dnote">Kept with the pane, so saved and shared layouts keep their axes. A fixed range turns off auto-fit; double-click still fits the time axis.</p>
   </div>
   <footer>
-    <button class="btn" data-axreset onclick={() => resetAxes(i)}>Reset axes</button><span class="spacer"></span><button class="btn primary" data-close onclick={onclose}
+    <button class="tbtn" data-axreset onclick={() => resetAxes(i)}>Reset axes</button><span class="spacer"></span><button class="tbtn primary" data-close onclick={onclose}
       >Done</button
     >
   </footer>
 </div>
 
 <style>
+  /* the prototype's .chpop.axpop: 360 px, a header row with a rule, small buttons */
   .axdlg {
-    width: min(380px, calc(100vw - 32px));
+    width: min(360px, calc(100vw - 32px));
   }
-  .axsec + .axsec {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--grid);
+  .axdlg header {
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--grid);
   }
+  .axdlg header b {
+    font-weight: 600;
+  }
+  .axdlg header .ibtn {
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+  }
+  .axdlg footer .tbtn {
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 4px;
+    font: 500 11.5px var(--font-ui);
+  }
+  .axdlg footer .tbtn.primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+  }
+  /* the body as the prototype's .tmbody: sections 10 px apart, each a column of 6 px; rows of two fields */
+  .axdlg .dbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 10px 10px;
+  }
+  .axsec {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--grid);
+  }
+  /* as the prototype's: the axis's name and its unit each on a line */
   .axhead {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
-    margin: 4px 0;
-    font-size: 12px;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
   }
   .axrow {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    margin: 6px 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
   .axf {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
     min-width: 0;
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--fg-muted);
   }
-  .axf.grow {
-    flex: 1;
-  }
   .axf .sel {
+    width: 100%;
     min-width: 0;
+    min-height: 30px;
     color: var(--fg);
-    font-size: 12px;
+    font-size: 13px;
   }
   .axf input[type='number'] {
     font-family: var(--font-data);
@@ -122,9 +154,18 @@
   .axchk {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     min-height: 30px;
     color: var(--fg);
     font-size: 12px;
+  }
+  .axdlg .dnote {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .axdlg footer {
+    padding: 0 10px 10px;
+    border-top: 0;
   }
 </style>

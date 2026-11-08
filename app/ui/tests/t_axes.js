@@ -70,7 +70,7 @@ run(
     await openAxes(1);
     await p.selectOption(`${sec(0)} [data-ax="range"]`, 'robust');
     check('ignore outliers', await until((f) => { const a = window.__tlmApp.axes()[1].u0; return a.min >= f.min - 1e-9 && a.max <= f.max + 1e-9; }, fit) && (await saved(1))?.u0?.range === 'robust', [(await axes())[1], fit]);
-    await p.click('.axdlg [data-close].btn');
+    await p.click('.axdlg [data-close].tbtn');
 
     // Reset axes clears them
     await openAxes(0);
