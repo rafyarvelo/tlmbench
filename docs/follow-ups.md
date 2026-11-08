@@ -45,6 +45,21 @@ When needed:
 - **Copy as CSV** takes at most 100,000 rows, time as nanoseconds (the owner accepted the recommendation, Nov 8). A
   bigger copy would need a save-to-file path (an export).
 
+## Step 4.3 (import and formats in the app), Nov 8
+
+- **Decided by the owner:** a profile is keyed by the header's sorted column names; it applies without asking only for
+  an exact match, a header sharing 60% or more of its names is offered in the dialog and never applied unasked;
+  "Explorer only" keeps the settings and later opens skip the dialog (Import settings… in the file menu shows them).
+- **Left in the dialog:** the prototype's Panes, Channel prefix and Derived channels sections (5.6, 5.1), text columns
+  as labelled states (5.2: the core has no text channels, so Text leaves the column out), "All files in one new tab"
+  and "Add to the current tab" (shown, disabled: they need several files in one tab, 5.6), the profile's saved layout.
+- **Parity harness artefacts in the `import` scene:** the section heading count (the prototype has "When it opens"
+  and "Derived channels"), the last field label and select (the prototype's last row holds several fields, ours one),
+  the column name and input widths (ours has a Category column), the note size.
+- **Not done yet:** the descriptor form and its Find frames, bitfields, counter time bases with wraparound, packet
+  types in the app (a recording per type; "same tab" needs several recordings in a tab), Import all, the data rate on
+  imported files, `t_descriptor`'s port, and slower channels held in tables (they need a tab with several rates).
+
 ## Phase 1 loose ends
 
 - The CI image doesn't include the app UI's npm packages; the Linux job installs them on each run.

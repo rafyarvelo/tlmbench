@@ -6,6 +6,11 @@
 //   focus: [prototype selector, app selector]: the screenshot is also cropped to this element
 //   protoSettings, appSettings: first-launch settings on top of the defaults
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const PROTO_CSV = fileURLToPath(new URL('../../../../prototype/tests/csv/', import.meta.url));
+
 const click = (sel) => async (p) => p.click(sel);
 const hoverPane = (p, i) => p.locator('#stack section.pane .phead').nth(i).hover();
 
@@ -136,6 +141,49 @@ export const SCENES = [
       ['button', '#liveDlg > footer .tbtn:not(.primary)', '#liveDlg > footer .tbtn:not(.primary)'],
     ],
     focus: ['#liveDlg', '#liveDlg'],
+  },
+  {
+    name: 'import',
+    about: 'The CSV import dialog on a first open (a dropped file): time and rate, the columns list, where the file goes, over a scrim.',
+    proto: async (p) => {
+      const text = readFileSync(PROTO_CSV + 'AAPL.csv', 'utf8');
+      await p.evaluate((t) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([t], 'AAPL.csv', { type: 'text/csv' }));
+        window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      }, text);
+      await p.waitForSelector('#liveDlg .impmain');
+    },
+    app: async (p) => {
+      await p.evaluate(() => {
+        const f = window.__tlmFake;
+        f.csv('/data/AAPL.csv', ['Date', 'Open', 'High', 'Low', 'Close', 'Volume'], { unit: 'iso', rate: 1 / 86400, rows: 521 });
+        f.files['/data/AAPL.csv'] = {};
+        f.drop(['/data/AAPL.csv']);
+      });
+      await p.waitForSelector('#importDlg .impmain');
+    },
+    pairs: [
+      ['dialog', '#liveDlg', '#importDlg'],
+      ['heading', '#liveDlg > header', '#importDlg > header'],
+      ['main', '.impmain', '.impmain'],
+      ['section heading', '.impmain h4', '.impmain h4'],
+      ['note', '.impmain .lvnote', '.impmain .lvnote'],
+      ['field label', '.impmain .lvf > span', '.impmain .lvf > span'],
+      ['select', '.impmain .lvf .sel', '.impmain .lvf .sel'],
+      ['rate options', '.imprate', '.imprate'],
+      ['rate option', '.imprate .radio', '.imprate .radio'],
+      ['column list', '.implist', '.implist'],
+      ['column row', '.impcol', '.impcol:not(.head)'],
+      ['column name', '.impcol .imph', '.impcol .imph'],
+      ['name input', '.impnm', '.impnm'],
+      ['unit input', '.impun', '.impun'],
+      ['type select', '.imptype', '.imptype'],
+      ['footer', '#liveDlg > footer', '#importDlg > footer'],
+      ['button', '#liveDlg > footer .tbtn:not(.primary)', '#importDlg > footer .tbtn:not(.primary)'],
+      ['primary button', '#liveDlg > footer .tbtn.primary, #liveDlg [data-go]', '#importDlg > footer .tbtn.primary'],
+    ],
+    focus: ['#liveDlg', '#importDlg'],
   },
   {
     name: 'axis-dialog',

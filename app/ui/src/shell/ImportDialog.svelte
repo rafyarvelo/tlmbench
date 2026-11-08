@@ -186,6 +186,7 @@
     max-height: 88vh;
     overflow: hidden;
     padding: 0;
+    gap: 0;
     border-radius: 12px;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
     font-size: 13px;
@@ -382,7 +383,6 @@
   }
   .radio select.sel {
     width: auto;
-    min-height: 24px;
   }
   .radio small {
     color: var(--fg-muted);
@@ -414,7 +414,7 @@
     min-height: 30px;
   }
   .implist {
-    flex: 1 0 min(300px, 40vh);
+    flex: 1 0 min(360px, 45vh);
     min-height: 0;
     padding: 2px;
     overflow-y: auto;
@@ -423,7 +423,7 @@
   }
   .impcol {
     display: grid;
-    grid-template-columns: 10px minmax(110px, 1.3fr) minmax(90px, 1fr) 70px 90px minmax(80px, 0.8fr);
+    grid-template-columns: 10px minmax(110px, 1.3fr) minmax(90px, 1fr) 70px 108px minmax(80px, 0.8fr);
     gap: 6px;
     align-items: center;
     padding: 3px 6px;
@@ -458,16 +458,17 @@
     border-radius: 4px;
     background: var(--raised);
     color: var(--fg);
-    font: 12px var(--font-ui);
+    font: 12px var(--font-data);
   }
-  .impun {
-    font-family: var(--font-data);
+  .impcatin {
+    font-family: var(--font-ui);
   }
   .impcatin:disabled {
     opacity: 0.4;
   }
   .imptype {
     min-height: 24px;
+    padding: 0 8px;
     font-size: 12px;
   }
   .impempty {

@@ -26,8 +26,8 @@ app look and feel most unlike the prototype:
 - Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
 
 Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 187 ·
-Partial 30 · Different 12 · Missing 53** (282 rows; counts as of Nov 8, during step 4.2). Of the missing rows, 2 belong to Phase 3 (the shell port
-that was due), 15 to Phase 4 and 34 to Phase 5. A row tagged with several phases counts under its first.
+Partial 32 · Different 11 · Missing 52** (282 rows; counts as of Nov 8, during step 4.3). Of the missing rows, 2 belong to Phase 3 (the shell port
+that was due), 14 to Phase 4 and 34 to Phase 5. A row tagged with several phases counts under its first.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
 looks or behaves otherwise; this includes app-only items. **Missing** is absent from the app. Phase is the roadmap
@@ -82,7 +82,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Window title | "• TelemetryBench" while a layout has unsaved changes (`3578`) | The tab in front's name, "• " while its layout has unsaved changes (`App.svelte`) | Ported | 4 | Fixed Nov 8 (step 4.1). |
 | Scrim behind dialogs | rgba(3,5,8,.45), fades in over 220 ms (`233`) | Same (`style.css` `.scrim`) | Ported | 3 | Fixed Nov 3. |
 | Narrow window | Under 980 px the sidebars wrap onto their own full-width rows (`85`) | Under 980 px the sidebars take rows of their own above and below the panes | Ported | 3 | Fixed Nov 3. |
-| Drop a file on the window | Opens the CSV import dialog | Opens the first dropped path (`app.ts:2031-2035`) | Different | 4 | The app has no import step; see section 8. |
+| Drop a file on the window | Opens the CSV import dialog | Opens the import dialog for a CSV whose header has no saved profile, else opens each dropped file | Partial | 4 | Fixed Nov 8 (step 4.3). "All files in one tab" waits for several files in a tab (5.6). |
 
 ## 2. Explorer
 
@@ -102,7 +102,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 | Show files that can't be opened | Switch with "(N hidden)" (`1599`, `2307`) | Explorer ⋯ → Show files that can't be opened (N hidden); dimmed, they don't open (`list_folder` reports `openable`) | Ported | 3 | Fixed Nov 3. |
 | Selected file row | Select first: actions beside the name (open, open only this) (`2335`) | Select first: Open and Only this beside the name | Ported | 3 | Fixed Nov 3. |
 | Open a file | Double-click or Enter | Same (`shell/Explorer.svelte:136-137`) | Ported | 3 | |
-| File right-click menu | Open, Open only this, Channel prefix…, Format descriptor…, Compare with…, Close all files (`9416-9445`) | Open, Open only this, Close this file, Close all files | Partial | 3 (descriptor: 4; prefix, compare: 5) | Fixed Nov 3 except Channel prefix… (5), Format descriptor… (4), Compare with… (5). |
+| File right-click menu | Open, Open only this, Channel prefix…, Format descriptor…, Compare with…, Close all files (`9416-9445`) | Open, Open only this, Import settings…, Close this file, Close all files | Partial | 3 (descriptor: 4; prefix, compare: 5) | Fixed Nov 3 except Channel prefix… (5), Format descriptor… (4), Compare with… (5). |
 | Multi-select | Ctrl/Cmd-click adds, Shift-click a range, Ctrl+A all, Esc clears; files, channels or categories (`5826-5863`, `5899-5903`) | Ctrl/Cmd-click adds, Shift-click a range, Ctrl+A all channels, Esc clears; channels, and files (a bar with Open and Close) | Partial | 3 | Fixed Nov 8 (step 4.1). Categories aren't multi-selectable; several files in one tab is step 5.6. |
 | Selection bar | At Explorer's foot for several rows: Add to pane N, Chart, Table, Remove, Derive… (`5887-5898`) | At Explorer's foot: Add to pane N, Chart, Table, Remove (also for one selected channel) | Partial | 3 (Derive: 5) | Fixed Nov 3 except Derive… (5). |
 | Channel tree | File → category → channel; categories show "plotted / total" (`5779-5786`) | File → category → channel; categories (the start of the name before the first `_` or `.`, shared by two or more channels, else "other") show "plotted / total" and fold shut (saved) | Partial | 3 | Fixed Nov 3 with name-prefix categories, which the owner approved as the default; moving a channel to another category and New category… (right-click) are missing. |
@@ -326,7 +326,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Save the view as an image… | Every pane or the selected one; PNG 1× or 2×, SVG (`openExportImage 10468`) | — | Missing | 4 | Proposed decision. |
 | Export to HTML… | `openExportHtml 10395` | — | Missing | 5 | |
 | Descriptor form | Framing, byte order, header, time, fields table, hex preview, decoded rows, Find frames, TOML beside it (`openDescDlg 9621-9820`) | — | Missing | 4 | Proposed decision, awaiting review. |
-| CSV import dialog | Time column and unit, data rate, columns (name, unit, type, category), profiles, several files grouped (`8961-9472`) | CSVs open straight away | Missing | 4 (profiles: 5) | The design doesn't phase the import step. |
+| CSV import dialog | Time column and unit, data rate, columns (name, unit, type, category), profiles, several files grouped (`8961-9472`) | `ImportDialog.svelte`: time column and unit, the four rates, columns (name, unit, type, category), files grouped by header, where they go (own tabs, Explorer only), a near profile offered; the core applies the saved profile | Partial | 4 (profiles' recipes: 5) | Built Nov 8 (step 4.3). Owner, Nov 8: a profile applies silently only for an exact header (order ignored); a header sharing 60% or more of its names is offered, never applied unasked; Explorer only keeps the settings and later opens skip the dialog (Import settings… in the file menu shows them again). Left: Panes, Channel prefix and Derived channels (5.1, 5.6), text columns as states (5.2), one tab for several files (5.6), Import all (below). |
 | Import a local folder | Import all, Import selected (`importLocal 9813`) | — | Missing | 4 | |
 | Open together, Compare | `openFilesTogether 3126`, `compareFiles 2221` | — | Missing | 5 | |
 | Channel prefix… | `9439` | — | Missing | 5 | |

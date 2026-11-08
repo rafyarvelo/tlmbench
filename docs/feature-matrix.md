@@ -26,7 +26,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Packet files: sync, length, checksum, zstd/lz4/gzip, cached index | v1 | sim | ◐ (core and CLI; not opened in the app) | 4.3 |
 | Packet types: one recording per type (`flight.bin · gps`) | v1 | ✗ | ◐ (core and CLI) | 4.3 |
 | Packets without a length field | v1 | ✓ | ✗ | 4.3 |
-| Descriptor `files = [...]` name patterns | v1 | ✓ | ✗ | 4.3 |
+| Descriptor `files = [...]` name patterns | v1 | ✓ | ◐ (core and CLI find descriptors in `.tlmbench/decoders/` and the app cache's `decoders/`; the app's open path uses it) | 4.3 |
 | Bitfields in descriptors | v1 | ✗ | ✗ | 4.3 |
 | Time bases: column, rate, counter, arrival, index | v1 | sim | ◐ (column, rate, index; no counter wraparound; arrival for live) | 4.3 |
 | Time going backwards flagged in the index | v1 | ✗ | ✗ (an error, as decided for now) | 5.10 |
@@ -89,7 +89,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Start page: open folder, open recording, connect, recent recordings | v1 | ✓ | ✓ | |
 | Start page: recent sessions (one per folder), saved connections, layouts | v1 | ✓ | ◐ (sessions per folder; no saved connections or layouts) | 5.5 |
 | Window title follows the tab | — | ✓ | ✓ |  |
-| Drop a file on the window | v1 | ✓ | ◐ (opens; no import step) | 4.3 |
+| Drop a file on the window | v1 | ✓ | ◐ (a CSV without a saved profile asks first; several files in one tab wait for 5.6) | 4.3 |
 | Settings: Basic and All, ⓘ explanations, Reset, Reset UI layout | v1 | ✓ | ✓ (rows for later steps' features come with them) |  |
 | Settings: time formats Samples and Wall clock | v1 | ✓ | ✓ |  |
 | Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ✗ | 5.1, 5.2 |
@@ -199,8 +199,8 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
-| CSV import dialog (time column, rate, columns, types, categories) | v1 | ✓ | ✗ | 4.3 |
-| Import profiles keyed by the header (with recipes and a layout) | v1 | ✓ | ✗ | 4.3, 5.1 |
+| CSV import dialog (time column, rate, columns, types, categories) | v1 | ✓ | ◐ (built; Panes, prefix and derived channels wait for 5.1 and 5.6, one tab for several files for 5.6) | 4.3 |
+| Import profiles keyed by the header (with recipes and a layout) | v1 | ✓ | ◐ (core and app: names, units, types, categories, time, rate, kept in the app cache; recipes and layout wait for 5.1) | 4.3, 5.1 |
 | Descriptor form on an unclaimed binary file (preview, Find frames, TOML) | v1 | ✓ | ✗ | 4.3 |
 | Layouts by channel name in app data; Save, Save as, Revert, Delete | v1 | ✓ | ✓ | |
 | Shared views in `.tlmbench/views/`; Share with this folder; Export file | v1 | ✓ | ✓ | |
