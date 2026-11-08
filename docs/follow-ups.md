@@ -42,7 +42,8 @@ When needed:
   recording every channel shares its times, so a table has nothing to hold.
 - **Panes of values keep their view** under the top bar's Charts, Tables, Both; a new pane doesn't follow the last
   choice (the prototype's `newMode`).
-- **Copy as CSV** is open: see the question to the owner (what is copied).
+- **Copy as CSV** takes at most 100,000 rows, time as nanoseconds (the owner accepted the recommendation, Nov 8). A
+  bigger copy would need a save-to-file path (an export).
 
 ## Phase 1 loose ends
 

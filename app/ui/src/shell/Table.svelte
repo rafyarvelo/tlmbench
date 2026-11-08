@@ -17,7 +17,7 @@
   import { live } from '../live.svelte';
   import { settings } from '../settings.svelte';
   import { ICON } from '../icons';
-  import { colorIdx, fmtCh, learnDecimals, newPaneWith, setTable, sortLocked, stack } from '../stack.svelte';
+  import { colorIdx, fmtCh, learnDecimals, newPaneWith, note, setTable, sortLocked, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -375,12 +375,48 @@
     { label: 'Set cursor A here', run: () => actions.placeCursor('A', t), data: { rm: 'A' } },
     { label: 'Set cursor B here', run: () => actions.placeCursor('B', t), data: { rm: 'B' } },
     { label: 'Clear cursors', run: () => actions.clearCursors(), disabled: ui.view.A == null && ui.view.B == null, data: { rm: 'clear' } },
+    { label: 'Copy the rows as CSV', kbd: '⌘C', run: () => void copyCsv(), data: { rm: 'copy' } },
     { sep: true },
     { label: 'Centre the charts on this row', run: () => actions.centreOn(t), data: { rm: 'centre' } },
   ];
 
+  /** The most rows a copy takes. */
+  const COPY_MAX = 100_000;
+  const csvCell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+
+  /** Copies the table's rows, in its sorted and filtered order, as CSV: Sample, time (ns) and the selected columns (every
+   *  shown one when none is selected). */
+  async function copyCsv() {
+    const f = ui.view.file;
+    if (f == null) return;
+    const chs = chosen.length ? channels.filter((c) => chosen.includes(c)) : channels;
+    const total = Math.min(count, COPY_MAX);
+    const lines = [['sample', 'time_ns', ...chs.map((c) => `${ui.channels[c]?.name ?? c}${ui.channels[c]?.unit ? ` (${ui.channels[c]!.unit})` : ''}`)].map(csvCell).join(',')];
+    for (let at = 0; at < total; ) {
+      const buf = await invoke<ArrayBuffer>('rows', { file: f, channels: chs, span: { t0: ui.view.t0, t1: ui.view.t1 }, offset: at, limit: Math.min(10_000, total - at), query: querying ? (q?.token ?? null) : null });
+      const r = decodeRows(buf);
+      if (!r.times.length) break;
+      for (let k = 0; k < r.times.length; k++) {
+        const n = r.index ? Number(r.index[k]) : r.first + k;
+        lines.push([String(n), String(r.times[k]), ...r.values.map((v) => (Number.isNaN(v[k]) ? '' : String(v[k])))].join(','));
+      }
+      at += r.times.length;
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join('\n') + '\n');
+      note(`Copied ${(lines.length - 1).toLocaleString()} rows as CSV${count > COPY_MAX ? ` (the first ${COPY_MAX.toLocaleString()} of ${count.toLocaleString()})` : ''}.`);
+    } catch {
+      note('The clipboard was not available.');
+    }
+  }
+
   /** The keys move the window a row or a page at a time. */
   function keys(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c' && !(e.target as HTMLElement).closest('input') && !window.getSelection()?.toString()) {
+      e.preventDefault();
+      void copyCsv();
+      return;
+    }
     if (!scroller || (e.target as HTMLElement).closest('input, button, [role="button"]')) return;
     const page = Math.max(1, Math.floor((viewH - HEAD_H) / ROW_H) - 1);
     const by = ({ ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page } as Record<string, number>)[e.key];

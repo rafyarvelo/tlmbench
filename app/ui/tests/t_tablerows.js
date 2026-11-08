@@ -66,4 +66,19 @@ run('tablerows', async ({ p, check, text, until, wait }) => {
   check('End goes to the last row', (await top()) > 100000, await top());
   await p.keyboard.press('Home');
   check('Home goes back', (await top()) === 0, await top());
+
+  // copy as CSV: the rows of the list, capped at 100k, as the shown columns (or the selected ones)
+  await p.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); });
+  await p.click(`${T} [data-row="3"]`, { button: 'right' });
+  await p.click('.rowmenu [data-rm="copy"]');
+  check('Copy the rows as CSV copies the rows with a header', await until(() => window.__copied && window.__copied.split('\n').length > 100), await p.evaluate(() => window.__copied?.split('\n').slice(0, 3)));
+  const lines = (await p.evaluate(() => window.__copied)).split('\n');
+  check('sample, time in ns and a column per channel', lines[0] === 'sample,time_ns,accel_x (g),accel_y (g)' && /^\d+,\d+,[-\d.]+,[-\d.]+$/.test(lines[1]), lines.slice(0, 2));
+  check('and says what it did', await until((n) => document.body.innerText.includes(`Copied ${n} rows as CSV`), (lines.length - 2).toLocaleString()), lines.length);
+  await p.evaluate(() => { window.__copied = null; });
+  await p.click(`${T} [data-colmenu="c1"]`);
+  await p.click('.colmenu [data-hm="select"]');
+  await p.focus(`${T} .tscroll`);
+  await p.keyboard.press(process.platform === 'darwin' ? 'Meta+c' : 'Control+c');
+  check('⌘C copies just the selected columns', await until(() => window.__copied?.startsWith('sample,time_ns,accel_y (g)\n')), await p.evaluate(() => window.__copied?.slice(0, 60)));
 });
