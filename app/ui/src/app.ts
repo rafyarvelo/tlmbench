@@ -945,6 +945,77 @@ function drawHover(ctx: CanvasRenderingContext2D, r: Rect, i: number, chans: num
   }
 }
 
+/** What the overview drew last, per channel: columns with values, and those whose band has a height (for the tests). */
+const ovDrawn: { ch: number; cols: number; band: number }[] = [];
+
+/** The overview as the prototype draws it: per pixel column each channel's min/max band, filled, with its middle as
+ *  a solid line on top (a smooth channel's band is a hairline, so the line keeps it visible); each channel scaled to
+ *  its own range. */
+function drawOverviewBands(ctx: CanvasRenderingContext2D, r: Rect, ov: Layer, t0: bigint, span: number): void {
+  const n = ov.traces.size;
+  ovDrawn.length = 0;
+  const origin = Number(ov.originNs - t0);
+  const cols = Math.max(1, Math.round(r.w));
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.clip();
+  for (const [ch, t] of ov.traces) {
+    if (!(t.yMax >= t.yMin)) continue;
+    // each column's lowest and highest value (NaN: nothing there)
+    const lo = new Float64Array(cols).fill(NaN);
+    const hi = new Float64Array(cols).fill(NaN);
+    for (let k = 0; k < t.x.length; k++) {
+      const v = t.y[k];
+      if (!Number.isFinite(v)) continue;
+      const c = Math.floor(((origin + t.x[k] * ov.xScaleNs) / span) * cols);
+      if (c < 0 || c >= cols) continue;
+      if (!(lo[c] <= v)) lo[c] = v;
+      if (!(hi[c] >= v)) hi[c] = v;
+    }
+    const range = t.yMax - t.yMin || 1;
+    const Y = (v: number) => r.y + r.h * (0.94 - (0.88 * (v - t.yMin)) / range);
+    ovDrawn.push({ ch, cols: lo.filter((v) => !Number.isNaN(v)).length, band: lo.filter((v, c) => hi[c] > v).length });
+    const X = (c: number) => r.x + ((c + 0.5) / cols) * r.w;
+    const color = colorOf(ch);
+    // the band: one closed shape per run of columns with values
+    ctx.fillStyle = css(color, n > 1 ? 0.32 : 0.45);
+    ctx.beginPath();
+    for (let c = 0; c < cols; ) {
+      if (Number.isNaN(lo[c])) {
+        c++;
+        continue;
+      }
+      const start = c;
+      ctx.moveTo(X(c), Y(hi[c]));
+      while (c + 1 < cols && !Number.isNaN(lo[c + 1])) ctx.lineTo(X(++c), Y(hi[c]));
+      for (let k = c; k >= start; k--) ctx.lineTo(X(k), Y(lo[k]));
+      ctx.closePath();
+      c++;
+    }
+    ctx.fill();
+    // the middle
+    ctx.strokeStyle = css(color, n > 1 ? 0.85 : 0.95);
+    ctx.lineWidth = 1.25;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let pen = false;
+    for (let c = 0; c < cols; c++) {
+      if (Number.isNaN(lo[c])) {
+        pen = false;
+        continue;
+      }
+      const [x, y] = [X(c), Y((lo[c] + hi[c]) / 2)];
+      if (pen) ctx.lineTo(x, y);
+      else ctx.moveTo(x, y);
+      pen = true;
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.lineWidth = 1;
+}
+
 /** The channels the overview draws: the one it is pinned to, else the selected pane's. */
 function ovChans(): number[] {
   const n = state.file?.info.channels.length ?? 0;
@@ -959,15 +1030,7 @@ function drawOverview(ctx: CanvasRenderingContext2D, tk: Record<string, string>)
   const [t0, t1] = [f.first, f.last + 1n];
   const span = Number(t1 - t0);
   const ov = state.ov;
-  if (ov && span > 0) {
-    const x: Axis = { a: (2 * ov.xScaleNs) / span, b: (2 * Number(ov.originNs - t0)) / span - 1 };
-    for (const [ch, t] of ov.traces) {
-      if (!(t.yMax >= t.yMin)) continue;
-      const pad = (t.yMax - t.yMin) * 0.08 || 1;
-      const [lo, hi] = [t.yMin - pad, t.yMax + pad];
-      renderer.draw(t.gl, x, { a: 2 / (hi - lo), b: (-2 * lo) / (hi - lo) - 1 }, rgba(colorOf(ch), 0.8), r);
-    }
-  }
+  if (ov && span > 0) drawOverviewBands(ctx, r, ov, t0, span);
   drawBuilding(ctx, r, false, t0, t1);
   drawPlayhead(ctx, r, tk, t0, t1);
   // the window on the current view
@@ -2531,6 +2594,8 @@ export const gateApi = {
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
   /** How many sample markers each pane drew last. */
   markers: () => [...markers],
+  /** The overview's channels as last drawn: columns with values and those with a band. */
+  overview: () => ovDrawn.map((d) => ({ ...d })),
 };
 
 if (settings.folder) void showFolder(settings.folder);

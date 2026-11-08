@@ -1,4 +1,4 @@
-// The overview: what it shows (the selected pane, or one channel pinned), its time range, the switch for showing it on
+// The overview: what it shows (the selected pane, or one channel pinned) as a min/max band per channel with its middle, its time range, the switch for showing it on
 // top, and gestures by mouse mode (Box drags a new view and a click centres; Cursors places A and B; Pan drags the
 // window; the wheel zooms).
 import { run } from './lib.js';
@@ -9,6 +9,9 @@ run('overview', async ({ p, check, wait, text, until, settingsLS, visible }) => 
   const ov = () => p.evaluate(() => { const r = document.querySelector('.ovplot').getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, w: r.width }; });
 
   check('it follows the selected pane', /pane 1 · 2 channels/.test(await text('.ovhead')), await text('.ovhead'));
+  // drawn as the prototype's: per column a min/max band with its middle
+  const drawn = await until(() => { const d = window.__tlmApp.overview(); return d.length === 2 && d.every((c) => c.cols > 500) && d; });
+  check('each channel drawn across the overview, a band per column', drawn && drawn.every((c) => c.band > c.cols * 0.5), drawn);
   check('and shows its time range', /\d.* – .*\d/.test(await text('[data-ovrange]')), await text('[data-ovrange]'));
   await p.selectOption('[data-ovch]', '3');
   check('it can be pinned to one channel, saved', (await settingsLS()).overviewCh === 3 && (await p.$eval('[data-ovch]', (e) => e.selectedOptions[0].textContent)) === 'pitch');
