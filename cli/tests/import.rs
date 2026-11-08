@@ -63,3 +63,27 @@ fn a_bad_profile_is_a_configuration_error() {
     let out = run(cache.path(), &["info", "--profile", profile.to_str().unwrap(), file.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(3));
 }
+
+#[test]
+fn a_descriptor_is_found_by_its_file_patterns() {
+    let (dir, cache) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let decoders = dir.path().join(".tlmbench/decoders");
+    std::fs::create_dir_all(&decoders).unwrap();
+    std::fs::write(
+        decoders.join("bench.toml"),
+        "schema = 1\nfiles = [\"bench_*.bin\"]\nrecord_size = 4\n\
+         [time]\nsource = \"rate\"\nrate_hz = 100.0\n\
+         [[fields]]\nname = \"v\"\ntype = \"i16\"\noffset = 0\n[[fields]]\nname = \"w\"\ntype = \"i16\"\noffset = 2\n",
+    )
+    .unwrap();
+    let bin = dir.path().join("bench_01.bin");
+    std::fs::write(&bin, [1u8, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0]).unwrap();
+    let out = run(cache.path(), &["info", "--json", bin.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!((v["samples"].as_u64(), v["channels"][1]["name"].as_str()), (Some(3), Some("w")));
+    // a file the patterns don't name stays unclaimed
+    let other = dir.path().join("other.bin");
+    std::fs::write(&other, [1u8, 0, 2, 0]).unwrap();
+    assert_eq!(run(cache.path(), &["info", other.to_str().unwrap()]).status.code(), Some(2));
+}

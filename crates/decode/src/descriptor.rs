@@ -547,6 +547,45 @@ fn validate_layout(
     }
 }
 
+/// True when `name` matches `pattern`, where `*` stands for any text (including none). Names are compared
+/// as written (case matters).
+pub fn name_matches(pattern: &str, name: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    let (first, rest) = parts.split_first().expect("split yields at least one part");
+    let Some(mut tail) = name.strip_prefix(first) else { return false };
+    let Some((last, middle)) = rest.split_last() else { return tail.is_empty() };
+    for m in middle {
+        match tail.find(m) {
+            Some(i) => tail = &tail[i + m.len()..],
+            None => return false,
+        }
+    }
+    tail.len() >= last.len() && tail.ends_with(last)
+}
+
+/// The descriptor for a file, found by the `files = [...]` patterns of the descriptors in the folder's
+/// `.tlmbench/decoders/` and then in the app cache's `decoders/` (`cache_root`): the first match in name order,
+/// the folder's before the cache's. A descriptor that doesn't parse is skipped.
+pub fn discover(path: &std::path::Path, cache_root: &std::path::Path) -> Option<std::path::PathBuf> {
+    let name = path.file_name()?.to_str()?;
+    let folder = path.parent().map(|p| p.join(".tlmbench").join("decoders"));
+    for dir in folder.into_iter().chain([cache_root.join("decoders")]) {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let mut files: Vec<_> =
+            rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        files.sort();
+        for f in files {
+            let Ok(text) = std::fs::read_to_string(&f) else { continue };
+            if let Ok(d) = Descriptor::parse(&text)
+                && d.files.iter().any(|pat| name_matches(pat, name))
+            {
+                return Some(f);
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -571,6 +610,35 @@ mod tests {
         unit = "V"
         scale = 0.001
     "#;
+
+    #[test]
+    fn name_patterns() {
+        assert!(name_matches("esc_*.bin", "esc_bench_01.bin"));
+        assert!(name_matches("*.bin", ".bin"));
+        assert!(name_matches("a*b*c", "a--b--c"));
+        assert!(name_matches("flight.bin", "flight.bin"));
+        assert!(!name_matches("esc_*.bin", "esc_bench_01.bin.gz"));
+        assert!(!name_matches("esc_*.bin", "my_esc_1.bin"));
+        assert!(!name_matches("a*b*c", "a--c"));
+        assert!(!name_matches("ab*ba", "aba"));
+    }
+
+    #[test]
+    fn descriptors_are_found_by_pattern_in_the_folder_then_the_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("rec");
+        let (local, cache) = (data.join(".tlmbench/decoders"), tmp.path().join("cache"));
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::create_dir_all(cache.join("decoders")).unwrap();
+        let toml = |pat: &str| EXAMPLE.replacen("endian", &format!("files = [\"{pat}\"]\nendian"), 1);
+        std::fs::write(cache.join("decoders/a.toml"), toml("*.bin")).unwrap();
+        std::fs::write(local.join("z.toml"), toml("esc_*.bin")).unwrap();
+        std::fs::write(local.join("bad.toml"), "not toml [").unwrap();
+        let file = |n: &str| data.join(n);
+        assert_eq!(discover(&file("esc_1.bin"), &cache), Some(local.join("z.toml")));
+        assert_eq!(discover(&file("other.bin"), &cache), Some(cache.join("decoders/a.toml")));
+        assert_eq!(discover(&file("other.dat"), &cache), None);
+    }
 
     #[test]
     fn parses_and_round_trips() {

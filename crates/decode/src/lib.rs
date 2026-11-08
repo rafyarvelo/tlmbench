@@ -88,6 +88,11 @@ pub fn open_all(path: &Path, opts: &OpenOptions) -> Result<Vec<Box<dyn Recording
     if head.starts_with(reference::MAGIC) {
         return Ok(vec![Box::new(fixed::FixedWidth::open_reference(path)?)]);
     }
+    // a descriptor whose `files` patterns name this file (in the folder's .tlmbench/decoders or the app cache)
+    let root = cache::cache_root(opts.cache_dir.as_deref());
+    if let Some(desc) = descriptor::discover(path, &root) {
+        return open_all(path, &OpenOptions { descriptor: Some(desc), ..opts.clone() });
+    }
     if parquet::looks_like_parquet(&head) {
         let root = cache::cache_root(opts.cache_dir.as_deref());
         return Ok(vec![Box::new(parquet::open_parquet(path, &root)?)]);
