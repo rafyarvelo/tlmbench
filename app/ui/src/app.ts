@@ -665,9 +665,16 @@ function draw(): void {
   let coarse = false;
   let complete = stack.panes.length > 0;
 
+  // panes scroll inside the stack: nothing is drawn outside its visible part
+  const clip = rectIn(stackEl, { l: 0, r: 0, t: 0, b: 0 });
   panes().forEach((chans, i) => {
     if (!hasPlot(i)) return;
     const r = plotRect(i);
+    if (r.y + r.h + PAD.timeLabels < clip.y || r.y - 4 > clip.y + clip.h) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(clip.x, clip.y, clip.w, clip.h);
+    ctx.clip();
     const main = state.layers[i];
     // each axis's range: what its traces hold in view, or what its settings say
     const keys: AxisKey[] = units(i).length > 1 ? ['u0', 'u1'] : ['u0'];
@@ -703,7 +710,7 @@ function draw(): void {
         const yr = ranges[keyOf.get(ch)!];
         if (!t || t.log !== !!yr.log) continue;
         const y: Axis = { a: 2 / (yr.max - yr.min), b: (-2 * yr.min) / (yr.max - yr.min) - 1 };
-        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r);
+        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r, undefined, clip);
       }
       for (const key of keys) if (axisOf(i, key).range === 'robust') drawClipped(ctx, r, main, chans.filter((ch) => keyOf.get(ch) === key), ranges[key], tk);
     }
@@ -718,6 +725,7 @@ function draw(): void {
       ctx.strokeStyle = css(tk['--accent'], b - a >= 4 ? 0.8 : 0.35);
       ctx.strokeRect(Math.round(a) + 0.5, r.y + 0.5, Math.round(b - a), r.h - 1);
     }
+    ctx.restore();
   });
   // "coarse" shows only when a coarse view stays up (a cold first paint), not when the exact one follows at once
   const now = performance.now();
@@ -2349,6 +2357,9 @@ onSetting((key) => {
   }
 });
 new ResizeObserver(scheduleResize).observe(center);
+// panes scroll in the stack when they don't fit: they move under the canvases, so draw again
+new ResizeObserver(scheduleResize).observe(stackEl);
+stackEl.addEventListener('scroll', scheduleDraw, { passive: true });
 
 void getCurrentWebview().onDragDropEvent((e) => {
   const p = e.payload;

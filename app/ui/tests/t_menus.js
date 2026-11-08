@@ -37,7 +37,10 @@ run('menus', async ({ p, check, until, wait }) => {
   await p.keyboard.press('Escape');
   check('Esc closes the folder menu', await until(() => !document.querySelector('.exmenu')));
 
-  // Add pane's ▾ is near the bottom: its menu opens above
+  // Add pane's ▾ near the bottom (enough panes that the stack scrolls, Add pane at its end): its menu opens above
+  for (let k = 0; k < 4; k++) await p.click('#addPane');
+  await p.evaluate(() => document.getElementById('stack').scrollTo(0, 1e6));
+  await wait(100);
   await p.click('#addPaneKinds');
   await wait(250);
   const k = await box('.addkinds');

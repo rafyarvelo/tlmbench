@@ -35,6 +35,7 @@
   import { settings } from '../settings.svelte';
   import { ui } from '../ui.svelte';
   import AxisDialog from './AxisDialog.svelte';
+  import AddPane from './AddPane.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
   import Table from './Table.svelte';
 
@@ -212,14 +213,14 @@
 <svelte:document onpointerdown={outside} />
 <svelte:window onkeydowncapture={key} />
 
-<div id="stack" class="stack" class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length === 4 ? 125 : 105}px">
+<div id="stack" class="stack" class:nopanes={!stack.panes.length} class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length <= 5 ? 125 : 105}px">
   {#each rows() as row, r (r)}
-    <div class="prow" class:grow={row.some((k) => stack.panes[k].mode === 'table')}>
+    <div class="prow">
       {#each columns(row) as col, c (c)}
         <div class="pcol">
           {#each col as i (i)}
             {@const p = stack.panes[i]}
-            <section class="pane" class:grow={p.mode === 'table'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => zoneAt?.i === i && (zoneAt = null)} ondrop={(e) => paneDrop(e, i)} role="presentation">
+            <section class="pane" class:tablemode={p.mode === 'table'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => zoneAt?.i === i && (zoneAt = null)} ondrop={(e) => paneDrop(e, i)} role="presentation">
               <div
                 class="phead"
                 use:fitChips={i}
@@ -343,6 +344,8 @@
       <button class="btn primary" id="addFirst" onclick={() => addPaneBelow(0)}>{@html ICON.plus}Add pane</button>
     </div>
   {/if}
+  <!-- in the stack, as the prototype's: it scrolls with the panes, and a channel dropped on it makes a new pane -->
+  <AddPane />
 </div>
 
 {#if views}
@@ -373,16 +376,12 @@
 {/if}
 
 <style>
-  .stack {
-    display: flex;
-    flex-direction: column;
+  .stack.nopanes {
     flex: 1;
-    min-height: 0;
   }
   .prow {
     display: flex;
-    flex: 0 1 auto;
-    min-height: 0;
+    flex: none;
     gap: 8px;
   }
   .pcol {
@@ -391,9 +390,10 @@
     flex-direction: column;
     min-width: 0;
   }
-  .prow.grow,
-  .pane.grow {
-    flex: 1 1 0;
+  /* a table pane: the prototype's height, the chart's and 96 px, 240 px at least */
+  .pane.tablemode :global(.ptable) {
+    flex: none;
+    height: max(240px, calc(var(--ph) + 96px));
   }
   .rgap {
     position: relative;

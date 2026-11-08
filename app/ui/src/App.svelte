@@ -11,7 +11,6 @@
   import TopBar from './shell/TopBar.svelte';
   import Transport from './shell/Transport.svelte';
   import LiveStrip from './shell/LiveStrip.svelte';
-  import AddPane from './shell/AddPane.svelte';
   import Connect from './shell/Connect.svelte';
   import { live } from './live.svelte';
   import { play } from './play.svelte';
@@ -105,7 +104,6 @@
         {/if}
         <div id="ovTop" class="ovslot"></div>
         <PaneStack />
-        <AddPane />
         <div id="ovBottom" class="ovslot"></div>
         <canvas id="gl" class="layer"></canvas>
         <canvas id="overlay" class="layer"></canvas>

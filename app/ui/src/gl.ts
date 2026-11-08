@@ -144,16 +144,26 @@ export class Renderer {
     t.bufs.forEach((b) => this.gl.deleteBuffer(b));
   }
 
-  /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. `width` is in CSS pixels. */
-  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = LINE_WIDTH): void {
+  /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. `width` is in CSS pixels.
+   *  Nothing is drawn outside `clip` (the stack's visible part, when panes scroll). */
+  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = LINE_WIDTH, clip?: Rect): void {
     if (!t.runs.length || rect.w <= 0 || rect.h <= 0) return;
     const gl = this.gl;
     const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
     const [vx, vw, vh] = [Math.round(rect.x * dpr), Math.round(rect.w * dpr), Math.round(rect.h * dpr)];
     const vy = this.canvas.height - Math.round(rect.y * dpr) - vh;
+    // the scissor: the rect, cut to the clip
+    let [sx, sy, sw, sh] = [vx, vy, vw, vh];
+    if (clip) {
+      const top = Math.max(rect.y, clip.y);
+      const bottom = Math.min(rect.y + rect.h, clip.y + clip.h);
+      if (bottom <= top) return;
+      sh = Math.round(bottom * dpr) - Math.round(top * dpr);
+      sy = this.canvas.height - Math.round(bottom * dpr);
+    }
     gl.viewport(vx, vy, vw, vh);
     gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(vx, vy, vw, vh);
+    gl.scissor(sx, sy, sw, sh);
     gl.useProgram(this.prog);
     gl.uniform2f(this.uX, x.a, x.b);
     gl.uniform2f(this.uY, y.a, y.b);
