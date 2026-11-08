@@ -117,7 +117,7 @@ interface Layer {
   /** Samples after this time weren't summarized when it was drawn (null: all were). */
   builtUntil: bigint | null;
   /** Each channel's trace; `y` holds log10 values when it was uploaded for a log axis (`log`). */
-  traces: Map<number, { gl: GlTrace; x: Float32Array; y: Float32Array; log: boolean; yMin: number; yMax: number; coarse: boolean; points: number }>;
+  traces: Map<number, { gl: GlTrace; x: Float32Array; y: Float32Array; log: boolean; yMin: number; yMax: number; coarse: boolean; points: number; raw: boolean }>;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -268,6 +268,7 @@ function upload(layer: Layer | null, reply: Reply, logOf: (ch: number) => boolea
       yMax,
       coarse: t.coarse,
       points: t.x.length,
+      raw: t.kind === 'raw',
     });
   }
   layer?.traces.forEach((t) => renderer.free(t.gl));
@@ -712,6 +713,7 @@ function draw(): void {
         const y: Axis = { a: 2 / (yr.max - yr.min), b: (-2 * yr.min) / (yr.max - yr.min) - 1 };
         renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r, undefined, clip);
       }
+      markers[i] = chans.length === 1 ? drawMarkers(ctx, r, main, chans[0], ranges[keyOf.get(chans[0])!], tk) : 0;
       for (const key of keys) if (axisOf(i, key).range === 'robust') drawClipped(ctx, r, main, chans.filter((ch) => keyOf.get(ch) === key), ranges[key], tk);
     }
     drawBuilding(ctx, r, i === 0);
@@ -801,6 +803,39 @@ function drawClipped(ctx: CanvasRenderingContext2D, r: Rect, layer: Layer, chans
       ctx.fill();
     }
   }
+}
+
+/** A chart of one channel marks each sample once they are more than this many pixels apart (raw samples only). */
+const MARKER_PX = 6;
+/** How many markers each pane drew last (for the tests). */
+const markers: number[] = [];
+
+/** Each sample as a small ring, as the prototype's, when a one-channel chart is zoomed in that far. */
+function drawMarkers(ctx: CanvasRenderingContext2D, r: Rect, layer: Layer, ch: number, ax: YAxis | undefined, tk: Record<string, string>): number {
+  const t = layer.traces.get(ch);
+  if (!t?.raw || !ax || !(ax.max > ax.min)) return 0;
+  const span = Number(state.t1 - state.t0);
+  const origin = Number(layer.originNs - state.t0);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let k = 0; k < t.x.length; k++) {
+    const x = r.x + ((origin + t.x[k] * layer.xScaleNs) / span) * r.w;
+    if (x < r.x - 3 || x > r.x + r.w + 3 || !Number.isFinite(t.y[k])) continue;
+    xs.push(x);
+    ys.push(r.y + r.h - ((t.y[k] - ax.min) / (ax.max - ax.min)) * r.h);
+  }
+  if (!xs.length || r.w / xs.length <= MARKER_PX) return 0;
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = colorOf(ch);
+  ctx.fillStyle = tk['--plot-bg'];
+  for (let k = 0; k < xs.length; k++) {
+    ctx.beginPath();
+    ctx.arc(xs[k], ys[k], 2.5, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1;
+  return xs.length;
 }
 
 /** A coarse view replaced sooner than this isn't labelled. */
@@ -2441,6 +2476,8 @@ export const gateApi = {
   sel: () => stack.sel,
   mode: () => settings.mode,
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
+  /** How many sample markers each pane drew last. */
+  markers: () => [...markers],
 };
 
 if (settings.folder) void showFolder(settings.folder);
