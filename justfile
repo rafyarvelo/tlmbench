@@ -43,6 +43,14 @@ test: ui
 bench *args:
     if [ -f Cargo.toml ]; then cargo bench --workspace {{args}}; else echo "bench: no Cargo workspace yet, skipping"; fi
 
+# Save the medians of the last `just bench` with the commit (bench/history.json)
+bench-record:
+    python3 ci/bench.py record
+
+# Compare the last `just bench` with the last recorded run; fails if anything is over 10% slower
+bench-compare:
+    python3 ci/bench.py compare
+
 # Run every benchmark once, untimed, so CI knows they still build and run
 bench-smoke: ui
     if [ -f Cargo.toml ]; then cargo test --workspace --benches; else echo "bench-smoke: no Cargo workspace yet, skipping"; fi
