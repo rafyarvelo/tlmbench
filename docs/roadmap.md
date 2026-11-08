@@ -221,7 +221,7 @@ Things the app does differently on purpose. Only the owner adds to this list.
 | Step | State |
 | --- | --- |
 | 4.1 Shell parity close-out | done Nov 8; the owner's three decisions are built or settled (Open folder reveals only, local `just bench-record`/`bench-compare`, the building hatch kept), and the parity harness's remaining differences are in `docs/follow-ups.md` |
-| 4.2 Tables complete | not started (core sort and filter not started; the table pane, row windows and links are done) |
+| 4.2 Tables complete | in progress: done are the core's sort and filter (`tlmbench-core::table`, `tlmbench query rows`, 10M rows sort in 0.4–1.1 s) and in the app the header sort, the filter row, Clear sort and filters and saving them with the layout (`t_tablequery`); left are the filter strip (In view / Whole file, ▲▼, Apply to charts, Save as rule), marks and the rows band on the charts, Columns, Autofit, header ▾ menu, pinning, column selection, copy as CSV, row hover and right-click, the cursor line, slower channels, keyboard, the lock setting and the top-bar view switch |
 | 4.3 Import and formats in the app | not started (core formats done; the descriptor form is accepted) |
 | 4.4 Export, layouts and Gate 4 | not started (`convert` done in the CLI; Export accepted) |
 | 5.1 – 5.10 | not started |

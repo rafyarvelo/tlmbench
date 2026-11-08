@@ -154,10 +154,10 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Row click A (Shift B), double-click centres, Go to A/B | v1 | ✓ | ✓ | |
 | Column widths and the table's height saved with the layout | v1 | ✓ | ✓ | |
 | Slower channels hold, dimmed where unchanged; gaps flagged | v1 | ✓ | ✗ | 4.2 |
-| Sort (multi-column) and filter in the core, with progress | v1 | ✓ | ✗ | 4.2 |
-| Filter row (`> 1.5`, `1..2`, `blank`, and/or), filter strip (In view / Whole file, ▲▼) | v1 | ✓ | ✗ | 4.2 |
+| Sort (multi-column) and filter in the core, with progress | v1 | ✓ | ✓ (`tlmbench query rows` too) | 4.2 |
+| Filter row (`> 1.5`, `1..2`, `blank`, and/or), filter strip (In view / Whole file, ▲▼) | v1 | ✓ | ◐ (filter row done; the strip is next) | 4.2 |
 | Save as rule (from the filter strip) | v1 | ✓ | ✗ | 5.3 |
-| Clear sort and filters, Columns list, Autofit, header ▾ menu | v1 | ✓ | ✗ | 4.2 |
+| Clear sort and filters, Columns list, Autofit, header ▾ menu | v1 | ✓ | ◐ (Clear sort and filters done) | 4.2 |
 | Pinned columns, column selection, copy a selection as CSV | v1 | ◐ (no copy) | ✗ | 4.2 |
 | Row hover, row right-click, cursor line in the table | v1 | ✓ | ✗ | 4.2 |
 | Status line (rows, rate, how slower channels show) | v1 | ✓ | ◐ | 4.2 |
