@@ -162,17 +162,32 @@ async fn profile_save(header: Vec<String>, profile: ImportProfile, files: State<
         .map_err(|e| e.to_string())?
 }
 
+/// The packet types of the descriptor that names `path` (each opens as its own recording); none when the file has no
+/// packet types.
+#[tauri::command]
+async fn packet_parts(path: String, files: State<'_, Files>) -> Result<Vec<String>, String> {
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        let Some(found) = tlmbench_decode::descriptor::discover(Path::new(&path), &root) else { return Vec::new() };
+        let d = tlmbench_decode::descriptor::Descriptor::load(&found).ok();
+        d.map(|d| d.packet_types.into_iter().map(|t| t.name).collect()).unwrap_or_default()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn open(
     path: String,
     profile: Option<ImportProfile>,
+    part: Option<String>,
     progress: Channel<Progress>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
     let store = files.store.clone();
     let o = spawn_blocking(move || {
         let profile = profile.or_else(|| saved_profile(store.root(), Path::new(&path)));
-        store.with_profile(profile).open(Path::new(&path), None)
+        store.with_profile(profile).open_part(Path::new(&path), None, part.as_deref())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1292,6 +1307,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open,
+            packet_parts,
             import_inspect,
             profile_save,
             usage,

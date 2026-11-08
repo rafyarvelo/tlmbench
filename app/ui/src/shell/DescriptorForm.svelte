@@ -398,6 +398,11 @@
   .impbar .muted {
     font-size: 12px;
   }
+  .impbar .linkbtn {
+    padding: 0;
+    color: var(--accent);
+    font-size: 12px;
+  }
   .dscfields,
   .dschex,
   .dsctab,
@@ -449,14 +454,33 @@
     opacity: 0.4;
   }
   .dscf .ib {
-    border: 0;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid transparent;
+    border-radius: 4px;
     background: transparent;
     color: var(--fg-muted);
     font-size: 15px;
     cursor: pointer;
+    opacity: 0;
+  }
+  .dscf:hover .ib,
+  .dscf:focus-within .ib {
+    opacity: 1;
   }
   .dscf .ib:hover {
+    border-color: var(--border);
+    background: var(--surface);
     color: var(--fg);
+  }
+  @media (hover: none) {
+    .dscf .ib {
+      opacity: 1;
+    }
   }
   .dschex {
     display: flex;

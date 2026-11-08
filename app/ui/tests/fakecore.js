@@ -207,6 +207,8 @@
     decoders: {},
     sharedDecoders: {},
     previewed: [],
+    /** Every open: its path and packet type. */
+    opened: [],
     savedDescriptors: [],
     bin(path, o = {}) {
       const n = o.frames ?? 64;
@@ -391,7 +393,10 @@
       fake.profiles[[...header].sort().join('\u0000')] = { header, profile };
       return null;
     },
-    open({ path, profile: given, progress }) {
+    // the packet types of the descriptor that names the file (each opens as its own recording)
+    packet_parts: ({ path }) => (known(path).find((k) => k.claims)?.descriptor.packet_types ?? []).map((t) => t.name),
+    open({ path, profile: given, part, progress }) {
+      fake.opened.push({ path, part: part ?? null });
       // the core applies the header's saved profile when none is given
       const profile = given ?? fake.profiles[fake.csvs[path]?.header_key]?.profile ?? null;
       fake.openedWith.push({ path, profile });
@@ -399,7 +404,12 @@
         if (!claimed(path)) throw `${path}: not a format tlmbench knows`;
         fake.files[path] = fake.bins[path].spec;
       }
-      const spec = fake.files[path];
+      let spec = fake.files[path];
+      const types = known(path).find((k) => k.claims)?.descriptor.packet_types ?? [];
+      if (types.length && fake.bins[path]) {
+        if (part == null) throw `${path} holds ${types.length} packet types (${types.map((t) => t.name).join(', ')}): say which one to open`;
+        spec = fake.bins[path].spec.parts?.[part] ?? fake.bins[path].spec;
+      }
       if (!spec) throw `couldn't open ${path}: no such file`;
       const r = recording(path, spec);
       // a profile's names, units and categories land on the channels in order (the core does this when it decodes)
@@ -413,7 +423,7 @@
       const id = nextFile++;
       const ch = progress && { id: progress.id ?? Number(String(progress).replace(/\D/g, '')), next: 0 };
       fake.open.set(id, { r, progress: ch });
-      const info = { path, format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
+      const info = { path, ...(part ? { part } : {}), format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
       return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples } };
     },
     close({ file }) {

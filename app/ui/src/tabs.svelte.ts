@@ -6,6 +6,8 @@ export interface TabInfo {
   key: number;
   path: string;
   name: string;
+  /** The packet type this tab shows, for a file with several (its name reads `flight.bin · gps`). */
+  part?: string;
   /** A live source's tab (its file grows); `path` is the source's endpoint. */
   live?: boolean;
   /** A workspace tab: the name of the layout it shows (`name` too), on the file at `path`. */

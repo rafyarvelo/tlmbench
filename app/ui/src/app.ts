@@ -61,6 +61,8 @@ interface ChannelInfo {
 export interface RecordingInfo {
   path: string;
   format: string;
+  /** The packet type this recording holds, in a packet file with several (`flight.bin · gps`). */
+  part?: string | null;
   samples: number;
   /** Where sample times come from: a column has gaps; a fixed rate or row numbers don't. */
   time: { kind: 'column'; name: string } | { kind: 'rate'; hz: number } | { kind: 'index' };
@@ -1202,7 +1204,7 @@ function updateChips(): void {
 function saveLayout(): void {
   // a workspace tab's edits are its unsaved changes, not the file's layout
   if (!state.file || frontTab()?.ws) return;
-  settings.layouts[state.file.info.path] = stack.panes.map((p) => ({ ...p, channels: [...p.channels] }));
+  settings.layouts[layoutKey(state.file.info.path, state.file.info.part)] = stack.panes.map((p) => ({ ...p, channels: [...p.channels] }));
   saveSettings();
 }
 
@@ -1458,12 +1460,18 @@ function rateText(file: OpenFile): string | undefined {
   return '≈' + fmtRate(((i.samples - 1) * 1e9) / Number(file.last - file.first));
 }
 
-/** Opens `path` in a tab of its own (or brings its tab to the front). */
-async function openPath(path: string): Promise<void> {
-  const open = tabs.list.find((t) => t.path === path && !t.ws);
+/** A file's name for a tab: `flight.bin · gps` for one of its packet types. */
+const tabName = (path: string, part?: string | null) => (part ? `${nameOf(path)} · ${part}` : nameOf(path));
+/** What a file's saved pane layout is kept under: its path, and the packet type if it has them. */
+const layoutKey = (path: string, part?: string | null) => (part ? `${path}\u0000${part}` : path);
+
+/** Opens `path` in a tab of its own (or brings its tab to the front); `part`: one packet type of a file that has
+ * several (a tab each, until step 5.6 puts them in one tab). */
+async function openPath(path: string, part?: string): Promise<void> {
+  const open = tabs.list.find((t) => t.path === path && !t.ws && (part == null || t.part === part));
   if (open) return showTab(open.key);
   // a file a workspace tab shows is open already: its file tab shares it
-  const shown = tabs.list.find((t) => t.path === path && !t.live);
+  const shown = tabs.list.find((t) => t.path === path && !t.live && (t.part ?? null) === (part ?? null));
   const again = shown ? fileOf(shown.key) : null;
   try {
     const key = nextTab++;
@@ -1478,7 +1486,7 @@ async function openPath(path: string): Promise<void> {
       let id: number | null = null;
       let early: Progress | null = null;
       progress.onmessage = (p) => (id == null ? (early = p) : onProgress(id, p));
-      const o = await invoke<Opened>('open', { path, progress });
+      const o = await invoke<Opened>('open', { path, part: part ?? null, progress });
       id = o.id;
       if (early) onProgress(id, early);
       if (!o.range) {
@@ -1492,7 +1500,7 @@ async function openPath(path: string): Promise<void> {
     tabData.set(key, {
       file,
       building,
-      panes: panesFor(file.info.path, n),
+      panes: panesFor(layoutKey(file.info.path, file.info.part), n),
       sel: 0,
       t0: file.first,
       t1: file.last + 1n,
@@ -1504,16 +1512,26 @@ async function openPath(path: string): Promise<void> {
       play: null,
       live: null,
     });
-    tabs.list.push({ key, path: file.info.path, name: nameOf(file.info.path), rate: rateText(file) });
+    tabs.list.push({ key, path: file.info.path, name: tabName(file.info.path, file.info.part), ...(file.info.part ? { part: file.info.part } : {}), rate: rateText(file) });
     ui.start = false;
     setSetting('recent', [file.info.path, ...settings.recent.filter((r) => r !== file.info.path)].slice(0, 8));
     ui.note = '';
     ui.undo = null;
     await showTab(key);
   } catch (e) {
+    // a file with several packet types opens as a tab for each
+    if (part == null) {
+      const parts = await invoke<string[]>('packet_parts', { path }).catch(() => [] as string[]);
+      if (parts.length > 1) {
+        for (const q of parts) await openPath(path, q);
+        const first = tabs.list.find((t) => t.path === path && t.part === parts[0]);
+        if (first) await showTab(first.key);
+        return;
+      }
+    }
     // a binary file nothing claims: the descriptor form, not an error
     if (await invoke<boolean>('needs_descriptor', { path }).catch(() => false)) return void dscOpenForm(path);
-    note(`Couldn't open ${nameOf(path)}: ${e}`);
+    note(`Couldn't open ${tabName(path, part)}: ${e}`);
   }
 }
 
