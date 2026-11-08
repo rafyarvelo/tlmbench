@@ -105,7 +105,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Title row: add shown channels, Expand all, Collapse all | v1 | ✓ | ✓ | |
 | Title row: New derived channel, Categories toggle | v1 | ✓ | ◐ (Categories; New derived channel waits for 5.1) | 5.1 |
 | Folder button with the folder's name and menu (recordings ▾) | v1 | ✓ | ✓ |  |
-| Folder menu: Import all, recipes and profiles | v1 | ✓ | ✗ | 4.3, 5.1 |
+| Folder menu: Import all, recipes and profiles | v1 | ✓ | ◐ (Import all; recipes and profiles wait for 5.1) | 4.3, 5.1 |
 | Filter with regex, matching units and categories | v1 | ✓ | ✓ | |
 | Open files strip: Show only these, Close all | v1 | ✓ | ✓ | |
 | `.tlmbench` entry at the top (shared views count) | v1 | ✓ | ✗ | 4.4 |
@@ -117,7 +117,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Channel right-click: category, gap factor | v1 | ✓ | ✓ | |
 | Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ✗ | 5.1–5.3 |
 | Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ✗ | 5.1–5.3 |
-| Data rate shown on imported files; "primary" with several open | v1 | ✓ | ✗ | 4.3, 5.6 |
+| Data rate shown on imported files; "primary" with several open | v1 | ✓ | ◐ (the rate chip on an open CSV's row, a click shows its import settings; primary waits for 5.6) | 4.3, 5.6 |
 | Import a local folder (browser snapshot in the prototype) | v1 | ✓ | ✗ | 4.3 |
 
 ## 5. Pane stack and charts

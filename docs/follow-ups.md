@@ -57,8 +57,7 @@ When needed:
   and "Derived channels"), the last field label and select (the prototype's last row holds several fields, ours one),
   the column name and input widths (ours has a Category column), the note size.
 - **Not done yet:** the descriptor form and its Find frames, bitfields, counter time bases with wraparound, packet
-  types in the app (a recording per type; "same tab" needs several recordings in a tab), Import all, the data rate on
-  imported files, `t_descriptor`'s port, and slower channels held in tables (they need a tab with several rates).
+  types in the app (a recording per type; "same tab" needs several recordings in a tab), `t_descriptor`'s port, and slower channels held in tables (they need a tab with several rates).
 
 ## Phase 1 loose ends
 

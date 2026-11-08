@@ -12,6 +12,8 @@ export interface TabInfo {
   ws?: string;
   /** A shared view's tab: its file in the folder's `.tlmbench/views/` (read-only; Save as… makes it yours). */
   shared?: string;
+  /** An imported (CSV) file's data rate as text (Explorer's chip; a click shows its import settings). */
+  rate?: string;
   /** Its panes differ from the layout as saved. */
   dirty?: boolean;
 }

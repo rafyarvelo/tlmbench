@@ -174,6 +174,13 @@
   const plottedAnywhere = (ch: number) => stack.panes.some((p) => p.channels.includes(ch));
   const elsewhere = (ch: number) => (inSel(ch) ? [] : panesOf(ch));
   const listedPath = (path: string) => !unopenable.has(path);
+  /** The folder's CSV, TSV and TXT files (what Import all sets up). */
+  const csvFiles = $derived.by(() => {
+    const out: string[] = [];
+    const walk = (d: FolderEntry | null) => d?.children.forEach((c) => (c.dir ? walk(c) : /\.(csv|tsv|txt)$/i.test(c.name) && c.openable !== false && out.push(c.path)));
+    walk(ui.folder);
+    return out;
+  });
   const unopenable = $derived.by(() => {
     const out = new Set<string>();
     const walk = (d: FolderEntry | null) => d?.children.forEach((c) => (c.dir ? walk(c) : c.openable === false && out.add(c.path)));
@@ -306,6 +313,8 @@
       { label: 'Open folder…', data: { ex: 'open-folder' }, run: actions.openFolder },
       { label: 'Open recording…', kbd: '⌘O', data: { ex: 'open-file' }, run: actions.open },
       { sep: true },
+      { label: `Import all ${csvFiles.length} file${csvFiles.length === 1 ? '' : 's'}…`, data: { ex: 'import-all' }, disabled: !csvFiles.length, run: () => actions.importAll(csvFiles) },
+      { sep: true },
       { label: 'Expand all folders', data: { ex: 'expand' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])) },
       { label: 'Collapse all folders', data: { ex: 'collapse' }, disabled: !ui.folder, run: collapseAll },
       { sep: true },
@@ -354,7 +363,7 @@
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
@@ -684,6 +693,21 @@
     flex: 1;
     min-width: 0;
     margin: 0;
+  }
+  .ratechip {
+    flex: none;
+    margin-left: auto;
+    padding: 1px 5px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg-muted);
+    font: 11px var(--font-data);
+    cursor: pointer;
+  }
+  .ratechip:hover {
+    background: var(--surface);
+    color: var(--fg);
   }
   .exfolder {
     display: inline-flex;

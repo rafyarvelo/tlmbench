@@ -87,6 +87,8 @@ export const actions = {
   /** Shows a file's import dialog again (its saved settings first); a recording that isn't a CSV opens as it is. */
   importAgain: (_path: string) => {},
   /** The import dialog: Open / Add to Explorer, and Cancel. */
+  /** Import all: the dialog for the files whose headers have no saved settings, opening nothing. */
+  importAll: (_paths: string[]) => {},
   importGo: () => {},
   importCancel: () => {},
   /** Closes several files, with Undo. */

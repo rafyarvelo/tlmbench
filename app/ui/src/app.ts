@@ -43,7 +43,7 @@ import {
   stack,
   units,
 } from './stack.svelte';
-import { applyProfile, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
+import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
@@ -1448,6 +1448,15 @@ async function showTab(key: number): Promise<void> {
   void refreshMeasure();
 }
 
+/** The data rate shown on an imported file: a fixed rate, or the mean rate of a time column (≈). Other formats: none. */
+function rateText(file: OpenFile): string | undefined {
+  const i = file.info;
+  if (i.format.toLowerCase() !== 'csv') return undefined;
+  if (i.time.kind === 'rate') return fmtRate(i.time.hz);
+  if (i.time.kind === 'index' || i.samples < 2 || file.last <= file.first) return i.time.kind === 'index' ? 'samples' : undefined;
+  return '≈' + fmtRate(((i.samples - 1) * 1e9) / Number(file.last - file.first));
+}
+
 /** Opens `path` in a tab of its own (or brings its tab to the front). */
 async function openPath(path: string): Promise<void> {
   const open = tabs.list.find((t) => t.path === path && !t.ws);
@@ -1494,7 +1503,7 @@ async function openPath(path: string): Promise<void> {
       play: null,
       live: null,
     });
-    tabs.list.push({ key, path: file.info.path, name: nameOf(file.info.path) });
+    tabs.list.push({ key, path: file.info.path, name: nameOf(file.info.path), rate: rateText(file) });
     ui.start = false;
     setSetting('recent', [file.info.path, ...settings.recent.filter((r) => r !== file.info.path)].slice(0, 8));
     ui.note = '';
@@ -2055,10 +2064,10 @@ let importDirect: string[] = [];
 let importRedo: string | null = null;
 
 /** Opens files the user chose (Explorer, Open…, a drop). A CSV whose header has no saved profile asks first. */
-async function openWithImport(paths: string[]): Promise<void> {
-  // files already in a tab only come to the front
+async function openWithImport(paths: string[], importOnly = false): Promise<void> {
+  // files already in a tab only come to the front (Import all opens nothing)
   const fresh = paths.filter((p) => !tabs.list.some((t) => t.path === p && !t.ws));
-  for (const p of paths) if (!fresh.includes(p)) await openPath(p);
+  if (!importOnly) for (const p of paths) if (!fresh.includes(p)) await openPath(p);
   paths = fresh;
   if (!paths.length) return;
   let found: Inspected[];
@@ -2079,12 +2088,13 @@ async function openWithImport(paths: string[]): Promise<void> {
     }
   }
   if (!groups.size) {
-    for (const p of direct) await openPath(p);
+    if (!importOnly) for (const p of direct) await openPath(p);
+    else note(`${paths.length === 1 ? 'It has' : 'All have'} import settings already. Open ${paths.length === 1 ? 'it' : 'them'} from Explorer.`);
     return;
   }
-  importDirect = direct;
+  importDirect = importOnly ? [] : direct;
   importRedo = null;
-  Object.assign(imp, { jobs: [...groups.values()].map((g) => makeJob(g.paths, g.i.inspection!, g.i.found.near)), sel: 0, bad: [], error: '', busy: false, open: true, where: settings.importWhere });
+  Object.assign(imp, { jobs: [...groups.values()].map((g) => makeJob(g.paths, g.i.inspection!, g.i.found.near)), sel: 0, bad: [], error: '', busy: false, open: true, where: importOnly ? 'none' : settings.importWhere });
 }
 
 /** The import dialog again for a file that has settings: they are filled in; saving reopens the file with them. */
@@ -2735,6 +2745,7 @@ Object.assign(actions, {
   },
   openPaths: (paths: string[]) => void openWithImport(paths),
   importAgain: (p: string) => void importAgain(p),
+  importAll: (paths: string[]) => void openWithImport(paths, true),
   importGo: () => void importGo(),
   importCancel,
   closePaths: (paths: string[]) =>

@@ -69,6 +69,8 @@ run(
 
     check('a category from the profile groups the channel in Explorer', await until(() => !!document.querySelector('#explorer .row.cat[data-cat="nav"]')), await text('#explorer'));
 
+    check('the file row shows its data rate', await until(() => document.querySelector('#explorer .row.file[data-path$="run_a.csv"] .ratechip')?.textContent === '1 kHz'), await text('#explorer .row.file[data-path$="run_a.csv"]'));
+
     // the same header again: no dialog, the saved profile applies
     await fake((b) => window.__tlmFake.drop([b]), B);
     check('a file with the same header opens without asking', await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].some((n) => n.textContent === 'run_b.csv')));
@@ -149,6 +151,24 @@ run(
     check('the file opened again', await until((n) => window.__tlmFake.openedWith.length > n, opens));
     check('in one tab', (await tabs()).filter((n) => n === 'run_a.csv').length === 1, await tabs());
     check('with the new settings', await until(() => window.__tlmFake.openedWith.at(-1).profile?.columns?.some((c) => c.name === 'speed2') ?? true));
+
+    // Import all in the folder menu: only the files whose headers have no saved settings are asked about; nothing opens
+    await fake(() => {
+      const f = window.__tlmFake;
+      for (const k of ['/data/fresh1.csv', '/data/fresh2.csv']) {
+        f.csv(k, ['t_s', 'u', 'w'], { unit: 's', rate: 5 });
+        f.files[k] = {};
+      }
+    });
+    const tabsBefore = (await tabs()).length;
+    await p.click('#exFolder');
+    const label = await p.$eval('.exmenu [data-ex="import-all"]', (e) => e.textContent.trim());
+    check('the folder menu counts the CSV files it would set up', /^Import all \d+ files…/.test(label), label);
+    await p.click('.exmenu [data-ex="import-all"]');
+    check('files without settings are asked about', await until(() => !!document.querySelector('#importDlg')));
+    check('it goes to Explorer only, nothing else', (await p.inputValue('#impWhere')) === 'none' && /Add to Explorer/.test((await text('#impGo')) ?? ''));
+    await p.keyboard.press('Escape');
+    check('cancelling opened nothing', (await tabs()).length === tabsBefore);
 
     // a file that isn't a CSV has no import settings
     await p.click('#explorer .row.file[data-path$="flight.tlm"]', { button: 'right' });
