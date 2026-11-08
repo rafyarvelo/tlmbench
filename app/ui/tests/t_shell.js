@@ -27,7 +27,7 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   await p.fill('#setPanel input[type=search]', 'wheel');
   check('search finds an All-only setting by its explanation', (await rows()).join() === 'Zoom speed,Scroll wheel zooms the charts', await rows());
   await p.fill('#setPanel input[type=search]', 'cursors');
-  check('search finds choices too', (await rows()).join() === 'Mouse mode,Cursors still work while locked,Measure panel,Time format,Open Measure when both cursors are placed', await rows());
+  check('search finds choices too', (await rows()).join() === 'Mouse mode,Cursors still work while locked,Right sidebar,Time format,Open Measure when both cursors are placed', await rows());
   await p.fill('#setPanel input[type=search]', 'xyzzy');
   check('no match message', await visible('.setnone'));
   await p.fill('#setPanel input[type=search]', '');

@@ -12,8 +12,18 @@ export type Tooltips = 'short' | 'full' | 'off';
 export type StarterPanes = 'starter' | 'starterboth' | 'table' | 'values' | 'none';
 export type TimeAxis = 'auto' | 'bottom' | 'every';
 export type ZoomSpeed = 'slow' | 'normal' | 'fast';
-/** What the left sidebar shows (empty: hidden). */
-export type LeftPanel = 'explorer' | 'settings' | '';
+/** What the left sidebar shows, a rail group (empty: hidden). */
+export type LeftPanel = 'explorer' | 'settings' | 'measure' | '';
+/** A sidebar panel: Explorer, Settings, and Measure's Cursors and Stats. */
+export type PanelId = 'explorer' | 'settings' | 'cur' | 'stats';
+/** The sidebars' panels, top to bottom (owner, Nov 7: they drag by their title to reorder or change sides). */
+export interface PanelLayout {
+  left: PanelId[];
+  right: PanelId[];
+}
+/** Each panel's rail group: the left sidebar shows one group at a time, the right one all its panels. */
+export const GROUP_OF: Record<PanelId, Exclude<LeftPanel, ''>> = { explorer: 'explorer', settings: 'settings', cur: 'measure', stats: 'measure' };
+export const PANEL_TITLE: Record<PanelId, string> = { explorer: 'Explorer', settings: 'Settings', cur: 'Cursors', stats: 'Stats' };
 
 export interface Settings {
   mode: Mode;
@@ -67,8 +77,9 @@ export interface Settings {
   exShowAll: boolean;
   /** Explorer lists only the open files. */
   exOnlyOpen: boolean;
-  sidesSwapped: boolean;
-  /** Measure opened by hand (it also opens by itself when both cursors are placed, with measureAuto). */
+  panelLayout: PanelLayout;
+  /** The right sidebar opened by hand (with Measure's panels on it, it also opens by itself when both cursors are
+   *  placed, with measureAuto). */
   measureOpen: boolean;
   measureAuto: boolean;
   showPerf: boolean;
@@ -121,7 +132,7 @@ export const DEFAULTS: Settings = {
   exFilesShut: [],
   exShowAll: false,
   exOnlyOpen: false,
-  sidesSwapped: false,
+  panelLayout: { left: ['explorer', 'settings'], right: ['cur', 'stats'] },
   measureOpen: false,
   measureAuto: true,
   showPerf: false,
@@ -168,7 +179,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'sidesSwapped', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'session'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
@@ -181,7 +192,7 @@ export function setPanelOpen(name: string, open: boolean): void {
   const rest = settings.panelsClosed.filter((n) => n !== name);
   setSetting('panelsClosed', open ? rest : [...rest, name]);
 }
-export const PANELS = ['explorer', 'measure.cur', 'measure.stats'];
+export const PANELS = ['explorer', 'settings', 'measure.cur', 'measure.stats'];
 /** Collapses every sidebar panel, or (when all are collapsed) expands them. */
 export function toggleAllPanels(): void {
   setSetting('panelsClosed', settings.panelsClosed.length >= PANELS.length ? [] : [...PANELS]);
@@ -191,7 +202,32 @@ export function resetUiLayout(): void {
   setSetting('leftWidth', DEFAULTS.leftWidth);
   setSetting('measureWidth', DEFAULTS.measureWidth);
   setSetting('panelsClosed', []);
-  setSetting('sidesSwapped', false);
+  setSetting('panelLayout', structuredClone(DEFAULTS.panelLayout));
+}
+
+/** Which sidebar a panel is in. */
+export const sideOf = (id: PanelId): 'left' | 'right' => (settings.panelLayout.right.includes(id) ? 'right' : 'left');
+
+/** Moves a panel to a sidebar, before panel `before` (or last), and shows it there. */
+export function movePanel(id: PanelId, side: 'left' | 'right', before: PanelId | null = null): void {
+  const L = settings.panelLayout;
+  const left = L.left.filter((x) => x !== id);
+  const right = L.right.filter((x) => x !== id);
+  const list = side === 'left' ? left : right;
+  const at = before ? list.indexOf(before) : -1;
+  list.splice(at < 0 ? list.length : at, 0, id);
+  setSetting('panelLayout', { left, right });
+  // follow it, so it never seems to vanish
+  if (side === 'left') setSetting('leftPanel', GROUP_OF[id]);
+  else setSetting('measureOpen', true);
+}
+
+/** The rail group the left sidebar shows: the one chosen, else the first with panels there ('' when hidden). */
+export function leftView(): LeftPanel {
+  const has = (g: LeftPanel) => settings.panelLayout.left.some((id) => GROUP_OF[id] === g);
+  if (!settings.leftPanel) return '';
+  if (has(settings.leftPanel)) return settings.leftPanel;
+  return settings.panelLayout.left.length ? GROUP_OF[settings.panelLayout.left[0]] : '';
 }
 
 /** The theme the page shows now (Match system resolved). */

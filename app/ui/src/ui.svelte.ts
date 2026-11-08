@@ -28,6 +28,8 @@ export const ui = $state({
   range: '',
   span: '',
   pointer: '',
+  /** Measure's Stats panel title: what the stats cover. */
+  statsTitle: 'Stats · visible range',
   canBack: false,
   /** The start page is open over the panes (it is also what shows with no file). */
   start: false,
@@ -81,6 +83,8 @@ export const actions = {
   toggleFocus: (_on?: boolean) => {},
   back: () => {},
   clearCursors: () => {},
+  /** Fills Measure's panels again (one was just shown or moved). */
+  refreshMeasure: () => {},
   /** Places cursor A or B at a time (a table row). */
   placeCursor: (_which: 'A' | 'B', _t: bigint) => {},
   /** Centres the time view on a time, keeping its span. */

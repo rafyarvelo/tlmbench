@@ -6,7 +6,8 @@
 <script lang="ts">
   import { groupChannels } from '../groups';
   import { ICON } from '../icons';
-  import { setPanelOpen, setSetting, settings } from '../settings.svelte';
+  import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
+  import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { addChannels, colorIdx, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui } from '../ui.svelte';
@@ -82,6 +83,7 @@
     setSetting('exFilesShut', settings.exFilesShut.includes(path) ? rest : [...rest, path]);
   }
   const closed = $derived(settings.panelsClosed.includes('explorer'));
+  const otherSide = $derived(sideOf('explorer') === 'left' ? 'right' : 'left');
   const catOf = (name: string) => groups.find((g) => g.chs.some((ch) => ui.channels[ch]?.name === name))?.name ?? '';
   /** the folder menu and the ⋯ menu, by the button that opened each */
   let fold = $state<HTMLElement | null>(null);
@@ -186,14 +188,14 @@
 </script>
 
 <div class="explorer" id="explorer">
-  <div class="phd">
+  <div class="phd" role="presentation" draggable="true" ondragstart={(e) => startPanelDrag(e, 'explorer')} ondragend={endPanelDrag}>
     <button class="phtog" id="exToggle" aria-expanded={!closed} aria-label="Explorer panel" data-tip="Collapse or expand this panel" onclick={() => setPanelOpen('explorer', closed)}><span class="chv" class:shut={closed}>{@html ICON.chev}</span>Explorer</button><span class="spacer"></span>
     <button class="ibtn exall" id="exAddShown" aria-label={addShownTip} disabled={!ui.file || !shownChans.length} data-tip={addShownTip} onclick={() => addChannels(shownChans)}>{@html ICON.add}</button>
     <button class="ibtn exall" id="exCats" aria-label="Show categories" aria-pressed={settings.exCategories} data-tip={settings.exCategories ? 'Showing categories. Click for a flat list' : 'Showing a flat list. Click to group channels into categories'} onclick={() => setSetting('exCategories', !settings.exCategories)}>{@html ICON.cats}</button>
     <span class="exsep" aria-hidden="true"></span>
     <button class="ibtn exall" id="treeExpand" aria-label="Expand all" data-tip="Expand all folders and channel groups" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
     <button class="ibtn exall" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all channel groups, and the folders without an open file" onclick={() => (setSetting('exExpanded', []), setSetting('exFilesShut', openFiles.map((f) => f.path)))}>{@html ICON.collapse}</button>
-    <button class="ibtn pmove" id="swapSides" aria-label="Move Explorer to the other sidebar" data-tip="Move to the other sidebar" onclick={() => setSetting('sidesSwapped', !settings.sidesSwapped)}>{@html ICON.swap}</button>
+    <button class="ibtn pmove" id="swapSides" data-pmove aria-label="Move Explorer to the {otherSide} sidebar" data-tip="Move to the {otherSide} sidebar" onclick={() => movePanel('explorer', otherSide)}>{@html ICON.swap}</button>
   </div>
   <div class="exbody" hidden={closed}>
   <div class="exrow">
@@ -299,7 +301,7 @@
       { sep: true },
       { label: 'Group channels into categories', checked: settings.exCategories, data: { ex: 'cats' }, run: () => setSetting('exCategories', !settings.exCategories) },
       { label: `Show files that can't be opened${hidden ? ` (${hidden} hidden)` : ''}`, checked: settings.exShowAll, data: { ex: 'showall' }, run: () => setSetting('exShowAll', !settings.exShowAll) },
-      { label: 'Swap Explorer and Measure', data: { ex: 'swap' }, run: () => setSetting('sidesSwapped', !settings.sidesSwapped) },
+      { label: `Move Explorer to the ${otherSide} sidebar`, data: { ex: 'swap' }, run: () => movePanel('explorer', otherSide) },
     ]}
   />
 {/if}
@@ -388,44 +390,7 @@
 {/snippet}
 
 <style>
-  .phtog {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    letter-spacing: inherit;
-    text-transform: inherit;
-  }
-  /* the prototype's panel heading buttons (.ib, .pmove): 24 px, their icons drawn at 10 px; the filter row's at 12-14 px */
-  .phd .ibtn {
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-  }
-  .phd .ibtn :global(svg) {
-    width: 10px;
-    height: 10px;
-  }
-  .phd .pmove :global(svg) {
-    width: 13px;
-    height: 13px;
-  }
   #exMore :global(svg) {
-    width: 12px;
-    height: 12px;
-  }
-  .chv {
-    display: inline-grid;
-    transition: transform 0.12s;
-  }
-  .chv.shut {
-    transform: rotate(-90deg);
-  }
-  .chv :global(svg) {
     width: 12px;
     height: 12px;
   }
@@ -684,38 +649,6 @@
   .exfolder :global(svg:last-child) {
     width: 12px;
     height: 12px;
-  }
-  /* the title row's buttons are always there (row buttons appear on hover); ⇄ shows on hover */
-  .phd .exall:hover,
-  .phd .pmove:hover {
-    background: var(--raised);
-    color: var(--fg);
-  }
-  .phd .exall:disabled {
-    opacity: 0.35;
-    background: transparent;
-  }
-  .phd .exall[aria-pressed='true'] {
-    color: var(--accent);
-  }
-  .exsep {
-    flex: none;
-    width: 1px;
-    height: 14px;
-    margin: 0 2px;
-    background: var(--grid);
-  }
-  .phd .pmove {
-    opacity: 0;
-  }
-  .explorer:hover .pmove,
-  .pmove:focus-visible {
-    opacity: 1;
-  }
-  @media (hover: none) {
-    .phd .pmove {
-      opacity: 1;
-    }
   }
   .where {
     flex: none;

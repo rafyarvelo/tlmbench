@@ -3,7 +3,9 @@
 <script lang="ts">
   import { TIME_FORMATS } from '../axes';
   import { resetTips } from '../tips';
-  import { resetSettings, resetUiLayout, type Settings, setSetting, settings } from '../settings.svelte';
+  import { movePanel, resetSettings, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
+  import { endPanelDrag, startPanelDrag } from '../panels.svelte';
+  import { ICON } from '../icons';
 
   interface Row {
     key: keyof Settings;
@@ -30,8 +32,8 @@
     { key: 'fileOpenNew', section: 'Files', basic: true, label: 'Files opened for the first time', hint: 'Starter charts: one chart per group of channels, up to four. Starter charts + tables: the same, each with its table below. One table: every channel in a single table. One values pane: the value of every channel at the pointer.', options: STARTERS },
     { key: 'clickMode', section: 'Files', basic: true, label: 'Clicking a row', hint: 'Select first: one click selects a file or channel, double-click (or Enter) opens a file, the checkbox plots a channel. Act at once: one click opens or plots.', options: [['select', 'Select first'], ['act', 'Act at once']] },
     { key: 'dropNewView', section: 'Files', label: 'New pane from a dragged channel', hint: "Dropping a channel where a new pane goes makes a chart. Same view keeps the view of the pane it came from, so a channel dragged out of a table makes another table.", options: [['chart', 'Chart'], ['same', 'Same view as where it came from']] },
-    { key: 'leftPanel', section: 'Display', basic: true, label: 'Left sidebar', options: [['explorer', 'Explorer'], ['settings', 'Settings'], ['', 'Hidden']] },
-    { key: 'measureOpen', section: 'Display', basic: true, label: 'Measure panel', hint: 'Open by hand. It also opens by itself when both cursors are placed (see below).' },
+    { key: 'leftPanel', section: 'Display', basic: true, label: 'Left sidebar', options: [['explorer', 'Explorer'], ['measure', 'Measure'], ['settings', 'Settings'], ['', 'Hidden']] },
+    { key: 'measureOpen', section: 'Display', basic: true, label: 'Right sidebar', hint: 'Open by hand. With Measure on it, it also opens by itself when both cursors are placed (see below).' },
     { key: 'showHints', section: 'Display', label: 'Show tips and extra controls', hint: 'How-to notes in the panels.' },
     { key: 'quietUI', section: 'Display', basic: true, label: 'Quiet interface', hint: 'Hides badges and counts until they matter: the panes a channel is in, file sizes and category counts.' },
     { key: 'showStart', section: 'Display', label: 'Show the start page at launch', hint: 'Recent recordings and ways to open things, over your tabs when the app starts.' },
@@ -48,10 +50,16 @@
   const text = (r: Row) => [r.label, r.hint ?? '', ...(r.options ?? []).map((o) => o[1])].join(' ').toLowerCase();
   const rows = $derived(q.trim() ? ROWS.filter((r) => text(r).includes(q.trim().toLowerCase())) : ROWS.filter((r) => settings.settingsAll || r.basic));
   const sections = $derived([...new Set(rows.map((r) => r.section))]);
+  const closed = $derived(settings.panelsClosed.includes('settings'));
+  const other = $derived(sideOf('settings') === 'left' ? 'right' : 'left');
 </script>
 
 <div class="setin" id="setPanel">
-  <div class="phd"><span>Settings</span></div>
+  <div class="phd" role="presentation" draggable="true" ondragstart={(e) => startPanelDrag(e, 'settings')} ondragend={endPanelDrag}>
+    <button class="phtog" aria-expanded={!closed} data-tip="Collapse or expand. Drag the title to move this panel." onclick={() => setPanelOpen('settings', closed)}><span class="chv" class:shut={closed}>{@html ICON.chev}</span>Settings</button><span class="spacer"></span>
+    <button class="ibtn pmove" data-pmove aria-label="Move Settings to the {other} sidebar" data-tip="Move to the {other} sidebar" onclick={() => movePanel('settings', other)}>{@html ICON.swap}</button>
+  </div>
+  {#if !closed}
   <div class="setview" role="group" aria-label="Which settings">
     <button type="button" data-sv="basic" aria-pressed={!settings.settingsAll} onclick={() => setSetting('settingsAll', false)}>Basic</button>
     <button type="button" data-sv="all" aria-pressed={settings.settingsAll} onclick={() => setSetting('settingsAll', true)}>All settings</button>
@@ -83,6 +91,7 @@
   {/each}
   <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span>Tabs restored at launch</span><button class="tbtn" id="setResetSession" onclick={() => setSetting('session', { files: [], active: null })}>Reset session</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
   <footer><span>Saved as you change them</span><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
+  {/if}
 </div>
 
 <style>

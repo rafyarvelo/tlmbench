@@ -18,7 +18,7 @@ import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
-import { applyTheme, type StarterPanes, setPanelOpen, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
+import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Settings, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import {
@@ -125,7 +125,6 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const center = $<HTMLDivElement>('center');
 const stackEl = $<HTMLDivElement>('stack');
 const overlay = $<HTMLCanvasElement>('overlay');
-const measureEl = $<HTMLElement>('measure');
 const renderer = new Renderer($<HTMLCanvasElement>('gl'));
 
 // ---------- state ----------
@@ -1176,7 +1175,7 @@ let measureCh: number | null = null;
 let measureTimer = 0;
 /** With no cursors, Measure's stats follow the view: refresh a moment after it stops moving. */
 function scheduleMeasure(): void {
-  if (measureEl.hidden) return;
+  if (!measureOpen()) return;
   clearTimeout(measureTimer);
   measureTimer = window.setTimeout(() => void refreshMeasure(), 150);
 }
@@ -1189,7 +1188,7 @@ async function refreshMeasure(): Promise<void> {
   play.canLoop = ui.cursors;
   if (!ui.cursors) play.loop = false;
   if (!f) {
-    measureEl.innerHTML = `<h2>Measure</h2><p class="mnote">Open a recording to measure it.</p>`;
+    fillMeasure(`<p class="mnote">Open a recording to measure it.</p>`, '');
     return;
   }
   const chans = plotted();
@@ -1238,17 +1237,23 @@ async function refreshMeasure(): Promise<void> {
           stat('Std dev', sd != null ? fv(measureCh!, sd) : '—') +
           stat('Computed in', `${ms.toFixed(ms < 10 ? 1 : 0)} ms`);
   const pick = `<select class="sel" data-mch aria-label="Channel for the stats">${chans.map((ch) => `<option value="${ch}"${ch === measureCh ? ' selected' : ''}>${esc(f.info.channels[ch].name)}</option>`).join('')}</select>`;
-  measureEl.innerHTML =
-    `<h2>Measure<span class="spacer"></span><button class="ibtn" data-clear data-tip="Clear cursors (Esc)" aria-label="Clear cursors"${ui.anyCursor ? '' : ' disabled'}><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></h2>` +
-    `<details class="mpanel" data-panel="cur"${settings.panelsClosed.includes('measure.cur') ? '' : ' open'}><summary>Cursors</summary>` +
+  ui.statsTitle = `Stats · ${both ? 'between cursors' : 'visible range'}`;
+  fillMeasure(
     (state.A == null && state.B == null ? `<p class="mnote howto">Place cursors A and B: press C, then click a chart twice. A and B also place them at the pointer.</p>` : '') +
-    `<div class="mtiles">${tile('A', state.A != null ? readoutTime(state.A, span) : '—')}${tile('B', state.B != null ? readoutTime(state.B, span) : '—')}${tile('Δt', dt != null ? duration(dt) : '—', true)}${tile('1 / Δt', dt ? frequency(1e9 / Math.abs(dt)) : '—')}</div>` +
-    `<table class="mtab"><thead><tr><th>Channel</th><th>A</th><th>B</th><th>Δ</th></tr></thead><tbody>${rowsHtml}</tbody></table></details>` +
-    `<details class="mpanel" data-panel="stats"${settings.panelsClosed.includes('measure.stats') ? '' : ' open'}><summary>Stats · ${both ? 'between cursors' : 'visible range'}</summary>` +
-    (chans.length ? `<div class="mpick">${pick}</div>` : '') +
-    statsBody +
-    `</details>`;
+      `<div class="mtiles">${tile('A', state.A != null ? readoutTime(state.A, span) : '—')}${tile('B', state.B != null ? readoutTime(state.B, span) : '—')}${tile('Δt', dt != null ? duration(dt) : '—', true)}${tile('1 / Δt', dt ? frequency(1e9 / Math.abs(dt)) : '—')}</div>` +
+      `<table class="mtab"><thead><tr><th>Channel</th><th>A</th><th>B</th><th>Δ</th></tr></thead><tbody>${rowsHtml}</tbody></table>`,
+    (chans.length ? `<div class="mpick">${pick}</div>` : '') + statsBody,
+  );
 }
+
+/** Measure's panels' bodies, in whichever sidebar they sit (absent while their sidebar is closed). */
+function fillMeasure(cur: string, stats: string): void {
+  const [c, s] = [document.getElementById('mpCur'), document.getElementById('mpStats')];
+  if (c) c.innerHTML = cur;
+  if (s) s.innerHTML = stats;
+}
+/** Measure shows somewhere: one of its panels is open in a sidebar that's shown. */
+const measureOpen = () => [...document.querySelectorAll<HTMLElement>('#mpCur, #mpStats')].some((e) => !e.hidden && !!e.offsetParent);
 
 let resizeScheduled = false;
 function scheduleResize(): void {
@@ -2185,23 +2190,13 @@ center.addEventListener('change', (e) => {
 $('addPane').addEventListener('click', () => addPaneBelow(stack.panes.length - 1));
 onStackChange(() => void layoutChanged());
 
-measureEl.addEventListener('click', (e) => {
-  if ((e.target as HTMLElement).closest('[data-clear]')) clearCursors();
-});
-measureEl.addEventListener('change', (e) => {
+// Measure's stats channel picker, wherever its panel sits
+document.addEventListener('change', (e) => {
   const t = e.target as HTMLSelectElement;
-  if (!t.matches('[data-mch]')) return;
+  if (!t.matches('#mpStats [data-mch]')) return;
   measureCh = Number(t.value);
   void refreshMeasure();
 });
-measureEl.addEventListener(
-  'toggle',
-  (e) => {
-    const d = e.target as HTMLDetailsElement;
-    if (d.dataset.panel) setPanelOpen(`measure.${d.dataset.panel}`, d.open);
-  },
-  true,
-);
 
 // ---------- channel menu and gap factor ----------
 
@@ -2463,6 +2458,7 @@ Object.assign(actions, {
   toggleFocus,
   back,
   clearCursors,
+  refreshMeasure: () => void refreshMeasure(),
   placeCursor,
   saveAs,
   saveWs,
@@ -2510,8 +2506,6 @@ onSetting((key) => {
     applyTheme();
     tokenCache = null;
     renderPanes();
-  } else if (key === 'panelsClosed') {
-    measureEl.querySelectorAll<HTMLDetailsElement>('details[data-panel]').forEach((d) => (d.open = !settings.panelsClosed.includes(`measure.${d.dataset.panel}`)));
   } else if (key === 'overviewTop') {
     renderOverviewHead();
     scheduleResize();

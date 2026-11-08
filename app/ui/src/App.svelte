@@ -15,12 +15,19 @@
   import { live } from './live.svelte';
   import { play } from './play.svelte';
   import { ICON } from './icons';
-  import { setSetting, settings } from './settings.svelte';
+  import { GROUP_OF, leftView, type PanelId, setSetting, settings } from './settings.svelte';
+  import { panelDrag, panelDrop, panelLeave, panelOver } from './panels.svelte';
+  import MeasurePanel from './shell/MeasurePanel.svelte';
   import { actions, measureShown, ui } from './ui.svelte';
   import { tabs } from './tabs.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
-  const shown = $derived(measureShown(settings.measureOpen, settings.measureAuto));
+  const L = $derived(settings.panelLayout);
+  /** The left sidebar shows one rail group at a time; the right one all its panels. */
+  const view = $derived(leftView());
+  /** With Measure's panels on it, the right sidebar also opens by itself when both cursors are placed. */
+  const shown = $derived(L.right.length > 0 && measureShown(settings.measureOpen, settings.measureAuto && L.right.some((id) => GROUP_OF[id] === 'measure')));
+  const leftShown = $derived(!!view && L.left.length > 0);
 
   /** The window's title follows the tab in front, with a dot while its layout has unsaved changes. */
   const title = $derived.by(() => {
@@ -41,7 +48,7 @@
   function grip(e: PointerEvent, which: 'left' | 'measure') {
     const other = (which === 'left' ? document.getElementById('measure') : document.getElementById('side'))!;
     const otherW = other.hidden ? 0 : other.offsetWidth;
-    const docksLeft = (which === 'left') !== settings.sidesSwapped;
+    const docksLeft = which === 'left';
     const box = workEl!.getBoundingClientRect();
     const max = Math.max(200, Math.min(box.width / 2, box.width - MIN_PLOTS - otherW));
     const move = (m: PointerEvent) => {
@@ -62,11 +69,21 @@
     if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'b' || e.shiftKey) return;
     e.preventDefault();
     if (e.altKey) (document.querySelector('[data-rail="measure"]') as HTMLButtonElement | null)?.click();
-    else setSetting('leftPanel', settings.leftPanel ? '' : 'explorer');
+    else setSetting('leftPanel', leftShown ? '' : settings.leftPanel || 'explorer');
   }
 </script>
 
 <svelte:window onkeydown={key} bind:innerWidth={winW} />
+
+{#snippet panel(id: PanelId, off: boolean)}
+  {#if id === 'explorer'}
+    <div class="exwrap" data-panel="explorer" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Explorer /></div>
+  {:else if id === 'settings'}
+    <div class="setwrap" data-panel="settings" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Settings /></div>
+  {:else if !off}
+    <div class="mwrap" data-panel={id} class:drop-before={panelDrag.before === id && !!panelDrag.side}><MeasurePanel {id} /></div>
+  {/if}
+{/snippet}
 
 {#if live.connect}<Connect />{/if}
 
@@ -92,12 +109,12 @@
         <button class="ibtn" aria-label="Dismiss" onclick={() => ((ui.note = ''), (ui.undo = null))}>{@html ICON.close}</button>
       </div>
     {/if}
-    <div class="work" class:swapped={settings.sidesSwapped} class:wrapped={winW < 980} bind:this={workEl}>
-      <aside id="side" class="side" hidden={!settings.leftPanel} style:width="{settings.leftWidth}px">
-        <div class="exwrap" hidden={settings.leftPanel !== 'explorer'}><Explorer /></div>
-        {#if settings.leftPanel === 'settings'}<Settings />{/if}
+    <div class="work" class:wrapped={winW < 980} bind:this={workEl}>
+      <aside id="side" class="side" class:drop-end={panelDrag.side === 'left' && !panelDrag.before} hidden={!leftShown} style:width="{settings.leftWidth}px"
+        ondragover={(e) => panelOver(e, 'left')} ondragleave={panelLeave} ondrop={(e) => panelDrop(e, 'left')}>
+        {#each L.left as id (id)}{@render panel(id, GROUP_OF[id] !== view)}{/each}
       </aside>
-      <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" data-grip="left" hidden={!settings.leftPanel} onpointerdown={(e) => grip(e, 'left')} ondblclick={() => setSetting('leftWidth', 300)}></div>
+      <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" data-grip="left" hidden={!leftShown} onpointerdown={(e) => grip(e, 'left')} ondblclick={() => setSetting('leftWidth', 300)}></div>
       <main id="center" class="center" data-mode={settings.mode}>
         {#if play.open || live.on}
           <div class="strips">{#if play.open}<Transport />{/if}{#if live.on}<LiveStrip />{/if}</div>
@@ -110,8 +127,11 @@
         <div id="empty" class="empty">{#if ui.folder && !ui.start}<NoFile />{:else}<StartPage />{/if}</div>
         {#if ui.start && ui.file}<StartPage overlay />{/if}
       </main>
-      <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize Measure" data-grip="measure" hidden={!shown} onpointerdown={(e) => grip(e, 'measure')} ondblclick={() => setSetting('measureWidth', 260)}></div>
-      <aside id="measure" class="measure" hidden={!shown} style:width="{settings.measureWidth}px"></aside>
+      <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize the right sidebar" data-grip="measure" hidden={!shown} onpointerdown={(e) => grip(e, 'measure')} ondblclick={() => setSetting('measureWidth', 260)}></div>
+      <aside id="measure" class="measure" class:drop-end={panelDrag.side === 'right' && !panelDrag.before} hidden={!shown} style:width="{settings.measureWidth}px"
+        ondragover={(e) => panelOver(e, 'right')} ondragleave={panelLeave} ondrop={(e) => panelDrop(e, 'right')}>
+        {#each L.right as id (id)}{@render panel(id, false)}{/each}
+      </aside>
     </div>
     {#if settings.showPerf}
       <footer class="statusbar" id="statusBar"><span class="sdot" class:busy={ui.perf.startsWith('Reading')} aria-hidden="true"></span><span id="state">{ui.perf.startsWith('Reading') ? 'Reading the file' : ui.file ? 'Ready' : 'No file open'}</span><span id="status" class="num">{ui.perf}</span></footer>
@@ -156,17 +176,6 @@
     display: flex;
     flex: 1;
     min-height: 0;
-  }
-  .work.swapped {
-    flex-direction: row-reverse;
-  }
-  .work.swapped .side {
-    border-right: 0;
-    border-left: 1px solid var(--border);
-  }
-  .work.swapped :global(.measure) {
-    border-left: 0;
-    border-right: 1px solid var(--border);
   }
   .grip {
     flex: none;
@@ -226,6 +235,14 @@
     min-height: 0;
   }
   .side[hidden] {
+    display: none;
+  }
+  .setwrap,
+  .mwrap {
+    flex: none;
+  }
+  .setwrap[hidden],
+  .exwrap[hidden] {
     display: none;
   }
   .wsnote {

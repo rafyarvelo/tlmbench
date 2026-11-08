@@ -248,6 +248,92 @@ input.sel {
   text-transform: uppercase;
 }
 
+/* a panel's title: collapse it (chevron and name), drag it to reorder or change sides, its buttons; ⇄ (move to the
+   other sidebar) shows on hover. The prototype's .pcol, .ib.exall and .pmove. */
+.phd[draggable='true'] {
+  cursor: grab;
+}
+.phtog {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.phtog:hover {
+  color: var(--fg);
+}
+.chv {
+  display: inline-grid;
+  transition: transform 0.12s;
+}
+.chv.shut {
+  transform: rotate(-90deg);
+}
+.chv svg {
+  width: 12px;
+  height: 12px;
+}
+.phd .ibtn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+.phd .ibtn svg {
+  width: 10px;
+  height: 10px;
+}
+.phd .pmove svg {
+  width: 13px;
+  height: 13px;
+}
+.phd .exall:hover,
+.phd .pmove:hover {
+  background: var(--raised);
+  color: var(--fg);
+}
+.phd .exall:disabled {
+  opacity: 0.35;
+  background: transparent;
+}
+.phd .exall[aria-pressed='true'] {
+  color: var(--accent);
+}
+.exsep {
+  flex: none;
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--grid);
+}
+.phd .pmove {
+  opacity: 0;
+}
+[data-panel]:hover > .phd .pmove,
+[data-panel]:hover .phd .pmove,
+.pmove:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .phd .pmove {
+    opacity: 1;
+  }
+}
+/* where a dragged panel would land */
+[data-panel].drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.side.drop-end,
+.measure.drop-end {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
 /* the plot stack and overview, and Measure */
 
 
@@ -481,65 +567,28 @@ input.sel {
 }
 
 /* Measure */
+/* the right sidebar (Measure's panels by default) */
 .measure {
+  display: flex;
+  flex-direction: column;
   width: 260px;
+  flex: none;
   overflow: auto;
-  padding: 12px 14px;
   border-left: 1px solid var(--border);
   background: var(--surface);
   font-size: 12px;
 }
 
-.measure h2 {
-  display: flex;
-  align-items: center;
-  margin: 0 0 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-muted);
+/* Measure's panels (Cursors, Stats) in a sidebar: the title row as every panel's, the body under it */
+.mpanel + .mpanel,
+[data-panel] + .mpanel,
+.mpanel + [data-panel] {
+  border-top: 1px solid var(--grid);
 }
 
-.measure h2 .spacer {
-  flex: 1;
-}
-
-.mpanel {
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--grid);
-}
-
-.mpanel > summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 25px;
-  color: var(--fg-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  list-style: none;
-}
-
-.mpanel > summary::-webkit-details-marker {
-  display: none;
-}
-
-.mpanel > summary::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border: solid currentColor;
-  border-width: 0 1.5px 1.5px 0;
-  transform: rotate(-45deg);
-  transition: transform 0.12s;
-}
-
-.mpanel[open] > summary::before {
-  transform: rotate(45deg);
+.mbody {
+  padding: 0 14px 12px;
+  font-size: 12px;
 }
 
 .mtiles {
