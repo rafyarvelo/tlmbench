@@ -1,6 +1,7 @@
 // Pane axes: a pane's units get an axis each (left, then right, with room on the right for every plot); "Axis and
 // scale…" in the ⋯ menu sets each axis's range (fit, ignore outliers, include zero, fixed), decimals, label and log
-// scale; the settings are kept with the pane and Reset axes clears them.
+// scale; the settings are kept with the pane and Reset axes clears them. Y zoom (Shift + scroll, a drag on the y-axis)
+// sets the fixed range; a double-click on the axis fits it again.
 import { run } from './lib.js';
 
 const FILE = '/data/flight.tlm';
@@ -76,6 +77,27 @@ run(
     await p.click('.axdlg [data-axreset]');
     check('Reset axes', (await saved(0)) === undefined && (await until(() => window.__tlmApp.axes()[0].u0.min !== -10)), await saved(0));
     await p.keyboard.press('Escape');
+
+    // y zoom (design: Shift + scroll, or a drag on the y-axis): it sets the axis's fixed range
+    const y0 = (await axes())[1].u0;
+    const view0 = JSON.stringify(await app('view'));
+    const c = await p.evaluate(() => { const r = document.querySelectorAll('#stack .plot')[1].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, gx: r.left + 20 }; });
+    await p.mouse.move(c.x, c.y);
+    await p.keyboard.down('Shift');
+    await p.mouse.wheel(0, -300);
+    await p.keyboard.up('Shift');
+    check('Shift + scroll zooms y in', await until((b) => { const a = window.__tlmApp.axes()[1].u0; return a.max - a.min < (b.max - b.min) * 0.8; }, y0), [(await axes())[1].u0, y0]);
+    check('...as the axis\'s fixed range, saved with the pane', (await saved(1))?.u0?.range === 'fixed' && typeof (await saved(1)).u0.min === 'number', await saved(1));
+    check('...and the time view stays', JSON.stringify(await app('view')) === view0);
+    const zoomed = (await axes())[1].u0;
+    await p.mouse.move(c.gx, c.y);
+    await p.mouse.down();
+    await p.mouse.move(c.gx, c.y + 60, { steps: 4 });
+    await p.mouse.up();
+    check('dragging down the y-axis zooms out', await until((z) => { const a = window.__tlmApp.axes()[1].u0; return a.max - a.min > (z.max - z.min) * 1.5; }, zoomed), [(await axes())[1].u0, zoomed]);
+    const out = (await axes())[1].u0;
+    await p.mouse.dblclick(c.gx, c.y);
+    check('double-click on the y-axis fits it again', await until((o) => { const a = window.__tlmApp.axes()[1].u0; return Math.abs(a.max - a.min - (o.max - o.min)) > 1e-6; }, out) && (await saved(1))?.u0?.range === undefined, [(await axes())[1].u0, await saved(1)]);
 
     // a table pane has no axes
     await p.hover('#stack [data-pane="2"] .phead');

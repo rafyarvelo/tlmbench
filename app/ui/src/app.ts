@@ -39,6 +39,7 @@ import {
   onStackChange,
   type Pane,
   rightPad,
+  setAxis,
   stack,
   units,
 } from './stack.svelte';
@@ -1855,6 +1856,7 @@ function placeCursor(which: 'A' | 'B', t: bigint): void {
 
 type Drag =
   | { type: 'pan'; cx: number; t0: bigint; t1: bigint; w: number }
+  | { type: 'yaxis'; i: number; key: AxisKey; r: Rect; y: number; cy: number; from: YAxis }
   | { type: 'box'; pane: number; r: Rect }
   | { type: 'cursor'; which: 'A' | 'B'; r: Rect }
   | { type: 'overview'; r: Rect; offset: bigint }
@@ -1863,6 +1865,25 @@ type Drag =
 let drag: Drag | null = null;
 let lastPointer: { clientX: number; clientY: number } | null = null;
 
+// ---------- y zoom: Shift + scroll over a chart, or a drag on a y-axis; it sets the axis's fixed range ----------
+
+/** The y-axis under the pointer: the left gutter is the first unit's, the right one the second's (null: the plot). */
+function axisAt(hit: { i: number; r: Rect; x: number }): AxisKey | null {
+  if (hit.x < hit.r.x) return 'u0';
+  if (hit.x > hit.r.x + hit.r.w) return units(hit.i).length > 1 ? 'u1' : null;
+  return null;
+}
+
+/** Zooms axis `key` of pane `i` by `factor` (under 1: in) about the value at `y` (CSS pixels on the canvases). */
+function zoomAxis(i: number, key: AxisKey, r: Rect, y: number, factor: number, from: YAxis | undefined = paneY[i]?.[key]): void {
+  if (!from || !(from.max > from.min) || r.h <= 0) return;
+  const v = from.max - (Math.min(r.h, Math.max(0, y - r.y)) / r.h) * (from.max - from.min);
+  const [lo, hi] = [v - (v - from.min) * factor, v + (from.max - v) * factor];
+  if (!(hi > lo)) return;
+  const real = (u: number) => (from.log ? 10 ** u : u);
+  setAxis(i, key, { range: 'fixed', min: +real(lo).toPrecision(6), max: +real(hi).toPrecision(6) });
+}
+
 stackEl.addEventListener('pointerdown', (e) => {
   if (!state.file) return;
   const pane = (e.target as HTMLElement).closest<HTMLElement>('[data-pane]');
@@ -1870,6 +1891,13 @@ stackEl.addEventListener('pointerdown', (e) => {
   if (!(e.target as HTMLElement).closest('.plot')) return;
   const hit = paneAt(e);
   if (!hit) return;
+  const key = e.button === 0 ? axisAt(hit) : null;
+  if (key && paneY[hit.i]?.[key]) {
+    e.preventDefault();
+    stackEl.setPointerCapture(e.pointerId);
+    drag = { type: 'yaxis', i: hit.i, key, r: hit.r, y: e.clientY - center.getBoundingClientRect().top, cy: e.clientY, from: { ...paneY[hit.i][key] } };
+    return;
+  }
   const panGesture = e.button === 1 || (e.button === 0 && e.shiftKey);
   if (e.button !== 0 && !panGesture) return;
   e.preventDefault();
@@ -1897,7 +1925,10 @@ const abs = (v: bigint) => (v < 0n ? -v : v);
 stackEl.addEventListener('pointermove', (e) => {
   lastPointer = e;
   const hit = paneAt(e);
-  if (drag?.type === 'pan') {
+  if (drag?.type === 'yaxis') {
+    // up zooms in, down out, about where the drag started
+    zoomAxis(drag.i, drag.key, drag.r, drag.y, Math.exp((e.clientY - drag.cy) * 0.01), drag.from);
+  } else if (drag?.type === 'pan') {
     const shift = BigInt(Math.round(((drag.cx - e.clientX) / drag.w) * Number(drag.t1 - drag.t0)));
     setView(drag.t0 + shift, drag.t1 + shift);
   } else if (drag?.type === 'box' && state.box) {
@@ -1937,7 +1968,12 @@ const endDrag = () => {
 stackEl.addEventListener('pointerup', endDrag);
 stackEl.addEventListener('pointercancel', endDrag);
 stackEl.addEventListener('dblclick', (e) => {
-  if (settings.dblFit && (e.target as HTMLElement).closest('.plot')) fit();
+  // by position: a press on a y-axis captures the pointer, so the event lands on the stack
+  const hit = paneAt(e);
+  const key = hit && axisAt(hit);
+  // on a y-axis: back to fitting what's in view
+  if (hit && key) setAxis(hit.i, key, { range: undefined, min: undefined, max: undefined });
+  else if (settings.dblFit && (e.target as HTMLElement).closest('.plot')) fit();
 });
 
 stackEl.addEventListener(
@@ -1946,6 +1982,16 @@ stackEl.addEventListener(
     const hit = paneAt(e);
     if (!state.file || !hit) return;
     e.preventDefault();
+    // Shift + scroll zooms y (the time view's lock doesn't hold it; locking the layout does): the axis under the pointer, or every axis of the pane over the plot
+    if (e.shiftKey) {
+      let d = e.deltaY || e.deltaX;
+      if (e.deltaMode === 1) d *= 16;
+      const factor = Math.exp(Math.max(-200, Math.min(200, d)) * 0.0015);
+      const y = e.clientY - center.getBoundingClientRect().top;
+      const key = axisAt(hit);
+      for (const k of key ? [key] : (Object.keys(paneY[hit.i] ?? {}) as AxisKey[])) zoomAxis(hit.i, k, hit.r, y, factor);
+      return;
+    }
     if (locked()) return;
     stopGlide();
     const span = Number(state.t1 - state.t0);
