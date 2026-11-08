@@ -145,5 +145,6 @@ T.run('checks', async ({ p, check, wait, until, menu, pick, settingsLS }) => {
   const named = () => (JSON.parse(localStorage.getItem('plotter.settings') || '{}').checkSets || []).some(s => s.checks.some(k => k.name === 'Sixteen satellites'));
   check('the set is saved', await until(named, null, 10000));
   await p.reload(); await wait(3000);
-  check('sets persist', ((await settingsLS()).checkSets || []).some(s => s.checks.some(k => k.name === 'Sixteen satellites')));
+  const LS = await settingsLS();
+  check('sets persist', (LS.checkSets || []).some(s => s.checks.some(k => k.name === 'Sixteen satellites')), JSON.stringify({ sets: (LS.checkSets || []).map(s => s.id + ':' + s.checks.length), seeded: await p.evaluate(() => sessionStorage.getItem('tlm.seeded')) }));
 });

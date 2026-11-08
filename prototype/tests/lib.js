@@ -11,6 +11,23 @@ const PAGE = path.resolve(DIR, '../plotter.html');
 const URL = 'file://' + PAGE;
 const BASE_SETTINGS = { startPage: false, fileOpenNew: 'starter', fileOpenNewV: 2, theme: 'dark' };
 
+// the page over http on 127.0.0.1: Chromium sometimes lost localStorage on reload of a file:// page under load (1 in 60-90 runs in CI)
+let served = null;
+async function pageUrl() {
+  if (!served) {
+    const srv = require('http').createServer((req, res) => {
+      const f = path.join(path.dirname(PAGE), decodeURIComponent(new globalThis.URL(req.url, 'http://x').pathname));
+      if (!f.startsWith(path.dirname(PAGE)) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.statusCode = 404; return res.end(); }
+      res.setHeader('content-type', f.endsWith('.html') ? 'text/html' : 'application/octet-stream');
+      res.end(fs.readFileSync(f));
+    });
+    await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+    srv.unref();
+    served = `http://127.0.0.1:${srv.address().port}/${path.basename(PAGE)}`;
+  }
+  return served;
+}
+
 async function open(opts = {}) {
   const b = await chromium.launch();
   const ctx = await b.newContext(opts.phone ? { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } } : { viewport: opts.viewport || { width: 1440, height: 900 } });
@@ -24,10 +41,10 @@ async function open(opts = {}) {
     const u = r.request().url();
     if (u.includes('uplot')) return r.fulfill({ body: fs.readFileSync(path.join(DIR, 'stub.js'), 'utf8'), contentType: 'text/javascript' });
     if (u.includes('table-core')) return r.fulfill({ body: fs.readFileSync(path.join(DIR, 'tsstub.mjs'), 'utf8'), contentType: 'text/javascript' });
-    if (u.startsWith('file:') || u.startsWith('data:')) return r.continue();
+    if (u.startsWith('file:') || u.startsWith('data:') || u.startsWith('http://127.0.0.1')) return r.continue();
     return r.abort();
   });
-  await p.goto(URL);
+  await p.goto(await pageUrl());
   await p.waitForTimeout(opts.wait == null ? 1500 : opts.wait);
   return { b, ctx, p, errs };
 }
