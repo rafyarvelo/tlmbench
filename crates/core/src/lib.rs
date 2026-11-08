@@ -5,6 +5,7 @@ pub mod chunks;
 pub mod datetime;
 pub mod gaps;
 pub mod m4;
+pub mod mask;
 pub mod pyramid;
 pub mod recording;
 pub mod table;

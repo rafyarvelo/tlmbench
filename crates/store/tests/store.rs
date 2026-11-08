@@ -344,3 +344,63 @@ fn eviction_keeps_what_is_in_use() {
     let removed = store.evict().unwrap();
     assert_eq!(removed.len(), 1, "no longer in use: evicted");
 }
+
+#[test]
+#[allow(clippy::single_range_in_vec_init)]
+fn a_mask_makes_samples_missing_in_views_stats_and_values() {
+    use tlmbench_core::mask::Mask;
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let store = Store::new(Some(cache.path()));
+    let opened = store.open(&path, None).unwrap();
+    opened.build(&mut |_, _| {}).unwrap();
+    let info = opened.recording().info().clone();
+    let (first, last) = (info.t_first.unwrap(), info.t_last.unwrap());
+    let vp = Viewport { t0: first, t1: last + 1, width_px: 1500, raw_max: 0 };
+    let unmasked = opened.view(0, vp, 4.0, Precision::Exact);
+    let stats_all = opened.stats(&[0], first, last + 1).unwrap().pop().unwrap();
+
+    // two owners: the first 1M samples, and 100k samples in the middle (which the first doesn't touch)
+    opened.set_mask(1, Some(Mask::from_runs(vec![0..1_000_000])));
+    opened.set_mask(2, Some(Mask::from_runs(vec![2_500_000..2_600_000])));
+    assert_eq!(opened.mask().runs().to_vec(), vec![0..1_000_000, 2_500_000..2_600_000]);
+
+    let kept = |i: usize| i >= 1_000_000 && !(2_500_000..2_600_000).contains(&i);
+    let want: Vec<f64> = (0..N).filter(|&i| kept(i)).map(|i| value(0, i) as f64).filter(|v| !v.is_nan()).collect();
+    let s = opened.stats(&[0], first, last + 1).unwrap().pop().unwrap();
+    assert_eq!(s.count, want.len() as u64);
+    assert_eq!(s.max.unwrap().0, want.iter().cloned().fold(f64::MIN, f64::max));
+    assert_eq!(s.min.unwrap().0, want.iter().cloned().fold(f64::MAX, f64::min));
+    let mean = want.iter().sum::<f64>() / want.len() as f64;
+    assert!((s.mean - mean).abs() < 1e-6, "{} vs {mean}", s.mean);
+    // a span entirely excluded has no samples
+    let none = opened.stats(&[0], first, first + 1_000_000).unwrap().pop().unwrap();
+    assert_eq!((none.count, none.min), (0, None));
+
+    let t_of = |i: usize| opened.recording().time_at(i);
+    let masked = opened.view(0, vp, 4.0, Precision::Exact);
+    assert!(!masked.from_pyramid);
+    let finite = |t: &tlmbench_core::Trace, from: i64, to: i64| {
+        t.t.iter().zip(&t.y).any(|(&t, y)| t >= from && t < to && y.is_finite())
+    };
+    assert!(!finite(&masked.trace, first, t_of(1_000_000) - 2_000_000), "nothing drawn over the first million");
+    assert!(!finite(&masked.trace, t_of(2_500_000) + 2_000_000, t_of(2_600_000) - 2_000_000), "or the second run");
+    assert!(finite(&masked.trace, t_of(1_100_000), t_of(2_400_000)), "the rest is drawn");
+    // a coarse request is answered the same way: summaries can't tell which samples are left
+    assert!(!opened.views(&[0], vp, &[4.0], Precision::Coarse)[0].from_pyramid);
+
+    // values at a cursor inside a mask are missing
+    let (_, _, v) = opened.values_at(&[0, 1], t_of(500_000)).unwrap();
+    assert!(v.iter().all(|x| x.is_nan()));
+    let (_, _, v) = opened.values_at(&[0], t_of(1_500_000)).unwrap();
+    assert_eq!(v[0], value(0, 1_500_000) as f64);
+
+    // taking a mask back restores everything
+    opened.set_mask(1, None);
+    opened.set_mask(2, None);
+    assert!(opened.mask().is_empty());
+    assert!(same(&opened.view(0, vp, 4.0, Precision::Exact).trace, &unmasked.trace));
+    let again = opened.stats(&[0], first, last + 1).unwrap().pop().unwrap();
+    assert_eq!((again.count, again.max), (stats_all.count, stats_all.max));
+}

@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use crate::chunks::{Chunk, Held};
 use crate::gaps::GapIndex;
+use crate::mask::{Mask, Masked};
 use crate::pyramid::{self, Pyramid, Stats, Summary};
 use crate::{Column, Samples, TimeIndex, Times, Timestamp, Trace, Value, Viewport};
 
@@ -134,6 +135,13 @@ pub trait Recording: Send + Sync + Debug {
     /// broken before each sample in `breaks`. Raw samples are read through `held` where it holds them.
     fn view(&self, channel: usize, vp: Viewport, pyr: Option<&Pyramid>, breaks: &[usize], held: &Held) -> Trace;
 
+    /// Channel `channel` reduced for `vp` from its raw samples with those in `mask` missing, the line also broken
+    /// after each excluded run. Reads every sample in view: the pyramid can't tell which of its samples are left.
+    fn view_masked(&self, channel: usize, vp: Viewport, mask: &Mask, breaks: &[usize], held: &Held) -> Trace;
+
+    /// [`Recording::stats`] of samples `a..b` without those in `mask`: the pyramid answers each kept stretch.
+    fn stats_masked(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize, mask: &Mask, held: &Held) -> Stats;
+
     /// A coarse view from the pyramid alone (see [`pyramid::m4_coarse`]): drawn first, then replaced by
     /// [`Recording::view`].
     fn view_coarse(&self, channel: usize, vp: Viewport, pyr: &Pyramid, breaks: &[usize], held: &Held) -> Trace;
@@ -211,6 +219,48 @@ impl<C: Channels> Recording for C {
         }
         let trace = self.dispatch_held(channel, held, Op { vp, pyr, breaks });
         transformed(trace, self.transform(channel))
+    }
+
+    fn view_masked(&self, channel: usize, vp: Viewport, mask: &Mask, breaks: &[usize], held: &Held) -> Trace {
+        struct Op<'a> {
+            vp: Viewport,
+            mask: &'a Mask,
+            breaks: &'a [usize],
+        }
+        impl ChannelOp for Op<'_> {
+            type Out = Trace;
+            fn run<T: Times + ?Sized, S: Samples + ?Sized>(self, times: &T, values: &S) -> Trace {
+                let masked = Masked { values, mask: self.mask };
+                let (lo, hi) = (times.lower_bound(self.vp.t0), times.lower_bound(self.vp.t1));
+                let mut breaks = self.breaks.to_vec();
+                breaks.extend(self.mask.breaks(lo, hi));
+                breaks.sort_unstable();
+                breaks.dedup();
+                crate::m4_breaking(times, &masked, self.vp, &breaks)
+            }
+        }
+        let trace = self.dispatch_held(channel, held, Op { vp, mask, breaks });
+        transformed(trace, self.transform(channel))
+    }
+
+    fn stats_masked(&self, channel: usize, pyr: &Pyramid, a: usize, b: usize, mask: &Mask, held: &Held) -> Stats {
+        struct Op<'a>(&'a Pyramid<'a>, usize, usize, &'a Mask);
+        impl ChannelOp for Op<'_> {
+            type Out = Summary;
+            fn run<T: Times + ?Sized, S: Samples + ?Sized>(self, times: &T, values: &S) -> Summary {
+                let Op(pyr, a, b, mask) = self;
+                let kept = mask.kept(a, b);
+                let mut acc: Option<Summary> = None;
+                for r in kept {
+                    let s = pyramid::summary_of_range(times, values, pyr, r.start, r.end);
+                    acc = Some(acc.map_or(s, |x| x.merge(&s)));
+                }
+                // everything excluded: a summary of no samples
+                acc.unwrap_or_else(|| Summary::of(times, &Masked { values, mask }, a, b))
+            }
+        }
+        let (scale, offset) = self.transform(channel);
+        Stats::from(self.dispatch_held(channel, held, Op(pyr, a, b, mask))).transformed(scale, offset)
     }
 
     fn view_coarse(&self, channel: usize, vp: Viewport, pyr: &Pyramid, breaks: &[usize], held: &Held) -> Trace {

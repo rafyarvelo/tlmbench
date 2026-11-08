@@ -114,6 +114,8 @@ impl Store {
             cancel: AtomicBool::new(false),
             _in_use: hold(&self.root, key)?,
             building: Mutex::new(()),
+            masks: Mutex::default(),
+            mask: RwLock::default(),
         })
     }
 }

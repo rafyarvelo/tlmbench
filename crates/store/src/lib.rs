@@ -39,6 +39,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use tlmbench_core::chunks::{CHUNK_SAMPLES, Held, chunk_of};
 use tlmbench_core::gaps::{DEFAULT_FACTOR, MIN_FACTOR};
+use tlmbench_core::mask::Mask;
 use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Pyramid, Stats};
 use tlmbench_core::table::{self, Col, Filter, Query, Rows, SortKey};
 use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
@@ -146,6 +147,8 @@ impl Store {
             cancel: AtomicBool::new(false),
             _in_use: in_use,
             building: Mutex::new(()),
+            masks: Mutex::default(),
+            mask: RwLock::default(),
         })
     }
 
@@ -280,6 +283,9 @@ pub struct Opened {
     cancel: AtomicBool,
     _in_use: File,
     building: Mutex<()>,
+    /// What each owner (a table with Apply to charts) leaves out, and everything they leave out together.
+    masks: Mutex<std::collections::HashMap<u32, Mask>>,
+    mask: RwLock<Arc<Mask>>,
 }
 
 /// How a view is answered.
@@ -436,7 +442,9 @@ impl Opened {
         let vp = r.vp;
         let (lo, hi) = (self.rec.lower_bound(vp.t0), self.rec.lower_bound(vp.t1));
         let in_view = hi.saturating_sub(lo);
-        let coarse_pays = in_view / vp.width_px.max(1) as usize >= MIN_BUCKET_SAMPLES;
+        // a mask can't be answered from summaries: every sample in view is read
+        let coarse_pays =
+            self.mask.read().unwrap().is_empty() && in_view / vp.width_px.max(1) as usize >= MIN_BUCKET_SAMPLES;
         // An exact view reads level 4 at every pixel edge. A cold page fault costs about as much as reading 128 KB
         // in sequence, so when edges are closer than about 1024 summaries (88 KB) the range is read through first.
         // Only when cold: from memory, reading through costs more than it saves.
@@ -495,6 +503,10 @@ impl Opened {
                 if let Some(p) = &mut pyr {
                     p.raw_past = !skip_unread;
                 }
+                let masked = self.mask.read().unwrap().clone();
+                if !masked.is_empty() {
+                    pyr = None;
+                }
                 let coarse = precision == Precision::Coarse && p.coarse_pays && pyr.is_some();
                 let breaks = breaks_of(i);
                 let trace = match &pyr {
@@ -502,6 +514,7 @@ impl Opened {
                     None if skip_unread => {
                         Trace { kind: TraceKind::Raw, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] }
                     }
+                    _ if !masked.is_empty() => self.rec.view_masked(channel, vp, &masked, breaks, held),
                     _ => self.rec.view(channel, vp, pyr.as_ref(), breaks, held),
                 };
                 View { channel, trace, from_pyramid: pyr.is_some(), coarse, built_until }
@@ -527,7 +540,15 @@ impl Opened {
         let mut ks = vec![chunk_of(a), chunk_of(b - 1)];
         ks.dedup();
         let held = self.hold(channels, &ks, true);
-        channels.iter().zip(&held).map(|(&c, held)| Some(self.rec.stats(c, &l.pyramid(c)?, a, b, held))).collect()
+        let mask = self.mask.read().unwrap().clone();
+        let stats = |c: usize, py: &Pyramid, held: &Held| {
+            if mask.is_empty() {
+                self.rec.stats(c, py, a, b, held)
+            } else {
+                self.rec.stats_masked(c, py, a, b, &mask, held)
+            }
+        };
+        channels.iter().zip(&held).map(|(&c, held)| Some(stats(c, &l.pyramid(c)?, held))).collect()
     }
 
     /// Each channel's sample nearest `t` (the earlier one on ties), as (index, time, shown value). Channels share
@@ -551,7 +572,12 @@ impl Opened {
             (None, None) => return None,
         };
         let held = self.hold(channels, &[chunk_of(pick)], true);
-        let values = channels.iter().zip(&held).map(|(&c, held)| self.rec.value_at(c, pick, held)).collect();
+        let hidden = self.mask.read().unwrap().hides(pick);
+        let values = channels
+            .iter()
+            .zip(&held)
+            .map(|(&c, held)| if hidden { f64::NAN } else { self.rec.value_at(c, pick, held) })
+            .collect();
         Some((pick, self.rec.time_at(pick), values))
     }
 
@@ -576,6 +602,36 @@ impl Opened {
         };
         let q = Query { first, count, filters, sort };
         table::select(&q, &read, progress).map(|rows| (first, rows))
+    }
+
+    /// Sets what `owner` (a table with Apply to charts) leaves out of every view, statistic and value; `None` takes
+    /// it back. Samples any owner leaves out are missing.
+    pub fn set_mask(&self, owner: u32, mask: Option<Mask>) {
+        let mut masks = self.masks.lock().unwrap();
+        match mask {
+            Some(m) if !m.is_empty() => masks.insert(owner, m),
+            _ => masks.remove(&owner),
+        };
+        let all = masks.values().fold(Mask::default(), |acc, m| acc.union(m));
+        *self.mask.write().unwrap() = Arc::new(all);
+    }
+
+    /// Everything the owners leave out together.
+    pub fn mask(&self) -> Arc<Mask> {
+        self.mask.read().unwrap().clone()
+    }
+
+    /// The rows with times in `[t0, t1)` that pass `filters`, as a mask of the others in the file (for Apply to
+    /// charts); `None` when cancelled. Rows outside the span stay.
+    pub fn filter_mask(
+        &self,
+        (t0, t1): (Timestamp, Timestamp),
+        filters: Vec<(Col, Filter)>,
+        progress: &(dyn Fn(f64) -> bool + Sync),
+    ) -> Option<Mask> {
+        let (first, rows) = self.select_rows((t0, t1), filters, Vec::new(), progress)?;
+        let count = self.rec.lower_bound(t1).max(first) - first;
+        Some(Mask::from_kept(first, count, &rows.ids))
     }
 
     /// The sample nearest `t` (see [`Opened::values_at`]), as (index, time, shown value).
