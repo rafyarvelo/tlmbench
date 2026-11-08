@@ -285,6 +285,20 @@
           {/if}
         {/each}
       {/snippet}
+      {#if ui.shared.length}
+        <div class="row dir" id="exShared" role="treeitem" aria-selected="false" aria-expanded={expanded('.tlmbench')} style="--d: 0" tabindex="0" data-tip="Views shared in this folder (.tlmbench/views). Also under Layouts."
+          onclick={() => toggle('.tlmbench')} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle('.tlmbench'))}>
+          <span class="chev" class:on={expanded('.tlmbench')}>{@html ICON.chev}</span>{@html ICON.folder}<span class="nm">.tlmbench</span><span class="cnt">{ui.shared.length} shared view{ui.shared.length === 1 ? '' : 's'}</span>
+        </div>
+        {#if expanded('.tlmbench')}
+          {#each ui.shared as v (v.file)}
+            <div class="row file shared" role="treeitem" aria-selected="false" style="--d: 1" tabindex="0" data-shared={v.file} data-tip={v.error ? `${v.file} can't be read: ${v.error}` : `${v.file}: opens its file with the layout and time range it was shared with`}
+              onclick={() => v.ws && actions.openShared(v.file)} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && v.ws && (e.preventDefault(), actions.openShared(v.file))}>
+              {@html ICON.layout}<span class="nm">{v.ws?.name ?? v.file}</span>{#if v.error}<span class="cnt">can't be read</span>{:else if v.ws?.by}<span class="cnt">by {v.ws.by}</span>{/if}
+            </div>
+          {/each}
+        {/if}
+      {/if}
       {@render dir(ui.folder, 0)}
     {:else if ui.file}
       {@render file(ui.path, ui.file, 0)}
@@ -510,6 +524,12 @@
     font: 600 11px var(--font-ui);
     letter-spacing: 0.06em;
     text-transform: uppercase;
+  }
+  .row .cnt {
+    margin-left: auto;
+    color: var(--fg-muted);
+    font-size: 11.5px;
+    white-space: nowrap;
   }
   .fbadge {
     flex: none;

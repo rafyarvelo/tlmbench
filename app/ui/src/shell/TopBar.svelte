@@ -265,6 +265,21 @@
           </div>
         </form>
       {:else}
+        {#if menuTab}
+          {@const sharedBy = menuTab.shared ? ui.shared.find((v) => v.file === menuTab.shared)?.ws?.by : undefined}
+          <div class="tmhead"><b class="tmname" id="tmName">{menuTab.name}</b><button class="tmx" id="tmClose" aria-label="Close tab" data-tip="Close this tab" onclick={() => tabAct(actions.closeTab)}>{@html ICON.close}</button></div>
+          <div class="tmstat" id="wsStatus">
+            {#if menuTab.live}<span class="dot live"></span><span>Live session. Its panes live with the tab.</span>
+            {:else if menuTab.shared}
+              {#if menuTab.dirty}<span class="dot warn"></span><span>Unsaved changes. Shared views are read-only here: Save as makes your own copy.</span>
+              {:else}{@html ICON.folder}<span>Shared in this folder{sharedBy ? ` by ${sharedBy}` : ''} · .tlmbench/views/{menuTab.shared}</span>{/if}
+            {:else if menuTab.ws}
+              {#if menuTab.dirty}<span class="dot warn"></span><span>Unsaved changes</span>{:else}<span class="dot good"></span><span>Saved</span>{/if}
+            {:else}{@html ICON.file}<span>The panes this file opened with. Save as keeps them as a layout.</span>{/if}
+          </div>
+          {#if !menuTab.live}<div class="tmfiles" id="tabFiles"><span>This tab shows</span><span class="fchip" data-tip={menuTab.path}>{(menuTab.path.split(/[\\/]/).pop() ?? menuTab.path) + (menuTab.part ? ` · ${menuTab.part}` : '')}</span></div>{/if}
+          <div class="msep"></div>
+        {/if}
         {#if menuTab?.ws && !menuTab.shared}
           <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
         {/if}
@@ -553,6 +568,84 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+  }
+  .tmhead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 4px 8px;
+  }
+  .tmname {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tmx {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg-muted);
+  }
+  .tmx:hover {
+    background: var(--raised);
+    color: var(--fg);
+  }
+  .tmx :global(svg) {
+    width: 10px;
+    height: 10px;
+  }
+  .tmstat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px 6px;
+    color: var(--fg-muted);
+    font-size: 11.5px;
+  }
+  .tmstat :global(svg) {
+    flex: none;
+    width: 13px;
+    height: 13px;
+  }
+  .tmstat .dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .tmstat .dot.warn {
+    background: var(--warn);
+  }
+  .tmstat .dot.good {
+    background: var(--good);
+  }
+  .tmstat .dot.live {
+    background: var(--danger);
+  }
+  .tmfiles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    padding: 0 8px 6px;
+    color: var(--fg-muted);
+    font-size: 11.5px;
+  }
+  .fchip {
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--raised);
+    color: var(--fg);
+    font-size: 11.5px;
   }
   .lyrow {
     display: flex;

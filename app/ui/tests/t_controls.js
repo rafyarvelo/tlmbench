@@ -61,7 +61,7 @@ run('controls', async ({ p, check, text, visible, plotAt, settingsLS, until, wai
   // the ⋯ menu's groups and the bulk removals
   await more();
   const heads = await p.$$eval('.moremenu .mgrp', (e) => e.map((x) => x.textContent));
-  check('⋯ has View, All panes and Window groups', heads.join() === 'View,All panes,Window', heads);
+  check('⋯ has View, All panes and Window groups', heads.join() === 'View,All panes,Export,Window', heads);
   await p.click('[data-more="nochan"]');
   check('Remove every channel empties the panes, keeping them', (await paneCount()) === 3 && (await p.$$eval('#stack .chip', (e) => e.length)) === 0);
   await p.click('#wsNote button:has-text("Undo")');

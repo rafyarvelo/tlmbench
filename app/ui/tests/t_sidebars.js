@@ -39,7 +39,7 @@ run('sidebars', async ({ p, check, visible, plotAt, settingsLS, until, wait }) =
   check('a Measure panel collapses, saved', (await settingsLS()).panelsClosed.join() === 'measure.stats' && !(await visible('#mpStats')));
   await p.click('#b-more');
   await p.click('[data-more="panels"]');
-  check('Collapse all closes every panel', (await settingsLS()).panelsClosed.length === 4 && !(await visible('#chans')));
+  check('Collapse all closes every panel', (await settingsLS()).panelsClosed.length === 5 && !(await visible('#chans')));
   await p.click('#b-more');
   check('the item then offers to expand', /Expand all sidebar panels/.test(await p.innerText('.moremenu')));
   await p.click('[data-more="panels"]');
@@ -51,7 +51,7 @@ run('sidebars', async ({ p, check, visible, plotAt, settingsLS, until, wait }) =
   await p.click('#swapSides');
   await wait(200);
   check('⇄ moves Explorer to the right sidebar, under Measure\'s panels', (await visible('#measure [data-panel="explorer"] #chans')) && (await order()).right.join() === 'cur,stats,explorer', await order());
-  check('the left sidebar then shows what is left there (Settings)', await visible('#side #setPanel'));
+  check('the left sidebar then shows what is left there (Layouts, the first panel)', await visible('#side #layoutsPanel'));
   // drag a title: Explorer above Cursors
   await p.dragAndDrop('#measure [data-panel="explorer"] .phd', '#measure section[data-panel="cur"] .phd', { targetPosition: { x: 20, y: 2 } });
   check('dragging a title reorders the panels', (await order()).right.join() === 'explorer,cur,stats', await order());
@@ -69,5 +69,5 @@ run('sidebars', async ({ p, check, visible, plotAt, settingsLS, until, wait }) =
   await p.click('#b-settings');
   await p.click('#setResetUi');
   await p.click('[data-rail="explorer"]');
-  check('Reset UI layout restores sizes and panels', Math.round(await width('side')) === 300 && Math.round(await width('measure')) === 260 && (await order()).left.join() === 'explorer,settings' && (await order()).right.join() === 'cur,stats', [await width('side'), await width('measure'), await order()]);
+  check('Reset UI layout restores sizes and panels', Math.round(await width('side')) === 300 && Math.round(await width('measure')) === 260 && (await order()).left.join() === 'explorer,layouts,settings' && (await order()).right.join() === 'cur,stats', [await width('side'), await width('measure'), await order()]);
 });

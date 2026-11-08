@@ -2039,6 +2039,8 @@ async function listFolder(path: string): Promise<void> {
       setSetting('folder', path);
       setSetting('exExpanded', ui.folder.children.filter((c) => c.dir).map((c) => c.path));
     }
+    // the views shared in it count under Explorer's .tlmbench row and fill Layouts
+    void loadShared().catch(() => (ui.shared = []));
   } catch (e) {
     ui.folder = null;
     setSetting('folder', '');

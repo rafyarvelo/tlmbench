@@ -14,6 +14,7 @@
   import Connect from './shell/Connect.svelte';
   import DescriptorForm from './shell/DescriptorForm.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
+  import Layouts from './shell/Layouts.svelte';
   import ImportDialog from './shell/ImportDialog.svelte';
   import { live } from './live.svelte';
   import { play } from './play.svelte';
@@ -101,6 +102,8 @@
 {#snippet panel(id: PanelId, off: boolean)}
   {#if id === 'explorer'}
     <div class="exwrap" data-panel="explorer" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Explorer /></div>
+  {:else if id === 'layouts'}
+    <div class="lywrap" data-panel="layouts" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Layouts /></div>
   {:else if id === 'settings'}
     <div class="setwrap" data-panel="settings" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Settings /></div>
   {:else if !off}
@@ -264,9 +267,11 @@
     display: none;
   }
   .setwrap,
+  .lywrap,
   .mwrap {
     flex: none;
   }
+  .lywrap[hidden],
   .setwrap[hidden],
   .exwrap[hidden] {
     display: none;

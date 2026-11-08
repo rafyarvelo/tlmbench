@@ -13,17 +13,17 @@ export type StarterPanes = 'starter' | 'starterboth' | 'table' | 'values' | 'non
 export type TimeAxis = 'auto' | 'bottom' | 'every';
 export type ZoomSpeed = 'slow' | 'normal' | 'fast';
 /** What the left sidebar shows, a rail group (empty: hidden). */
-export type LeftPanel = 'explorer' | 'settings' | 'measure' | '';
+export type LeftPanel = 'explorer' | 'layouts' | 'settings' | 'measure' | '';
 /** A sidebar panel: Explorer, Settings, and Measure's Cursors and Stats. */
-export type PanelId = 'explorer' | 'settings' | 'cur' | 'stats';
+export type PanelId = 'explorer' | 'layouts' | 'settings' | 'cur' | 'stats';
 /** The sidebars' panels, top to bottom (owner, Nov 7: they drag by their title to reorder or change sides). */
 export interface PanelLayout {
   left: PanelId[];
   right: PanelId[];
 }
 /** Each panel's rail group: the left sidebar shows one group at a time, the right one all its panels. */
-export const GROUP_OF: Record<PanelId, Exclude<LeftPanel, ''>> = { explorer: 'explorer', settings: 'settings', cur: 'measure', stats: 'measure' };
-export const PANEL_TITLE: Record<PanelId, string> = { explorer: 'Explorer', settings: 'Settings', cur: 'Cursors', stats: 'Stats' };
+export const GROUP_OF: Record<PanelId, Exclude<LeftPanel, ''>> = { explorer: 'explorer', layouts: 'layouts', settings: 'settings', cur: 'measure', stats: 'measure' };
+export const PANEL_TITLE: Record<PanelId, string> = { explorer: 'Explorer', layouts: 'Layouts', settings: 'Settings', cur: 'Cursors', stats: 'Stats' };
 
 /** A folder's session: the files open (in tab order), the one in front, the layouts shown in tabs, and each file's
  *  view and cursors (nanoseconds as strings). `at`: when it was last saved. */
@@ -179,7 +179,7 @@ export const DEFAULTS: Settings = {
   exFilesShut: [],
   exShowAll: false,
   exOnlyOpen: false,
-  panelLayout: { left: ['explorer', 'settings'], right: ['cur', 'stats'] },
+  panelLayout: { left: ['explorer', 'layouts', 'settings'], right: ['cur', 'stats'] },
   measureOpen: false,
   measureAuto: true,
   showPerf: false,
@@ -198,7 +198,11 @@ const KEY = 'tlmbench.settings';
 
 function load(): Settings {
   try {
-    return { ...structuredClone(DEFAULTS), ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+    const s: Settings = { ...structuredClone(DEFAULTS), ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+    // settings saved before a panel existed: it joins the left sidebar, after Explorer
+    const L = s.panelLayout;
+    if (L && !L.left.includes('layouts') && !L.right.includes('layouts')) L.left.splice(Math.min(1, L.left.length), 0, 'layouts');
+    return s;
   } catch {
     return structuredClone(DEFAULTS);
   }
@@ -241,7 +245,7 @@ export function setPanelOpen(name: string, open: boolean): void {
   const rest = settings.panelsClosed.filter((n) => n !== name);
   setSetting('panelsClosed', open ? rest : [...rest, name]);
 }
-export const PANELS = ['explorer', 'settings', 'measure.cur', 'measure.stats'];
+export const PANELS = ['explorer', 'layouts', 'settings', 'measure.cur', 'measure.stats'];
 /** Collapses every sidebar panel, or (when all are collapsed) expands them. */
 export function toggleAllPanels(): void {
   setSetting('panelsClosed', settings.panelsClosed.length >= PANELS.length ? [] : [...PANELS]);
