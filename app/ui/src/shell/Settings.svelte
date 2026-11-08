@@ -24,6 +24,7 @@
     { key: 'zoomSpeed', section: 'Mouse', label: 'Zoom speed', hint: 'How far one wheel notch or trackpad swipe zooms.', options: [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']] },
     { key: 'locked', section: 'Mouse', label: 'Lock the time view', hint: "Zoom, pan and fit gestures can't change the view. Also on the top bar (L)." },
     { key: 'lockLayout', section: 'Mouse', label: 'Also lock the layout', hint: 'A locked view also refuses closing, moving and adding panes.' },
+    { key: 'lockSortFilter', section: 'Mouse', label: 'Table sort and filter still work while locked', hint: 'Off: each table keeps its current sort and filters.' },
     { key: 'wheelZoom', section: 'Mouse', label: 'Scroll wheel zooms the charts', hint: 'Off: the wheel pans, and Ctrl + wheel zooms.' },
     { key: 'lockCursors', section: 'Mouse', label: 'Cursors still work while locked' },
     { key: 'dblFit', section: 'Mouse', label: 'Double-click fits the whole recording' },

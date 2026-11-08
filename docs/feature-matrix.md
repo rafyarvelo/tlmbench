@@ -84,7 +84,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Icons with the prototype's drawings and sizes | — | ✓ | ✓ | |
 | Motion: glides on a spring, menus grow, dialogs rise, reduced motion | v1 | ✓ | ✓ |  |
 | Focus mode (⌘.) | v1 | ✓ | ✓ | |
-| View lock with its settings (layout, cursors, table sort) | v1 | ✓ | ◐ (table sort and filter rows wait for tables) | 4.2 |
+| View lock with its settings (layout, cursors, table sort) | v1 | ✓ | ✓ built (`t_tablelock`) | 4.2 |
 | Status bar: query and draw times, drawing level | v1 | ✓ | ✓ (and the core's memory, the chunk cache's share, CPU load) |  |
 | Start page: open folder, open recording, connect, recent recordings | v1 | ✓ | ✓ | |
 | Start page: recent sessions (one per folder), saved connections, layouts | v1 | ✓ | ◐ (sessions per folder; no saved connections or layouts) | 5.5 |

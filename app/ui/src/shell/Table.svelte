@@ -17,7 +17,7 @@
   import { live } from '../live.svelte';
   import { settings } from '../settings.svelte';
   import { ICON } from '../icons';
-  import { colorIdx, fmtCh, learnDecimals, newPaneWith, setTable, stack } from '../stack.svelte';
+  import { colorIdx, fmtCh, learnDecimals, newPaneWith, setTable, sortLocked, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -637,7 +637,8 @@
                   placeholder="Filter"
                   spellcheck="false"
                   aria-label="Filter {col.label}"
-                  data-tip={errors[col.id] ?? '> 1.5, 1..2, blank; join with and / or'}
+                  disabled={sortLocked()}
+                  data-tip={sortLocked() ? 'Filters are locked. Unlock, or allow table sort and filter while locked in Settings.' : (errors[col.id] ?? '> 1.5, 1..2, blank; join with and / or')}
                   value={filters[col.id] ?? ''}
                   oninput={(e) => setFilter(col.id, e.currentTarget.value)}
                 />

@@ -46,6 +46,8 @@ export interface Settings {
   lockCursors: boolean;
   /** A locked view also refuses edits of the panes. */
   lockLayout: boolean;
+  /** A locked view still lets tables sort and filter (off: each table keeps its sort and filters). */
+  lockSortFilter: boolean;
   /** The wheel zooms the charts (off: Ctrl+wheel zooms and the wheel pans). */
   wheelZoom: boolean;
   /** A channel dropped where a new pane goes makes a chart, or the same view as the pane it came from. */
@@ -123,6 +125,7 @@ export const DEFAULTS: Settings = {
   locked: false,
   lockCursors: true,
   lockLayout: false,
+  lockSortFilter: true,
   wheelZoom: true,
   dropNewView: 'chart',
   showHints: true,

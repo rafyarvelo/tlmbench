@@ -157,8 +157,11 @@ export function normalize(): void {
   assignColors();
 }
 
-function edit(f: () => void): void {
-  if (settings.locked && settings.lockLayout) {
+/** Whether a locked view stops tables sorting and filtering. */
+export const sortLocked = () => settings.locked && !settings.lockSortFilter;
+
+function edit(f: () => void, viewOnly = false): void {
+  if (!viewOnly && settings.locked && settings.lockLayout) {
     note('The layout is locked.', () => setSetting('locked', false), 'Unlock');
     return;
   }
@@ -397,6 +400,12 @@ export function setPlotH(i: number, h: number | undefined): void {
 
 /** Sets a pane's table widths or height (undefined: back to the default). */
 export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH' | 'sort' | 'filters' | 'tfilt' | 'hideCols'>>): void {
+  // sort and filters follow their own lock; widths, height and columns are layout
+  const viewOnly = Object.keys(patch).every((k) => k === 'sort' || k === 'filters' || k === 'tfilt');
+  if (viewOnly && sortLocked()) {
+    note('Table sort and filters are locked.', () => setSetting('lockSortFilter', true), 'Allow');
+    return;
+  }
   edit(() => {
     const p = stack.panes[i];
     if (!p) return;
@@ -404,7 +413,7 @@ export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH
       if (v === undefined || ((k === 'widths' || k === 'filters' || k === 'tfilt') && !Object.keys(v).length) || ((k === 'sort' || k === 'hideCols') && !(v as unknown[]).length)) delete p[k];
       else p[k] = v;
     }
-  });
+  }, viewOnly);
 }
 
 const unitOf = (ch: number) => ui.channels[ch]?.unit ?? '';
