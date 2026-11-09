@@ -2,12 +2,17 @@
 //! `parse` turns text into a syntax tree, with errors that name the character; evaluation comes next.
 
 pub mod ast;
+pub mod eval;
+pub mod filters;
 pub mod functions;
 pub mod lex;
 pub mod parse;
+pub mod series;
 
 pub use ast::{BinOp, Expr, ExprError, UnOp};
+pub use eval::{Env, Val, eval, eval_str};
 pub use parse::parse;
+pub use series::{Grid, Series};
 
 #[cfg(test)]
 mod tests {
