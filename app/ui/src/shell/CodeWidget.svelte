@@ -7,7 +7,7 @@
   import { gNum, type Ctx } from '../gauges';
   import { settings } from '../settings.svelte';
   import { trust } from '../customwidgets.svelte';
-  import { CODE_HOST, type CustomWidget, codeTrusted } from '../widgets';
+  import { type CustomWidget, codeTrusted, widgetHostUrl } from '../widgets';
 
   let { spec, x, title }: { spec: CustomWidget; x: Ctx; title: string } = $props();
 
@@ -53,7 +53,7 @@
 <svelte:window {onmessage} />
 
 {#if trusted}
-  <iframe bind:this={frame} class="gcodefr" sandbox="allow-scripts" title="{spec.name} for {title}" srcdoc={CODE_HOST} {onload}></iframe>
+  <iframe bind:this={frame} class="gcodefr" sandbox="allow-scripts" title="{spec.name} for {title}" src={widgetHostUrl()} {onload}></iframe>
 {:else}
   <div class="gcode off"><b>{x.txt}</b> <span class="muted">{x.unit}</span><button class="tbtn sm" data-trustw={spec.id} data-tip="This widget runs code from {spec.shared}. Choose whether to run it." onclick={(e) => (e.stopPropagation(), (trust.id = spec.id))}>Code widget · Run?</button></div>
 {/if}

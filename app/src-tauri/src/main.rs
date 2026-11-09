@@ -2075,8 +2075,30 @@ fn gate_report(report: serde_json::Value, app: AppHandle) {
     app.exit(if pass { 0 } else { 1 });
 }
 
+/// The page code widgets run in, served as `tlmwidget://localhost/host.html` (`http://tlmwidget.localhost/host.html` on
+/// Windows). It has a policy of its own: the app's (`default-src 'self'`) would stop a widget's inline script and
+/// `new Function`. The pane embeds it with `sandbox="allow-scripts"`: no same-origin access, and `default-src 'none'`
+/// leaves it no network, frames or images; values arrive by postMessage.
+const WIDGET_HOST: &str = include_str!("widget-host.html");
+
+fn widget_host(
+    _: tauri::UriSchemeContext<'_, tauri::Wry>,
+    _: tauri::http::Request<Vec<u8>>,
+) -> tauri::http::Response<Vec<u8>> {
+    tauri::http::Response::builder()
+        .header("Content-Type", "text/html; charset=utf-8")
+        .header(
+            "Content-Security-Policy",
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval'",
+        )
+        .header("Cache-Control", "no-store")
+        .body(WIDGET_HOST.as_bytes().to_vec())
+        .expect("a fixed response")
+}
+
 fn main() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("tlmwidget", widget_host)
         .plugin(tauri_plugin_dialog::init())
         .manage(Files {
             store: Store::new(None),

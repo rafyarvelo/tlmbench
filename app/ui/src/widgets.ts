@@ -66,11 +66,13 @@ export function fillTemplate(spec: CustomWidget, x: Pick<Ctx, 'txt' | 'unit' | '
   return sanitizeSvg(String(spec.svg ?? '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k: string) => vars[k] ?? m)).replace('<svg', '<svg class="gsvg"');
 }
 
-/** What the sandboxed frame runs: it takes the widget's code once, then values. No same-origin access, no network. */
-export const CODE_HOST = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval'"><style>html,body{margin:0;background:transparent;overflow:hidden}</style><div id="w"></div><script>
-let api=null;const el=document.getElementById('w');
-addEventListener('message',e=>{const m=e.data||{};if(m.code!=null){document.body.style.color=m.info.fg;try{api=(new Function('return ('+m.code+')'))();if(api&&api.build)api.build(el,m.info)}catch(err){el.textContent='Widget error: '+err.message}parent.postMessage({tlmReady:1},'*')}else if(api&&api.update){try{api.update(el,m)}catch(err){el.textContent='Widget error: '+err.message;api=null}}});
-<\/script>`;
+/** The page code widgets run in (served by the app's own scheme with a policy of its own; see `widget-host.html` in the
+ * app crate): scripts only, no same-origin access, no network. Tests answer the Windows form of it. */
+export function widgetHostUrl(): string {
+  const override = (window as unknown as { __tlmWidgetHost?: string }).__tlmWidgetHost;
+  if (override) return override;
+  return /Windows/i.test(navigator.userAgent) ? 'http://tlmwidget.localhost/host.html' : 'tlmwidget://localhost/host.html';
+}
 
 /** Yours run without asking; a shared one asks once per folder. */
 export const codeTrusted = (spec: CustomWidget, trusted: string[]): boolean => !spec.shared || trusted.includes(spec.shared);

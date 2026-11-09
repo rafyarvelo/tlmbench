@@ -44,6 +44,9 @@ export async function open(opts = {}) {
   // first-launch settings, once per test: a reload finds what the page saved
   // (frames of the page, such as a sandboxed code widget, have no storage: nothing to seed there)
   if (opts.settings) await p.addInitScript((s) => { try { if (!sessionStorage.getItem('tlm.seeded')) { sessionStorage.setItem('tlm.seeded', '1'); localStorage.setItem('tlmbench.settings', s); } } catch { /* no storage here */ } }, JSON.stringify(opts.settings));
+  // the page code widgets run in: the app serves it from its own scheme; here the Windows form of its address answers
+  await p.addInitScript(() => (window.__tlmWidgetHost = 'http://tlmwidget.localhost/host.html'));
+  await p.route('http://tlmwidget.localhost/**', (r) => r.fulfill({ contentType: 'text/html', headers: { 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval'" }, body: readFileSync(join(DIR, '../../src-tauri/src/widget-host.html'), 'utf8') }));
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message + ' @ ' + String(e.stack || '').split('\n')[1]));
   p.on('console', (m) => m.type() === 'error' && errs.push('console: ' + m.text()));

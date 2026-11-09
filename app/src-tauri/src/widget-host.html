@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}</style><div id="w"></div><script>
+let api=null;const el=document.getElementById('w');
+addEventListener('message',e=>{const m=e.data||{};if(m.code!=null){document.body.style.color=m.info.fg;try{api=(new Function('return ('+m.code+')'))();if(api&&api.build)api.build(el,m.info)}catch(err){el.textContent='Widget error: '+err.message}parent.postMessage({tlmReady:1},'*')}else if(api&&api.update){try{api.update(el,m)}catch(err){el.textContent='Widget error: '+err.message;api=null}}});
+</script>
