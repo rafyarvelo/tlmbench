@@ -1,7 +1,7 @@
 <!-- One built-in widget. Svelte writes only the attributes and text whose values changed (the design's typed updates),
      so a frame that moves a needle touches one attribute. Geometry is in a 120 × 96 box, as the prototype's. -->
 <script lang="ts">
-  import { arcPath, type Ctx, type Extra, flagBits, gNum, niceStep, polar, stateColor, stateSegs } from '../gauges';
+  import { arcPath, type Ctx, type Extra, flagBits, fr, gNum, niceStep, polar, stateColor, stateSegs } from '../gauges';
 
   let { type, x, r = null, members = [], e }: { type: string; x: Ctx; r?: Ctx | null; members?: Ctx[]; e: Extra } = $props();
 
@@ -117,10 +117,10 @@
   const dur = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${Math.round(s)} s`);
 </script>
 
-{#snippet hold(kind: string, g: { X: number; W: number; Y: number; H?: number; cx?: number; cy?: number; r?: number }, c: Ctx)}
+{#snippet hold(kind: string, g: { X: number; W: number; Y: number; H?: number }, c: Ctx, sc: Ctx = c)}
   {#if c.hold && c.cfg.hold !== false}
     {#each c.hold as hv}
-      {@const p = c.f(hv)}
+      {@const p = fr(sc, hv)}
       {#if kind === 'arc'}
         {@const a = polar(60, 60, 50, -90 + 180 * p)}
         {@const b = polar(60, 60, 56, -90 + 180 * p)}
@@ -140,7 +140,7 @@
   <svg viewBox="0 0 120 96" class="gsvg" data-widget="arc">
     <path d={arcPath(60, 60, 46, A0, A1)} stroke="var(--grid)" stroke-width="6" fill="none" />
     {#each x.zones as [a, b, col]}
-      <path d={arcPath(60, 60, 46, A0 + (A1 - A0) * x.f(a), A0 + (A1 - A0) * x.f(b))} stroke={col} stroke-width="6" fill="none" opacity=".85" />
+      <path d={arcPath(60, 60, 46, A0 + (A1 - A0) * fr(x, a), A0 + (A1 - A0) * fr(x, b))} stroke={col} stroke-width="6" fill="none" opacity=".85" />
     {/each}
     {#each [0, 0.25, 0.5, 0.75, 1] as f}
       {@const [p0, p1] = tick(60, 60, 46, A0 + (A1 - A0) * f)}
@@ -164,7 +164,7 @@
     <text x="60" y="36" text-anchor="middle" class="gval">{x.txt}<tspan class="gunit" dx="4">{x.unit}</tspan></text>
     <rect x="8" y="52" width="104" height="11" rx="5.5" fill="var(--grid)" />
     {#if x.ok}<rect x="8" y="52" width={Math.max(0, 104 * x.p).toFixed(1)} height="11" rx="5.5" fill={x.col} />{/if}
-    {#each x.zones as [a, b, col]}<rect x={8 + 104 * x.f(a)} y="66" width={104 * (x.f(b) - x.f(a))} height="3" fill={col} />{/each}
+    {#each x.zones as [a, b, col]}<rect x={8 + 104 * fr(x, a)} y="66" width={104 * (fr(x, b) - fr(x, a))} height="3" fill={col} />{/each}
     {@render hold('bar', { X: 8, W: 104, Y: 52 }, x)}
     <text x="8" y="82" class="gtk">{gNum(x.lo, x.dec)}</text><text x="112" y="82" text-anchor="end" class="gtk">{gNum(x.hi, x.dec)}</text>
   </svg>
@@ -172,7 +172,7 @@
   <svg viewBox="0 0 120 96" class="gsvg" data-widget="tank">
     <rect x="44" y="12" width="16" height="70" rx="8" fill="var(--grid)" />
     {#if x.ok}<rect x="44" y={(82 - 70 * x.p).toFixed(1)} width="16" height={Math.max(0, 70 * x.p).toFixed(1)} rx="8" fill={x.col} />{/if}
-    {#each x.zones as [a, b, col]}<rect x="62" y={82 - 70 * x.f(b)} width="3" height={70 * (x.f(b) - x.f(a))} fill={col} />{/each}
+    {#each x.zones as [a, b, col]}<rect x="62" y={82 - 70 * fr(x, b)} width="3" height={70 * (fr(x, b) - fr(x, a))} fill={col} />{/each}
     {@render hold('tank', { X: 44, W: 16, Y: 12, H: 70 }, x)}
     <text x="72" y="18" class="gtk">{gNum(x.hi, x.dec)}</text><text x="72" y="82" class="gtk">{gNum(x.lo, x.dec)}</text>
     <text x="36" y="52" text-anchor="end" class="gval">{x.txt}</text><text x="36" y="64" text-anchor="end" class="gunit">{x.unit}</text>
@@ -230,7 +230,7 @@
     <text x="112" y="36" text-anchor="end" class="gtk">{Number.isFinite(rel) ? (rel * 100).toFixed(1) + '%' : ''}</text>
     <rect x="8" y="58" width="104" height="10" rx="5" fill="var(--grid)" />
     {#if x.ok}<rect x="8" y="58" width={(104 * x.p).toFixed(1)} height="10" rx="5" fill={x.col} />{/if}
-    {#if r.ok}<path d="M{(8 + 104 * x.f(r.v)).toFixed(1)} 53V73" stroke="var(--fg)" stroke-width="2.2" stroke-linecap="round" class="gtarget" />{/if}
+    {#if r.ok}<path d="M{(8 + 104 * fr(x, r.v)).toFixed(1)} 53V73" stroke="var(--fg)" stroke-width="2.2" stroke-linecap="round" class="gtarget" />{/if}
     {@render hold('bar', { X: 8, W: 104, Y: 58 }, x)}
     <text x="8" y="86" class="gtk">{gNum(x.lo, x.dec)}</text><text x="112" y="86" text-anchor="end" class="gtk">{gNum(x.hi, x.dec)}</text>
   </svg>
@@ -242,14 +242,14 @@
   <svg viewBox="0 0 {VW} 96" class="gsvg" data-widget="group">
     {#each members as m, k}
       {@const bx = 8 + slot * k + (slot - bw) / 2}
-      {@const h = 50 * m.f(m.v)}
+      {@const h = 50 * fr(x, m.v)}
       {@const cx = bx + bw / 2}
       <rect x={bx.toFixed(1)} y="16" width={bw.toFixed(1)} height="50" rx="3" fill="var(--grid)" />
       {#if m.ok}<rect x={bx.toFixed(1)} y={(66 - h).toFixed(1)} width={bw.toFixed(1)} height={h.toFixed(1)} rx="3" fill={m.col} class={lvls.isOdd(k) ? 'godd' : ''} />{/if}
-      {@render hold('vbar', { X: bx, W: bw, Y: 16, H: 50 }, { ...m, f: x.f })}
+      {@render hold('vbar', { X: bx, W: bw, Y: 16, H: 50 }, m, x)}
       <text x={cx.toFixed(1)} y="12" text-anchor="middle" class="gtk{lvls.isOdd(k) ? ' odd' : ''}">{m.ok ? gNum(m.v, n > 6 ? 0 : x.dec) : '—'}</text><text x={cx.toFixed(1)} y="76" text-anchor="middle" class="gtk">{m.short}</text>
     {/each}
-    {#if Number.isFinite(lvls.med)}<path d="M6 {(66 - 50 * x.f(lvls.med)).toFixed(1)}H{VW - 6}" stroke="var(--fg-muted)" stroke-dasharray="3 3" stroke-width=".8" />{/if}
+    {#if Number.isFinite(lvls.med)}<path d="M6 {(66 - 50 * fr(x, lvls.med)).toFixed(1)}H{VW - 6}" stroke="var(--fg-muted)" stroke-dasharray="3 3" stroke-width=".8" />{/if}
     <text x="8" y="92" class="gtk">spread {Number.isFinite(lvls.spread) ? gNum(lvls.spread, x.dec) : '—'} {x.unit}</text>{#if n >= 4}<text x={VW - 8} y="92" text-anchor="end" class="gtk">{gNum(x.lo, x.dec)} – {gNum(x.hi, x.dec)}</text>{/if}
   </svg>
 {:else if type === 'flags'}

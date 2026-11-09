@@ -4149,6 +4149,8 @@ export const gateApi = {
   view: () => ({ t0: String(state.t0), t1: String(state.t1), back: state.history.length }),
   cursors: () => ({ A: state.A == null ? null : String(state.A), B: state.B == null ? null : String(state.B) }),
   hoverT: () => (state.hoverT == null ? null : String(state.hoverT)),
+  /** Moves the pointer's time as a chart would (tests of what follows it: widgets). */
+  hoverAt: (t: string | null) => actions.hoverAt(t == null ? null : BigInt(t)),
   building: () => state.building && { done: state.building.done, total: state.building.total },
   panes: () => panes().map((p) => [...p]),
   layout: () => stack.panes.map((p) => (p.beside ? 'beside' : p.under ? 'under' : 'row')),

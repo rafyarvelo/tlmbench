@@ -194,6 +194,23 @@ export interface Reading {
   trace: [number, number | null][];
 }
 
+/** Where `v` falls in the range of `x`, 0–1. */
+export const fr = (x: { lo: number; hi: number }, v: number): number => Math.max(0, Math.min(1, (v - x.lo) / (x.hi - x.lo || 1)));
+
+/** Writes into reactive `dst` only the fields of `src` that differ from `last` (the plain object `src` replaced), so what
+ * reads a field wakes only when it changed. Comparing against plain objects keeps identity checks cheap: a reactive
+ * object's fields are proxies. Long arrays (traces) count as changed unless they are the same array. */
+export function patch<T extends object>(dst: T, last: T, src: T): void {
+  const d = dst as Record<string, unknown>;
+  const l = last as Record<string, unknown>;
+  for (const [k, b] of Object.entries(src)) {
+    const a = l[k];
+    if (a === b) continue;
+    if (typeof b === 'object' && b !== null && a != null && !(Array.isArray(b) && b.length > 32) && JSON.stringify(a) === JSON.stringify(b)) continue;
+    d[k] = b;
+  }
+}
+
 /** Everything a widget needs about one channel at the reading time. */
 export interface Ctx {
   ch: number;
@@ -207,7 +224,6 @@ export interface Ctx {
   hi: number;
   /** Where the value stands in the range, 0–1. */
   p: number;
-  f: (v: number) => number;
   lvl: '' | 'ok' | 'warn' | 'alarm';
   col: string;
   zones: [number, number, string][];

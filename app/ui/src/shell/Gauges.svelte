@@ -3,11 +3,11 @@
      core per change returns every widget's value, min and max in view and where its state began (`widgets_frame`). -->
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
 
   import { violationAt } from '../checks.svelte';
-  import { chCss, chLimits, chName, chUnit, levelOf, openChannelEditor } from '../display.svelte';
-  import { type Ctx, type Extra, type GChan, groupKey, HOLD_TYPES, type Layout, layoutOf, LVL_COLOR, memberLabels, MULTI, partRoles, rangeOf, type Reading, targetOf, TYPES, typeName, xyPartner, autoWidget, zonesOf as zonesFor } from '../gauges';
+  import { chCss, chLimits, chName, chUnit, type Limits, levelOf, openChannelEditor } from '../display.svelte';
+  import { type Ctx, type Extra, type GChan, groupKey, HOLD_TYPES, type Layout, layoutOf, LVL_COLOR, memberLabels, MULTI, partRoles, rangeOf, type Reading, targetOf, TYPES, typeName, xyPartner, autoWidget, zonesOf as zonesFor, fr, patch } from '../gauges';
   import { readoutTime } from '../axes';
   import { settings } from '../settings.svelte';
   import { setWidget, stack, type WidgetCfg } from '../stack.svelte';
@@ -94,8 +94,14 @@
           if (wantTrace && asks.get(ch)!.trace) tr[ch] = pts;
           next[ch] = { value: w.value, min: w.min, max: w.max, runStart: w.runStart != null ? BigInt(w.runStart) : null, trace: tr[ch] ?? [] };
         });
+        // how long the page takes to bring every widget up to this frame (derive the cards, patch the DOM)
+        const t0 = performance.now();
         readings = next;
         traces = tr;
+        await tick();
+        const w = ((window as unknown as { __tlmGauges?: { renderMs: number[] } }).__tlmGauges ??= { renderMs: [] });
+        w.renderMs.push(performance.now() - t0);
+        if (w.renderMs.length > 200) w.renderMs.shift();
       }
       // the change over the last second, for the number widget
       const nums = [...lay].filter(([, L]) => L.type === 'number').map(([ch]) => ch);
@@ -151,38 +157,46 @@
     timer = window.setTimeout(() => void frame(), 0);
   });
 
-  const unitOf = (ch: number) => chUnit(ch);
+  /** What changes with settings, limits and ranges but not with the reading: names, units, scales and limit zones.
+   * Derived once per change, so a frame only adds the values. */
+  const metas = $derived.by(() => {
+    const m = new Map<number, { name: string; unit: string; lim: Limits; lo: number; hi: number; zones: [number, number, string][]; dec: number | undefined; css: string; labels: Record<string, string> | undefined; cfg: WidgetCfg }>();
+    const add = (ch: number) => {
+      if (m.has(ch)) return;
+      const name = ui.channels[ch]?.name ?? '';
+      const cfg = cfgOf(ch);
+      const lim = chLimits(ch);
+      const [lo, hi] = rangeOf(ranges[ch] ?? null, lim, cfg);
+      m.set(ch, { name: chName(ch), unit: chUnit(ch), lim, lo, hi, zones: zonesFor(lim, lo, hi), dec: settings.chdisp[name]?.dec, css: chCss(ch), labels: settings.valueMaps[name], cfg });
+    };
+    for (const [ch, L] of lay) [ch, L.ref?.ch, ...(L.members ?? []).map((x) => x.ch)].forEach((c) => c != null && add(c));
+    return m;
+  });
   const ctxOf = (ch: number, short = ''): Ctx => {
-    const name = ui.channels[ch]?.name ?? '';
-    const cfg = cfgOf(ch);
+    const mt = metas.get(ch)!;
+    const v = readings[ch]?.value ?? NaN;
     const rd = readings[ch];
-    const v = rd?.value ?? NaN;
     const ok = Number.isFinite(v);
-    const lim = chLimits(ch);
-    const [lo, hi] = rangeOf(ranges[ch] ?? null, lim, cfg);
-    const f = (x: number) => Math.max(0, Math.min(1, (x - lo) / (hi - lo || 1)));
-    const lvl = levelOf(lim, ok ? v : null);
-    const label = ok ? (settings.valueMaps[name]?.[String(v)] ?? null) : null;
-    const dec = settings.chdisp[name]?.dec;
+    const lvl = levelOf(mt.lim, ok ? v : null);
+    const label = ok ? (mt.labels?.[String(v)] ?? null) : null;
     return {
       ch,
-      name: chName(ch),
-      short: short || chName(ch),
-      unit: unitOf(ch),
+      name: mt.name,
+      short: short || mt.name,
+      unit: mt.unit,
       v,
       ok,
-      lo,
-      hi,
-      p: f(v),
-      f,
+      lo: mt.lo,
+      hi: mt.hi,
+      p: fr(mt, v),
       lvl,
-      col: lvl && lvl !== 'ok' ? LVL_COLOR[lvl] : chCss(ch),
-      zones: zonesFor(lim, lo, hi),
-      txt: ok ? (label ?? (Math.abs(v) >= 10000 ? Math.round(v).toLocaleString() : v.toFixed(Math.min(dec ?? 2, 3)))) : '—',
+      col: lvl && lvl !== 'ok' ? LVL_COLOR[lvl] : mt.css,
+      zones: mt.zones,
+      txt: ok ? (label ?? (Math.abs(v) >= 10000 ? Math.round(v).toLocaleString() : v.toFixed(Math.min(mt.dec ?? 2, 3)))) : '—',
       label,
-      dec,
+      dec: mt.dec,
       hold: rd?.min != null && rd.max != null ? [rd.min, rd.max] : null,
-      cfg,
+      cfg: mt.cfg,
     };
   };
 
@@ -192,49 +206,97 @@
     return readT >= a && readT <= b && b > a ? Number(readT - a) / Number(b - a) : null;
   });
 
+  const endsText = $derived([readoutTime(BigInt(ui.view.t0), span), readoutTime(BigInt(ui.view.t1), span)]);
+  /** Channels with a failing check covering the reading time, by name: one pass over the check results. */
+  const violated = $derived.by(() => {
+    const out = new Map<string, { set: string; check: string }>();
+    for (const n of new Set([...lay].flatMap(([ch, L]) => [ch, L.ref?.ch, ...(L.members ?? []).map((x) => x.ch)]).map((c) => ui.channels[c ?? -1]?.name ?? ''))) {
+      const v = violationAt(ui.path, n, readT);
+      if (v) out.set(n, v);
+    }
+    return out;
+  });
   /** One card: the widget's contexts, and the extras it reads. */
-  const cards = $derived(
-    [...lay].map(([ch, L]) => {
-      const name = ui.channels[ch]?.name ?? '';
-      const parts: GChan[] = L.ref ? [gchan(ch), L.ref] : L.members ?? [gchan(ch)];
-      const roles = L.ref ? partRoles(name, L.ref.name) : [''];
-      const labels = L.members ? memberLabels(L.members.map((m) => m.name)) : [];
-      const x = ctxOf(ch, L.ref ? roles[0] : labels[0] ?? '');
-      const r = L.ref ? ctxOf(L.ref.ch, roles[1]) : null;
-      const members = L.members ? L.members.map((m, k) => ctxOf(m.ch, labels[k])) : [];
-      if (L.members) {
-        const own = cfgOf(ch);
-        if (!(own.min != null && own.max != null)) {
-          x.lo = Math.min(...members.map((m) => m.lo));
-          x.hi = Math.max(...members.map((m) => m.hi));
+  interface Card {
+    x: Ctx;
+    r: Ctx | null;
+    members: Ctx[];
+    e: Extra;
+    worst: string;
+    viol: { set: string; check: string } | null;
+  }
+  function build(ch: number, L: Layout): Card {
+    const name = ui.channels[ch]?.name ?? '';
+    const roles = L.ref ? partRoles(name, L.ref.name) : [''];
+    const labels = L.members ? memberLabels(L.members.map((m) => m.name)) : [];
+    const x = ctxOf(ch, L.ref ? roles[0] : (labels[0] ?? ''));
+    const r = L.ref ? ctxOf(L.ref.ch, roles[1]) : null;
+    const members = L.members ? L.members.map((m, k) => ctxOf(m.ch, labels[k])) : [];
+    const own = cfgOf(ch);
+    const fixed = own.min != null && own.max != null;
+    if (L.members && !fixed) {
+      // a group shares one scale
+      x.lo = Math.min(...members.map((m) => m.lo));
+      x.hi = Math.max(...members.map((m) => m.hi));
+      x.p = fr(x, x.v);
+      for (const m of members) [m.lo, m.hi] = [x.lo, x.hi];
+    }
+    if (r && L.type === 'bullet' && !fixed) {
+      x.lo = Math.min(x.lo, r.lo);
+      x.hi = Math.max(x.hi, r.hi);
+      x.p = fr(x, x.v);
+    }
+    const worst = (L.members ? members : [x]).map((m) => m.lvl).reduce((a, l) => (l === 'alarm' || a === 'alarm' ? 'alarm' : l === 'warn' || a === 'warn' ? 'warn' : ''), '' as string);
+    const prev = before[ch];
+    const rd = readings[ch];
+    const e: Extra = {
+      pitch: L.type === 'horizon' ? (readings[byName('pitch')]?.value ?? null) : null,
+      trend: x.ok && prev != null ? x.v - prev : NaN,
+      trace: rd?.trace ?? [],
+      tFrac,
+      since: rd?.runStart != null ? Number(readT - rd.runStart) / 1e9 : null,
+      xy: { view: clouds[ch]?.view ?? [], trail: clouds[ch]?.trail ?? [], now: r && x.ok && r.ok ? (/lat(itude)?$/i.test(name) ? [r.v, x.v] : [x.v, r.v]) : null, geo: /lat(itude)?$/i.test(name) },
+      t0: endsText[0],
+      t1: endsText[1],
+      uid: `${i}-${ch}`,
+    };
+    return { x, r, members, e, worst, viol: violated.get(name) ?? null };
+  }
+  /** What each card reads, as stable reactive objects patched in place: a frame writes only the fields whose values
+   * changed, so the page updates only what those fields feed (a needle's angle, a number's text), not whole widgets. */
+  let cards = $state<Record<number, Card>>({});
+  /** The plain objects each card was last patched from. */
+  let last = new Map<number, Card>();
+  const snap = (c: Card): Card => ({ x: { ...c.x }, r: c.r ? { ...c.r } : null, members: c.members.map((m) => ({ ...m })), e: { ...c.e, xy: { ...c.e.xy } }, worst: c.worst, viol: c.viol });
+  const order = $derived([...lay].map(([ch, L]) => ({ ch, L })));
+  $effect(() => {
+    const t0 = performance.now();
+    const fresh = new Map([...lay].map(([ch, L]) => [ch, build(ch, L)] as const));
+    const tb = performance.now() - t0;
+    untrack(() => {
+      for (const ch of [...last.keys()]) if (!fresh.has(ch)) (delete cards[ch], last.delete(ch));
+      for (const [ch, c] of fresh) {
+        const cur = cards[ch];
+        const was = last.get(ch);
+        last.set(ch, c);
+        if (!cur || !was) {
+          cards[ch] = snap(c);
+          continue;
         }
-        for (const m of members) m.f = (v) => Math.max(0, Math.min(1, (v - x.lo) / (x.hi - x.lo || 1)));
-        x.f = members[0]?.f ?? x.f;
+        patch(cur.x, was.x, c.x);
+        if (c.r && cur.r && was.r) patch(cur.r, was.r, c.r);
+        else if (!!c.r !== !!cur.r) cur.r = c.r ? { ...c.r } : null;
+        if (c.members.length === cur.members.length) c.members.forEach((m, k) => patch(cur.members[k], was.members[k], m));
+        else cur.members = c.members.map((m) => ({ ...m }));
+        patch(cur.e, was.e, c.e);
+        if (cur.worst !== c.worst) cur.worst = c.worst;
+        if (JSON.stringify(was.viol) !== JSON.stringify(c.viol)) cur.viol = c.viol;
       }
-      if (r && L.type === 'bullet' && !(cfgOf(ch).min != null && cfgOf(ch).max != null)) {
-        x.lo = Math.min(x.lo, r.lo);
-        x.hi = Math.max(x.hi, r.hi);
-        x.f = (v) => Math.max(0, Math.min(1, (v - x.lo) / (x.hi - x.lo || 1)));
-        x.p = x.f(x.v);
-      }
-      const worst = (L.members ? members : [x]).map((m) => m.lvl).reduce((a, l) => (l === 'alarm' || a === 'alarm' ? 'alarm' : l === 'warn' || a === 'warn' ? 'warn' : ''), '' as string);
-      const pitch = L.type === 'horizon' ? (readings[byName('pitch')]?.value ?? null) : null;
-      const prev = before[ch];
-      const e: Extra = {
-        pitch,
-        trend: x.ok && prev != null ? x.v - prev : NaN,
-        trace: readings[ch]?.trace ?? [],
-        tFrac,
-        since: readings[ch]?.runStart != null ? Number(readT - readings[ch].runStart!) / 1e9 : null,
-        xy: { view: clouds[ch]?.view ?? [], trail: clouds[ch]?.trail ?? [], now: r && x.ok && r.ok ? (/lat(itude)?$/i.test(name) ? [r.v, x.v] : [x.v, r.v]) : null, geo: /lat(itude)?$/i.test(name) },
-        t0: readoutTime(BigInt(ui.view.t0), span),
-        t1: readoutTime(BigInt(ui.view.t1), span),
-        uid: `${i}-${ch}`,
-      };
-      const viol = violationAt(ui.path, name, readT);
-      return { ch, L, x, r, members, e, worst, viol, parts };
-    }),
-  );
+    });
+    const w = ((window as unknown as { __tlmGauges?: { renderMs: number[]; deriveMs: number[] } }).__tlmGauges ??= { renderMs: [], deriveMs: [] });
+    (w.deriveMs ??= []).push(performance.now() - t0);
+    ((w as unknown as { buildMs: number[] }).buildMs ??= []).push(tb);
+  });
   void wrote;
 
   // ---------- the widget's menu ----------
@@ -290,14 +352,16 @@
 <div class="fgauges" data-fgauges>
   <div class="fvwhere muted" data-where-line>{ui.valuesAt}</div>
   <div class="ggrid">
-    {#each cards as { ch, L, x, r, members, e, worst, viol } (ch)}
+    {#each order as { ch, L } (ch)}
+      {@const c = cards[ch]}
+      {#if c}
       <div
-        class="gw{viol ? ' alarm chkviol' : worst ? ' ' + worst : ''}"
+        class="gw{c.viol ? ' alarm chkviol' : c.worst ? ' ' + c.worst : ''}"
         data-gw={ui.channels[ch]?.name}
         data-gtype={L.type}
         data-gsize={pane?.widgets?.[ui.channels[ch]?.name ?? '']?.size ?? null}
         style:grid-column={!pane?.widgets?.[ui.channels[ch]?.name ?? '']?.size && L.type === 'group' && (L.members?.length ?? 0) >= 4 ? 'span 2' : null}
-        data-tip={viol ? `Check failing here: ${viol.check}` : null}
+        data-tip={c.viol ? `Check failing here: ${c.viol.check}` : null}
         tabindex="0"
         role="button"
         aria-label="{chName(ch)}: click to set limits"
@@ -306,13 +370,14 @@
       >
         <div class="gwh">
           <i style="background: {chCss(ch)}"></i>
-          <span class="gwn">{L.type === 'group' ? `${groupKey(ui.channels[ch]?.name ?? '')} ` : chName(ch)}{#if L.type === 'group'}<span class="muted">×{L.members?.length}</span>{:else if L.type === 'bullet' || L.type === 'xy'}<span class="muted">+ {r?.name}</span>{/if}</span>
+          <span class="gwn">{L.type === 'group' ? `${groupKey(ui.channels[ch]?.name ?? '')} ` : chName(ch)}{#if L.type === 'group'}<span class="muted">×{L.members?.length}</span>{:else if L.type === 'bullet' || L.type === 'xy'}<span class="muted">+ {c.r?.name}</span>{/if}</span>
           <button class="gwt" data-gwt={ui.channels[ch]?.name} aria-haspopup="menu" aria-label="Widget for {chName(ch)}" data-tip="Choose the widget, or set its range" onclick={(ev) => (menu = menu?.ch === ch ? null : { ch, anchor: ev.currentTarget as HTMLElement })}>⋯</button>
         </div>
         <div class="gwb">
-          {#if !readings[ch]}<div class="gpend">reading…</div>{:else}<Widget type={L.type} {x} {r} {members} {e} />{/if}
+          {#if !readings[ch]}<div class="gpend">reading…</div>{:else}<Widget type={L.type} x={c.x} r={c.r} members={c.members} e={c.e} />{/if}
         </div>
       </div>
+      {/if}
     {:else}
       <span class="mnote">Tick channels on the left to show them here</span>
     {/each}
