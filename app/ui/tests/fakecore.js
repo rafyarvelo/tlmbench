@@ -285,6 +285,11 @@
     adjusts: [],
     checks: [],
     spectra: [],
+    /** What every widgets_frame and xy_points call asked for. */
+    frames: [],
+    xyAsks: [],
+    /** Values by channel name that replace the synthetic ones in widgets_frame (a state, a heading), as a function of the sample. */
+    frameValue: {},
     /** CSV files the import dialog sees, by path: `fake.csv(path, names, opts)`; the profiles saved by header, what
      * each open was given, and every profile_save. */
     csvs: {},
@@ -652,6 +657,70 @@
       if (fake.spectrumNone) return [];
       const n = 1024;
       return channels.map((channel) => ({ channel, df: o.r.rate / n, nyquist: o.r.rate / 2, peak_hz: 12.5 * (channel + 1), peak_amp: 1 + channel, n, mag: Array.from({ length: n / 2 + 1 }, (_, k) => 1 / (1 + k) + (k === 13 * (channel + 1) ? 1 + channel : 0)) }));
+    },
+    // a Gauges pane's frame: the value at t, min and max from the start of the view to t, the run start and a trace
+    widgets_frame({ file, t, view, widgets }) {
+      const r = fake.open.get(file)?.r;
+      if (!r) throw 'that file is not open';
+      fake.frames.push({ file, t, view, widgets });
+      const val = (ch, i) => (fake.frameValue[r.chans[ch]?.name] ? fake.frameValue[r.chans[ch].name](i) : valueAt(r, ch, i));
+      const i = clampI(r, indexAt(r, t));
+      const a = clampI(r, indexAt(r, view.t0));
+      const b = clampI(r, indexAt(r, view.t1));
+      return {
+        index: i,
+        t: String(timeAt(r, i)),
+        widgets: widgets.map((w) => {
+          const ch = Math.min(w.channel, r.chans.length - 1);
+          let [min, max] = [null, null];
+          if (w.minmax && r.built) {
+            [min, max] = [Infinity, -Infinity];
+            for (let k = Math.min(a, i); k <= i; k += Math.max(1, Math.floor((i - a) / 400))) [min, max] = [Math.min(min, val(ch, k)), Math.max(max, val(ch, k))];
+          }
+          let runStart = null;
+          if (w.run) {
+            let k = i;
+            while (k > 0 && val(ch, k - 1) === val(ch, i)) k--;
+            runStart = String(timeAt(r, k));
+          }
+          const trace = [];
+          if (w.trace) for (let q = 0; q < w.trace; q++) trace.push(q / (w.trace - 1), val(ch, Math.round(a + ((b - a) * q) / (w.trace - 1))));
+          return { value: val(ch, i), min, max, runStart, trace };
+        }),
+      };
+    },
+    // an XY pane's points: pairs by index, thinned to maxPoints; the range of the pairs in the span
+    xy_points({ file, span, ask }) {
+      const r = fake.open.get(file)?.r;
+      if (!r) throw 'that file is not open';
+      fake.xyAsks.push({ file, span, ask });
+      const a = clampI(r, indexAt(r, span.t0));
+      const b = clampI(r, indexAt(r, span.t1));
+      const n = Math.max(1, Math.min(ask.maxPoints ?? 100000, b - a + 1));
+      const val = (ch, i) => (fake.frameValue[r.chans[ch]?.name] ? fake.frameValue[r.chans[ch].name](i) : valueAt(r, ch, i));
+      const series = ask.ys.map((y) => {
+        const idx = Array.from({ length: n }, (_, q) => a + Math.round(((b - a) * q) / Math.max(1, n - 1)));
+        return { y, t: idx.map((i) => timeAt(r, i)), x: idx.map((i) => val(ask.x, i)), ys: idx.map((i) => val(y, i)) };
+      });
+      const all = series.flatMap((s) => s.x.map((x, q) => [x, s.ys[q]]));
+      const buf = new ArrayBuffer(48 + series.reduce((m, s) => m + 8 + 24 * s.x.length, 0));
+      const v = new DataView(buf);
+      [...'TLMX'].forEach((c, k) => v.setUint8(k, c.charCodeAt(0)));
+      v.setUint32(4, series.length, true);
+      v.setUint32(8, (all.length ? 2 : 0) | (ask.maxPoints && b - a + 1 > ask.maxPoints ? 1 : 0), true);
+      const rg = all.length ? [Math.min(...all.map((p) => p[0])), Math.max(...all.map((p) => p[0])), Math.min(...all.map((p) => p[1])), Math.max(...all.map((p) => p[1]))] : [NaN, NaN, NaN, NaN];
+      rg.forEach((x, k) => v.setFloat64(16 + 8 * k, x, true));
+      let at = 48;
+      for (const s of series) {
+        v.setUint32(at, s.y, true);
+        v.setUint32(at + 4, s.x.length, true);
+        at += 8;
+        s.t.forEach((t, q) => v.setBigInt64(at + 8 * q, t, true));
+        s.x.forEach((x, q) => v.setFloat64(at + 8 * s.x.length + 8 * q, x, true));
+        s.ys.forEach((y, q) => v.setFloat64(at + 16 * s.x.length + 8 * q, y, true));
+        at += 24 * s.x.length;
+      }
+      return buf;
     },
     close({ file }) {
       fake.open.delete(file);

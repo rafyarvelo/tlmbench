@@ -8,7 +8,7 @@ import { ui } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
  * view, the chart with its table below, or value tiles. */
-export type PaneMode = 'chart' | 'table' | 'both' | 'values' | 'spectrum' | 'checks';
+export type PaneMode = 'chart' | 'table' | 'both' | 'values' | 'spectrum' | 'checks' | 'gauges' | 'xy';
 
 /** One of a pane's value axes (design: Pane axes); what's left out is the default (fit the view, auto decimals). */
 export interface AxisSettings {
@@ -45,8 +45,30 @@ export interface Pane {
   hideCols?: number[];
   /** Event markers on this pane's chart (false: hidden here; the top bar's E and the categories decide underneath). */
   events?: boolean;
+  /** Gauges: each channel's widget choices by channel name (type, range, size, min/max marks, ...). */
+  widgets?: Record<string, WidgetCfg>;
+  /** XY: the X channel (the pane's first channel when left out), whether the axes keep equal scale (on for a
+   *  longitude/latitude pair), and the local zoom as `[x0, x1, y0, y1]`. */
+  x?: number;
+  xyEqual?: boolean;
+  xyView?: [number, number, number, number];
   beside?: boolean;
   under?: boolean;
+}
+
+/** What a person chose for one channel's widget; what's left out is automatic. */
+export interface WidgetCfg {
+  /** A built-in type (`arc`, `ring`, ...) or the id of a widget of your own. */
+  type?: string;
+  min?: number;
+  max?: number;
+  size?: 'S' | 'M' | 'L' | '2x2';
+  /** Min and max in view marks (on unless false). */
+  hold?: boolean;
+  /** Commanded vs actual: the difference that is fine, in percent. */
+  tol?: number;
+  /** XY dot: the trail's length in seconds. */
+  trail?: number;
 }
 
 /** Columns a row holds at most. */
@@ -392,7 +414,7 @@ export function movePane(from: number, to: number): void {
 /** Every pane with channels as a chart, a table or both (panes of values keep their view). */
 export function setAllModes(mode: 'chart' | 'table' | 'both'): void {
   edit(() => {
-    for (const p of stack.panes) if (p.mode !== 'values' && p.mode !== 'spectrum' && p.mode !== 'checks') p.mode = mode;
+    for (const p of stack.panes) if (!['values', 'spectrum', 'checks', 'gauges', 'xy'].includes(p.mode ?? '')) p.mode = mode;
   });
 }
 
@@ -419,6 +441,34 @@ export function setPlotH(i: number, h: number | undefined): void {
   });
 }
 
+/** Changes what pane `i` shows for channel `name`'s widget (undefined values go back to automatic). */
+export function setWidget(i: number, name: string, patch: Partial<WidgetCfg>): void {
+  edit(() => {
+    const p = stack.panes[i];
+    if (!p) return;
+    const cfg: Record<string, unknown> = { ...(p.widgets?.[name] ?? {}) };
+    for (const [k, v] of Object.entries(patch)) if (v === undefined) delete cfg[k];
+    else cfg[k] = v;
+    const all = { ...(p.widgets ?? {}) };
+    if (Object.keys(cfg).length) all[name] = cfg as WidgetCfg;
+    else delete all[name];
+    if (Object.keys(all).length) p.widgets = all;
+    else delete p.widgets;
+  });
+}
+
+/** Sets an XY pane's X channel, equal scale or local zoom (undefined: automatic). */
+export function setXy(i: number, patch: Partial<Pick<Pane, 'x' | 'xyEqual' | 'xyView'>>): void {
+  edit(() => {
+    const p = stack.panes[i];
+    if (!p) return;
+    for (const [k, v] of Object.entries(patch) as [keyof typeof patch, never][]) {
+      if (v === undefined) delete p[k];
+      else p[k] = v;
+    }
+  }, true);
+}
+
 /** Sets a pane's table widths or height (undefined: back to the default). */
 export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH' | 'sort' | 'filters' | 'tfilt' | 'hideCols'>>): void {
   // sort and filters follow their own lock; widths, height and columns are layout
@@ -439,7 +489,7 @@ export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH
 
 const unitOf = (ch: number) => ui.channels[ch]?.unit ?? '';
 /** Whether pane `i` draws a chart. */
-export const hasChart = (i: number) => !['values', 'table', 'spectrum', 'checks'].includes(stack.panes[i]?.mode ?? 'chart');
+export const hasChart = (i: number) => !['values', 'table', 'spectrum', 'checks', 'gauges', 'xy'].includes(stack.panes[i]?.mode ?? 'chart');
 /** Pane `i`'s units, an axis each: the first on the left, the second on the right (any more share the left). */
 export const units = (i: number): string[] => [...new Set((stack.panes[i]?.channels ?? []).map(unitOf))].slice(0, 2);
 /** The axis channel `ch` is drawn against in pane `i`. */

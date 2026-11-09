@@ -40,6 +40,7 @@
   import AddPane from './AddPane.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
   import ChecksPane from './ChecksPane.svelte';
+  import Gauges from './Gauges.svelte';
   import Spectrum from './Spectrum.svelte';
   import Table from './Table.svelte';
 
@@ -52,10 +53,11 @@
     { mode: 'table', label: 'Table', hint: 'The samples in view, one row each' },
     { mode: 'both', label: 'Chart and table', hint: 'The chart with its table below' },
     { mode: 'values', label: 'Values', hint: 'Value tiles at the pointer, cursor A or the end of the view' },
+    { mode: 'gauges', label: 'Gauges', hint: 'One widget per channel: gauges, bars, rings, a compass, a horizon and more' },
     { mode: 'spectrum', label: 'Spectrum', hint: 'The frequency content of each channel over the time view' },
     { mode: 'checks', label: 'Checks', hint: 'What the rules and checks found: the sets, their groups and verdicts' },
   ] as const;
-  const VIEW_ICON = { chart: ICON.vchart, table: ICON.vtable, both: ICON.vboth, values: ICON.vvalues, spectrum: ICON.vspectrum, checks: ICON.vchecks } as const;
+  const VIEW_ICON = { chart: ICON.vchart, table: ICON.vtable, both: ICON.vboth, values: ICON.vvalues, spectrum: ICON.vspectrum, checks: ICON.vchecks, gauges: ICON.vgauges, xy: ICON.vxy } as const;
   const viewName = (i: number) => VIEWS.find((v) => v.mode === (stack.panes[i]?.mode ?? 'chart'))!.label;
   /** A channel dragged from Explorer: the pane it would land in (-1: a new pane). */
   let chanOver = $state<number | null>(null);
@@ -332,6 +334,8 @@
                 <Spectrum {i} />
               {:else if p.mode === 'checks'}
                 <ChecksPane {i} />
+              {:else if p.mode === 'gauges'}
+                <Gauges {i} />
               {:else}
                 {#if ui.filtered && ui.filtered.pane !== i}
                   <div class="fchip" data-fchip>

@@ -2,7 +2,7 @@
 // them, so it applies to any recording that has them; yours are kept in the app's settings, never beside the data.
 // The format is the one shared views use (`.tlmbench/views/*.tlmview.json`).
 
-import type { AxisKey, AxisSettings, Pane, PaneMode } from './stack.svelte';
+import type { AxisKey, AxisSettings, Pane, PaneMode, WidgetCfg } from './stack.svelte';
 
 export interface WsPane {
   channels: string[];
@@ -20,6 +20,12 @@ export interface WsPane {
   tfilt?: { scope?: 'file'; apply?: boolean };
   /** Channels (by name) whose columns the table leaves out. */
   hide?: string[];
+  /** Gauges: widget choices by channel name. */
+  widgets?: Record<string, WidgetCfg>;
+  /** XY: the X channel by name, equal scale and local zoom. */
+  x?: string;
+  xyEqual?: boolean;
+  xyView?: [number, number, number, number];
 }
 
 export interface Workspace {
@@ -55,6 +61,10 @@ export function toWorkspace(name: string, panes: Pane[], names: string[]): Works
       if (p.filters) w.filters = Object.fromEntries(Object.entries(p.filters).map(([k, v]) => [colName(k), v]));
       if (p.tfilt) w.tfilt = { ...p.tfilt };
       if (p.hideCols?.length) w.hide = p.hideCols.map((c) => names[c]).filter((n) => n != null);
+      if (p.widgets) w.widgets = structuredClone(p.widgets);
+      if (p.x != null && names[p.x] != null) w.x = names[p.x];
+      if (p.xyEqual != null) w.xyEqual = p.xyEqual;
+      if (p.xyView) w.xyView = [...p.xyView];
       return w;
     }),
   };
@@ -94,6 +104,10 @@ export function fromWorkspace(ws: Workspace, names: string[]): { panes: Pane[]; 
     if (w.tfilt) p.tfilt = { ...w.tfilt };
     const hide = (w.hide ?? []).flatMap((n) => (index.has(n) ? [index.get(n)!] : []));
     if (hide.length) p.hideCols = hide;
+    if (w.widgets) p.widgets = structuredClone(w.widgets);
+    if (w.x != null && index.has(w.x)) p.x = index.get(w.x);
+    if (w.xyEqual != null) p.xyEqual = w.xyEqual;
+    if (w.xyView) p.xyView = [...w.xyView];
     return p;
   });
   return { panes, missing: [...missing] };

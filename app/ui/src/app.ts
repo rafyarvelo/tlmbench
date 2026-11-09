@@ -1336,6 +1336,10 @@ function setValuesAt(): void {
   else if (state.hoverT != null) ui.valuesAt = `at the pointer · ${readoutTime(state.hoverT, span)}`;
   else if (state.A != null) ui.valuesAt = `at cursor A · ${readoutTime(state.A, span)}`;
   else ui.valuesAt = `at the end of the view · ${readoutTime(state.t1 > f.last ? f.last : state.t1, span)}`;
+  // widgets also follow the playhead, after the pointer
+  const at = f ? (state.hoverT ?? (play.open ? playNs() : null) ?? state.A ?? (state.t1 > f.last ? f.last : state.t1)) : null;
+  const s = at == null ? null : at.toString();
+  if (ui.readAt !== s) ui.readAt = s;
 }
 
 function updateChips(): void {
@@ -2939,6 +2943,11 @@ async function reapply(file: OpenFile, reopen = false): Promise<void> {
 function remapPane(p: Pane, to: (n: number) => number | undefined): void {
   p.channels = p.channels.map(to).filter((n): n is number => n != null);
   if (p.hideCols) p.hideCols = p.hideCols.map(to).filter((n): n is number => n != null);
+  if (p.x != null) {
+    const x = to(p.x);
+    if (x == null) delete p.x;
+    else p.x = x;
+  }
   const col = (id: string) => {
     const m = /^c(\d+)$/.exec(id);
     if (!m) return id;

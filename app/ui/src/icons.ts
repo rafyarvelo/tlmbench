@@ -24,6 +24,8 @@ export const ICON = {
   vtable: s('<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 4.5v15"/>'),
   vboth: s('<path d="M4 3.5v8h16"/><path d="M7 9l3-3 3 2 4-4"/><rect x="3.5" y="14" width="17" height="6.5" rx="1"/><path d="M3.5 17.25h17"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   vchecks: s('<path d="M4 6h16M4 12h16M4 18h16"/><path d="M6 6l1 1 2-2M6 12l1 1 2-2M6 18l1 1 2-2"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  vgauges: s('<path d="M4 17a8 8 0 0116 0"/><path d="M12 17l4-5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  vxy: s('<path d="M4 4v16h16"/><path d="M7 16c2-6 4-2 6-6s3-1 5-4"/><circle cx="18" cy="6" r="1.6" fill="currentColor"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   vspectrum: s('<path d="M4 4v16h16"/><path d="M7 19v-5M10 19V8M13 19v-9M16 19v-4M19 19v-2"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   vvalues: s('<rect x="3" y="5" width="8" height="6" rx="1.2"/><rect x="13" y="5" width="8" height="6" rx="1.2"/><rect x="3" y="13" width="8" height="6" rx="1.2"/><rect x="13" y="13" width="8" height="6" rx="1.2"/>'),
   more: s('<circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/>', 'fill="currentColor"'),

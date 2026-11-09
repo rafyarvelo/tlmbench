@@ -118,3 +118,42 @@ export function decodeRows(buf: ArrayBuffer): Rows {
   const values = Array.from({ length: channels }, (_, k) => new Float64Array(buf, at + 8 * n * k, n));
   return { first: Number(v.getBigUint64(8, true)), total: Number(v.getBigUint64(16, true)), times, index, values };
 }
+
+/** One Y channel of an XY reply: points over the span, a NaN pair breaking the line. */
+export interface XySeries {
+  channel: number;
+  t: BigInt64Array;
+  x: Float64Array;
+  y: Float64Array;
+}
+
+/** The reply to `xy_points`: the range of every pair in the span, and a series per Y channel. */
+export interface XyReply {
+  /** `[x0, x1, y0, y1]`, or null when the span holds no pair. */
+  range: [number, number, number, number] | null;
+  /** Some series had more points than were asked for and every n-th was kept. */
+  sampled: boolean;
+  series: XySeries[];
+}
+
+export function decodeXy(buf: ArrayBuffer): XyReply {
+  const v = new DataView(buf);
+  if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== 'TLMX') throw new Error('not an xy reply');
+  const n = v.getUint32(4, true);
+  const flags = v.getUint32(8, true);
+  const range = (flags & 2) !== 0 ? ([16, 24, 32, 40].map((o) => v.getFloat64(o, true)) as [number, number, number, number]) : null;
+  let at = 48;
+  const series: XySeries[] = [];
+  for (let s = 0; s < n; s++) {
+    const channel = v.getUint32(at, true);
+    const len = v.getUint32(at + 4, true);
+    at += 8;
+    // the arrays are copied: 8-byte alignment of a series isn't promised after the 8-byte series header
+    const t = new BigInt64Array(buf.slice(at, at + 8 * len));
+    const x = new Float64Array(buf.slice(at + 8 * len, at + 16 * len));
+    const y = new Float64Array(buf.slice(at + 16 * len, at + 24 * len));
+    series.push({ channel, t, x, y });
+    at += 24 * len;
+  }
+  return { range, sampled: (flags & 1) !== 0, series };
+}
