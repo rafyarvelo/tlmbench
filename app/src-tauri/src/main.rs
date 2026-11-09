@@ -109,13 +109,13 @@ struct Skipped {
     why: String,
 }
 
+/// What a file shows once its recipes are applied: the recording (joined with its derived channels), the channels
+/// derived, and the attached recipes that didn't apply.
+type Shown = (Arc<StoreOpened>, Vec<DerivedInfo>, Vec<Skipped>);
+
 /// `base` with the library's recipes that apply to it (the automatic ones, and those named in `attached`) as channels
 /// after its own: what the file shows, the channels derived, and the attached recipes that didn't apply.
-fn with_derived(
-    store: &Store,
-    base: &Arc<StoreOpened>,
-    attached: &[String],
-) -> Result<(Arc<StoreOpened>, Vec<DerivedInfo>, Vec<Skipped>), String> {
+fn with_derived(store: &Store, base: &Arc<StoreOpened>, attached: &[String]) -> Result<Shown, String> {
     let lib = tlmbench_store::Library::new(store.root());
     let recipes: Vec<tlmbench_expr::Recipe> =
         lib.list().into_iter().filter(|r| r.automatic || attached.contains(&r.name)).collect();
