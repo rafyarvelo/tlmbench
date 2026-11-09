@@ -41,6 +41,8 @@ export const ui = $state({
   valuesAt: '',
   /** The time widgets and tiles read at (ns): the pointer, the playhead, cursor A or the end of the view; null with no file. */
   readAt: null as string | null,
+  /** The pointer's time over a chart (ns), for panes that mark it (XY). */
+  hover: null as string | null,
   /** Focus mode: only the panes and the range show. */
   focus: false,
   /** The open file's id, the time view and the cursors (exact ns as decimal strings), for table panes. */
@@ -166,6 +168,8 @@ export const actions = {
   placeCursor: (_which: 'A' | 'B', _t: bigint) => {},
   /** Centres the time view on a time, keeping its span. */
   centreOn: (_t: bigint) => {},
+  /** Sets the time view (an XY pane's Alt-drag); refused while the view is locked. */
+  setTimeView: (_t0: bigint, _t1: bigint) => {},
   /** The charts, overview and stats ask again (after what the core leaves out of them changed). */
   refreshViews: () => {},
   /** The pointer is over a table row (a time), or left the table (null): the charts show it as a hover line. */

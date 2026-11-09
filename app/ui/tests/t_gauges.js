@@ -6,6 +6,8 @@ import { run } from './lib.js';
 const names = ['motor_rpm', 'motor_rpm_target', 'battery_v', 'throttle_pct', 'roll', 'pitch', 'yaw', 'flight_mode', 'esc_temp_1', 'esc_temp_2', 'esc_temp_3', 'current_a', 'accel_x', 'accel_y'];
 const units = ['rpm', 'rpm', 'V', '%', 'deg', 'deg', 'deg', 'enum', '°C', '°C', '°C', 'A', 'g', 'g'];
 
+const SET = { schema: 1, name: 'Flight acceptance', runs_on_any_file: true, info_groups: [], check: [{ name: 'RPM below 7500', kind: 'check', group: 'Propulsion', expect: 'motor_rpm < 7500', severity: 'fail', grace: 0, settle: 0, enabled: true }] };
+
 run(
   'gauges',
   async ({ p, check, until, fake, text, settingsLS, wait }) => {
@@ -90,10 +92,23 @@ run(
     check('a click on a widget opens its limits', await until(() => document.querySelector('#chEditor [data-tab="limits"]')?.getAttribute('aria-selected') === 'true'));
     await p.keyboard.press('Escape');
 
-    // colours come from the limits
-    await fake(() => null);
-    const s = await settingsLS();
-    void s;
+    // colours come from the limits: battery_v's high limits sit below every value
+    check('past its alarm limit the card is red', await until(() => document.querySelector('#stack [data-gw="battery_v"]')?.classList.contains('alarm')), await p.$eval(card('battery_v'), (e) => e.className));
+    check('and the others have no colour', await p.$eval(card('pitch'), (e) => !/warn|alarm/.test(e.className)));
+
+    // a failing check shows on the widget that reads the channel
+    check('a card turns red with "✗ check" while the time it reads is inside a violation', await until(() => document.querySelector('#stack [data-gw="motor_rpm"]')?.classList.contains('chkviol')), await p.$eval(card('motor_rpm'), (e) => e.className));
+    check('its tooltip names the check', /RPM below 7500/.test(await p.$eval(card('motor_rpm'), (e) => e.dataset.tip ?? '')), await p.$eval(card('motor_rpm'), (e) => e.dataset.tip));
+    check('a card of a channel no check reads is unmarked', await p.$eval(card('pitch'), (e) => !e.classList.contains('chkviol')));
   },
-  { files: { '/data/flight.tlm': { channels: names, units } }, launch: '/data/flight.tlm', settings: { limits: { battery_v: { ah: -50, wh: -60 } } } },
+  {
+    files: { '/data/flight.tlm': { channels: names, units } },
+    launch: '/data/flight.tlm',
+    settings: { limits: { battery_v: { ah: -50, wh: -60 } } },
+    setupArg: SET,
+    setup: (fake, SET) => {
+      fake.checkSets = [SET];
+      fake.checkOutcomes = { 'RPM below 7500': { verdict: 'fail', runs: [[0, 200]] } };
+    },
+  },
 );

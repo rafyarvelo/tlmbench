@@ -708,7 +708,8 @@
       [...'TLMX'].forEach((c, k) => v.setUint8(k, c.charCodeAt(0)));
       v.setUint32(4, series.length, true);
       v.setUint32(8, (all.length ? 2 : 0) | (ask.maxPoints && b - a + 1 > ask.maxPoints ? 1 : 0), true);
-      const rg = all.length ? [Math.min(...all.map((p) => p[0])), Math.max(...all.map((p) => p[0])), Math.min(...all.map((p) => p[1])), Math.max(...all.map((p) => p[1]))] : [NaN, NaN, NaN, NaN];
+      const rg = all.length ? [Infinity, -Infinity, Infinity, -Infinity] : [NaN, NaN, NaN, NaN];
+      for (const [x, y] of all) [rg[0], rg[1], rg[2], rg[3]] = [Math.min(rg[0], x), Math.max(rg[1], x), Math.min(rg[2], y), Math.max(rg[3], y)];
       rg.forEach((x, k) => v.setFloat64(16 + 8 * k, x, true));
       let at = 48;
       for (const s of series) {

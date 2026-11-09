@@ -1340,6 +1340,8 @@ function setValuesAt(): void {
   const at = f ? (state.hoverT ?? (play.open ? playNs() : null) ?? state.A ?? (state.t1 > f.last ? f.last : state.t1)) : null;
   const s = at == null ? null : at.toString();
   if (ui.readAt !== s) ui.readAt = s;
+  const h = state.hoverT == null ? null : state.hoverT.toString();
+  if (ui.hover !== h) ui.hover = h;
 }
 
 function updateChips(): void {
@@ -4009,6 +4011,11 @@ Object.assign(actions, {
     const y = paneY[i]?.[key];
     if (!y) return null;
     return y.log ? [10 ** y.min, 10 ** y.max] : [y.min, y.max];
+  },
+  setTimeView: (t0: bigint, t1: bigint) => {
+    if (locked()) return;
+    stopGlide();
+    setView(t0, t1, true);
   },
   centreOn: (t: bigint) => {
     stopGlide();

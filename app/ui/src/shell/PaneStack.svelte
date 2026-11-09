@@ -41,6 +41,7 @@
   import Menu, { type MenuItem } from './Menu.svelte';
   import ChecksPane from './ChecksPane.svelte';
   import Gauges from './Gauges.svelte';
+  import XY from './XY.svelte';
   import Spectrum from './Spectrum.svelte';
   import Table from './Table.svelte';
 
@@ -54,6 +55,7 @@
     { mode: 'both', label: 'Chart and table', hint: 'The chart with its table below' },
     { mode: 'values', label: 'Values', hint: 'Value tiles at the pointer, cursor A or the end of the view' },
     { mode: 'gauges', label: 'Gauges', hint: 'One widget per channel: gauges, bars, rings, a compass, a horizon and more' },
+    { mode: 'xy', label: 'XY plot', hint: 'One channel against another: a GPS track, current against throttle' },
     { mode: 'spectrum', label: 'Spectrum', hint: 'The frequency content of each channel over the time view' },
     { mode: 'checks', label: 'Checks', hint: 'What the rules and checks found: the sets, their groups and verdicts' },
   ] as const;
@@ -336,6 +338,8 @@
                 <ChecksPane {i} />
               {:else if p.mode === 'gauges'}
                 <Gauges {i} />
+              {:else if p.mode === 'xy'}
+                <XY {i} />
               {:else}
                 {#if ui.filtered && ui.filtered.pane !== i}
                   <div class="fchip" data-fchip>
