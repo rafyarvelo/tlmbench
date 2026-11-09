@@ -135,7 +135,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Ignore outliers (clip and mark) | v1 | ✓ | ✓ | |
 | Y zoom: Shift + scroll, drag on the y-axis | v1 | ✓ | ✓ (sets the axis's fixed range; owner, Nov 8) |  |
 | Fixed pane heights and a height grip, as the prototype | v1 | ✓ | ✓ |  |
-| Limit lines and shading past warn and alarm | v1 | ✓ | ✗ | 5.2 |
+| Limit lines and shading past warn and alarm | v1 | ✓ | ✓ | 5.2 |
 | Event markers on charts (washes, notches, tooltips) | v1 | ✓ | ✗ | 5.2 |
 | Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ◐ (Apply to charts and its chip work, the core leaves the rows out; match marks and hatching are drawn from `table_marks`) | 4.2 |
 | Table rows band on the charts | v1 | ✓ | ✓ built (`t_tablequery`) | 4.2 |
@@ -145,7 +145,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Overview drawing: min/max band per channel with a midline | v1 | ✓ | ✓ |  |
 | Overview event ticks | v1 | ✓ | ✗ | 5.2 |
 | Values view: tiles at the pointer, cursor A or the end of the view | v1 | ✓ | ✓ | |
-| Values tiles coloured by limits | v1 | ✓ | ✗ | 5.2 |
+| Values tiles coloured by limits | v1 | ✓ | ✓ | 5.2 |
 
 ## 6. Tables
 
@@ -234,7 +234,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Events panel: list, add from cursors, inline edit, filters, grouping | v1 | ✓ | ✗ | 5.2 |
 | Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ✗ | 5.2 |
 | Value labels (enums) on channels | v1 | ✓ | ✗ | 5.2 |
-| Channel limits (warn, alarm) with sensible defaults | v1 | ✓ | ✗ | 5.2 |
+| Channel limits (warn, alarm) with sensible defaults | v1 | ✓ | ✓ | 5.2 |
 | Rules: an expression held for a minimum time, marking events | v1 | ✓ | ✗ | 5.3 |
 | Checks: Expect, When, grace, settle, summary checks, severity | v1 | ✓ | ✗ | 5.3 |
 | Rules & checks panel; one editor with Lists and ƒ | v1 | ✓ | ✗ | 5.3 |

@@ -57,6 +57,9 @@ export const stack = $state({
   values: {} as Record<number, string>,
   /** Each channel's value when the pointer is off the charts: at cursor A, else at the end of the view. */
   resting: {} as Record<number, string>,
+  /** Where each channel's shown value stands against its limits (tiles take their colour from it). */
+  levels: {} as Record<number, string>,
+  restingLevels: {} as Record<number, string>,
   /** Panes drawn from summaries for now (labelled "coarse" until the exact view comes). */
   coarse: [] as boolean[],
 });

@@ -161,7 +161,7 @@ export class Renderer {
 
   /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. `width` is in CSS pixels.
    *  Nothing is drawn outside `clip` (the stack's visible part, when panes scroll). */
-  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = LINE_WIDTH, clip?: Rect): void {
+  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = LINE_WIDTH, clip?: Rect, dashed = false): void {
     if ((!t.runs.length && !t.dashes.length) || rect.w <= 0 || rect.h <= 0) return;
     const gl = this.gl;
     const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
@@ -194,7 +194,8 @@ export class Renderer {
       gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, 0, at * 4);
       gl.vertexAttribDivisor(loc, divisor);
     };
-    gl.uniform1f(this.uDash, 0);
+    // a dashed line (a channel's own style) is dashed all along; software GL can't, so it stays solid there
+    gl.uniform1f(this.uDash, dashed && this.quads ? 6 * dpr : 0);
     for (const [start, count] of t.runs) {
       if (count > 1 && !this.quads) {
         gl.uniform1i(this.uPoints, 1);

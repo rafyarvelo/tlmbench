@@ -14,14 +14,14 @@ import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialo
 
 import { type AxesStyle, drawAxes, duration, fileTime, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3, runGate4 } from './gate';
-import { type Axis, type GlTrace, type Rect, Renderer, type Rgba } from './gl';
+import { type Axis, type GlTrace, LINE_WIDTH, type Rect, Renderer, type Rgba } from './gl';
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
-import { chColor, openChannelEditor } from './display.svelte';
+import { chColor, chDisp, chLevel, chLimits, hasLimits, type Limits, openChannelEditor, WIDTHS } from './display.svelte';
 import {
   addChannels,
   addPaneBelow,
@@ -190,7 +190,7 @@ let tokenCache: Record<string, string> | null = null;
 function tokens(): Record<string, string> {
   if (tokenCache) return tokenCache;
   const css = getComputedStyle(document.documentElement);
-  const names = ['--plot-bg', '--grid', '--fg', '--fg-muted', '--accent', '--cursor', '--border', '--font-data', '--font-ui', '--warn'];
+  const names = ['--plot-bg', '--grid', '--fg', '--fg-muted', '--accent', '--cursor', '--border', '--font-data', '--font-ui', '--warn', '--danger'];
   for (let i = 1; i <= 8; i++) names.push(`--trace-${i}`);
   tokenCache = Object.fromEntries(names.map((n) => [n, css.getPropertyValue(n).trim()]));
   return tokenCache;
@@ -281,8 +281,24 @@ function upload(layer: Layer | null, reply: Reply, logOf: (ch: number) => boolea
       yMax = t.yMax > 0 ? Math.log10(t.yMax) : NaN;
       yMin = t.yMin > 0 ? Math.log10(t.yMin) : y.reduce((a, v) => (v < a ? v : a), Infinity);
     }
+    // steps (flags, modes): each sample holds until the next, so a raw trace is uploaded with a corner after every point
+    let [ux, uy, ud] = [t.x, y, t.dashed];
+    if (t.kind === 'raw' && chDisp(t.channel).step && t.x.length > 1) {
+      const n = t.x.length;
+      ux = new Float32Array(2 * n - 1) as typeof t.x;
+      uy = new Float32Array(2 * n - 1) as typeof y;
+      for (let k = 0; k < n; k++) {
+        ux[2 * k] = t.x[k];
+        uy[2 * k] = y[k];
+        if (k + 1 < n) {
+          ux[2 * k + 1] = t.x[k + 1];
+          uy[2 * k + 1] = y[k];
+        }
+      }
+      ud = t.dashed && (Uint32Array.from(t.dashed, (k) => 2 * k) as typeof t.dashed);
+    }
     next.traces.set(t.channel, {
-      gl: renderer.upload(t.x, y, old?.gl, t.dashed),
+      gl: renderer.upload(ux, uy, old?.gl, ud),
       x: t.x,
       y,
       log,
@@ -424,6 +440,7 @@ async function requestResting(): Promise<void> {
   const got = await invoke<Nearest[]>('values_at', { file: f.id, channels: chans, t: t.toString() });
   if (mine !== restingWanted) return;
   stack.resting = Object.fromEntries(got.map((n) => [n.channel, fmtCh(f.id, n.channel, n.value)]));
+  stack.restingLevels = Object.fromEntries(got.map((n) => [n.channel, chLevel(n.channel, n.value)]));
 }
 
 // ---------- view ----------
@@ -730,6 +747,7 @@ function draw(): void {
         if (y && !y.log) learnDecimals(state.file.id, ch, y.min, y.max);
       }
     drawAxes(ctx, r, { t0: state.t0, t1: state.t1, left: ranges.u0, right: ranges.u1 }, { ...style, timeLabels: labelled(i) });
+    for (const ch of chans) drawLimits(ctx, r, chLimits(ch), ranges[keyOf.get(ch) ?? 'u0'], tk);
     if (main && span > 0) {
       const x: Axis = { a: (2 * main.xScaleNs) / span, b: (2 * Number(main.originNs - state.t0)) / span - 1 };
       for (const ch of chans) {
@@ -737,7 +755,8 @@ function draw(): void {
         const yr = ranges[keyOf.get(ch)!];
         if (!t || t.log !== !!yr.log) continue;
         const y: Axis = { a: 2 / (yr.max - yr.min), b: (-2 * yr.min) / (yr.max - yr.min) - 1 };
-        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r, undefined, clip);
+        const cd = chDisp(ch);
+        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r, LINE_WIDTH * (WIDTHS[cd.width ?? 0] ?? 1), clip, !!cd.dash);
       }
       markers[i] = chans.length === 1 ? drawMarkers(ctx, r, main, chans[0], ranges[keyOf.get(chans[0])!], tk) : 0;
       for (const key of keys) if (axisOf(i, key).range === 'robust') drawClipped(ctx, r, main, chans.filter((ch) => keyOf.get(ch) === key), ranges[key], tk);
@@ -807,6 +826,41 @@ function robust(ts: DrawnTrace[]): [number, number] | null {
 }
 
 /** Ignore outliers: what's beyond the axis's range is clipped, marked with a small triangle at the edge. */
+/** A channel's limits on its axis, under the traces: shading beyond each (yellow past warn, red past alarm) and a dashed line at each. */
+function drawLimits(ctx: CanvasRenderingContext2D, r: Rect, lim: Limits, ax: YAxis | undefined, tk: Record<string, string>): void {
+  if (!ax || ax.log || !hasLimits(lim) || !(ax.max > ax.min)) return;
+  const Y = (v: number) => r.y + r.h * (1 - (v - ax.min) / (ax.max - ax.min));
+  const clampY = (v: number) => Math.max(r.y, Math.min(r.y + r.h, Y(v)));
+  const band = (a: number, b: number, col: string) => {
+    const ya = clampY(a);
+    const yb = clampY(b);
+    if (Math.abs(yb - ya) < 0.5) return;
+    ctx.fillStyle = css(col, col === tk['--warn'] ? 0.1 : 0.12);
+    ctx.fillRect(r.x, Math.min(ya, yb), r.w, Math.abs(yb - ya));
+  };
+  const span = ax.max - ax.min;
+  const top = ax.max + span * 10;
+  const bot = ax.min - span * 10;
+  if (lim.wh != null) band(lim.wh, lim.ah ?? top, tk['--warn']);
+  if (lim.ah != null) band(lim.ah, top, tk['--danger']);
+  if (lim.wl != null) band(lim.wl, lim.al ?? bot, tk['--warn']);
+  if (lim.al != null) band(lim.al, bot, tk['--danger']);
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 4]);
+  for (const [k, col] of [['wl', '--warn'], ['wh', '--warn'], ['al', '--danger'], ['ah', '--danger']] as const) {
+    const v = lim[k];
+    if (v == null || v < ax.min || v > ax.max) continue;
+    ctx.strokeStyle = css(tk[col], 0.85);
+    ctx.beginPath();
+    const y = Math.round(Y(v)) + 0.5;
+    ctx.moveTo(r.x, y);
+    ctx.lineTo(r.x + r.w, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawClipped(ctx: CanvasRenderingContext2D, r: Rect, layer: Layer, chans: number[], ax: YAxis, tk: Record<string, string>): void {
   const span = Number(state.t1 - state.t0);
   const origin = Number(layer.originNs - state.t0);
@@ -1212,8 +1266,13 @@ function setValuesAt(): void {
 function updateChips(): void {
   setValuesAt();
   const values: Record<number, string> = {};
-  state.hover.forEach((s, ch) => (values[ch] = fmtCh(state.file?.id ?? null, ch, s.v)));
+  const levels: Record<number, string> = {};
+  state.hover.forEach((s, ch) => {
+    values[ch] = fmtCh(state.file?.id ?? null, ch, s.v);
+    levels[ch] = chLevel(ch, s.v);
+  });
   if (JSON.stringify(values) !== JSON.stringify(stack.values)) stack.values = values;
+  if (JSON.stringify(levels) !== JSON.stringify(stack.levels)) stack.levels = levels;
   ui.pointer = state.hoverT != null ? `pointer ${readoutTime(state.hoverT, Number(state.t1 - state.t0))}` : '';
 }
 
@@ -3536,6 +3595,13 @@ onSetting((key) => {
     void refreshMeasure();
     renderPanes();
     scheduleResize();
+    return;
+  }
+  if (key === 'limits' || key === 'chdisp') {
+    updateChips();
+    void requestResting();
+    if (key === 'chdisp') void requestView(); // steps change what is uploaded
+    renderPanes();
     return;
   }
   if (key === 'theme') {

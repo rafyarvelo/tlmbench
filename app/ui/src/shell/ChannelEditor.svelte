@@ -2,7 +2,7 @@
      kept in settings by channel name, so it follows the channel into every pane and file. Changes apply as made. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { closeChannelEditor, dispOf, editor, setDisplay } from '../display.svelte';
+  import { closeChannelEditor, dispOf, editor, limitsOf, setDisplay, setLimits } from '../display.svelte';
   import { ui } from '../ui.svelte';
 
   const info = $derived(editor.ch == null ? null : ui.channels[editor.ch]);
@@ -10,6 +10,15 @@
   const set = (patch: Record<string, unknown>) => info && setDisplay(info.name, { ...d, ...patch });
   const num = (v: string) => (v === '' || !Number.isFinite(+v) ? undefined : +v);
   const custom = $derived(typeof d.color === 'string' ? d.color : '');
+  const lim = $derived(info ? limitsOf(info.name) : {});
+  const setLim = (k: string, v: string) => {
+    if (!info) return;
+    const next = { ...lim } as Record<string, number | undefined>;
+    if (v.trim() === '' || !Number.isFinite(+v)) delete next[k];
+    else next[k] = +v;
+    setLimits(info.name, next);
+  };
+  const LIMS: [string, string][] = [['al', 'Alarm at or below'], ['ah', 'Alarm at or above'], ['wl', 'Warn at or below'], ['wh', 'Warn at or above']];
   const WIDTHS: [string, string][] = [['', 'Normal'], ['1', 'Thin'], ['2', 'Thick'], ['3', 'Heavy']];
 </script>
 
@@ -17,6 +26,19 @@
   <div class="scrim" role="presentation" onclick={closeChannelEditor}></div>
   <div class="dlg chdlg" id="chEditor" role="dialog" aria-label="Channel {info.name}">
     <header><b>{info.name}</b><span class="dsub">{info.unit ?? ''}</span><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={closeChannelEditor}>{@html ICON.close}</button></header>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="display" aria-selected={editor.tab === 'display'} onclick={() => (editor.tab = 'display')}>Display</button>
+      <button role="tab" data-tab="limits" aria-selected={editor.tab === 'limits'} onclick={() => (editor.tab = 'limits')}>Limits</button>
+    </div>
+    {#if editor.tab === 'limits'}
+    <div class="chbody">
+      <div class="lvrow">{#each LIMS.slice(0, 2) as [k, t] (k)}<label class="lvf"><span>{t}</span><input class="sel" type="number" step="any" data-lim={k} value={lim[k as 'al'] ?? ''} placeholder="none" oninput={(e) => setLim(k, e.currentTarget.value)} /></label>{/each}</div>
+      <div class="lvrow">{#each LIMS.slice(2) as [k, t] (k)}<label class="lvf"><span>{t}</span><input class="sel" type="number" step="any" data-lim={k} value={lim[k as 'al'] ?? ''} placeholder="none" oninput={(e) => setLim(k, e.currentTarget.value)} /></label>{/each}</div>
+      <p class="hint">Charts draw each limit as a dashed line with shading beyond it: yellow past warn, red past alarm. Value tiles turn green, yellow or red.</p>
+      <p class="hint">Saved in settings for “{info.name}”, in every pane and file.</p>
+    </div>
+    <footer><button class="linkbtn" data-clear onclick={() => setLimits(info.name, {})}>No limits</button><span class="spacer"></span><button class="tbtn primary" data-close onclick={closeChannelEditor}>Done</button></footer>
+    {:else}
     <div class="chbody">
       <label class="lvf"><span>Name shown</span>
         <input class="sel" data-d="alias" value={d.alias ?? ''} placeholder={info.name} onchange={(e) => set({ alias: e.currentTarget.value.trim() })} />
@@ -49,6 +71,7 @@
       <p class="hint">Saved in settings for “{info.name}”, in every pane and file.</p>
     </div>
     <footer><button class="linkbtn" data-dreset onclick={() => setDisplay(info.name, {})}>Reset display</button><span class="spacer"></span><button class="tbtn primary" data-close onclick={closeChannelEditor}>Done</button></footer>
+    {/if}
   </div>
 {/if}
 
@@ -75,6 +98,23 @@
   .dclose :global(svg) {
     width: 10px;
     height: 10px;
+  }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 14px 0;
+  }
+  .tabs button {
+    padding: 4px 10px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--fg-muted);
+    font-size: 12px;
+  }
+  .tabs button[aria-selected='true'] {
+    border-bottom-color: var(--accent);
+    color: var(--fg);
   }
   .chbody {
     display: flex;

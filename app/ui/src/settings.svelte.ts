@@ -2,6 +2,7 @@
 // Components and app.ts read `settings` directly; changes go through `setSetting` so they are saved and applied.
 
 import type { TimeFormat } from './axes';
+import type { Limits } from './display.svelte';
 import type { Pane } from './stack.svelte';
 import type { Workspace } from './workspaces';
 
@@ -107,6 +108,8 @@ export interface Settings {
   fileRecipesOff: Record<string, string[]>;
   /** How each channel looks, by channel name (in every file): alias, colour, decimals, unit, line style. */
   chdisp: Record<string, ChannelDisplay>;
+  /** Warn and alarm limits by channel name; a channel without an entry has the starting ones for its name, if any. */
+  limits: Record<string, Limits>;
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
@@ -181,6 +184,7 @@ export const DEFAULTS: Settings = {
   fileRecipes: {},
   fileRecipesOff: {},
   chdisp: {},
+  limits: {},
   exCategories: true,
   exCatClosed: [],
   catOverride: {},
@@ -252,7 +256,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

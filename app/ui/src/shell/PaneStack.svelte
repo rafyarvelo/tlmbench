@@ -4,7 +4,7 @@
 <script lang="ts">
   import { PAD } from '../axes';
   import { ICON } from '../icons';
-  import { chCss, chName, chUnit, openChannelEditor } from '../display.svelte';
+  import { chCss, chLimits, chName, chUnit, limitText, openChannelEditor } from '../display.svelte';
   import {
     addChannels,
     addPaneBelow,
@@ -298,11 +298,12 @@
                 <div class="tiles" data-tiles>
                   <div class="twhere" data-where-line>{ui.valuesAt}</div>
                   {#each p.channels as ch (ch)}
-                    {@const info = ui.channels[ch]}
-                    <div class="tile" style="--c: {chCss(ch)}" data-tile={ch}>
+                    {@const lvl = stack.values[ch] != null ? stack.levels[ch] : stack.restingLevels[ch]}
+                    <div class="tile {lvl ?? ''}" style="--c: {chCss(ch)}" data-tile={ch} data-level={lvl ?? ''} role="button" tabindex="0" data-tip="Warn and alarm limits" onclick={() => openChannelEditor(ch, 'limits')} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openChannelEditor(ch, 'limits'))}>
                       <span class="tname">{chName(ch)}</span>
                       <span class="tval">{stack.values[ch] ?? stack.resting[ch] ?? '–'}</span>
-                      {#if info?.unit}<span class="tunit">{info.unit}</span>{/if}
+                      {#if chUnit(ch)}<span class="tunit">{chUnit(ch)}</span>{/if}
+                      <span class="tlim">{limitText(chLimits(ch)) || 'Click to set limits'}</span>
                     </div>
                   {:else}
                     <span class="mnote">Tick channels on the left to show them here</span>
@@ -659,6 +660,30 @@
     border: 1px solid var(--grid);
     border-left: 3px solid var(--c);
     border-radius: 8px;
+  }
+  .tile {
+    cursor: pointer;
+  }
+  .tile.ok {
+    border-color: color-mix(in srgb, var(--good) 45%, var(--grid));
+    background: color-mix(in srgb, var(--good) 8%, transparent);
+  }
+  .tile.warn {
+    border-color: color-mix(in srgb, var(--warn) 60%, var(--grid));
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+  }
+  .tile.alarm {
+    border-color: color-mix(in srgb, var(--danger) 60%, var(--grid));
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+  }
+  .tile.ok,
+  .tile.warn,
+  .tile.alarm {
+    border-left-color: var(--c);
+  }
+  .tlim {
+    font-size: 11px;
+    color: var(--fg-muted);
   }
   .tname {
     font-size: 11.5px;
