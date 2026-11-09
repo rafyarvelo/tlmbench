@@ -17,7 +17,8 @@
   import { live } from '../live.svelte';
   import { settings } from '../settings.svelte';
   import { ICON } from '../icons';
-  import { colorIdx, fmtCh, learnDecimals, newPaneWith, note, setTable, sortLocked, stack } from '../stack.svelte';
+  import { chCss, chName, chUnit } from '../display.svelte';
+  import { fmtCh, learnDecimals, newPaneWith, note, setTable, sortLocked, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -42,7 +43,7 @@
   const cols = $derived<Col[]>([
     { id: 'n', label: 'Sample', unit: null, ch: null },
     { id: 't', label: 'Time', unit: null, ch: null },
-    ...channels.map((ch) => ({ id: `c${ch}`, label: ui.channels[ch]?.name ?? String(ch), unit: ui.channels[ch]?.unit ?? null, ch })),
+    ...channels.map((ch) => ({ id: `c${ch}`, label: chName(ch), unit: chUnit(ch) || null, ch })),
   ]);
   const defaultSize = (c: Col) => (c.ch == null ? (c.id === 'n' ? 96 : 132) : Math.min(240, Math.max(118, (c.label + (c.unit ?? '')).length * 7 + 44)));
 
@@ -688,7 +689,7 @@
                 onclick={(e) => headClick(e, col)}
                 onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), headClick(e as unknown as MouseEvent, col))}
               >
-                {#if col.ch != null}<i style="background: var(--trace-{colorIdx(col.ch) + 1})"></i>{/if}
+                {#if col.ch != null}<i style="background: {chCss(col.ch)}"></i>{/if}
                 <span class="tlab">{col.label}{#if col.unit}&nbsp;<span class="tunit">{col.unit}</span>{/if}</span>
                 {#if k >= 0}<span class="tsort" data-sort={sort[k].desc ? 'desc' : 'asc'}>{sort[k].desc ? '▼' : '▲'}{#if sort.length > 1}<sub>{k + 1}</sub>{/if}</span>{/if}
               </span>
@@ -786,9 +787,9 @@
       {#each all.filter((ch) => (ui.channels[ch]?.name ?? '').toLowerCase().includes(colQ.trim().toLowerCase())) as ch (ch)}
         <div class="colrow" data-colrow={ch}>
           <input type="checkbox" data-col={ch} checked={!hidden.has(ch)} aria-label="Show {ui.channels[ch]?.name}" onchange={(e) => (e.currentTarget.checked ? show([ch]) : hide([ch]))} />
-          <i style="background: var(--trace-{colorIdx(ch) + 1})"></i>
+          <i style="background: {chCss(ch)}"></i>
           <button class="colgo" data-colgo={ch} data-tip="Go to this column in the table (shows it if it's hidden)" onclick={() => goCol(`c${ch}`)}
-            >{ui.channels[ch]?.name ?? ch}{#if ui.channels[ch]?.unit}&nbsp;<small>{ui.channels[ch]?.unit}</small>{/if}</button
+            >{chName(ch)}{#if chUnit(ch)}&nbsp;<small>{chUnit(ch)}</small>{/if}</button
           >
         </div>
       {/each}

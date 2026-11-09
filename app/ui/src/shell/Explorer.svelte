@@ -7,9 +7,10 @@
   import { untrack } from 'svelte';
   import { groupChannels } from '../groups';
   import { ICON } from '../icons';
+  import { chCss, chName, chUnit } from '../display.svelte';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
-  import { addChannels, colorIdx, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
+  import { addChannels, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui } from '../ui.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -439,7 +440,7 @@
     aria-selected={sel === `ch:${ch}` || picked.includes(ch)}
     tabindex="0"
     draggable="true"
-    style="--d: {depth}; --c: var(--trace-{colorIdx(ch) + 1})"
+    style="--d: {depth}; --c: {chCss(ch)}"
     data-ch={ch}
     data-derived={c.derived ? '' : undefined}
     onclick={(e) => clickChan(e, ch)}
@@ -448,7 +449,7 @@
     onkeydown={(e) => key(e, { kind: 'chan', ch })}
   >
     <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
-    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{c.name}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.unit}<span class="unit">{c.unit}</span>{/if}
+    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{chName(ch)}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
   </div>
 {/snippet}
 

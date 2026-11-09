@@ -105,6 +105,8 @@ export interface Settings {
   /** Derived channels: the recipes added to one file (by path, in the order they were added), and the automatic ones left out of it. */
   fileRecipes: Record<string, string[]>;
   fileRecipesOff: Record<string, string[]>;
+  /** How each channel looks, by channel name (in every file): alias, colour, decimals, unit, line style. */
+  chdisp: Record<string, ChannelDisplay>;
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
@@ -178,6 +180,7 @@ export const DEFAULTS: Settings = {
   exportImage: { format: 'png', what: 'all', scale: 2 },
   fileRecipes: {},
   fileRecipesOff: {},
+  chdisp: {},
   exCategories: true,
   exCatClosed: [],
   catOverride: {},
@@ -222,6 +225,18 @@ export function onSetting(f: (key: keyof Settings) => void): void {
   listeners.add(f);
 }
 
+/** What a channel shows differently from the recording: its name, colour (a palette slot 1–8 or `#rrggbb`), decimals,
+ *  unit label and line style. Anything left out is the default. */
+export interface ChannelDisplay {
+  alias?: string;
+  color?: number | string;
+  dec?: number;
+  unit?: string;
+  width?: number;
+  dash?: boolean;
+  step?: boolean;
+}
+
 export function saveSettings(): void {
   try {
     localStorage.setItem(KEY, JSON.stringify($state.snapshot(settings)));
@@ -237,7 +252,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

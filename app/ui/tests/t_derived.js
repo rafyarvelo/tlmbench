@@ -69,7 +69,7 @@ run(
 
     // ---- Edit recipe… (a rename)
     await p.click(`${ch(6)}`, { button: 'right' });
-    check('a derived channel\'s right-click menu adds Edit recipe… and Remove from this file or every file', (await p.$$eval('.chanmenu .mi [data-x], .chanmenu .mi', (e) => e.map((x) => x.textContent))).slice(2).join() === 'Edit recipe…,Derive from this…,Remove from this file,Remove from every file', await p.$$eval('.chanmenu .mi', (e) => e.map((x) => x.textContent)));
+    check('a derived channel\'s right-click menu adds Edit recipe… and Remove from this file or every file', (await p.$$eval('.chanmenu .mi [data-x], .chanmenu .mi', (e) => e.map((x) => x.textContent))).slice(3).join() === 'Edit recipe…,Derive from this…,Remove from this file,Remove from every file', await p.$$eval('.chanmenu .mi', (e) => e.map((x) => x.textContent)));
     await p.click('.chanmenu [data-cm="edit"]');
     check('Edit opens with its expression', await until(() => !!document.querySelector('#deriveDlg')) && (await field('expr')) === 'accel_x - accel_y' && (await field('name')) === 'Tilt');
     check('editing has no template picker', (await p.$$(`${dlg} [data-r="tpl"]`)).length === 0);

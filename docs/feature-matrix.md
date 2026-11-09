@@ -115,7 +115,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | File right-click: Open, Open only this, Close | v1 | ✓ | ✓ | |
 | File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ◐ (Format descriptor…; the rest wait for 5.6) | 5.6 |
 | Channel right-click: category, gap factor | v1 | ✓ | ✓ | |
-| Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ◐ (category, gap factor, Derive…, Edit recipe…, Remove) | 5.2, 5.3 |
+| Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ◐ (category, gap factor, Display…, Derive…, Edit recipe…, Remove) | 5.2, 5.3 |
 | Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ◐ (ƒ) | 5.2, 5.3 |
 | Data rate shown on imported files; "primary" with several open | v1 | ✓ | ◐ (the rate chip on an open CSV's row, a click shows its import settings; primary waits for 5.6) | 4.3, 5.6 |
 | Import a local folder (browser snapshot in the prototype) | v1 | ✓ | ✓ (Open folder reads the disk; Import all in the folder menu) | |
@@ -128,7 +128,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Pane ⋯ menu: axis and scale, close, duplicate, split, add below | v1 | ✓ | ✓ | |
 | Pane ⋯ menu: event markers in this pane | v1 | ✓ | ✗ | 5.2 |
 | Chips: drag, ×, +N overflow, value on hover | v1 | ✓ | ✓ | |
-| Chip click opens the channel editor (Display and Limits) | v1 | ✓ | ✗ | 5.2 |
+| Chip click opens the channel editor (Display and Limits) | v1 | ✓ | ◐ (Display tab: name, colour, decimals, unit, line style; Limits, Value labels and Missing wait) | 5.2 |
 | View menu: Chart, Table, Chart and table, Values | v1 | ✓ | ✓ | |
 | View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ◐ (Chart, Table, Chart and table, Values, Spectrum) | 5.3, 5.4 |
 | Axis and scale: a unit's axis each, range, include zero, decimals, label, log | v1 | ✓ | ✓ | |

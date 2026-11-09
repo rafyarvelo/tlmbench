@@ -13,6 +13,7 @@
   import LiveStrip from './shell/LiveStrip.svelte';
   import Connect from './shell/Connect.svelte';
   import DescriptorForm from './shell/DescriptorForm.svelte';
+  import ChannelEditor from './shell/ChannelEditor.svelte';
   import DeriveDialog from './shell/DeriveDialog.svelte';
   import RecipesDialog from './shell/RecipesDialog.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
@@ -118,6 +119,7 @@
 <DescriptorForm />
 <ExportDialog />
 <DeriveDialog />
+<ChannelEditor />
 <RecipesDialog />
 
 <div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>

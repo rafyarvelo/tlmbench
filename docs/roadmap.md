@@ -120,7 +120,9 @@ The look and the shell, so that the app reads as the prototype before the big fe
 - **UI:** Derive… (right-click, the title row's ƒ button, the selection bar), A − B / A ÷ B / A × B / A + B with two
   selected, autocomplete, ƒ rows, Edit recipe… and Remove…, the Recipes and profiles manager, the Spectrum pane view.
 - **CLI:** derived channels in `info`, `query` and `convert`.
-- **Budget:** a derived channel over a 100M-sample input evaluates at least as fast as the pyramid builds.
+- **Budget** (restated Nov 9): over a 100M-sample input, an element-wise derived channel evaluates at pyramid
+  speed, and a stateful one (running totals, rolling windows, filters, median) within about 2× of it. `median`
+  is fixed first; the plan is in `docs/follow-ups.md`.
 - **Done when** every function in the design's table has a core test against a reference, the prototype's derived
   tests (`t_derived`) are ported, and the matrix's section 10 is all ✓.
 

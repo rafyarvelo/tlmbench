@@ -4,6 +4,7 @@
 <script lang="ts">
   import { PAD } from '../axes';
   import { ICON } from '../icons';
+  import { chCss, chName, chUnit, openChannelEditor } from '../display.svelte';
   import {
     addChannels,
     addPaneBelow,
@@ -31,7 +32,6 @@
     stack,
     units,
     axisKey,
-    colorIdx,
   } from '../stack.svelte';
   import { settings } from '../settings.svelte';
   import { ui } from '../ui.svelte';
@@ -248,16 +248,17 @@
                   <span
                     class="chip"
                     data-ch={ch}
-                    style="--c: var(--trace-{colorIdx(ch) + 1})"
+                    style="--c: {chCss(ch)}"
                     draggable="true"
                     role="presentation"
+                    onclick={(e) => !(e.target as HTMLElement).closest('.cx') && openChannelEditor(ch)}
                     ondragstart={(e) => {
                       e.dataTransfer?.setData('application/x-tlm-chip', JSON.stringify({ ch, from: i }));
                       e.dataTransfer?.setData('text/plain', info?.name ?? String(ch));
                     }}
                     ondragover={(e) => isChip(e) && (e.preventDefault(), e.stopPropagation())}
                     ondrop={(e) => dropChip(e, i, ch)}
-                    >{info?.name ?? ch}{#if info?.unit}<span class="unit">{info.unit}</span>{/if}{#if units(i).length > 1}<span class="side" data-side>· {axisKey(i, ch) === 'u1' ? 'R' : 'L'}</span>{/if}<span class="val" data-val={ch}
+                    >{chName(ch)}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}{#if units(i).length > 1}<span class="side" data-side>· {axisKey(i, ch) === 'u1' ? 'R' : 'L'}</span>{/if}<span class="val" data-val={ch}
                       >{stack.values[ch] ?? ''}</span
                     ><button class="cx" data-chip-x={ch} aria-label="Take {info?.name ?? ch} out of pane {i + 1}" data-tip="Take out of this pane" onclick={(e) => (e.stopPropagation(), removeChannel(ch, i))}>{@html ICON.close}</button></span
                   >
@@ -298,8 +299,8 @@
                   <div class="twhere" data-where-line>{ui.valuesAt}</div>
                   {#each p.channels as ch (ch)}
                     {@const info = ui.channels[ch]}
-                    <div class="tile" style="--c: var(--trace-{colorIdx(ch) + 1})" data-tile={ch}>
-                      <span class="tname">{info?.name ?? ch}</span>
+                    <div class="tile" style="--c: {chCss(ch)}" data-tile={ch}>
+                      <span class="tname">{chName(ch)}</span>
                       <span class="tval">{stack.values[ch] ?? stack.resting[ch] ?? '–'}</span>
                       {#if info?.unit}<span class="tunit">{info.unit}</span>{/if}
                     </div>
@@ -376,8 +377,7 @@
 {#if chanList && stack.panes[chanList.i]}
   <Menu class="chanlist" label="Channels in pane {(chanList?.i ?? 0) + 1}" anchor={chanList?.anchor} onclose={() => (chanList = null)}>
     {#each chanList ? (stack.panes[chanList.i]?.channels ?? []) : [] as ch (ch)}
-      {@const info = ui.channels[ch]}
-      <div class="mi" role="menuitem" tabindex="-1" style="--c: var(--trace-{colorIdx(ch) + 1})"><span class="sw8" style="background: var(--c)"></span><span class="nm">{info?.name ?? ch}</span>{#if info?.unit}<span class="hint">{info.unit}</span>{/if}<span class="hint num">{stack.values[ch] ?? stack.resting[ch] ?? ''}</span></div>
+      <div class="mi" role="menuitem" tabindex="-1" style="--c: {chCss(ch)}"><span class="sw8" style="background: var(--c)"></span><span class="nm">{chName(ch)}</span>{#if chUnit(ch)}<span class="hint">{chUnit(ch)}</span>{/if}<span class="hint num">{stack.values[ch] ?? stack.resting[ch] ?? ''}</span></div>
     {/each}
   </Menu>
 {/if}

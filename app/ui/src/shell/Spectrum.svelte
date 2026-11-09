@@ -5,6 +5,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { onDestroy } from 'svelte';
 
+  import { chColor, chCss, chName } from '../display.svelte';
   import { colorIdx, stack } from '../stack.svelte';
   import { ui } from '../ui.svelte';
 
@@ -49,7 +50,7 @@
   });
 
   const fmt = (hz: number) => (hz >= 1000 ? `${+(hz / 1000).toPrecision(3)} kHz` : `${+hz.toPrecision(3)} Hz`);
-  const name = (ch: number) => ui.channels[ch]?.name ?? String(ch);
+  const name = (ch: number) => chName(ch);
 
   function niceStep(span: number, n: number): number {
     const raw = span / Math.max(1, n);
@@ -111,7 +112,8 @@
     g.lineWidth = 1.25;
     g.lineJoin = 'round';
     for (const s of list) {
-      g.strokeStyle = tok(`--trace-${colorIdx(s.channel) + 1}`, '#4cc2ff');
+      const cc = chColor(s.channel);
+      g.strokeStyle = cc && !cc.startsWith('var(') ? cc : tok(cc ? cc.slice(4, -1) : `--trace-${colorIdx(s.channel) + 1}`, '#4cc2ff');
       g.beginPath();
       const per = Math.max(1, Math.floor(s.mag.length / (pw * 2)));
       for (let k = 1; k < s.mag.length; k += per) {
@@ -130,7 +132,7 @@
   {#if specs.length}
     <div class="specinfo" aria-live="polite">
       {#each specs as s (s.channel)}
-        <span class="si" style="--c: var(--trace-{colorIdx(s.channel) + 1})" data-spec={s.channel}><i></i>{name(s.channel)}: peak {fmt(s.peak_hz)} · {s.n.toLocaleString('en-US')} samples</span>
+        <span class="si" style="--c: {chCss(s.channel)}" data-spec={s.channel}><i></i>{name(s.channel)}: peak {fmt(s.peak_hz)} · {s.n.toLocaleString('en-US')} samples</span>
       {/each}
     </div>
   {:else if asked}

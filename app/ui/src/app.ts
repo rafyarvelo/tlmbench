@@ -21,6 +21,7 @@ import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
+import { chColor, openChannelEditor } from './display.svelte';
 import {
   addChannels,
   addPaneBelow,
@@ -198,7 +199,12 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   tokenCache = null;
   renderPanes();
 });
-const colorOf = (ch: number) => tokens()[`--trace-${colorIdx(ch) + 1}`];
+const colorOf = (ch: number) => {
+  const c = chColor(ch);
+  if (c == null) return tokens()[`--trace-${colorIdx(ch) + 1}`];
+  const m = /^var\((--trace-\d)\)$/.exec(c);
+  return m ? tokens()[m[1]] : c;
+};
 function rgba(hex: string, a = 1): Rgba {
   const h = hex.replace('#', '');
   const n = parseInt(h.length === 3 ? [...h].map((c) => c + c).join('') : h, 16);
@@ -3174,6 +3180,7 @@ function channelMenu(ch: number, x: number, y: number): void {
   const items: MenuItem[] = [
     { heading: name },
     { label: 'Move to a category…', meta: groupChannels(f.info.path, f.info.channels).find((g) => g.chs.includes(ch))?.name ?? '', data: { cat: '' }, run: () => categoryDialog(ch, x, y) },
+    { label: 'Display…', data: { cm: 'display' }, run: () => openChannelEditor(ch) },
     { label: 'Gap factor…', meta: `${gapFactor(ch)}×`, data: { gap: '' }, run: () => gapDialog(ch, x, y) },
     { sep: true },
     ...(f.derived.some((d) => d.channel === ch)

@@ -74,7 +74,7 @@ export function learnDecimals(file: number, ch: number, lo: number, hi: number):
 
 /** A channel's value in its decimals (about six significant digits until they're known). */
 export function fmtCh(file: number | null, ch: number, v: number | null | undefined): string {
-  const d = file == null ? undefined : decs[`${file}:${ch}`];
+  const d = settings.chdisp[ui.channels[ch]?.name ?? '']?.dec ?? (file == null ? undefined : decs[`${file}:${ch}`]);
   if (d == null || v == null || !Number.isFinite(v)) return value(v);
   return v.toFixed(d);
 }

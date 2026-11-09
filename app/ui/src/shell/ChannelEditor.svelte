@@ -1,0 +1,164 @@
+<!-- The channel editor: how a channel looks everywhere (name shown, colour, decimals, unit label, line style). It is
+     kept in settings by channel name, so it follows the channel into every pane and file. Changes apply as made. -->
+<script lang="ts">
+  import { ICON } from '../icons';
+  import { closeChannelEditor, dispOf, editor, setDisplay } from '../display.svelte';
+  import { ui } from '../ui.svelte';
+
+  const info = $derived(editor.ch == null ? null : ui.channels[editor.ch]);
+  const d = $derived(info ? dispOf(info.name) : {});
+  const set = (patch: Record<string, unknown>) => info && setDisplay(info.name, { ...d, ...patch });
+  const num = (v: string) => (v === '' || !Number.isFinite(+v) ? undefined : +v);
+  const custom = $derived(typeof d.color === 'string' ? d.color : '');
+  const WIDTHS: [string, string][] = [['', 'Normal'], ['1', 'Thin'], ['2', 'Thick'], ['3', 'Heavy']];
+</script>
+
+{#if info}
+  <div class="scrim" role="presentation" onclick={closeChannelEditor}></div>
+  <div class="dlg chdlg" id="chEditor" role="dialog" aria-label="Channel {info.name}">
+    <header><b>{info.name}</b><span class="dsub">{info.unit ?? ''}</span><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={closeChannelEditor}>{@html ICON.close}</button></header>
+    <div class="chbody">
+      <label class="lvf"><span>Name shown</span>
+        <input class="sel" data-d="alias" value={d.alias ?? ''} placeholder={info.name} onchange={(e) => set({ alias: e.currentTarget.value.trim() })} />
+        <small>Used in chips, tables and tiles. Search still finds the original name.</small></label>
+      <div class="lvf"><span>Colour</span>
+        <div class="swrow">
+          {#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
+            <button class="sw" class:on={d.color === n} data-sw={n} style="background: var(--trace-{n})" aria-label="Colour {n}" onclick={() => set({ color: n })}></button>
+          {/each}
+          <label class="swc" data-tip="Custom colour"><input type="color" data-d="color" value={custom || '#888888'} onchange={(e) => set({ color: e.currentTarget.value })} /><span class:on={!!custom} style={custom ? `background: ${custom}` : ''}>+</span></label>
+          <button class="tbtn" data-autocolor disabled={d.color == null} onclick={() => set({ color: undefined })}>Auto</button>
+        </div></div>
+      <div class="lvrow">
+        <label class="lvf"><span>Decimals</span>
+          <select class="sel" data-d="dec" value={d.dec == null ? '' : String(d.dec)} onchange={(e) => set({ dec: num(e.currentTarget.value) })}>
+            <option value="">Auto</option>{#each [0, 1, 2, 3, 4, 5, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
+          </select></label>
+        <label class="lvf"><span>Unit label</span>
+          <input class="sel" data-d="unit" value={d.unit ?? ''} placeholder={info.unit ?? 'none'} onchange={(e) => set({ unit: e.currentTarget.value.trim() })} /></label>
+      </div>
+      <div class="lvrow">
+        <label class="lvf"><span>Line width</span>
+          <select class="sel" data-d="width" value={d.width == null ? '' : String(d.width)} onchange={(e) => set({ width: num(e.currentTarget.value) })}>
+            {#each WIDTHS as [v, t] (v)}<option value={v}>{t}</option>{/each}
+          </select></label>
+        <div class="lvf"><span>Style</span>
+          <label class="chk"><input type="checkbox" data-d="dash" checked={!!d.dash} onchange={(e) => set({ dash: e.currentTarget.checked })} />Dashed</label>
+          <label class="chk"><input type="checkbox" data-d="step" checked={!!d.step} onchange={(e) => set({ step: e.currentTarget.checked })} />Steps (flags, modes)</label></div>
+      </div>
+      <p class="hint">Saved in settings for “{info.name}”, in every pane and file.</p>
+    </div>
+    <footer><button class="linkbtn" data-dreset onclick={() => setDisplay(info.name, {})}>Reset display</button><span class="spacer"></span><button class="tbtn primary" data-close onclick={closeChannelEditor}>Done</button></footer>
+  </div>
+{/if}
+
+<style>
+  .chdlg {
+    width: min(380px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+  }
+  .dclose {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg-muted);
+  }
+  .dclose:hover {
+    border-color: var(--border);
+    background: var(--raised);
+    color: var(--fg);
+  }
+  .dclose :global(svg) {
+    width: 10px;
+    height: 10px;
+  }
+  .chbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 14px;
+    overflow-y: auto;
+  }
+  .lvf {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+  }
+  .lvf > span:first-child {
+    color: var(--fg-muted);
+    font-size: 11px;
+  }
+  .lvf small,
+  .hint {
+    color: var(--fg-muted);
+    font-size: 11px;
+    margin: 0;
+  }
+  .lvrow {
+    display: flex;
+    gap: 10px;
+  }
+  .swrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .sw {
+    width: 20px;
+    height: 20px;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    padding: 0;
+  }
+  .sw.on {
+    border-color: var(--fg);
+  }
+  .swc {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+  }
+  .swc {
+    overflow: hidden;
+    border-radius: 50%;
+  }
+  .swc input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .swc span {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 1px dashed var(--border);
+    border-radius: 50%;
+    font-size: 12px;
+    color: var(--fg-muted);
+  }
+  .swc span.on {
+    border: 2px solid var(--fg);
+    color: transparent;
+  }
+  .chk {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+</style>
