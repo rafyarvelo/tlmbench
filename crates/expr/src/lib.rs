@@ -10,7 +10,7 @@ pub mod parse;
 pub mod series;
 
 pub use ast::{BinOp, Expr, ExprError, UnOp};
-pub use eval::{Env, Val, eval, eval_str};
+pub use eval::{CHUNK, Env, Val, eval, eval_chunked, eval_str, run};
 pub use parse::parse;
 pub use series::{Grid, Series};
 

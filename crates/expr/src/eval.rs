@@ -1,13 +1,37 @@
-//! Evaluation over whole series. Semantics (shared with the prototype): NaN is a gap that sample-to-sample and
-//! rolling functions skip; series on different grids are held onto the longest one's; comparisons give 1 or 0.
+//! Chunked evaluation. An expression is evaluated one chunk of samples at a time. Each function carries what it needs
+//! from earlier chunks (ring buffers, running sums, filter state), so the answer does not depend on the chunk size.
+//!
+//! - Zero-phase filters need samples after the chunk: the chunk is read with a margin ([`filters::margin`]); every
+//!   function runs over the margin too, but only the committed part changes its carried state.
+//! - One-number functions (`mean`, `pct`, …) take a pass over the data each, one pass per level of nesting; the last
+//!   pass produces the output.
+//!
+//! Semantics shared with the prototype: NaN is a gap that sample-to-sample and rolling functions skip; series on
+//! different grids are held onto the longest one's; comparisons give 1 or 0.
+
+use std::collections::VecDeque;
+use std::ops::Range;
 
 use crate::ast::{BinOp, Expr, ExprError, UnOp};
-use crate::filters;
-use crate::series::Series;
+use crate::filters::{self, Biquad, Carry};
+use crate::series::{Grid, Series};
 
 /// What an expression reads from: channels by exact name, value labels and limits.
 pub trait Env {
+    /// The whole channel.
     fn series(&self, name: &str) -> Option<Series>;
+    /// Samples `r` of a channel (a recording reads just those).
+    fn read(&self, name: &str, r: Range<usize>) -> Option<Series> {
+        self.series(name).map(|s| s.slice(r))
+    }
+    /// Samples per channel, when known: chunked evaluation needs it. With `None` everything is one chunk.
+    fn samples(&self) -> Option<usize> {
+        None
+    }
+    /// The channels' sample rate in Hz (about, for irregular times): sizes a filter's margin.
+    fn hz(&self) -> Option<f64> {
+        None
+    }
     /// The stored number for value label `text` of `channel` (`state == 'flight'`).
     fn label(&self, _channel: &str, _text: &str) -> Option<f64> {
         None
@@ -25,34 +49,275 @@ pub enum Val {
     Ser(Series),
 }
 
+impl Val {
+    pub fn series(&self) -> Option<&Series> {
+        if let Val::Ser(s) = self { Some(s) } else { None }
+    }
+    pub fn number(&self) -> Option<f64> {
+        num_of(self)
+    }
+}
+
 type R<T> = Result<T, ExprError>;
 
+/// Samples per chunk unless told otherwise.
+pub const CHUNK: usize = 1 << 20;
+
+/// Parse and evaluate in one chunk.
+pub fn eval_str(src: &str, env: &dyn Env) -> R<Val> {
+    eval(&crate::parse(src)?, env)
+}
+
+/// Evaluates over the whole recording, collecting the output.
 pub fn eval(e: &Expr, env: &dyn Env) -> R<Val> {
+    eval_chunked(e, env, usize::MAX)
+}
+
+/// [`eval`] with chunks of `chunk` samples (the result is the same for every chunk size).
+pub fn eval_chunked(e: &Expr, env: &dyn Env, chunk: usize) -> R<Val> {
+    let (mut v, mut grid, mut stamps): (Vec<f64>, Option<Grid>, Vec<f64>) = (Vec::new(), None, Vec::new());
+    let mut rate = true;
+    let number = run(e, env, chunk, &mut |_, s| {
+        v.extend_from_slice(&s.v);
+        match &s.grid {
+            Grid::Rate { .. } => {
+                grid.get_or_insert_with(|| s.grid.clone());
+                stamps.extend((0..s.len()).map(|i| s.time(i)));
+            }
+            Grid::Stamps(t) => {
+                rate = false;
+                stamps.extend(t.iter());
+            }
+        }
+    })?;
+    if let Some(x) = number {
+        return Ok(Val::Num(x));
+    }
+    let grid = match grid {
+        Some(g) if rate => g,
+        _ => Grid::Stamps(stamps.into()),
+    };
+    Ok(Val::Ser(Series::new(v, grid)))
+}
+
+/// Streams the expression's output chunk by chunk: `sink(start, chunk)`. Returns the number when the expression's
+/// result is one (a flat line), and then never calls `sink`.
+pub fn run(e: &Expr, env: &dyn Env, chunk: usize, sink: &mut dyn FnMut(usize, &Series)) -> R<Option<f64>> {
+    let plan = analyze(e, env.hz())?;
+    let mut resolved: Vec<Option<f64>> = vec![None; plan.nodes.len()];
+    for pass in 0..=plan.depth {
+        let last = pass == plan.depth;
+        let mut st = vec![St::default(); plan.nodes.len()];
+        let mut number = None;
+        let len = env.samples();
+        let mut a = 0usize;
+        loop {
+            let (b, end) = match len {
+                Some(l) => {
+                    let b = a.saturating_add(chunk).min(l);
+                    (b, b.saturating_add(plan.ahead).min(l))
+                }
+                None => (usize::MAX, usize::MAX),
+            };
+            let mut cx = Ctx {
+                env,
+                range: a..end,
+                commit: b.saturating_sub(a),
+                pass,
+                cursor: 0,
+                st: &mut st,
+                plan: &plan,
+                resolved: &resolved,
+            };
+            let val = ev(e, &mut cx)?;
+            if last {
+                match val {
+                    Val::Num(x) | Val::Dur(x) => number = Some(x),
+                    Val::Ser(s) => sink(a, &s.slice(0..cx.commit)),
+                }
+            }
+            match len {
+                Some(l) if b < l => a = b,
+                _ => break,
+            }
+        }
+        if last {
+            return Ok(number);
+        }
+        for (id, n) in plan.nodes.iter().enumerate() {
+            if n.metric.is_some_and(|(d, _)| d == pass + 1) {
+                resolved[id] = Some(finish(n.metric.unwrap().1, &st[id]));
+            }
+        }
+    }
+    unreachable!()
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The plan: which calls are one-number functions (and how deeply nested), and how far past a chunk to read.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Metric {
+    Mean,
+    Sum,
+    Std,
+    Min,
+    Max,
+    First,
+    Last,
+    Count,
+    Pct,
+    Duration,
+    Occurrences,
+}
+
+fn metric_kind(f: &str, nargs: usize) -> Option<Metric> {
+    Some(match f {
+        "mean" => Metric::Mean,
+        "sum" => Metric::Sum,
+        "std" => Metric::Std,
+        "min" if nargs == 1 => Metric::Min,
+        "max" if nargs == 1 => Metric::Max,
+        "first" => Metric::First,
+        "last" => Metric::Last,
+        "count" => Metric::Count,
+        "pct" => Metric::Pct,
+        "duration" => Metric::Duration,
+        "occurrences" => Metric::Occurrences,
+        _ => return None,
+    })
+}
+
+#[derive(Default)]
+struct Node {
+    /// For a one-number function: its nesting depth (1 = no one-number function inside) and kind.
+    metric: Option<(usize, Metric)>,
+    /// Calls inside this one.
+    inner: usize,
+}
+
+#[derive(Default)]
+struct Plan {
+    /// One per call, in the order evaluation meets them.
+    nodes: Vec<Node>,
+    depth: usize,
+    /// Samples read past the end of a chunk.
+    ahead: usize,
+}
+
+struct NoEnv;
+impl Env for NoEnv {
+    fn series(&self, _: &str) -> Option<Series> {
+        None
+    }
+}
+
+fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
+    fn walk(e: &Expr, plan: &mut Plan, hz: Option<f64>) -> R<(usize, usize)> {
+        match e {
+            Expr::Un { a, .. } => walk(a, plan, hz),
+            Expr::Bin { a, b, .. } => {
+                let (x, y) = (walk(a, plan, hz)?, walk(b, plan, hz)?);
+                Ok((x.0.max(y.0), x.1.max(y.1)))
+            }
+            Expr::Call { f, args, .. } => {
+                let id = plan.nodes.len();
+                plan.nodes.push(Node::default());
+                let (mut depth, mut ahead) = (0, 0);
+                for a in args {
+                    let (d, h) = walk(a, plan, hz)?;
+                    (depth, ahead) = (depth.max(d), ahead.max(h));
+                }
+                let kind = metric_kind(f, args.len());
+                plan.nodes[id].inner = plan.nodes.len() - id - 1;
+                if let Some(k) = kind {
+                    depth += 1;
+                    plan.nodes[id].metric = Some((depth, k));
+                }
+                // cutoffs are constants; a bad one is reported when the call runs
+                let cut = |i: usize| match args.get(i).map(|a| eval(a, &NoEnv)) {
+                    Some(Ok(v)) => v.number(),
+                    _ => None,
+                };
+                let own = match (f.as_str(), hz) {
+                    ("lowpass" | "highpass", Some(fs)) => {
+                        cut(1).filter(|c| *c > 0.0 && *c < fs / 2.0).map_or(0, |c| filters::margin(c, fs))
+                    }
+                    ("bandpass", Some(fs)) => [cut(1), cut(2)]
+                        .iter()
+                        .flatten()
+                        .filter(|c| **c > 0.0 && **c < fs / 2.0)
+                        .map(|c| filters::margin(*c, fs))
+                        .sum(),
+                    _ => 0,
+                };
+                Ok((depth, ahead + own))
+            }
+            _ => Ok((0, 0)),
+        }
+    }
+    let mut plan = Plan::default();
+    (plan.depth, plan.ahead) = walk(e, &mut plan, hz)?;
+    Ok(plan)
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// What a call remembers between chunks.
+
+#[derive(Clone, Default)]
+struct St {
+    v: VecDeque<f64>,
+    t: VecDeque<f64>,
+    a: f64,
+    b: f64,
+    c: f64,
+    d: f64,
+    n: u64,
+    flag: bool,
+    flag2: bool,
+    /// A constant argument (a number where a channel was expected): the one-number result is that number.
+    constant: Option<f64>,
+    carry: [Carry; 2],
+}
+
+struct Ctx<'a> {
+    env: &'a dyn Env,
+    /// The samples read: the chunk and its margin.
+    range: Range<usize>,
+    /// How many of them are the chunk (the rest is the margin).
+    commit: usize,
+    pass: usize,
+    cursor: usize,
+    st: &'a mut Vec<St>,
+    plan: &'a Plan,
+    resolved: &'a [Option<f64>],
+}
+
+fn num_of(v: &Val) -> Option<f64> {
+    match v {
+        Val::Num(x) | Val::Dur(x) => Some(*x),
+        Val::Ser(_) => None,
+    }
+}
+
+fn ev(e: &Expr, cx: &mut Ctx) -> R<Val> {
     match e {
         Expr::Num(v) => Ok(Val::Num(*v)),
         Expr::Dur { secs, .. } => Ok(Val::Dur(*secs)),
         Expr::Label { at, .. } => {
             Err(ExprError::new("A value name in quotes goes next to the channel it belongs to", *at))
         }
-        Expr::Name { name, at } => {
-            for alt in name.split('|').map(str::trim) {
-                if let Some(mut s) = env.series(alt) {
-                    s.ch = Some(alt.to_string());
-                    return Ok(Val::Ser(s));
-                }
-            }
-            Err(ExprError::new(format!("There's no channel called {name}"), *at))
-        }
+        Expr::Name { name, at } => name_series(cx, name, *at).map(|s| Val::Ser(s.1)),
         Expr::Un { op, a } => {
-            let a = eval(a, env)?;
+            let a = ev(a, cx)?;
             let f: fn(f64) -> f64 = match op {
                 UnOp::Neg => |x| -x,
                 UnOp::Not => |x| (x == 0.0) as i32 as f64,
             };
-            elementwise(&[a], 0, |x| f(x[0]))
+            elementwise(&[a], |x| f(x[0]))
         }
         Expr::Bin { op, a, b } => {
-            let (a, b) = labelled(*op, a, b, env)?;
+            let (a, b) = operands(*op, a, b, cx)?;
             let f: fn(f64, f64) -> f64 = match op {
                 BinOp::Add => |x, y| x + y,
                 BinOp::Sub => |x, y| x - y,
@@ -69,48 +334,46 @@ pub fn eval(e: &Expr, env: &dyn Env) -> R<Val> {
                 BinOp::And => |x, y| (x != 0.0 && y != 0.0) as i32 as f64,
                 BinOp::Or => |x, y| (x != 0.0 || y != 0.0) as i32 as f64,
             };
-            elementwise(&[a, b], 0, |x| f(x[0], x[1]))
+            elementwise(&[a, b], |x| f(x[0], x[1]))
         }
-        Expr::Call { f, args, at } => call(f, args, *at, env),
+        Expr::Call { f, args, at } => call(f, args, *at, cx),
     }
 }
 
-/// Evaluates both sides of a binary operator, reading a `'label'` against the channel on its other side.
-fn labelled(op: BinOp, a: &Expr, b: &Expr, env: &dyn Env) -> R<(Val, Val)> {
-    let label_of = |lab: &Expr, other: &Expr| -> R<Option<Val>> {
-        let Expr::Label { text, at } = lab else { return Ok(None) };
-        let Some(&name) = other.names().first() else {
-            return Err(ExprError::new("A value name in quotes needs a channel to compare with", *at));
-        };
-        let Val::Ser(s) = eval(&Expr::Name { name: name.to_string(), at: *at }, env)? else { unreachable!() };
-        let ch = s.ch.as_deref().unwrap_or(name);
-        match env.label(ch, text) {
-            Some(v) => Ok(Some(Val::Num(v))),
-            None => Err(ExprError::new(format!("{ch} has no value called '{text}'"), *at)),
-        }
-    };
-    let cmp = matches!(op, BinOp::Eq | BinOp::Ne);
-    if cmp {
-        if let Some(v) = label_of(b, a)? {
-            return Ok((eval(a, env)?, v));
-        }
-        if let Some(v) = label_of(a, b)? {
-            return Ok((v, eval(b, env)?));
+/// The channel a (possibly `a|b`) name stands for, with the name that matched.
+fn name_series(cx: &Ctx, name: &str, at: usize) -> R<(String, Series)> {
+    for alt in name.split('|').map(str::trim) {
+        if let Some(mut s) = cx.env.read(alt, cx.range.clone()) {
+            s.ch = Some(alt.to_string());
+            return Ok((alt.to_string(), s));
         }
     }
-    Ok((eval(a, env)?, eval(b, env)?))
+    Err(ExprError::new(format!("There's no channel called {name}"), at))
 }
 
-fn num_of(v: &Val) -> Option<f64> {
-    match v {
-        Val::Num(x) | Val::Dur(x) => Some(*x),
-        Val::Ser(_) => None,
+/// Both sides of a binary operator, reading a `'label'` against the channel on its other side.
+fn operands(op: BinOp, a: &Expr, b: &Expr, cx: &mut Ctx) -> R<(Val, Val)> {
+    if matches!(op, BinOp::Eq | BinOp::Ne) {
+        for (lab, other, label_first) in [(b, a, false), (a, b, true)] {
+            let Expr::Label { text, at } = lab else { continue };
+            let Some(&name) = other.names().first() else {
+                return Err(ExprError::new("A value name in quotes needs a channel to compare with", *at));
+            };
+            let (ch, _) = name_series(cx, name, *at)?;
+            let Some(v) = cx.env.label(&ch, text) else {
+                return Err(ExprError::new(format!("{ch} has no value called '{text}'"), *at));
+            };
+            let o = ev(other, cx)?;
+            return Ok(if label_first { (Val::Num(v), o) } else { (o, Val::Num(v)) });
+        }
     }
+    let x = ev(a, cx)?;
+    Ok((x, ev(b, cx)?))
 }
 
 /// Applies `f` over the arguments element by element. Series are held (or interpolated) onto the longest one's
-/// grid; numbers stay numbers; any NaN in gives NaN out. `skip` arguments from the end are ignored for NaN tests.
-pub fn elementwise(args: &[Val], _skip: usize, f: impl Fn(&[f64]) -> f64) -> R<Val> {
+/// grid; numbers stay numbers; any NaN in gives NaN out.
+fn elementwise(args: &[Val], f: impl Fn(&[f64]) -> f64) -> R<Val> {
     let lead = args.iter().filter_map(|a| if let Val::Ser(s) = a { Some(s) } else { None }).max_by_key(|s| s.len());
     let Some(lead) = lead else {
         let xs: Vec<f64> = args.iter().map(|a| num_of(a).unwrap()).collect();
@@ -152,7 +415,7 @@ fn series_arg<'a>(v: &'a Val, f: &str, at: usize) -> R<&'a Series> {
 
 /// A window: samples (20) or seconds (30d).
 #[derive(Clone, Copy, Debug)]
-pub enum Window {
+enum Window {
     Samples(usize),
     Secs(f64),
 }
@@ -174,10 +437,7 @@ fn compact(s: &Series) -> (Vec<usize>, Vec<f64>, Vec<f64>) {
     (idx, v, t)
 }
 
-/// Runs `f(values, times)` over the non-gap samples; gaps stay gaps.
-pub fn sample_op(s: &Series, f: impl FnOnce(&[f64], &[f64]) -> Vec<f64>) -> Val {
-    let (idx, v, t) = compact(s);
-    let res = f(&v, &t);
+fn scatter(s: &Series, idx: &[usize], res: Vec<f64>) -> Val {
     let mut out = vec![f64::NAN; s.len()];
     for (j, &i) in idx.iter().enumerate() {
         out[i] = res[j];
@@ -185,56 +445,30 @@ pub fn sample_op(s: &Series, f: impl FnOnce(&[f64], &[f64]) -> Vec<f64>) -> Val 
     Val::Ser(Series::new(out, s.grid.clone()))
 }
 
-fn metric(s: &Series, f: impl FnOnce(&[f64]) -> f64) -> Val {
-    let v: Vec<f64> = s.v.iter().copied().filter(|x| !x.is_nan()).collect();
-    Val::Num(if v.is_empty() { f64::NAN } else { f(&v) })
-}
-
-fn mean(v: &[f64]) -> f64 {
-    v.iter().sum::<f64>() / v.len() as f64
-}
-
-fn rolling(v: &[f64], t: &[f64], w: Window, kind: Roll) -> Vec<f64> {
-    let mut out = vec![f64::NAN; v.len()];
-    let (mut lo, mut s, mut s2) = (0usize, 0.0, 0.0);
-    for j in 0..v.len() {
-        s += v[j];
-        s2 += v[j] * v[j];
-        match w {
-            Window::Samples(n) => {
-                if j >= n {
-                    s -= v[j - n];
-                    s2 -= v[j - n] * v[j - n];
-                    lo = j - n + 1;
-                }
-            }
-            Window::Secs(sec) => {
-                while t[j] - t[lo] > sec {
-                    s -= v[lo];
-                    s2 -= v[lo] * v[lo];
-                    lo += 1;
-                }
-            }
-        }
-        let n = j - lo + 1;
-        if matches!(w, Window::Samples(k) if n < k) {
-            continue;
-        }
-        out[j] = match kind {
-            Roll::Mean => s / n as f64,
-            Roll::Sum => s,
-            Roll::Std if n > 1 => ((s2 - s * s / n as f64) / (n as f64 - 1.0)).max(0.0).sqrt(),
-            Roll::Std => f64::NAN,
-            Roll::Min => v[lo..=j].iter().copied().fold(f64::INFINITY, f64::min),
-            Roll::Max => v[lo..=j].iter().copied().fold(f64::NEG_INFINITY, f64::max),
-            Roll::Median => {
-                let mut win = v[lo..=j].to_vec();
-                win.sort_by(f64::total_cmp);
-                let m = win.len() / 2;
-                if win.len() % 2 == 1 { win[m] } else { (win[m - 1] + win[m]) / 2.0 }
-            }
-        };
+/// Runs `f(state, values, times)` over the non-gap samples; gaps stay gaps. The state advances over the committed
+/// samples only; the margin is computed from a copy.
+fn sample_op(cx: &mut Ctx, id: usize, s: &Series, f: impl Fn(&mut St, &[f64], &[f64]) -> Vec<f64>) -> Val {
+    let (idx, v, t) = compact(s);
+    let k = idx.partition_point(|&i| i < cx.commit);
+    let st = &mut cx.st[id];
+    let mut res = f(st, &v[..k], &t[..k]);
+    if k < v.len() {
+        let mut tmp = st.clone();
+        res.extend(f(&mut tmp, &v[k..], &t[k..]));
     }
+    scatter(s, &idx, res)
+}
+
+/// The values `n` samples back (NaN before there are `n`), and their times.
+fn lag(st: &mut St, v: &[f64], t: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
+    let hist = st.v.len();
+    let all_v: Vec<f64> = st.v.iter().chain(v).copied().collect();
+    let all_t: Vec<f64> = st.t.iter().chain(t).copied().collect();
+    let at = |all: &[f64], j: usize| if hist + j >= n { all[hist + j - n] } else { f64::NAN };
+    let out = ((0..v.len()).map(|j| at(&all_v, j)).collect(), (0..v.len()).map(|j| at(&all_t, j)).collect());
+    let keep = all_v.len().saturating_sub(n);
+    st.v = all_v[keep..].iter().copied().collect();
+    st.t = all_t[keep..].iter().copied().collect();
     out
 }
 
@@ -248,20 +482,159 @@ enum Roll {
     Median,
 }
 
-fn call(f: &str, args: &[Expr], at: usize, env: &dyn Env) -> R<Val> {
+fn rolling(st: &mut St, v: &[f64], t: &[f64], w: Window, kind: Roll) -> Vec<f64> {
+    let mut out = Vec::with_capacity(v.len());
+    for j in 0..v.len() {
+        st.v.push_back(v[j]);
+        st.t.push_back(t[j]);
+        st.a += v[j];
+        st.b += v[j] * v[j];
+        let evict = |st: &mut St| {
+            let x = st.v.pop_front().unwrap();
+            st.t.pop_front();
+            st.a -= x;
+            st.b -= x * x;
+        };
+        match w {
+            Window::Samples(n) => {
+                if st.v.len() > n {
+                    evict(st);
+                }
+            }
+            Window::Secs(sec) => {
+                while t[j] - st.t[0] > sec {
+                    evict(st);
+                }
+            }
+        }
+        let n = st.v.len();
+        if matches!(w, Window::Samples(k) if n < k) {
+            out.push(f64::NAN);
+            continue;
+        }
+        out.push(match kind {
+            Roll::Mean => st.a / n as f64,
+            Roll::Sum => st.a,
+            Roll::Std if n > 1 => ((st.b - st.a * st.a / n as f64) / (n as f64 - 1.0)).max(0.0).sqrt(),
+            Roll::Std => f64::NAN,
+            Roll::Min => st.v.iter().copied().fold(f64::INFINITY, f64::min),
+            Roll::Max => st.v.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            Roll::Median => {
+                let mut win: Vec<f64> = st.v.iter().copied().collect();
+                win.sort_by(f64::total_cmp);
+                let m = win.len() / 2;
+                if win.len() % 2 == 1 { win[m] } else { (win[m - 1] + win[m]) / 2.0 }
+            }
+        });
+    }
+    out
+}
+
+// One-number functions: accumulated over a pass (committed samples only), finished at its end.
+
+fn accumulate(kind: Metric, st: &mut St, arg: &Val, commit: usize) {
+    let s = match arg {
+        Val::Ser(s) => s,
+        n => {
+            st.constant = num_of(n);
+            return;
+        }
+    };
+    let commit = commit.min(s.len());
+    for i in 0..commit {
+        let x = s.v[i];
+        if kind == Metric::Duration {
+            let ti = s.time(i);
+            if st.flag2 {
+                st.d = ti - st.c; // the interval just ended
+                if st.flag {
+                    st.a += st.d;
+                }
+            }
+            (st.c, st.flag2) = (ti, true);
+            st.flag = !x.is_nan() && x != 0.0;
+        }
+        if x.is_nan() {
+            continue;
+        }
+        st.n += 1;
+        let first = st.n == 1;
+        match kind {
+            Metric::Mean | Metric::Sum => st.a += x,
+            Metric::Std => {
+                let dx = x - st.b;
+                st.b += dx / st.n as f64;
+                st.c += dx * (x - st.b);
+            }
+            Metric::Min => st.a = if first { x } else { st.a.min(x) },
+            Metric::Max => st.a = if first { x } else { st.a.max(x) },
+            Metric::First => {
+                if first {
+                    st.a = x
+                }
+            }
+            Metric::Last => st.a = x,
+            Metric::Count | Metric::Duration => {}
+            Metric::Pct => st.a += (x != 0.0) as u8 as f64,
+            Metric::Occurrences => {
+                if x != 0.0 && !st.flag {
+                    st.a += 1.0;
+                }
+                st.flag = x != 0.0;
+            }
+        }
+    }
+}
+
+fn finish(kind: Metric, st: &St) -> f64 {
+    if let Some(c) = st.constant {
+        return c;
+    }
+    if st.n == 0 {
+        return f64::NAN;
+    }
+    let n = st.n as f64;
+    match kind {
+        Metric::Mean => st.a / n,
+        Metric::Sum | Metric::Min | Metric::Max | Metric::First | Metric::Last | Metric::Occurrences => st.a,
+        Metric::Std => {
+            if st.n > 1 {
+                (st.c / (n - 1.0)).sqrt()
+            } else {
+                f64::NAN
+            }
+        }
+        Metric::Count => n,
+        Metric::Pct => 100.0 * st.a / n,
+        // the last sample's interval is taken to be the one before it
+        Metric::Duration => st.a + if st.flag { st.d } else { 0.0 },
+    }
+}
+
+fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
+    let id = cx.cursor;
+    cx.cursor += 1;
     let (lo, hi) = crate::functions::arity(f).expect("the parser checks function names");
     if args.len() < lo || args.len() > hi {
         let want = if lo == hi { format!("{lo}") } else { format!("{lo} to {hi}") };
         return Err(ExprError::new(format!("{f}() takes {want} argument{}", if hi == 1 { "" } else { "s" }), at));
     }
-    let a: Vec<Val> = args.iter().map(|e| eval(e, env)).collect::<R<_>>()?;
-    let ew = |g: &dyn Fn(&[f64]) -> f64| elementwise(&a, 0, g);
+    let metric = cx.plan.nodes[id].metric;
+    if let Some((d, _)) = metric.filter(|(d, _)| *d <= cx.pass) {
+        let _ = d;
+        cx.cursor += cx.plan.nodes[id].inner;
+        return Ok(Val::Num(cx.resolved[id].unwrap_or(f64::NAN)));
+    }
+    let a: Vec<Val> = args.iter().map(|e| ev(e, cx)).collect::<R<_>>()?;
+    if let Some((d, kind)) = metric {
+        if d == cx.pass + 1 {
+            accumulate(kind, &mut cx.st[id], &a[0], cx.commit);
+        }
+        return Ok(Val::Num(f64::NAN));
+    }
+    let ew = |g: &dyn Fn(&[f64]) -> f64| elementwise(&a, g);
     let ser = |i: usize| series_arg(&a[i], f, at);
     let win = |i: usize| window(a.get(i), f, at);
-    let roll = |kind: Roll| -> R<Val> {
-        let w = win(1)?;
-        Ok(sample_op(ser(0)?, |v, t| rolling(v, t, w, kind)))
-    };
     use std::f64::consts::PI;
     Ok(match f {
         "abs" => ew(&|x| x[0].abs())?,
@@ -275,7 +648,7 @@ fn call(f: &str, args: &[Expr], at: usize, env: &dyn Env) -> R<Val> {
         "sign" => ew(&|x| if x[0] == 0.0 { 0.0 } else { x[0].signum() })?,
         "round" => {
             let q = 10f64.powf(a.get(1).and_then(num_of).unwrap_or(0.0));
-            elementwise(&a[..1], 0, |x| (x[0] * q).round() / q)?
+            elementwise(&a[..1], |x| (x[0] * q).round() / q)?
         }
         "clamp" => ew(&|x| x[0].max(x[1]).min(x[2]))?,
         "sin" => ew(&|x| x[0].sin())?,
@@ -288,171 +661,171 @@ fn call(f: &str, args: &[Expr], at: usize, env: &dyn Env) -> R<Val> {
         "deg" => ew(&|x| x[0] * 180.0 / PI)?,
         "rad" => ew(&|x| x[0] * PI / 180.0)?,
         "if" => ew(&|x| if x[0] != 0.0 { x[1] } else { x[2] })?,
-        // two or more arguments: element by element; one channel: the whole file's min or max
-        "min" | "max" => {
-            let is_min = f == "min";
-            if a.len() == 1 {
-                match &a[0] {
-                    Val::Ser(s) => metric(s, |v| {
-                        v.iter().copied().fold(
-                            if is_min { f64::INFINITY } else { f64::NEG_INFINITY },
-                            if is_min { f64::min } else { f64::max },
-                        )
-                    }),
-                    n => n.clone(),
-                }
-            } else if is_min {
-                ew(&|x| x.iter().copied().fold(f64::INFINITY, f64::min))?
-            } else {
-                ew(&|x| x.iter().copied().fold(f64::NEG_INFINITY, f64::max))?
-            }
-        }
-        "delta" | "diff" => {
-            sample_op(ser(0)?, |v, _| (0..v.len()).map(|j| if j > 0 { v[j] - v[j - 1] } else { f64::NAN }).collect())
-        }
+        // two or more arguments, element by element (one channel is a one-number function, handled above)
+        "min" => match &a[..] {
+            [n] => n.clone(),
+            _ => ew(&|x| x.iter().copied().fold(f64::INFINITY, f64::min))?,
+        },
+        "max" => match &a[..] {
+            [n] => n.clone(),
+            _ => ew(&|x| x.iter().copied().fold(f64::NEG_INFINITY, f64::max))?,
+        },
+        "delta" | "diff" => sample_op(cx, id, ser(0)?, |st, v, t| {
+            let (p, _) = lag(st, v, t, 1);
+            v.iter().zip(p).map(|(x, p)| x - p).collect()
+        }),
         "prev" => {
             let n = a.get(1).and_then(num_of).unwrap_or(1.0).max(0.0) as usize;
-            sample_op(ser(0)?, |v, _| (0..v.len()).map(|j| if j >= n { v[j - n] } else { f64::NAN }).collect())
+            sample_op(cx, id, ser(0)?, move |st, v, t| lag(st, v, t, n).0)
         }
-        "pct_change" => sample_op(ser(0)?, |v, _| {
-            (0..v.len()).map(|j| if j > 0 && v[j - 1] != 0.0 { v[j] / v[j - 1] - 1.0 } else { f64::NAN }).collect()
+        "pct_change" => sample_op(cx, id, ser(0)?, |st, v, t| {
+            let (p, _) = lag(st, v, t, 1);
+            v.iter().zip(p).map(|(x, p)| if p != 0.0 { x / p - 1.0 } else { f64::NAN }).collect()
         }),
-        "rate" => sample_op(ser(0)?, |v, t| {
-            (0..v.len())
-                .map(|j| if j > 0 && t[j] > t[j - 1] { (v[j] - v[j - 1]) / (t[j] - t[j - 1]) } else { f64::NAN })
-                .collect()
+        "rate" => sample_op(cx, id, ser(0)?, |st, v, t| {
+            let (p, pt) = lag(st, v, t, 1);
+            (0..v.len()).map(|j| if t[j] > pt[j] { (v[j] - p[j]) / (t[j] - pt[j]) } else { f64::NAN }).collect()
         }),
-        "cumsum" => sample_op(ser(0)?, |v, _| {
-            let mut s = 0.0;
+        "cumsum" => sample_op(cx, id, ser(0)?, |st, v, _| {
             v.iter()
                 .map(|x| {
-                    s += x;
-                    s
+                    st.a += x;
+                    st.a
                 })
                 .collect()
         }),
-        "integral" => sample_op(ser(0)?, |v, t| {
-            let mut s = 0.0;
+        "integral" => sample_op(cx, id, ser(0)?, |st, v, t| {
             (0..v.len())
                 .map(|j| {
-                    if j > 0 {
-                        s += (v[j] + v[j - 1]) / 2.0 * (t[j] - t[j - 1]);
+                    if st.flag {
+                        st.a += (v[j] + st.b) / 2.0 * (t[j] - st.c);
                     }
-                    s
+                    (st.b, st.c, st.flag) = (v[j], t[j], true);
+                    st.a
                 })
                 .collect()
         }),
-        "running_max" => sample_op(ser(0)?, |v, _| {
-            let mut m = f64::NEG_INFINITY;
-            v.iter()
-                .map(|&x| {
-                    m = m.max(x);
-                    m
-                })
-                .collect()
-        }),
-        "running_min" => sample_op(ser(0)?, |v, _| {
-            let mut m = f64::INFINITY;
-            v.iter()
-                .map(|&x| {
-                    m = m.min(x);
-                    m
-                })
-                .collect()
-        }),
-        "sma" | "rolling_mean" | "movavg" => roll(Roll::Mean)?,
-        "rolling_std" => roll(Roll::Std)?,
-        "rolling_min" => roll(Roll::Min)?,
-        "rolling_max" => roll(Roll::Max)?,
-        "rolling_sum" => roll(Roll::Sum)?,
-        "median" => roll(Roll::Median)?,
-        "ema" => {
-            let w = win(1)?;
-            sample_op(ser(0)?, |v, t| {
-                let mut e = f64::NAN;
-                (0..v.len())
-                    .map(|j| {
-                        let al = match w {
-                            Window::Samples(n) => 2.0 / (n as f64 + 1.0),
-                            Window::Secs(s) if j > 0 => 1.0 - (-(t[j] - t[j - 1]) / s).exp(),
-                            Window::Secs(_) => 1.0,
+        "running_max" | "running_min" => {
+            let max = f == "running_max";
+            sample_op(cx, id, ser(0)?, move |st, v, _| {
+                v.iter()
+                    .map(|&x| {
+                        st.a = if !st.flag {
+                            x
+                        } else if max {
+                            st.a.max(x)
+                        } else {
+                            st.a.min(x)
                         };
-                        e = if e.is_nan() { v[j] } else { e + al * (v[j] - e) };
-                        e
+                        st.flag = true;
+                        st.a
                     })
                     .collect()
             })
         }
-        "lowpass" | "highpass" => filters::pass(ser(0)?, f == "lowpass", num_of(&a[1]), f, at)?,
-        "bandpass" => {
-            let (f1, f2) = (num_of(&a[1]), num_of(&a[2]));
-            if !matches!((f1, f2), (Some(x), Some(y)) if y > x) {
-                return Err(ExprError::new(
-                    "bandpass(x, low Hz, high Hz): the second cutoff must be above the first",
-                    at,
-                ));
+        "sma" | "rolling_mean" | "movavg" | "rolling_std" | "rolling_min" | "rolling_max" | "rolling_sum"
+        | "median" => {
+            let w = win(1)?;
+            let kind = match f {
+                "rolling_std" => Roll::Std,
+                "rolling_min" => Roll::Min,
+                "rolling_max" => Roll::Max,
+                "rolling_sum" => Roll::Sum,
+                "median" => Roll::Median,
+                _ => Roll::Mean,
+            };
+            sample_op(cx, id, ser(0)?, move |st, v, t| rolling(st, v, t, w, kind))
+        }
+        "ema" => {
+            let w = win(1)?;
+            sample_op(cx, id, ser(0)?, move |st, v, t| {
+                (0..v.len())
+                    .map(|j| {
+                        let al = match w {
+                            Window::Samples(n) => 2.0 / (n as f64 + 1.0),
+                            Window::Secs(s) if st.flag => 1.0 - (-(t[j] - st.b) / s).exp(),
+                            Window::Secs(_) => 1.0,
+                        };
+                        st.a = if st.flag { st.a + al * (v[j] - st.a) } else { v[j] };
+                        (st.b, st.flag) = (t[j], true);
+                        st.a
+                    })
+                    .collect()
+            })
+        }
+        "lowpass" | "highpass" | "bandpass" => {
+            let s = ser(0)?;
+            let cut = |i: usize| num_of(&a[i]).filter(|c| *c > 0.0);
+            let fs = cx.env.hz().unwrap_or(match &s.grid {
+                Grid::Rate { hz, .. } => *hz,
+                Grid::Stamps(t) if t.len() > 1 => (t.len() - 1) as f64 / (t[t.len() - 1] - t[0]),
+                Grid::Stamps(_) => 1.0,
+            });
+            let stages: Vec<(bool, f64)> = if f == "bandpass" {
+                match (cut(1), cut(2)) {
+                    (Some(x), Some(y)) if y > x => vec![(false, x), (true, y)],
+                    _ => {
+                        return Err(ExprError::new(
+                            "bandpass(x, low Hz, high Hz): the second cutoff must be above the first",
+                            at,
+                        ));
+                    }
+                }
+            } else {
+                match cut(1) {
+                    Some(c) => vec![(f == "lowpass", c)],
+                    None => {
+                        return Err(ExprError::new(
+                            format!("{f}(x, Hz): the cutoff is a frequency in Hz, like {f}(accel_x, 5)"),
+                            at,
+                        ));
+                    }
+                }
+            };
+            let mut bqs = Vec::new();
+            for (low, c) in stages {
+                match Biquad::new(low, c, fs) {
+                    Some(b) => bqs.push(b),
+                    None => {
+                        return Err(ExprError::new(
+                            format!("The cutoff ({c} Hz) must be below half the sample rate ({} Hz)", fs / 2.0),
+                            at,
+                        ));
+                    }
+                }
             }
-            let Val::Ser(hi) = filters::pass(ser(0)?, false, f1, f, at)? else { unreachable!() };
-            filters::pass(&hi, true, f2, f, at)?
+            let (idx, mut v, _) = compact(s);
+            let k = idx.partition_point(|&i| i < cx.commit);
+            for (stage, bq) in bqs.iter().enumerate() {
+                v = filters::zero_phase(bq, &mut cx.st[id].carry[stage], &v, k);
+            }
+            scatter(s, &idx, v)
         }
         "interp" => {
             let mut s = ser(0)?.clone();
             s.linear = true;
             Val::Ser(s)
         }
-        "mean" => one(&a[0], mean),
-        "sum" => one(&a[0], |v| v.iter().sum()),
-        "std" => one(&a[0], |v| {
-            let m = mean(v);
-            if v.len() > 1 {
-                (v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / (v.len() as f64 - 1.0)).sqrt()
-            } else {
-                f64::NAN
-            }
-        }),
-        "first" => one(&a[0], |v| v[0]),
-        "last" => one(&a[0], |v| v[v.len() - 1]),
-        "count" => one(&a[0], |v| v.len() as f64),
-        "pct" => one(&a[0], |v| 100.0 * v.iter().filter(|x| **x != 0.0).count() as f64 / v.len() as f64),
-        "duration" => {
-            let s = ser(0)?;
-            let (mut secs, mut seen) = (0.0, false);
-            for (i, x) in s.v.iter().enumerate() {
-                if !x.is_nan() {
-                    seen = true;
-                    if *x != 0.0 {
-                        secs += s.grid.step(i, s.len());
-                    }
-                }
-            }
-            Val::Num(if seen { secs } else { f64::NAN })
-        }
-        "occurrences" => {
-            let (mut n, mut seen, mut was) = (0, false, false);
-            for x in ser(0)?.v.iter().filter(|x| !x.is_nan()) {
-                seen = true;
-                n += (*x != 0.0 && !was) as i32;
-                was = *x != 0.0;
-            }
-            Val::Num(if seen { n as f64 } else { f64::NAN })
-        }
-        // seconds since the condition last held; a gap in the condition stays a gap, before the first hit it is a gap
+        // seconds since the condition last held; a gap stays a gap, and so does everything before the first hit
         "since" => {
             let s = ser(0)?;
-            let mut last = f64::NAN;
-            let v = (0..s.len())
+            let k = cx.commit.min(s.len());
+            let st = &mut cx.st[id];
+            let mut tmp = st.clone();
+            let out = (0..s.len())
                 .map(|i| {
+                    let cur = if i < k { &mut *st } else { &mut tmp };
                     let x = s.v[i];
                     if x.is_nan() {
                         return f64::NAN;
                     }
                     if x != 0.0 {
-                        last = s.time(i);
+                        (cur.a, cur.flag) = (s.time(i), true);
                     }
-                    s.time(i) - last
+                    if cur.flag { s.time(i) - cur.a } else { f64::NAN }
                 })
                 .collect();
-            Val::Ser(Series::new(v, s.grid.clone()))
+            Val::Ser(Series::new(out, s.grid.clone()))
         }
         "past_warn" | "past_alarm" => {
             let s = ser(0)?;
@@ -461,33 +834,13 @@ fn call(f: &str, args: &[Expr], at: usize, env: &dyn Env) -> R<Val> {
             let Some(ch) = s.ch.as_deref() else {
                 return Err(ExprError::new(format!("{f}() takes a channel, like {f}(esc_temp_1)"), at));
             };
-            let (lo, hi) = env
+            let (lo, hi) = cx
+                .env
                 .limits(ch, alarm)
                 .filter(|(l, h)| l.is_some() || h.is_some())
                 .ok_or_else(|| ExprError::new(format!("{ch} has no {kind} limits"), at))?;
-            elementwise(&a, 0, |x| (lo.is_some_and(|l| x[0] <= l) || hi.is_some_and(|h| x[0] >= h)) as i32 as f64)?
+            elementwise(&a, |x| (lo.is_some_and(|l| x[0] <= l) || hi.is_some_and(|h| x[0] >= h)) as i32 as f64)?
         }
         _ => unreachable!("{f} is in the table but not evaluated"),
     })
-}
-
-fn one(v: &Val, f: impl FnOnce(&[f64]) -> f64) -> Val {
-    match v {
-        Val::Ser(s) => metric(s, f),
-        n => n.clone(),
-    }
-}
-
-/// Convenience: parse and evaluate.
-pub fn eval_str(src: &str, env: &dyn Env) -> R<Val> {
-    eval(&crate::parse(src)?, env)
-}
-
-impl Val {
-    pub fn series(&self) -> Option<&Series> {
-        if let Val::Ser(s) = self { Some(s) } else { None }
-    }
-    pub fn number(&self) -> Option<f64> {
-        num_of(self)
-    }
 }
