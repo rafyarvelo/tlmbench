@@ -4770,6 +4770,7 @@ dependencies = [
  "tlmbench-core",
  "tlmbench-decode",
  "tlmbench-export",
+ "tlmbench-expr",
  "tlmbench-live",
  "tlmbench-store",
 ]

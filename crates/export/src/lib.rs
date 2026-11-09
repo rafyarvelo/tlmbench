@@ -165,8 +165,34 @@ pub(crate) struct Plan {
 
 /// Writes samples of `rec` as `opts` says to `out` (a file path; its folder must exist).
 pub fn export(rec: &dyn Recording, opts: &Options, out: &Path) -> Result<Written> {
+    export_with(rec, &[], opts, out)
+}
+
+/// [`export`] with more channels from recordings that share `rec`'s sample times (derived channels): channel numbers
+/// in `opts` count `rec`'s channels first, then each of `extra`'s in turn.
+pub fn export_with(rec: &dyn Recording, extra: &[&dyn Recording], opts: &Options, out: &Path) -> Result<Written> {
     let info = rec.info();
-    if let Some(&bad) = opts.channels.iter().find(|&&c| c >= info.channels.len()) {
+    if let Some(bad) = extra.iter().find(|e| e.info().samples != info.samples) {
+        return Err(Error::Write(format!(
+            "{} has {} samples, not {}",
+            bad.info().path.display(),
+            bad.info().samples,
+            info.samples
+        )));
+    }
+    // channel number → (recording, its own channel number)
+    let locate = |c: usize| -> Option<(&dyn Recording, usize)> {
+        let mut c = c;
+        for r in std::iter::once(rec).chain(extra.iter().copied()) {
+            let n = r.info().channels.len();
+            if c < n {
+                return Some((r, c));
+            }
+            c -= n;
+        }
+        None
+    };
+    if let Some(&bad) = opts.channels.iter().find(|&&c| locate(c).is_none()) {
         return Err(Error::Write(format!("no channel {bad}")));
     }
     let end = opts.end.min(info.samples);
@@ -178,14 +204,22 @@ pub fn export(rec: &dyn Recording, opts: &Options, out: &Path) -> Result<Written
     if opts.resample_hz.is_some() && !has_time {
         return Err(Error::Write("a recording without time can't be resampled".into()));
     }
-    let transforms: Vec<(f64, f64)> = opts.channels.iter().map(|&c| rec.scale_offset(c)).collect();
+    let transforms: Vec<(f64, f64)> = opts
+        .channels
+        .iter()
+        .map(|&c| {
+            let (r, c) = locate(c).unwrap();
+            r.scale_offset(c)
+        })
+        .collect();
     let shown = |k: usize| !opts.raw && transforms[k] != (1.0, 0.0);
     let channels: Vec<OutChannel> = opts
         .channels
         .iter()
         .enumerate()
         .map(|(k, &c)| {
-            let ch = &info.channels[c];
+            let (r, c) = locate(c).unwrap();
+            let ch = &r.info().channels[c];
             OutChannel { name: ch.name.clone(), unit: ch.unit.clone(), dtype: if shown(k) { "f64" } else { ch.dtype } }
         })
         .collect();
@@ -212,7 +246,8 @@ pub fn export(rec: &dyn Recording, opts: &Options, out: &Path) -> Result<Written
             sink.write(&block)
         };
         let read = |c: usize, k: usize, a: usize, b: usize| -> Column {
-            let col = rec.read(c, a, b);
+            let (r, c) = locate(c).unwrap();
+            let col = r.read(c, a, b);
             if shown(k) {
                 let (s, o) = transforms[k];
                 Column::F64(col.to_f64(s, o))

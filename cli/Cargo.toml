@@ -17,6 +17,7 @@ tlmbench-decode.workspace = true
 tlmbench-store.workspace = true
 tlmbench-live.workspace = true
 tlmbench-export.workspace = true
+tlmbench-expr.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
