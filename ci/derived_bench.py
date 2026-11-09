@@ -15,6 +15,7 @@ RECIPES = [
     ("rolling mean (50)", "S=sma(signal_0,50)"),
     ("rolling std (100)", "S=rolling_std(signal_0,100)"),
     ("low-pass, zero phase", "S=lowpass(signal_0,100)"),
+    ("median (5)", "S=median(signal_0,5)"),
     ("z-score (two passes)", "S=(signal_0-mean(signal_0))/std(signal_0)"),
 ]
 

@@ -325,6 +325,8 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
 #[derive(Clone, Default)]
 struct St {
     v: VecDeque<f64>,
+    /// The window in order, kept for `median` only.
+    sorted: Vec<f64>,
     t: VecDeque<f64>,
     a: f64,
     b: f64,
@@ -578,10 +580,47 @@ enum Roll {
     Median,
 }
 
+/// The median over a window of samples: the window is kept in order and the oldest value is replaced in place.
+fn median_samples(st: &mut St, v: &[f64], n: usize) -> Vec<f64> {
+    let mut out = Vec::with_capacity(v.len());
+    for &x in v {
+        if st.v.len() == n {
+            let old = st.v.pop_front().unwrap();
+            let i = st.sorted.partition_point(|y| y.total_cmp(&old).is_lt());
+            let j = st.sorted.partition_point(|y| y.total_cmp(&x).is_lt());
+            if j > i {
+                st.sorted.copy_within(i + 1..j, i);
+                st.sorted[j - 1] = x;
+            } else {
+                st.sorted.copy_within(j..i, j + 1);
+                st.sorted[j] = x;
+            }
+        } else {
+            let j = st.sorted.partition_point(|y| y.total_cmp(&x).is_lt());
+            st.sorted.insert(j, x);
+        }
+        st.v.push_back(x);
+        out.push(if st.v.len() < n {
+            f64::NAN
+        } else {
+            let m = n / 2;
+            if n % 2 == 1 { st.sorted[m] } else { (st.sorted[m - 1] + st.sorted[m]) / 2.0 }
+        });
+    }
+    out
+}
+
 fn rolling(st: &mut St, v: &[f64], t: &[f64], w: Window, kind: Roll) -> Vec<f64> {
+    if let (Roll::Median, Window::Samples(n)) = (kind, w) {
+        return median_samples(st, v, n);
+    }
     let mut out = Vec::with_capacity(v.len());
     for j in 0..v.len() {
         st.v.push_back(v[j]);
+        if let Roll::Median = kind {
+            let at = st.sorted.partition_point(|y| y.total_cmp(&v[j]).is_lt());
+            st.sorted.insert(at, v[j]);
+        }
         if let Window::Secs(_) = w {
             st.t.push_back(t[j]);
         }
@@ -594,6 +633,10 @@ fn rolling(st: &mut St, v: &[f64], t: &[f64], w: Window, kind: Roll) -> Vec<f64>
             }
             st.a -= x;
             st.b -= x * x;
+            if let Roll::Median = kind {
+                let at = st.sorted.partition_point(|y| y.total_cmp(&x).is_lt());
+                st.sorted.remove(at);
+            }
         };
         match w {
             Window::Samples(n) => {
@@ -620,8 +663,7 @@ fn rolling(st: &mut St, v: &[f64], t: &[f64], w: Window, kind: Roll) -> Vec<f64>
             Roll::Min => st.v.iter().copied().fold(f64::INFINITY, f64::min),
             Roll::Max => st.v.iter().copied().fold(f64::NEG_INFINITY, f64::max),
             Roll::Median => {
-                let mut win: Vec<f64> = st.v.iter().copied().collect();
-                win.sort_by(f64::total_cmp);
+                let win = &st.sorted;
                 let m = win.len() / 2;
                 if win.len() % 2 == 1 { win[m] } else { (win[m - 1] + win[m]) / 2.0 }
             }

@@ -122,7 +122,7 @@ The look and the shell, so that the app reads as the prototype before the big fe
 - **CLI:** derived channels in `info`, `query` and `convert`.
 - **Budget** (restated Nov 9): over a 100M-sample input, an element-wise derived channel evaluates at pyramid
   speed, and a stateful one (running totals, rolling windows, filters, median) within about 2× of it. `median`
-  is fixed first; the plan is in `docs/follow-ups.md`.
+  is fixed first (7 s → 3.7 s over 100M; the parallel-chunk step in `docs/follow-ups.md` is what brings it under).
 - **Done when** every function in the design's table has a core test against a reference, the prototype's derived
   tests (`t_derived`) are ported, and the matrix's section 10 is all ✓.
 
