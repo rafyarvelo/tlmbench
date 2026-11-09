@@ -111,6 +111,7 @@ impl Store {
             live: true,
             filling: Mutex::new(()),
             rec,
+            joined: None,
             store: self.clone(),
             fingerprint: key.to_owned(),
             key: key.to_owned(),

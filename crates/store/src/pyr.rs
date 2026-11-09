@@ -211,6 +211,38 @@ impl Loaded {
         }))
     }
 
+    /// Two finished pyramids of recordings with the same samples, side by side: `a`'s channels, then `b`'s. `None` when
+    /// either isn't finished.
+    pub fn concat(a: &Loaded, b: &Loaded) -> Result<Option<Loaded>> {
+        if !(a.complete && b.complete) || !a.growing.is_empty() || !b.growing.is_empty() || a.lens != b.lens {
+            return Ok(None);
+        }
+        let paths: Vec<PathBuf> = a.paths.iter().chain(&b.paths).cloned().collect();
+        let total = a.offsets[a.lens.len()];
+        let maps = paths
+            .iter()
+            .map(|p| {
+                let f = File::open(p).map_err(Error::io(p))?;
+                if f.metadata().map_err(Error::io(p))?.len() != (total * SUMMARY) as u64 {
+                    return Err(Error::Damaged { path: p.clone(), why: "wrong size".into() });
+                }
+                // SAFETY: as in `map`: a finished pyramid's files are never written again.
+                unsafe { Mmap::map(&f) }.map_err(Error::io(p))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Some(Loaded {
+            maps,
+            paths,
+            lens: a.lens.clone(),
+            offsets: a.offsets.clone(),
+            usable: a.usable,
+            done: a.done.min(b.done),
+            complete: true,
+            gaps: a.gaps.clone(),
+            growing: Vec::new(),
+        }))
+    }
+
     /// A growing recording's pyramid: `maps[channel][level]` holds at least `lens[level]` summaries, and `done`
     /// samples are summarized (the rest are read raw). Complete in the sense that every sample can be answered.
     pub fn growing(maps: Vec<Vec<Mmap>>, lens: Vec<usize>, done: usize, gaps: GapIndex) -> Loaded {

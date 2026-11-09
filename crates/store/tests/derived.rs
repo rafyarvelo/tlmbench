@@ -215,3 +215,59 @@ fn spectrum_of_a_channel_over_the_time_view() {
     assert!(o.spectrum(0, t0, t0 + 50_000_000, 16384).is_none());
     assert_eq!(o.spectrum(0, t0, t1, 1024).unwrap().n, 1024);
 }
+
+#[test]
+fn a_recording_joins_its_derived_channels_without_rebuilding_a_pyramid() {
+    use std::sync::Arc;
+    use tlmbench_core::table::{Col, Filter, SortKey};
+    use tlmbench_store::Status;
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    fs::create_dir(&data).unwrap();
+    let src = recording(&data);
+    let store = Store::new(Some(&tmp.path().join("cache")));
+    let base = Arc::new(store.open(&src, None).unwrap());
+    let d =
+        store.open_derived(&base, &[recipe("Sum", "a + b", Some("V")), recipe("Slow", "sma(a, 100)", None)]).unwrap();
+    let joined = store.join(base.clone(), Arc::new(d.opened.unwrap())).unwrap();
+    assert!(joined.is_joined());
+    let names: Vec<&str> = joined.recording().info().channels.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["a", "b", "Sum", "Slow"]);
+    assert_eq!(joined.status(), Status::Missing);
+
+    // building the joined recording builds each part's pyramid (nothing of its own) and puts them side by side
+    joined.build(&mut |_, _| {}).unwrap();
+    assert_eq!(joined.status(), Status::Built);
+    let pyramids =
+        fs::read_dir(store.root().join("pyr").join("v2")).unwrap().flatten().filter(|e| e.path().is_dir()).count();
+    assert_eq!(pyramids, 2, "the recording's and the derived entry's");
+
+    let info = joined.recording().info();
+    let vp = Viewport { t0: info.t_first.unwrap(), t1: info.t_last.unwrap(), width_px: 300, raw_max: 0 };
+    let views = joined.views(&[0, 2, 3], vp, &[3.0; 3], Precision::Exact);
+    assert_eq!(views.iter().map(|v| v.channel).collect::<Vec<_>>(), [0, 2, 3]);
+    assert!(views.iter().all(|v| !v.trace.y.is_empty()));
+
+    // stats of a derived channel come from its own pyramid and agree with the part opened alone
+    let both = joined.stats(&[1, 2], vp.t0, vp.t1 + 1).unwrap();
+    let alone = base.stats(&[1], vp.t0, vp.t1 + 1).unwrap();
+    assert_eq!(both[0].count, alone[0].count);
+    assert!(both[1].count > 0 && (both[1].mean - (both[0].mean + 0.0)).abs() < 100.0);
+    let (_, _, v) = joined.values_at(&[0, 1, 2], vp.t0 + 5_000_000_000).unwrap();
+    assert!((v[2] - (v[0] + v[1])).abs() < 1e-3, "{v:?}");
+
+    // a table filters on a derived column and shows a raw one
+    let rows = joined.select_rows(
+        (vp.t0, vp.t1 + 1),
+        vec![(Col::Channel(2), Filter::parse("> 9").unwrap().unwrap())],
+        vec![SortKey { col: Col::Channel(2), descending: true }],
+        &|_| true,
+    );
+    let (first, rows) = rows.unwrap();
+    assert!(!rows.ids.is_empty());
+    let top = first + rows.ids[0] as usize;
+    assert!(joined.recording().value_at(2, top, &Default::default()) > 9.0);
+    let at = |c: usize| joined.recording().value_at(c, top, &Default::default());
+    let (a, b, sum) = (at(0), at(1), at(2));
+    assert!((sum - (a + b)).abs() < 1e-3, "{a} + {b} = {sum}");
+}

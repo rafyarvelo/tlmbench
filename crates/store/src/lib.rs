@@ -23,6 +23,7 @@
 mod chunks;
 mod derived;
 mod error;
+mod joined;
 mod live;
 mod pyr;
 pub mod sys;
@@ -159,6 +160,7 @@ impl Store {
             live: false,
             filling: Mutex::new(()),
             rec,
+            joined: None,
             store: self.clone(),
             fingerprint,
             key,
@@ -294,6 +296,8 @@ pub struct Opened {
     /// One decode at a time, so two queries don't decode the same chunks.
     filling: Mutex<()>,
     rec: Box<dyn Recording>,
+    /// For a recording joined with its derived channels: the two parts (see [`Store::join`]).
+    joined: Option<(Arc<Opened>, Arc<Opened>)>,
     store: Store,
     fingerprint: String,
     key: String,
@@ -397,6 +401,14 @@ impl Opened {
         if self.status() == Status::Built {
             return Ok(());
         }
+        if let Some((base, derived)) = &self.joined {
+            // each part builds its own pyramid (the recording's is usually there already); the joined one is the two
+            let n = self.rec.info().samples as u64;
+            base.build(&mut |d, t| progress(d.min(t) * n / t.max(1) / 2, n))?;
+            derived.build(&mut |d, t| progress(n / 2 + d.min(t) * n / t.max(1) / 2, n))?;
+            self.compose();
+            return Ok(());
+        }
         let done = pyr::build(self, progress)?;
         if done {
             touch_opened(&self.dir.join(&self.key));
@@ -408,6 +420,26 @@ impl Opened {
     /// Stops a build at the next block; it resumes on the next [`Opened::build`].
     pub fn cancel(&self) {
         self.cancel.store(true, Ordering::Relaxed);
+        if let Some((base, derived)) = &self.joined {
+            base.cancel();
+            derived.cancel();
+        }
+    }
+
+    /// A joined recording's pyramid, once both parts have theirs.
+    fn compose(&self) {
+        let Some((base, derived)) = &self.joined else { return };
+        let (b, d) = (base.loaded.read().unwrap(), derived.loaded.read().unwrap());
+        if let (Some(b), Some(d)) = (b.as_ref(), d.as_ref())
+            && let Ok(Some(l)) = Loaded::concat(b, d)
+        {
+            *self.loaded.write().unwrap() = Some(l);
+        }
+    }
+
+    /// Whether this is a recording joined with derived channels.
+    pub fn is_joined(&self) -> bool {
+        self.joined.is_some()
     }
 
     /// Channel `channel` reduced for `vp`, with lines broken at gaps over `gap_factor` × the median interval.

@@ -14,6 +14,9 @@ use tlmbench_decode::cache::{DerivedChannel, DerivedSpec, DerivedTime};
 use tlmbench_expr::recipe::{self, Recipe, Resolved};
 use tlmbench_expr::{CHUNK, Env, ExprError, Grid, Series};
 
+use std::sync::Arc;
+
+use crate::joined::Joined;
 use crate::{Opened, Result, Store};
 
 /// What opening derived channels produced.
@@ -253,6 +256,29 @@ fn write_channel(env: &RecEnv, r: &Resolved, rows: usize, path: &Path) -> std::r
         Err(format!("{name}: computed {wrote} samples for {rows}"))
     } else {
         w.flush().map_err(io)
+    }
+}
+
+impl Store {
+    /// `base` and its derived channels (from [`Store::open_derived`]) as one recording: the recording's channels, then
+    /// the derived ones. Each part keeps its own pyramid, so nothing is rebuilt; build the joined one with
+    /// [`Opened::build`] (it builds whichever part isn't built).
+    pub fn join(&self, base: Arc<Opened>, derived: Arc<Opened>) -> Result<Opened> {
+        let (b, d) = (base.recording().info(), derived.recording().info());
+        if b.samples != d.samples {
+            return Err(crate::Error::Decode(tlmbench_decode::Error::Descriptor(format!(
+                "{} has {} samples but its derived channels {}",
+                b.path.display(),
+                b.samples,
+                d.samples
+            ))));
+        }
+        let fingerprint = derived.fingerprint().to_owned();
+        let rec = Box::new(Joined::new(base.clone(), derived.clone()));
+        let mut joined = self.wrap_keyed(rec, fingerprint)?;
+        joined.joined = Some((base, derived));
+        joined.compose();
+        Ok(joined)
     }
 }
 
