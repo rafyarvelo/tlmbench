@@ -47,7 +47,7 @@ import {
 import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
 import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
 import { type ExportContext, exp, FORMATS, img } from './exports.svelte';
-import { derive, type DerivedInfo, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
+import { derive, type DerivedInfo, manager, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
 import { SvgContext, svg } from './svgctx';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
@@ -2401,7 +2401,10 @@ function deriveOpen(chs: number[]): void {
 }
 
 function deriveEdit(ch: number): void {
-  const name = ui.channels[ch]?.name;
+  deriveEditRecipe(ui.channels[ch]?.name ?? '');
+}
+
+function deriveEditRecipe(name: string): void {
   const r = recipes.list.find((x) => x.name === name);
   const go = (r: Recipe) => {
     Object.assign(derive, { open: true, editing: r.name, busy: false, base: [], tpl: 'custom', name: r.name, expr: r.expr, unit: r.unit ?? '', category: r.category ?? 'Derived', decimals: r.decimals ?? 3, scope: 'keep', error: '' });
@@ -2560,6 +2563,68 @@ async function deriveRemove(ch: number, from: 'file' | 'all'): Promise<void> {
       ui.undo = null;
     })();
   };
+}
+
+// ---------- The Recipes manager ----------
+
+async function recipesOpen(): Promise<void> {
+  await refreshRecipes();
+  Object.assign(manager, { open: true, panel: '', text: '', error: '' });
+}
+
+/** Deletes a recipe from the library and every file; Undo puts it back. */
+async function recipeDelete(name: string): Promise<void> {
+  const was = recipes.list.find((r) => r.name === name);
+  if (!was) return;
+  const snap = { att: settings.fileRecipes, off: settings.fileRecipesOff };
+  const without = (m: Record<string, string[]>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.filter((n) => n !== name)]));
+  await invoke('recipe_delete', { name });
+  setSetting('fileRecipes', without(settings.fileRecipes));
+  setSetting('fileRecipesOff', without(settings.fileRecipesOff));
+  await refreshRecipes();
+  await reapplyAll();
+  note(`Deleted recipe ${name}.`);
+  ui.undo = () => {
+    void (async () => {
+      await invoke('recipe_save', { recipe: was, replacing: null });
+      setSetting('fileRecipes', snap.att);
+      setSetting('fileRecipesOff', snap.off);
+      await refreshRecipes();
+      await reapplyAll();
+      ui.note = '';
+      ui.undo = null;
+    })();
+  };
+}
+
+async function recipeDuplicate(name: string): Promise<void> {
+  const r = recipes.list.find((x) => x.name === name);
+  if (!r) return;
+  let copy = `${name} copy`;
+  for (let n = 2; recipes.list.some((x) => x.name === copy); n++) copy = `${name} copy ${n}`;
+  await invoke('recipe_save', { recipe: { ...r, name: copy, automatic: false }, replacing: null });
+  await refreshRecipes();
+}
+
+async function recipeAuto(name: string, on: boolean): Promise<void> {
+  const r = recipes.list.find((x) => x.name === name);
+  if (!r) return;
+  await invoke('recipe_save', { recipe: { ...r, automatic: on }, replacing: name });
+  await refreshRecipes();
+  await reapplyAll();
+}
+
+async function recipesImport(text: string): Promise<void> {
+  try {
+    const names = await invoke<string[]>('recipes_import', { text });
+    if (!names.length) throw new Error('No [[recipe]] tables found in that text.');
+    await refreshRecipes();
+    await reapplyAll();
+    Object.assign(manager, { panel: '', text: '', error: '' });
+    note(`Imported ${names.length} recipe${names.length === 1 ? '' : 's'}: ${names.join(', ')}.`);
+  } catch (e) {
+    manager.error = `Couldn't import that: ${e}`;
+  }
 }
 
 function exportOpen(): void {
@@ -3367,6 +3432,18 @@ Object.assign(actions, {
     derive.open = false;
   },
   deriveRemove: (ch: number, from: 'file' | 'all') => void deriveRemove(ch, from),
+  recipesOpen: () => void recipesOpen(),
+  recipesClose: () => {
+    manager.open = false;
+  },
+  recipeEdit: (name: string) => deriveEditRecipe(name),
+  recipeDuplicate: (name: string) => void recipeDuplicate(name),
+  recipeDelete: (name: string) => void recipeDelete(name),
+  recipeAuto: (name: string, on: boolean) => void recipeAuto(name, on),
+  recipesExport: () => {
+    void invoke<string>('recipes_export', { names: [] }).then((text) => Object.assign(manager, { panel: 'export', text, error: '' }));
+  },
+  recipesImport: (text: string) => void recipesImport(text),
   exportOpen,
   exportGo: () => void exportGo(),
   exportClose: () => {

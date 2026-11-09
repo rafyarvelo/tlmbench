@@ -14,6 +14,7 @@
   import Connect from './shell/Connect.svelte';
   import DescriptorForm from './shell/DescriptorForm.svelte';
   import DeriveDialog from './shell/DeriveDialog.svelte';
+  import RecipesDialog from './shell/RecipesDialog.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
   import Layouts from './shell/Layouts.svelte';
   import ImportDialog from './shell/ImportDialog.svelte';
@@ -117,6 +118,7 @@
 <DescriptorForm />
 <ExportDialog />
 <DeriveDialog />
+<RecipesDialog />
 
 <div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>
   <Rail />

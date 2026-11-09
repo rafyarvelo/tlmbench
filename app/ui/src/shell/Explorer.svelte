@@ -339,6 +339,8 @@
       { sep: true },
       { label: `Import all ${csvFiles.length} file${csvFiles.length === 1 ? '' : 's'}…`, data: { ex: 'import-all' }, disabled: !csvFiles.length, run: () => actions.importAll(csvFiles) },
       { sep: true },
+      { label: 'Recipes…', data: { ex: 'recipes-f' }, run: actions.recipesOpen },
+      { sep: true },
       { label: 'Expand all folders', data: { ex: 'expand' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])) },
       { label: 'Collapse all folders', data: { ex: 'collapse' }, disabled: !ui.folder, run: collapseAll },
       { sep: true },
@@ -360,6 +362,8 @@
       { label: 'Open them in a new table', data: { ex: 'new-table' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans, 'table') },
       { sep: true },
       { label: `Show files that can't be opened${hidden ? ` (${hidden} hidden)` : ''}`, checked: settings.exShowAll, data: { ex: 'showall' }, run: () => setSetting('exShowAll', !settings.exShowAll) },
+      { sep: true },
+      { label: 'Recipes…', data: { ex: 'recipes' }, run: actions.recipesOpen },
     ]}
   />
 {/if}

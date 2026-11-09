@@ -90,3 +90,6 @@ export const derive = $state({
   status: { ok: false, text: '', pending: false },
   error: '',
 });
+
+/** The Recipes manager: the library's list, and the text panel for Export… and Import…. */
+export const manager = $state({ open: false, panel: '' as '' | 'export' | 'import', text: '', error: '' });
