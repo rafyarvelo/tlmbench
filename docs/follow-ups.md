@@ -17,7 +17,14 @@ When needed:
   100 GB serves `convert`'s flat-memory claim. Neither suits CI runners (about 14 GB free); run them on the Mac.
 - Add those folders to `ro_commands` coverage, mounted read-only (`hdiutil` image or a read-only external volume).
 
-## Left from step 5.2 so far (Nov 9)
+## Left from step 5.2 (Nov 9)
+
+- **Events, left:** events detected in the file, from rules and from failed checks (5.3); Share to `.tlmbench/events/` and
+  `categories.toml` (5.7); a marker's tooltip on hover (the pointer readout names the event for now); a separate Event
+  column and channel-cell tints in tables (needs events that list channels); Stop at for several categories at once;
+  the Events panel's file chips and "Charts follow these filters" link (one file per tab for now); events of the live
+  tab; the parity scenes for the Events panel and the channel editor (`just app-parity`).
+
 
 - **Scale, offset and missing values (built).** `tlmbench_core::adjust::Adjusted` wraps a decoder's `Channels`: it
   composes the user's scale and offset with the format's and reads missing samples as NaN, and its layout id carries
