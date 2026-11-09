@@ -202,6 +202,14 @@ gate4 part="" gb="10":
       *)   $py ci/gate4.py --bin target/release --packet-gb {{gb}} --only {{part}} ;;
     esac
 
+# Step 5.1's budget: derived channels over 100M samples against the pyramid build (needs ~2.5 GB free; cleans up)
+derived-bench:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build -q --release -p tlmbench -p tlmbench-gen
+    py="python3"; [ -x .venv/bin/python3 ] && py=".venv/bin/python3"
+    $py ci/derived_bench.py --bin target/release
+
 # Everything the Linux CI job runs (inside the CI image)
 ci-linux: lint test bench-smoke proto-test app-test ro-test fuzz-smoke app-build
 
