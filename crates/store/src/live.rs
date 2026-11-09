@@ -123,6 +123,7 @@ impl Store {
             building: Mutex::new(()),
             masks: Mutex::default(),
             mask: RwLock::default(),
+            runs: Mutex::default(),
         })
     }
 }

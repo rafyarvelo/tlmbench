@@ -30,6 +30,7 @@ mod joined;
 mod live;
 mod pyr;
 mod recipes;
+pub mod widgets;
 pub mod sys;
 
 use std::fs::{self, File};
@@ -214,6 +215,7 @@ impl Store {
             building: Mutex::new(()),
             masks: Mutex::default(),
             mask: RwLock::default(),
+            runs: Mutex::default(),
         })
     }
 
@@ -353,6 +355,8 @@ pub struct Opened {
     /// What each owner (a table with Apply to charts) leaves out, and everything they leave out together.
     masks: Mutex<std::collections::HashMap<u32, Mask>>,
     mask: RwLock<Arc<Mask>>,
+    /// Where each state channel's runs of equal values begin (see [`widgets`]).
+    runs: Mutex<std::collections::HashMap<usize, Option<Arc<Vec<usize>>>>>,
 }
 
 /// How a view is answered.

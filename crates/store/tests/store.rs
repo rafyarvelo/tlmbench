@@ -406,3 +406,43 @@ fn a_mask_makes_samples_missing_in_views_stats_and_values() {
     let again = opened.stats(&[0], first, last + 1).unwrap().pop().unwrap();
     assert_eq!((again.count, again.max), (stats_all.count, stats_all.max));
 }
+
+#[test]
+fn a_widget_frame_answers_value_min_max_and_run_start_in_one_call() {
+    use tlmbench_store::widgets::WidgetReq;
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let store = Store::new(Some(cache.path()));
+    let opened = store.open(&path, None).unwrap();
+    // before the build: values and runs answer, min and max wait for the exact statistics
+    let t_of = |i: usize| opened.recording().time_at(i);
+    let reqs = [
+        WidgetReq { channel: 0, minmax: true, run: true },
+        WidgetReq { channel: 1, minmax: false, run: false },
+    ];
+    let view = (t_of(1_000_000), t_of(1_500_000));
+    let f = opened.widgets_frame(t_of(1_200_000), view, &reqs).unwrap();
+    assert_eq!(f.index, 1_200_000);
+    assert_eq!(f.widgets[0].value, Some(value(0, 1_200_000) as f64));
+    assert_eq!(f.widgets[1].value, Some(value(1, 1_200_000) as f64));
+    assert_eq!((f.widgets[0].min, f.widgets[0].max), (None, None));
+    assert_eq!(f.widgets[0].run_start, Some(t_of(1_200_000)), "every sample differs: a run of one");
+    assert_eq!(f.widgets[1].run_start, None, "not asked for");
+
+    opened.build(&mut |_, _| {}).unwrap();
+    let f = opened.widgets_frame(t_of(1_200_000), view, &reqs).unwrap();
+    let seen: Vec<f64> = (1_000_000..=1_200_000).map(|i| value(0, i) as f64).collect();
+    assert_eq!(f.widgets[0].min, Some(seen.iter().cloned().fold(f64::MAX, f64::min)));
+    assert_eq!(f.widgets[0].max, Some(seen.iter().cloned().fold(f64::MIN, f64::max)));
+    assert_eq!(f.widgets[1].min, None);
+
+    // inside the run of missing samples the value is missing and the run began at its first sample
+    let f = opened.widgets_frame(t_of(2_002_000), (t_of(1_900_000), t_of(2_100_000)), &reqs).unwrap();
+    assert_eq!(f.widgets[0].value, None);
+    assert_eq!(f.widgets[0].run_start, Some(t_of(2_000_046)), "2,000,045 holds the 50.0 spike");
+    // a time past the view's end reads the view's span only
+    let f = opened.widgets_frame(t_of(1_800_000), view, &reqs).unwrap();
+    let all: Vec<f64> = (1_000_000..1_500_000).map(|i| value(0, i) as f64).collect();
+    assert_eq!(f.widgets[0].max, Some(all.iter().cloned().fold(f64::MIN, f64::max)));
+}
