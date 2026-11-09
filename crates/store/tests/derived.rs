@@ -271,3 +271,80 @@ fn a_recording_joins_its_derived_channels_without_rebuilding_a_pyramid() {
     let (a, b, sum) = (at(0), at(1), at(2));
     assert!((sum - (a + b)).abs() < 1e-3, "{a} + {b} = {sum}");
 }
+
+#[test]
+fn the_recipe_library_keeps_one_file_per_recipe() {
+    use tlmbench_store::Library;
+    let tmp = tempfile::tempdir().unwrap();
+    let lib = Library::new(tmp.path());
+    assert!(lib.list().is_empty());
+    lib.save(&recipe("Power", "battery_v * current_a", Some("W")), None).unwrap();
+    lib.save(&recipe("Accel magnitude", "sqrt(ax^2 + ay^2)", Some("g")), None).unwrap();
+    lib.save(&recipe("Accel  magnitude!", "other", None), None).unwrap(); // the same file name stem, another recipe
+    let names: Vec<String> = lib.list().into_iter().map(|r| r.name).collect();
+    assert_eq!(names, ["Accel  magnitude!", "Accel magnitude", "Power"]);
+    let files: Vec<String> = fs::read_dir(tmp.path().join("recipes"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(files.len(), 3, "{files:?}");
+    assert!(files.contains(&"power.toml".to_string()));
+    // the file is the shared format
+    let text = fs::read_to_string(tmp.path().join("recipes/power.toml")).unwrap();
+    assert!(
+        text.contains("schema = 1") && text.contains("[[recipe]]") && text.contains("expr = \"battery_v * current_a\""),
+        "{text}"
+    );
+
+    // editing in place, renaming (the old file goes), deleting
+    let mut p = lib.get("Power").unwrap();
+    p.expr = "battery_v * current_a / 1000".into();
+    lib.save(&p, Some("Power")).unwrap();
+    assert_eq!(lib.get("Power").unwrap().expr, "battery_v * current_a / 1000");
+    p.name = "Power (kW)".into();
+    lib.save(&p, Some("Power")).unwrap();
+    assert!(lib.get("Power").is_none() && lib.get("Power (kW)").is_some());
+    assert_eq!(lib.list().len(), 3);
+    lib.delete("Power (kW)").unwrap();
+    assert_eq!(lib.list().len(), 2);
+    assert!(lib.save(&recipe("  ", "x", None), None).is_err());
+
+    // export and import round trip through the shared text
+    let text = lib.export(&["Accel magnitude".into()]);
+    let other = Library::new(&tmp.path().join("other"));
+    assert_eq!(other.import(&text).unwrap(), ["Accel magnitude"]);
+    assert_eq!(other.get("Accel magnitude").unwrap(), lib.get("Accel magnitude").unwrap());
+    assert!(other.import("schema = 9").is_err());
+    // a damaged file is skipped by list and reported
+    fs::write(tmp.path().join("recipes/broken.toml"), "not toml [").unwrap();
+    assert_eq!(lib.list().len(), 2);
+    assert_eq!(lib.problems().len(), 1);
+}
+
+#[test]
+fn the_dialog_checks_an_expression_and_previews_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("p.csv");
+    let mut text = String::from("time,v,i\n");
+    for k in 0..1000 {
+        text.push_str(&format!("{k},{},{}\n", k % 10, if k == 5 { String::new() } else { "2".to_string() }));
+    }
+    fs::write(&src, text).unwrap();
+    let store = Store::new(Some(&tmp.path().join("cache")));
+    let o = store.open(&src, None).unwrap();
+    let rec = o.recording();
+    let p = tlmbench_store::check(rec, "v * i").unwrap();
+    assert_eq!((p.samples, p.values, p.min, p.max), (1000, 999, Some(0.0), Some(18.0)));
+    assert!((p.mean.unwrap() - 9.0).abs() < 0.1 && p.number.is_none());
+    // one number
+    let p = tlmbench_store::check(rec, "max(v)").unwrap();
+    assert_eq!((p.number, p.min), (Some(9.0), Some(9.0)));
+    // errors name the character
+    let e = tlmbench_store::check(rec, "v * (i").unwrap_err();
+    assert_eq!((e.msg.as_str(), e.at), ("Expected \")\"", 6));
+    assert_eq!(tlmbench_store::check(rec, "nope + 1").unwrap_err().msg, "There's no channel called nope");
+    assert!(tlmbench_store::check(rec, "lowpass(v, 5000)").unwrap_err().msg.contains("below half the sample rate"));
+    // a rolling function over a window works on the preview as it will on the file
+    assert_eq!(tlmbench_store::check(rec, "sma(v, 10)").unwrap().values, 991);
+}

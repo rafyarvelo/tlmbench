@@ -26,6 +26,7 @@ mod error;
 mod joined;
 mod live;
 mod pyr;
+mod recipes;
 pub mod sys;
 
 use std::fs::{self, File};
@@ -50,6 +51,7 @@ use tlmbench_decode::profile::ImportProfile;
 
 pub use crate::derived::{Derived, RecEnv};
 use crate::pyr::Loaded;
+pub use crate::recipes::{Library, PREVIEW_SAMPLES, Preview, check};
 
 /// The cache's size limits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
