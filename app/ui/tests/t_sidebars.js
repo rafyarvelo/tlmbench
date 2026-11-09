@@ -51,7 +51,7 @@ run('sidebars', async ({ p, check, visible, plotAt, settingsLS, until, wait }) =
   await p.click('#swapSides');
   await wait(200);
   check('⇄ moves Explorer to the right sidebar, under Measure\'s panels', (await visible('#measure [data-panel="explorer"] #chans')) && (await order()).right.join() === 'cur,stats,explorer', await order());
-  check('the left sidebar then shows what is left there (Layouts, the first panel)', await visible('#side #layoutsPanel'));
+  check('the left sidebar then shows what is left there (Events, the first panel)', await visible('#side #eventsPanel'));
   // drag a title: Explorer above Cursors
   await p.dragAndDrop('#measure [data-panel="explorer"] .phd', '#measure section[data-panel="cur"] .phd', { targetPosition: { x: 20, y: 2 } });
   check('dragging a title reorders the panels', (await order()).right.join() === 'explorer,cur,stats', await order());
@@ -69,5 +69,5 @@ run('sidebars', async ({ p, check, visible, plotAt, settingsLS, until, wait }) =
   await p.click('#b-settings');
   await p.click('#setResetUi');
   await p.click('[data-rail="explorer"]');
-  check('Reset UI layout restores sizes and panels', Math.round(await width('side')) === 300 && Math.round(await width('measure')) === 260 && (await order()).left.join() === 'explorer,layouts,settings' && (await order()).right.join() === 'cur,stats', [await width('side'), await width('measure'), await order()]);
+  check('Reset UI layout restores sizes and panels', Math.round(await width('side')) === 300 && Math.round(await width('measure')) === 260 && (await order()).left.join() === 'explorer,events,layouts,settings' && (await order()).right.join() === 'cur,stats', [await width('side'), await width('measure'), await order()]);
 });

@@ -14,17 +14,34 @@ export type StarterPanes = 'starter' | 'starterboth' | 'table' | 'values' | 'non
 export type TimeAxis = 'auto' | 'bottom' | 'every';
 export type ZoomSpeed = 'slow' | 'normal' | 'fast';
 /** What the left sidebar shows, a rail group (empty: hidden). */
-export type LeftPanel = 'explorer' | 'layouts' | 'settings' | 'measure' | '';
+export type LeftPanel = 'explorer' | 'events' | 'layouts' | 'settings' | 'measure' | '';
 /** A sidebar panel: Explorer, Settings, and Measure's Cursors and Stats. */
-export type PanelId = 'explorer' | 'layouts' | 'settings' | 'cur' | 'stats';
+export type PanelId = 'explorer' | 'events' | 'layouts' | 'settings' | 'cur' | 'stats';
 /** The sidebars' panels, top to bottom (owner, Nov 7: they drag by their title to reorder or change sides). */
+/** A category: where events are sorted, and the colour that marks them. */
+export interface EventCategory {
+  id: string;
+  name: string;
+  color: string;
+  /** Its events are marked on charts (the panel's chips decide too). */
+  chart: boolean;
+}
+
+export const DEFAULT_CATEGORIES: EventCategory[] = [
+  { id: 'alarm', name: 'Alarm', color: '#FF5A6E', chart: true },
+  { id: 'quality', name: 'Data quality', color: '#FFB547', chart: true },
+  { id: 'signal', name: 'Signal loss', color: '#9D8CFF', chart: true },
+  { id: 'mode', name: 'Mode change', color: '#F25FC0', chart: true },
+  { id: 'milestone', name: 'Milestone', color: '#3FCF8E', chart: true },
+];
+
 export interface PanelLayout {
   left: PanelId[];
   right: PanelId[];
 }
 /** Each panel's rail group: the left sidebar shows one group at a time, the right one all its panels. */
-export const GROUP_OF: Record<PanelId, Exclude<LeftPanel, ''>> = { explorer: 'explorer', layouts: 'layouts', settings: 'settings', cur: 'measure', stats: 'measure' };
-export const PANEL_TITLE: Record<PanelId, string> = { explorer: 'Explorer', layouts: 'Layouts', settings: 'Settings', cur: 'Cursors', stats: 'Stats' };
+export const GROUP_OF: Record<PanelId, Exclude<LeftPanel, ''>> = { explorer: 'explorer', events: 'events', layouts: 'layouts', settings: 'settings', cur: 'measure', stats: 'measure' };
+export const PANEL_TITLE: Record<PanelId, string> = { explorer: 'Explorer', events: 'Events', layouts: 'Layouts', settings: 'Settings', cur: 'Cursors', stats: 'Stats' };
 
 /** A folder's session: the files open (in tab order), the one in front, the layouts shown in tabs, and each file's
  *  view and cursors (nanoseconds as strings). `at`: when it was last saved. */
@@ -110,6 +127,8 @@ export interface Settings {
   chdisp: Record<string, ChannelDisplay>;
   /** Warn and alarm limits by channel name; a channel without an entry has the starting ones for its name, if any. */
   limits: Record<string, Limits>;
+  /** Event categories (name, colour, whether charts mark them); events point at them by id. */
+  eventCats: EventCategory[];
   /** Value labels (enums) by channel name: the stored number as text → what it is called. */
   valueMaps: Record<string, Record<string, string>>;
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
@@ -188,13 +207,14 @@ export const DEFAULTS: Settings = {
   chdisp: {},
   limits: {},
   valueMaps: {},
+  eventCats: structuredClone(DEFAULT_CATEGORIES),
   exCategories: true,
   exCatClosed: [],
   catOverride: {},
   exFilesShut: [],
   exShowAll: false,
   exOnlyOpen: false,
-  panelLayout: { left: ['explorer', 'layouts', 'settings'], right: ['cur', 'stats'] },
+  panelLayout: { left: ['explorer', 'events', 'layouts', 'settings'], right: ['cur', 'stats'] },
   measureOpen: false,
   measureAuto: true,
   showPerf: false,
@@ -217,6 +237,7 @@ function load(): Settings {
     // settings saved before a panel existed: it joins the left sidebar, after Explorer
     const L = s.panelLayout;
     if (L && !L.left.includes('layouts') && !L.right.includes('layouts')) L.left.splice(Math.min(1, L.left.length), 0, 'layouts');
+    if (L && !L.left.includes('events') && !L.right.includes('events')) L.left.splice(Math.min(1, L.left.length), 0, 'events');
     return s;
   } catch {
     return structuredClone(DEFAULTS);
@@ -264,7 +285,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'valueMaps', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'valueMaps', 'eventCats', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

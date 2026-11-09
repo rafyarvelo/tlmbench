@@ -64,7 +64,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
 | Rail: Explorer, Measure, Live, Settings | v1 | ✓ | ✓ | |
-| Rail: Events, Rules & checks, Layouts | v1 | ✓ | ◐ (Layouts; Events and Rules & checks wait) | 5.2, 5.3 |
+| Rail: Events, Rules & checks, Layouts | v1 | ✓ | ◐ (Events, Layouts; Rules & checks waits) | 5.3 |
 | Tabs: file and workspace tabs, drag to reorder, keys, Undo on close | v1 | ✓ | ✓ | |
 | Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ✓ (one file per tab until 5.6) | 5.6 |
 | Tab menu actions: Save layout, Save as, Revert, Share, Export file, Delete, Close… | v1 | ✓ | ✓ | |
@@ -231,7 +231,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
 | Events: name, start, duration, category, source; per recording in the cache | v1 | ✓ | ✗ | 5.2 |
-| Events panel: list, add from cursors, inline edit, filters, grouping | v1 | ✓ | ✗ | 5.2 |
+| Events panel: list, add from cursors, inline edit, filters, grouping | v1 | ✓ | ✓ | 5.2 |
 | Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ✗ | 5.2 |
 | Value labels (enums) on channels | v1 | ✓ | ✓ (tiles, tables, chips and Measure show the text; expressions name them; axis ticks per value wait) | 5.2 |
 | Channel limits (warn, alarm) with sensible defaults | v1 | ✓ | ✓ | 5.2 |

@@ -240,6 +240,9 @@
     recipes: [],
     recipeSaves: [],
     derivedApplied: [],
+    /** Events by file path, and every event saved. */
+    events: {},
+    eventSaves: [],
     /** The adjustments (scale, offset, missing) each open or adjust_apply was given. */
     adjusts: [],
     checks: [],
@@ -487,6 +490,23 @@
       return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped, missing: missingOf(r, adjust) };
     },
     // derived channels: the library (`recipes`), the recipes each open or apply was given, and what a check or spectrum was asked
+    /** The events you added, by file path (the core keeps them per recording in the app cache). */
+    events_list({ file }) {
+      return fake.events[fake.open.get(file).r.path] ?? [];
+    },
+    event_save({ file, event }) {
+      const path = fake.open.get(file).r.path;
+      const all = (fake.events[path] ?? []).filter((e) => e.id !== event.id).concat({ source: 'user', channels: [], ...event });
+      all.sort((a, b) => (BigInt(a.start) < BigInt(b.start) ? -1 : 1));
+      fake.events[path] = all;
+      fake.eventSaves.push(event);
+      return all;
+    },
+    event_delete({ file, id }) {
+      const path = fake.open.get(file).r.path;
+      fake.events[path] = (fake.events[path] ?? []).filter((e) => e.id !== id);
+      return fake.events[path];
+    },
     recipes_list: () => fake.recipes.map((r) => ({ ...r })),
     recipe_save({ recipe, replacing }) {
       const bad = exprError(recipe.expr);

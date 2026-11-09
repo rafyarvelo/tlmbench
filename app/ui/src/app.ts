@@ -21,6 +21,7 @@ import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
+import { events, newId, type TlmEvent } from './events.svelte';
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, type Limits, limitsOf, openChannelEditor, WIDTHS } from './display.svelte';
 import {
   addChannels,
@@ -1514,6 +1515,7 @@ async function showTab(key: number): Promise<void> {
   ui.time = fileTime(d.file.info.time.kind === 'index', d.file.first);
   ui.measureDismissed = false;
   ui.channels = chanRows(d.file);
+  void loadEvents();
   $('empty').hidden = true;
   saveSession();
   await tick();
@@ -2485,6 +2487,81 @@ function deriveEditRecipe(name: string): void {
     const found = recipes.list.find((x) => x.name === name);
     if (found) go(found);
   });
+}
+
+// ---------- events ----------
+
+/** Reads the open file's events from the core. */
+async function loadEvents(): Promise<void> {
+  const f = state.file;
+  events.msg = '';
+  events.editing = null;
+  if (!f) {
+    events.list = [];
+    return;
+  }
+  try {
+    const list = await invoke<TlmEvent[]>('events_list', { file: f.id });
+    if (state.file === f) events.list = list;
+  } catch (e) {
+    note(`Couldn't read the events: ${e}`);
+  }
+}
+
+/** Adds a marker at cursor A, or a range from A to B, to the open file. */
+async function eventAdd(range: boolean): Promise<void> {
+  const f = state.file;
+  if (!f) {
+    events.msg = 'Open a recording first: events are stored with a file.';
+    return;
+  }
+  if (state.A == null || (range && state.B == null)) {
+    events.msg = range ? 'Place cursors A and B first (press C, then click the chart twice).' : 'Place cursor A first (press C, then click the chart).';
+    return;
+  }
+  events.msg = '';
+  const a = range ? (state.A < state.B! ? state.A : state.B!) : state.A;
+  const dur = range ? (state.B! > state.A ? state.B! - state.A : state.A - state.B!) : 0n;
+  const ev: TlmEvent = { id: newId(), name: range ? 'Range' : 'Marker', start: a.toString(), duration: dur.toString(), category: settings.eventCats[0]?.id ?? '', source: 'user', channels: [] };
+  await eventSave(ev);
+  events.editing = ev.id;
+}
+
+/** Keeps an event (added or edited). */
+async function eventSave(e: TlmEvent): Promise<void> {
+  const f = state.file;
+  if (!f) return;
+  try {
+    const list = await invoke<TlmEvent[]>('event_save', { file: f.id, event: { ...e, channels: [...e.channels] } });
+    if (state.file === f) events.list = list;
+    renderPanes();
+  } catch (err) {
+    events.msg = String(err);
+  }
+}
+
+async function eventDelete(id: string): Promise<void> {
+  const f = state.file;
+  if (!f) return;
+  const list = await invoke<TlmEvent[]>('event_delete', { file: f.id, id });
+  if (state.file === f) events.list = list;
+  events.editing = null;
+  renderPanes();
+}
+
+/** Frames an event with some context either side (an instant keeps the span in view). */
+function eventShow(id: string): void {
+  const e = events.list.find((x) => x.id === id);
+  if (!e) return;
+  const start = BigInt(e.start);
+  const dur = BigInt(e.duration);
+  if (dur > 0n) {
+    const pad = dur / 2n + 1n;
+    glideTo(start - pad, start + dur + pad);
+  } else {
+    const half = (state.t1 - state.t0) / 2n;
+    glideTo(start - half, start + half);
+  }
 }
 
 /** Tells the core the value labels and limits that expressions can name. */
@@ -3483,6 +3560,10 @@ function toggleFocus(on = !ui.focus): void {
 }
 
 Object.assign(actions, {
+  eventAdd: (range: boolean) => void eventAdd(range),
+  eventSave: (e: TlmEvent) => void eventSave(e),
+  eventDelete: (id: string) => void eventDelete(id),
+  eventShow,
   redraw: () => scheduleDraw(),
   hoverAt: (t: bigint | null) => {
     if (state.hoverT === t) return;

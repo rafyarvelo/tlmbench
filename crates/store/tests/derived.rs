@@ -420,3 +420,31 @@ fn adjusted_channels_scale_and_go_missing_where_asked_and_get_their_own_pyramid(
     let bad = Store::new(Some(&root)).with_adjust(vec![("a".into(), Adjust { when: Some("b >".into()), ..Default::default() })]).open(&src, None);
     assert!(bad.unwrap_err().to_string().contains("Missing when"));
 }
+
+#[test]
+fn events_are_kept_per_recording_in_the_cache_in_start_order() {
+    use tlmbench_store::events::{self, Event};
+    let tmp = tempfile::tempdir().unwrap();
+    let ev = |id: &str, start: &str, dur: &str| Event {
+        id: id.into(),
+        name: format!("event {id}"),
+        start: start.into(),
+        duration: dur.into(),
+        category: "alarm".into(),
+        source: "user".into(),
+        ..Default::default()
+    };
+    assert!(events::list(tmp.path(), "abc").unwrap().is_empty());
+    events::save(tmp.path(), "abc", ev("b", "2000", "0")).unwrap();
+    let all = events::save(tmp.path(), "abc", ev("a", "1700000000000000000", "5")).unwrap();
+    assert_eq!(all.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["b", "a"], "start order, as numbers");
+    assert_eq!(all[0].source, "user");
+    // an edit replaces by id
+    let mut e = ev("b", "2000", "0");
+    e.name = "renamed".into();
+    assert_eq!(events::save(tmp.path(), "abc", e).unwrap()[0].name, "renamed");
+    assert!(events::list(tmp.path(), "other").unwrap().is_empty(), "another recording has its own");
+    assert!(events::save(tmp.path(), "abc", ev("c", "soon", "0")).is_err());
+    assert!(events::save(tmp.path(), "abc", ev("c", "1", "-5")).is_err());
+    assert_eq!(events::delete(tmp.path(), "abc", "b").unwrap().len(), 1);
+}

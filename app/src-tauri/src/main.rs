@@ -478,6 +478,40 @@ async fn adjust_apply(
     Ok(Opened { id: file, info, range, status, derived, skipped, missing })
 }
 
+/// The events you added to an open file (kept in the app cache under the file's identity), in start order.
+#[tauri::command]
+async fn events_list(file: u32, files: State<'_, Files>) -> Result<Vec<tlmbench_store::events::Event>, String> {
+    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || tlmbench_store::events::list(&root, base.identity()).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Adds an event or replaces the one with its id; the events now.
+#[tauri::command]
+async fn event_save(
+    file: u32,
+    event: tlmbench_store::events::Event,
+    files: State<'_, Files>,
+) -> Result<Vec<tlmbench_store::events::Event>, String> {
+    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || tlmbench_store::events::save(&root, base.identity(), event).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Removes an event; the events now.
+#[tauri::command]
+async fn event_delete(file: u32, id: String, files: State<'_, Files>) -> Result<Vec<tlmbench_store::events::Event>, String> {
+    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || tlmbench_store::events::delete(&root, base.identity(), &id).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Missing samples of the given channels between two times (the cursors, or the view).
 #[tauri::command]
 async fn missing_between(file: u32, channels: Vec<u32>, t0: String, t1: String, files: State<'_, Files>) -> Result<Vec<Missing>, String> {
@@ -1800,6 +1834,9 @@ fn main() {
             set_expr_env,
             adjust_apply,
             missing_between,
+            events_list,
+            event_save,
+            event_delete,
             spectrum,
             packet_parts,
             import_inspect,

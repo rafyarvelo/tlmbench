@@ -1,6 +1,7 @@
 // What the shell shows about the app's state: app.ts writes it, the components render it.
 
 import type { FileTime } from './axes';
+import type { TlmEvent } from './events.svelte';
 import type { Workspace } from './workspaces';
 
 /** A listed folder or recording (the app's `list_folder`). */
@@ -102,6 +103,11 @@ export const actions = {
   deriveSubmit: () => {},
   deriveClose: () => {},
   deriveRemove: (_ch: number, _from: 'file' | 'all') => {},
+  /** Events: add a marker at cursor A or a range A–B to the open file, save an edited one, delete one, frame one in the view. */
+  eventAdd: (_range: boolean) => {},
+  eventSave: (_e: TlmEvent) => {},
+  eventDelete: (_id: string) => {},
+  eventShow: (_id: string) => {},
   /** The Recipes manager: open, close, edit / duplicate / delete a recipe, automatic on or off, Export… and Import… text. */
   recipesOpen: () => {},
   recipesClose: () => {},

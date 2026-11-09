@@ -17,6 +17,7 @@
   import DeriveDialog from './shell/DeriveDialog.svelte';
   import RecipesDialog from './shell/RecipesDialog.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
+  import Events from './shell/Events.svelte';
   import Layouts from './shell/Layouts.svelte';
   import ImportDialog from './shell/ImportDialog.svelte';
   import { live } from './live.svelte';
@@ -105,6 +106,8 @@
 {#snippet panel(id: PanelId, off: boolean)}
   {#if id === 'explorer'}
     <div class="exwrap" data-panel="explorer" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Explorer /></div>
+  {:else if id === 'events'}
+    <div class="evwrap" data-panel="events" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Events /></div>
   {:else if id === 'layouts'}
     <div class="lywrap" data-panel="layouts" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Layouts /></div>
   {:else if id === 'settings'}
@@ -274,10 +277,12 @@
   }
   .setwrap,
   .lywrap,
+  .evwrap,
   .mwrap {
     flex: none;
   }
   .lywrap[hidden],
+  .evwrap[hidden],
   .setwrap[hidden],
   .exwrap[hidden] {
     display: none;
