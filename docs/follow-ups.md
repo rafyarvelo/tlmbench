@@ -17,6 +17,40 @@ When needed:
   100 GB serves `convert`'s flat-memory claim. Neither suits CI runners (about 14 GB free); run them on the Mac.
 - Add those folders to `ro_commands` coverage, mounted read-only (`hdiutil` image or a read-only external volume).
 
+## Left from step 5.1 (Nov 8)
+
+- **Derived channels: the budget for stateful recipes.** The roadmap asks a derived channel over 100M samples to
+  evaluate at least as fast as the pyramid builds. `just derived-bench` (100M samples, written as f64): element-wise
+  recipes 0.7 s against a 0.8 s pyramid build (they run in parallel chunks and are bound by the write); running totals
+  and differences 1.0–1.3 s, rolling windows 1.5 s, a zero-phase low-pass 1.8 s, a z-score (two passes) 2.9 s,
+  `median(x, 5)` about 7 s. They run one chunk after another because each carries state. Next speed-ups, in order: a
+  median that doesn't sort the window per sample; parallel chunks for rolling windows by time and for recipes whose
+  state is a window of samples (replay the window before each chunk; exact when the window is in time, and for sample
+  windows when the chunk has no gaps); two passes of a one-number recipe in one read.
+- A one-sample recording's `duration()` is 0 (the interval after the last sample is taken from the one before it).
+- Value labels and limits (`state == 'flight'`, `past_warn`) reach the engine through `RecEnv::with_labels` and
+  `with_limits`; the app has no labels or limits until step 5.2.
+- Causal filters for live data and the recipes' live evaluation are step 5.5.
+- Cross-file names (`Close·2`, a file's prefix) and `interp` across files are step 5.6.
+- Import profiles carry their recipes in the app (the descriptor's `recipes` list); the core's profile has no field
+  for them yet, and `--derived` takes the recipes marked automatic.
+
+## Step 5.1: for the design doc (Nov 8)
+
+Behaviour the core settled that `docs/design.md` doesn't say yet:
+
+- Filters are second-order sections run forward then backward on recorded files (zero phase, 4th-order roll-off,
+  as the prototype), not a selectable Butterworth order. A chunk is filtered with a margin past its end of 20 time
+  constants, so chunked and whole-file results agree to 1e-6.
+- A recipe uses another recipe by its name; a channel of the same name wins. Recipes that use each other in a loop,
+  or need a channel the file lacks, don't apply to the file (the CLI says why on stderr; `--expr` is an error).
+- A one-number recipe (`mean(x)`) is stored as a flat line; its value is any sample.
+- `since(cond)` is a gap until the condition first holds.
+- A derived entry is keyed by the recording and each recipe's expanded expression, name, unit, category and
+  decimals, so changing a recipe rebuilds only the entries that use it.
+- The app shows a recording and its derived channels as one channel list (`Store::join`): the recording's channels,
+  then the derived ones, each part with its own pyramid.
+
 ## Left from step 4.1 (Nov 8)
 
 - **Parity harness differences left** (`just app-parity`, 157 over 16 scenes): most are how the harness reads the two

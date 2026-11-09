@@ -36,7 +36,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Cache cap and low-disk eviction; Settings shows path, size, Clear | v1 | n/a | ◐ (Settings → Cache: folder, size, Clear cache; Open folder reveals it in the file manager) | 4.1 |
 | Scale and offset per channel (before the pyramid) | v1 | ✓ | ◐ (from descriptors only) | 5.2 |
 | Missing values per channel (raw values, range, Missing when) | v1 | ✓ | ✗ | 5.2 |
-| Derived channels computed in the core, cached with a pyramid | v1 | sim | ✗ | 5.1 |
+| Derived channels computed in the core, cached with a pyramid | v1 | sim | ◐ (core and CLI: `Store::open_derived`, `Store::join`, `tlmbench derive`; the app waits for its UI) | 5.1 |
 | WASM decoder plugins (wasmtime) | v1 | ✗ | ✗ | 5.9 |
 | Native decoder plugins | v1 | ✗ | ✗ | 5.9 |
 | Plugins listed in Settings | v1 | ✗ | ✗ | 5.9 |
@@ -216,14 +216,14 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
-| Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ✗ | 5.1 |
-| Math, sample-to-sample, rolling, one-number functions | v1 | ✓ | ✗ | 5.1 |
-| Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ✗ | 5.1 |
+| Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ◐ (core and CLI; autocomplete and the dialog are app work) | 5.1 |
+| Math, sample-to-sample, rolling, one-number functions | v1 | ✓ | ◐ (core and CLI, a test per function) | 5.1 |
+| Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ◐ (core and CLI; causal filters for live data wait for 5.5) | 5.1 |
 | Cross-file inputs (`interp`) | v1 | ✓ | ✗ | 5.6 |
 | Derive… dialog: checks as you type, preview, where it applies | v1 | ✓ | ✗ | 5.1 |
 | A − B, A ÷ B, A × B, A + B with two selected | v1 | ✓ | ✗ | 5.1 |
-| Recipes library; Recipes and profiles manager; TOML import/export | v1 | ✓ | ✗ | 5.1 |
-| Spectrum (FFT) pane view | v1 | ✓ | ✗ | 5.1 |
+| Recipes library; Recipes and profiles manager; TOML import/export | v1 | ✓ | ◐ (core: recipes in the shared TOML, recipes that use recipes, `--recipes`; the library in the app cache and the manager are app work) | 5.1 |
+| Spectrum (FFT) pane view | v1 | ✓ | ◐ (the core's FFT and `Opened::spectrum`; the pane view is app work) | 5.1 |
 | Autocomplete for channels, functions and value names | v1 | ✓ | ✗ | 5.1 |
 
 ## 11. Events, rules and checks
