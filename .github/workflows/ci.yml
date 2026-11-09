@@ -124,7 +124,14 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ matrix.os }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
           restore-keys: ${{ matrix.os }}-
+      # macOS runners have about 14 GB free and the test binaries link the whole stack: a `target` restored from an
+      # older run (with its stale artifacts) filled the disk (ld: errno=28), so macOS builds from clean.
+      - uses: actions/cache@v6
+        if: matrix.os == 'windows-2025'
+        with:
+          path: target
+          key: ${{ matrix.os }}-target-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
+          restore-keys: ${{ matrix.os }}-target-
       - run: just ci-native
