@@ -75,6 +75,19 @@ pub enum Expr {
 }
 
 impl Expr {
+    /// A copy with each name `f(name, position)` answers for replaced by what it returns.
+    pub fn map_names(&self, f: &mut dyn FnMut(&str, usize) -> Option<Expr>) -> Expr {
+        match self {
+            Expr::Name { name, at } => f(name, *at).unwrap_or_else(|| self.clone()),
+            Expr::Un { op, a } => Expr::Un { op: *op, a: Box::new(a.map_names(f)) },
+            Expr::Bin { op, a, b } => Expr::Bin { op: *op, a: Box::new(a.map_names(f)), b: Box::new(b.map_names(f)) },
+            Expr::Call { f: name, args, at } => {
+                Expr::Call { f: name.clone(), args: args.iter().map(|a| a.map_names(f)).collect(), at: *at }
+            }
+            _ => self.clone(),
+        }
+    }
+
     /// The channel names the expression reads, in order of first use.
     pub fn names(&self) -> Vec<&str> {
         fn walk<'a>(e: &'a Expr, out: &mut Vec<&'a str>) {

@@ -7,11 +7,13 @@ pub mod filters;
 pub mod functions;
 pub mod lex;
 pub mod parse;
+pub mod recipe;
 pub mod series;
 
 pub use ast::{BinOp, Expr, ExprError, UnOp};
 pub use eval::{CHUNK, Env, Val, eval, eval_chunked, eval_str, run};
 pub use parse::parse;
+pub use recipe::{Recipe, Resolved};
 pub use series::{Grid, Series};
 
 #[cfg(test)]
@@ -39,6 +41,42 @@ mod tests {
         assert!(matches!(parse("5s").unwrap(), Expr::Dur { secs, .. } if secs == 5.0));
         assert!(matches!(parse("250ms").unwrap(), Expr::Dur { secs, .. } if (secs - 0.25).abs() < 1e-12));
         assert!(matches!(parse("1e3").unwrap(), Expr::Num(v) if v == 1000.0));
+    }
+
+    #[test]
+    fn recipes_use_recipes_and_files() {
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/recordings/.tlmbench/recipes/power.toml"
+        ))
+        .unwrap();
+        let r = recipe::from_toml(&text).unwrap();
+        assert_eq!((r[0].name.as_str(), r[0].decimals, r[0].automatic), ("Power", Some(1), true));
+        assert_eq!(recipe::from_toml(&recipe::to_toml(&r)).unwrap(), r);
+        let mk = |n: &str, e: &str| Recipe {
+            name: n.into(),
+            expr: e.into(),
+            unit: None,
+            category: None,
+            decimals: None,
+            automatic: true,
+        };
+        let has = |n: &str| ["v", "i"].contains(&n);
+        let rs = [
+            mk("P", "v * i"),
+            mk("Q", "sma(P, 5) + 1"),
+            mk("Loop", "Loop2"),
+            mk("Loop2", "Loop"),
+            mk("Bad", "nope + 1"),
+        ];
+        let (ok, failed) = recipe::resolve(&rs, &has);
+        assert_eq!(ok.iter().map(|r| r.recipe.name.as_str()).collect::<Vec<_>>(), ["P", "Q"]);
+        assert_eq!(ok[1].expr.names(), ["v", "i"]);
+        assert!(failed.iter().any(|(n, e)| n == "Loop" && e.msg.contains("uses itself")));
+        assert!(failed.iter().any(|(n, e)| n == "Bad" && e.msg == "There's no channel called nope"));
+        // editing a recipe a recipe uses changes the dependant's key
+        let (again, _) = recipe::resolve(&[mk("P", "v / i"), rs[1].clone()], &has);
+        assert_ne!(ok[1].key(), again[1].key());
     }
 
     #[test]
