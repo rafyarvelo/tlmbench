@@ -162,7 +162,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Pinned columns, column selection, copy a selection as CSV | v1 | ◐ (no copy) | ✓ built (`t_tablecols`, `t_tablerows`: ⌘C and the row menu copy up to 100k rows as CSV) | 4.2 |
 | Row hover, row right-click, cursor line in the table | v1 | ✓ | ✓ built (`t_tablerows`) | 4.2 |
 | Status line (rows, rate, how slower channels show) | v1 | ✓ | ◐ (rows and the sample rate; slower channels wait for files with several rates, 4.3) | 4.2 |
-| Event column and tinted rows inside events | v1 | ✓ | ✗ | 5.2 |
+| Event column and tinted rows inside events | v1 | ✓ | ◐ (tint, stripe and ▸ ◂ ● tags in the Time cell; a separate Event column and channel-cell tints wait for events that list channels) | 5.2, 5.3 |
 | Keyboard (arrows, Page, Home/End) | v1 | ✓ | ✓ built (`t_tablerows`) | 4.2 |
 
 ## 7. Cursors, hover and Measure
@@ -180,7 +180,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Transport: play/pause, scrubber, speed, window presets, Follow | v1 | ✓ | ✓ | |
 | Loop between A and B; per-tab playhead restored paused | v1 | ✓ | ✓ | |
-| Stop at events (any or chosen categories) | v1 | ✓ | ✗ | 5.2 |
+| Stop at events (any or chosen categories) | v1 | ✓ | ◐ (nothing, any, or one category; several at once wait) | 5.2 |
 | Live sources: serial, UDP, TCP, tail a growing file | v1 | sim | ✓ | |
 | Live source: file playback (demo, testing without hardware) | v1 | ✓ | ✗ | 5.5 |
 | Ring buffer ingest, auto-recording to a session folder | v1 | n/a | ✓ | |

@@ -127,6 +127,8 @@ export interface Settings {
   chdisp: Record<string, ChannelDisplay>;
   /** Warn and alarm limits by channel name; a channel without an entry has the starting ones for its name, if any. */
   limits: Record<string, Limits>;
+  /** Play pauses at an event: 'off', 'any', or 'cat:<id>' for one category's events. */
+  stopAt: string;
   /** Event markers show on charts and the overview (E); the Events panel's chips decide too unless unlinked. */
   eventsOn: boolean;
   evChartsFollow: boolean;
@@ -210,6 +212,7 @@ export const DEFAULTS: Settings = {
   chdisp: {},
   limits: {},
   valueMaps: {},
+  stopAt: 'off',
   eventsOn: true,
   evChartsFollow: true,
   eventCats: structuredClone(DEFAULT_CATEGORIES),

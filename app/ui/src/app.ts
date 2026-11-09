@@ -572,12 +572,27 @@ function playFrame(now: number): void {
   const lp = loopSpan();
   if (lp && before < lp[1] && t >= lp[1]) t = lp[0];
   else if (t >= play.end) [t, play.running] = [play.end, false];
+  // Stop at: pause with the next matching event at the playhead (the next play goes on past it)
+  const stop = settings.stopAt !== 'off' && play.running && state.file ? nextStop(before, t, state.file.first) : null;
+  if (stop != null) [t, play.running] = [stop, false];
   play.t = t;
   followPlayhead();
   // readouts follow the playhead unless the pointer is on a chart
   if (state.hoverT == null) void requestHover(playNs());
   scheduleDraw();
   if (play.running) playRaf = requestAnimationFrame(playFrame);
+}
+
+/** The start (seconds from the file's start) of the first event the playhead passes in (from, to], if Stop at wants it. */
+function nextStop(from: number, to: number, first: bigint): number | null {
+  const want = settings.stopAt;
+  let best: number | null = null;
+  for (const e of marked()) {
+    if (want !== 'any' && want !== `cat:${e.category}`) continue;
+    const s = Number(BigInt(e.start) - first) / 1e9;
+    if (s > from && s <= to && (best == null || s < best)) best = s;
+  }
+  return best;
 }
 
 function seekPlay(t: number): void {

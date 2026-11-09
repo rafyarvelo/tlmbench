@@ -18,6 +18,7 @@
   import { settings } from '../settings.svelte';
   import { ICON } from '../icons';
   import { chCss, chName, chUnit } from '../display.svelte';
+  import { catColor, catName, marked, type TlmEvent } from '../events.svelte';
   import { fmtCh, learnDecimals, newPaneWith, note, setTable, sortLocked, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
@@ -281,6 +282,22 @@
     const t = got?.rows.times;
     return t && t.length > 1 ? Math.max(1, Number(t[t.length - 1] - t[0]) / (t.length - 1)) : 1e6;
   });
+
+  /** The event (if any) a row at time `t` is inside, and its tag: ▸ on a range's first row, ◂ on its last, ● on an instant's. */
+  const shownEvents = $derived(pane?.events === false ? [] : marked());
+  function eventAtRow(t: bigint): { e: TlmEvent; tag: string } | null {
+    const half = BigInt(Math.max(1, Math.round(step / 2)));
+    const st = BigInt(Math.max(1, Math.round(step)));
+    for (const e of shownEvents) {
+      const [a, d] = [BigInt(e.start), BigInt(e.duration)];
+      if (d === 0n) {
+        if (t >= a - half && t < a + half) return { e, tag: '●' };
+      } else if (t >= a && t <= a + d) {
+        return { e, tag: t - st < a ? '▸' : t + st > a + d ? '◂' : '' };
+      }
+    }
+    return null;
+  }
 
   async function read(): Promise<void> {
     const f = ui.view.file;
@@ -731,8 +748,11 @@
           {#each { length: Math.max(0, hi - lo) } as _, k (lo + k)}
             {@const r = lo + k}
             {@const x = row(r)}
+            {@const ev = x ? eventAtRow(x.t) : null}
             <div
               class="trw"
+              class:inev={!!ev}
+              style={ev ? `--ev: ${catColor(ev.e.category)}` : undefined}
               class:ca={at(r, ui.view.A)}
               class:cb={at(r, ui.view.B)}
               class:cab={between(r)}
@@ -759,7 +779,7 @@
                   class:flash={flash === col.id}
                   class:gapcell={v != null && Number.isNaN(v)}
                   style="width: {h.getSize()}px{c < 2 ? `; left: ${leftOf(col.id)}px` : ''}"
-                  role="gridcell">{x == null ? '' : cellText(x, col, c)}</span
+                  role="gridcell">{x == null ? '' : cellText(x, col, c)}{#if ev?.tag && col.id === 't'}<em class="evtag" data-evtag data-tip="{ev.e.name} · {catName(ev.e.category)}{ev.tag === '◂' ? ' (end)' : ''}">{ev.tag}</em>{/if}</span
                 >
               {/each}
             </div>
@@ -1189,6 +1209,17 @@
   }
   .trw.cab > span {
     background: color-mix(in srgb, var(--accent) 7%, var(--plot-bg));
+  }
+  .trw.inev > span {
+    background: color-mix(in srgb, var(--ev) 10%, var(--plot-bg));
+  }
+  .trw.inev > span:first-child {
+    box-shadow: inset 3px 0 0 var(--ev);
+  }
+  .evtag {
+    margin-left: 6px;
+    color: var(--ev);
+    font-style: normal;
   }
   .trw.ca > span:first-child {
     box-shadow: inset 3px 0 0 var(--cursor);
