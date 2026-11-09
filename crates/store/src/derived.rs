@@ -208,3 +208,41 @@ fn write_channel(env: &RecEnv, r: &Resolved, rows: usize, path: &Path) -> std::r
     }
     w.flush().map_err(io)
 }
+
+impl Opened {
+    /// The frequency content of `channel` over `t0..t1` (the Spectrum view): a window of up to `max_points` samples
+    /// (a power of two) centred in the span, taken at the recording's sample rate, holding the last sample where
+    /// times are irregular. `None` when the span holds fewer than 16 samples or the window is mostly missing.
+    pub fn spectrum(
+        &self,
+        channel: usize,
+        t0: tlmbench_core::Timestamp,
+        t1: tlmbench_core::Timestamp,
+        max_points: usize,
+    ) -> Option<tlmbench_expr::Spectrum> {
+        let rec = self.recording();
+        let info = rec.info();
+        let (first, last) = (info.t_first?, info.t_last?);
+        let rate = RecEnv::new(rec).hz()?;
+        let available = ((t1 - t0) as f64 / 1e9 * rate).floor();
+        let n = tlmbench_expr::fft::points(
+            if available.is_finite() && available > 0.0 { available as usize } else { 0 },
+            max_points,
+        )?;
+        let start = t0 as f64 + ((t1 - t0) as f64 - n as f64 / rate * 1e9) / 2.0;
+        let idx: Vec<Option<usize>> = (0..n)
+            .map(|i| {
+                let t = (start + i as f64 / rate * 1e9).round() as tlmbench_core::Timestamp;
+                (first..=last).contains(&t).then(|| rec.lower_bound(t.saturating_add(1)).clamp(1, info.samples) - 1)
+            })
+            .collect();
+        let (lo, hi) = idx.iter().flatten().fold((usize::MAX, 0), |(l, h), &i| (l.min(i), h.max(i)));
+        if lo > hi {
+            return None;
+        }
+        let (scale, offset) = rec.scale_offset(channel);
+        let v = rec.read(channel, lo, hi + 1).to_f64(scale, offset);
+        let x: Vec<f64> = idx.iter().map(|i| i.map_or(f64::NAN, |i| v[i - lo])).collect();
+        tlmbench_expr::spectrum(&x, rate)
+    }
+}

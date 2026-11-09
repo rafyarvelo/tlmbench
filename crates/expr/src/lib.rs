@@ -3,6 +3,7 @@
 
 pub mod ast;
 pub mod eval;
+pub mod fft;
 pub mod filters;
 pub mod functions;
 pub mod lex;
@@ -12,6 +13,7 @@ pub mod series;
 
 pub use ast::{BinOp, Expr, ExprError, UnOp};
 pub use eval::{CHUNK, Env, Val, eval, eval_chunked, eval_str, run};
+pub use fft::{Spectrum, spectrum};
 pub use parse::parse;
 pub use recipe::{Recipe, Resolved};
 pub use series::{Grid, Series};

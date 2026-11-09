@@ -189,3 +189,29 @@ fn a_recording_with_a_time_column_keeps_its_times() {
     let want = (v[k] - v[k - 1]) / ((times[k] - times[k - 1]) as f64 / 1e9);
     assert!((rate[k] - want).abs() < 1e-6 * want.abs().max(1.0), "{} vs {want}", rate[k]);
 }
+
+#[test]
+fn spectrum_of_a_channel_over_the_time_view() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("p.csv");
+    // 200 Hz, a 12.5 Hz tone of amplitude 3 on an offset of 40; irregular times keep the same mean rate
+    let mut text = String::from("time,v\n");
+    for i in 0..8000 {
+        let t = i as f64 / 200.0;
+        text.push_str(&format!("{t:.3},{}\n", 40.0 + 3.0 * (2.0 * std::f64::consts::PI * 12.5 * t).sin()));
+    }
+    std::fs::write(&src, text).unwrap();
+    let store = Store::new(Some(&tmp.path().join("cache")));
+    let o = store.open(&src, None).unwrap();
+    let info = o.recording().info();
+    let (t0, t1) = (info.t_first.unwrap(), info.t_last.unwrap());
+    let s = o.spectrum(0, t0, t1, 16384).unwrap();
+    assert_eq!(s.n, 4096);
+    assert!((s.peak_hz - 12.5).abs() < 0.1, "{}", s.peak_hz);
+    assert!(s.peak_amp > 2.5 && s.peak_amp < 3.2, "{}", s.peak_amp);
+    // a short view has fewer points; under 16 samples there is nothing to show
+    let one_second = (t0 + 5_000_000_000, t0 + 6_000_000_000);
+    assert_eq!(o.spectrum(0, one_second.0, one_second.1, 16384).unwrap().n, 128);
+    assert!(o.spectrum(0, t0, t0 + 50_000_000, 16384).is_none());
+    assert_eq!(o.spectrum(0, t0, t1, 1024).unwrap().n, 1024);
+}
