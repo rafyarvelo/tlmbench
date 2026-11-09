@@ -99,6 +99,38 @@
     const index = time === 'index';
     return { path, chans, samples, rate: index ? 1 : rate, built, done: built ? samples : 0, progress: null, t0: index || relative ? 0n : T0, index };
   }
+  // a stand-in for the core's parser: enough to tell a finished expression from a broken one, and which names it reads
+  const FNS = new Set(['abs', 'sqrt', 'ln', 'log', 'log10', 'exp', 'pow', 'min', 'max', 'clamp', 'round', 'floor', 'ceil', 'sign', 'sin', 'cos', 'tan', 'delta', 'prev', 'pct_change', 'rate', 'cumsum', 'integral', 'sma', 'ema', 'rolling_std', 'median', 'lowpass', 'highpass', 'bandpass', 'mean', 'std', 'first', 'last', 'count', 'sum', 'if', 'interp', 'pi', 'e']);
+  function exprError(expr) {
+    let depth = 0;
+    for (let i = 0; i < expr.length; i++) {
+      if (expr[i] === '(') depth++;
+      if (expr[i] === ')' && --depth < 0) return { msg: 'Unexpected ")"', at: i };
+    }
+    if (depth > 0) return { msg: 'Expected ")"', at: expr.length };
+    if (/[+\-*/^%]\s*$/.test(expr)) return { msg: 'The expression ends too soon', at: expr.length };
+    if (!expr.trim()) return { msg: 'The expression ends too soon', at: 0 };
+    for (const m of expr.matchAll(/([A-Za-z_][A-Za-z0-9_.]*)\s*\(/g)) if (!FNS.has(m[1].toLowerCase())) return { msg: `There's no function called ${m[1].toLowerCase()}`, at: m.index };
+    return null;
+  }
+  const exprNames = (expr) => [...expr.matchAll(/"([^"]+)"|\b([A-Za-z_][A-Za-z0-9_.]*)\b(?!\s*\()/g)].map((m) => m[1] ?? m[2]).filter((n) => !FNS.has(n) && !/^\d/.test(n));
+  /** The library's recipes that apply to a recording (automatic, or attached by name) as channels after its own. */
+  function applyRecipes(r, attached) {
+    const named = [...new Set(attached)].map((n) => fake.recipes.find((x) => x.name === n)).filter(Boolean);
+    const picked = named.concat(fake.recipes.filter((x) => x.automatic && !named.includes(x)));
+    const skipped = attached.filter((n) => !fake.recipes.some((x) => x.name === n)).map((name) => ({ name, why: 'There is no recipe with that name' }));
+    const derived = [];
+    for (const x of picked) {
+      const missing = exprNames(x.expr).find((n) => !r.base.some((c) => c.name === n) && !fake.recipes.some((y) => y.name === n));
+      if (missing) {
+        if (attached.includes(x.name)) skipped.push({ name: x.name, why: `There's no channel called ${missing}` });
+        continue;
+      }
+      r.chans.push({ name: x.name, unit: x.unit ?? null, dtype: 'f64', ...(x.category ? { category: x.category } : {}) });
+      derived.push({ channel: r.chans.length - 1, name: x.name, expr: x.expr, automatic: !!x.automatic });
+    }
+    return { derived, skipped };
+  }
   const dtNs = (r) => BigInt(Math.round(1e9 / r.rate));
   const timeAt = (r, i) => (r.t0 ?? T0) + BigInt(i) * dtNs(r);
   const valueAt = (r, ch, i) => {
@@ -191,6 +223,12 @@
     gapAt: null,
     connectAsked: [],
     open: new Map(),
+    /** The recipe library (name, expr, unit, category, decimals, automatic); every recipe_save, derive_apply, check and spectrum asked. */
+    recipes: [],
+    recipeSaves: [],
+    derivedApplied: [],
+    checks: [],
+    spectra: [],
     /** CSV files the import dialog sees, by path: `fake.csv(path, names, opts)`; the profiles saved by header, what
      * each open was given, and every profile_save. */
     csvs: {},
@@ -398,7 +436,7 @@
     },
     // the packet types of the descriptor that names the file (each opens as its own recording)
     packet_parts: ({ path }) => (known(path).find((k) => k.claims)?.descriptor.packet_types ?? []).map((t) => t.name),
-    open({ path, profile: given, part, progress }) {
+    open({ path, profile: given, part, recipes, progress }) {
       fake.opened.push({ path, part: part ?? null });
       // the core applies the header's saved profile when none is given
       const profile = given ?? fake.profiles[fake.csvs[path]?.header_key]?.profile ?? null;
@@ -426,8 +464,57 @@
       const id = nextFile++;
       const ch = progress && { id: progress.id ?? Number(String(progress).replace(/\D/g, '')), next: 0 };
       fake.open.set(id, { r, progress: ch });
+      r.base = r.chans.slice();
+      const { derived, skipped } = applyRecipes(r, recipes ?? []);
       const info = { path, ...(part ? { part } : {}), format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
-      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples } };
+      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped };
+    },
+    // derived channels: the library (`recipes`), the recipes each open or apply was given, and what a check or spectrum was asked
+    recipes_list: () => fake.recipes.map((r) => ({ ...r })),
+    recipe_save({ recipe, replacing }) {
+      const bad = exprError(recipe.expr);
+      if (bad) throw `${bad.msg} (at ${bad.at})`;
+      const k = fake.recipes.findIndex((r) => r.name === (replacing ?? recipe.name));
+      if (k >= 0) fake.recipes[k] = { ...recipe };
+      else fake.recipes.push({ ...recipe });
+      fake.recipeSaves.push({ recipe: { ...recipe }, replacing: replacing ?? null });
+      return null;
+    },
+    recipe_delete({ name }) {
+      fake.recipes = fake.recipes.filter((r) => r.name !== name);
+      return null;
+    },
+    recipes_export: ({ names }) => `schema = 1\n${fake.recipes.filter((r) => !names.length || names.includes(r.name)).map((r) => `\n[[recipe]]\nname = "${r.name}"\nexpr = "${r.expr}"\nautomatic = ${r.automatic}\n`).join('')}`,
+    recipes_import({ text }) {
+      if (!/schema = 1/.test(text)) throw 'recipe file schema is not supported';
+      const names = [...text.matchAll(/name = "([^"]+)"\s*\nexpr = "([^"]+)"(?:\s*\n(?:unit = "[^"]*"\s*\n)?automatic = (true|false))?/g)];
+      names.forEach((m) => (fake.recipes = fake.recipes.filter((r) => r.name !== m[1]).concat({ name: m[1], expr: m[2], automatic: m[3] !== 'false' })));
+      return names.map((m) => m[1]);
+    },
+    derive_apply({ file, recipes, progress }) {
+      const o = fake.open.get(file);
+      if (!o) throw 'that file is not open';
+      const r = o.r;
+      r.chans = r.base.slice();
+      const { derived, skipped } = applyRecipes(r, recipes);
+      fake.derivedApplied.push({ file, recipes });
+      const info = { path: r.path, format: 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
+      return { id: file, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: { state: 'built' }, derived, skipped };
+    },
+    derive_check({ file, expr }) {
+      const o = fake.open.get(file);
+      if (!o) throw 'that file is not open';
+      fake.checks.push(expr);
+      const bad = exprError(expr) ?? exprNames(expr).filter((n) => !o.r.chans.some((c) => c.name === n)).map((n) => ({ msg: `There's no channel called ${n}`, at: expr.indexOf(n) }))[0];
+      if (bad) return { preview: null, error: bad };
+      return { preview: { samples: Math.min(o.r.samples, 1048576), values: Math.min(o.r.samples, 1048576), min: -2.5, max: 2.5, mean: 0.1, number: /^\s*(mean|max|min)\(/.test(expr) ? 0.1 : null }, error: null };
+    },
+    spectrum({ file, channels, t0, t1 }) {
+      const o = fake.open.get(file);
+      if (!o) throw 'that file is not open';
+      fake.spectra.push({ file, channels, t0, t1 });
+      const n = 1024;
+      return channels.map((channel) => ({ channel, df: o.r.rate / n, nyquist: o.r.rate / 2, peak_hz: 12.5 * (channel + 1), peak_amp: 1 + channel, n, mag: Array.from({ length: n / 2 + 1 }, (_, k) => 1 / (1 + k) + (k === 13 * (channel + 1) ? 1 + channel : 0)) }));
     },
     close({ file }) {
       fake.open.delete(file);

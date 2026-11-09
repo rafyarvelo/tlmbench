@@ -113,12 +113,21 @@ struct Skipped {
 /// derived, and the attached recipes that didn't apply.
 type Shown = (Arc<StoreOpened>, Vec<DerivedInfo>, Vec<Skipped>);
 
-/// `base` with the library's recipes that apply to it (the automatic ones, and those named in `attached`) as channels
-/// after its own: what the file shows, the channels derived, and the attached recipes that didn't apply.
+/// `base` with the library's recipes that apply to it (those named in `attached`, in that order, then the automatic
+/// ones) as channels after its own: what the file shows, the channels derived, and the attached recipes that didn't apply.
 fn with_derived(store: &Store, base: &Arc<StoreOpened>, attached: &[String]) -> Result<Shown, String> {
     let lib = tlmbench_store::Library::new(store.root());
-    let recipes: Vec<tlmbench_expr::Recipe> =
-        lib.list().into_iter().filter(|r| r.automatic || attached.contains(&r.name)).collect();
+    // the attached ones in the order given (so a channel keeps its number when others come and go), then the
+    // automatic ones that weren't named, by name
+    let all = lib.list();
+    let mut recipes: Vec<tlmbench_expr::Recipe> = Vec::new();
+    for n in attached {
+        if let Some(r) = all.iter().find(|r| &r.name == n).filter(|r| !recipes.iter().any(|x| x.name == r.name)) {
+            recipes.push(r.clone());
+        }
+    }
+    let rest: Vec<_> = all.into_iter().filter(|r| r.automatic && !recipes.iter().any(|x| x.name == r.name)).collect();
+    recipes.extend(rest);
     let mut skipped: Vec<Skipped> = attached
         .iter()
         .filter(|n| !recipes.iter().any(|r| &r.name == *n))
@@ -356,18 +365,24 @@ struct CheckError {
     at: usize,
 }
 
+/// What the Derive dialog's check found: a preview of the result, or the mistake.
+#[derive(Serialize)]
+struct CheckReply {
+    preview: Option<tlmbench_store::Preview>,
+    error: Option<CheckError>,
+}
+
 /// The Derive dialog's check: an expression against a file's channels, with a summary of what it gives over the start
 /// of the file, or the mistake and the character it is at.
 #[tauri::command]
-async fn derive_check(
-    file: u32,
-    expr: String,
-    files: State<'_, Files>,
-) -> Result<Result<tlmbench_store::Preview, CheckError>, String> {
+async fn derive_check(file: u32, expr: String, files: State<'_, Files>) -> Result<CheckReply, String> {
     let o = files.get(file)?;
-    spawn_blocking(move || tlmbench_store::check(o.recording(), &expr).map_err(|e| CheckError { msg: e.msg, at: e.at }))
-        .await
-        .map_err(|e| e.to_string())
+    spawn_blocking(move || match tlmbench_store::check(o.recording(), &expr) {
+        Ok(p) => CheckReply { preview: Some(p), error: None },
+        Err(e) => CheckReply { preview: None, error: Some(CheckError { msg: e.msg, at: e.at }) },
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// A channel's spectrum over a time view.
