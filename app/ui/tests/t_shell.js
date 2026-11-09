@@ -22,7 +22,7 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   const basic = await rows();
   check('Basic: the prototype\'s everyday settings', basic.length === 11 && ['Mouse mode', 'Theme', 'Group channels into categories', 'Tooltips', 'When a file opens', 'Files opened for the first time', 'Clicking a row', 'Left sidebar', 'Right sidebar', 'Quiet interface', 'Time format'].every((r) => basic.includes(r)), basic);
   await p.click('#setPanel [data-sv="all"]');
-  check('All settings shows more', (await rows()).length === 29, await rows());
+  check('All settings shows more', (await rows()).length === 30, await rows());
   await p.click('#setPanel [data-sv="basic"]');
   await p.fill('#setPanel input[type=search]', 'wheel');
   check('search finds an All-only setting by its explanation', (await rows()).join() === 'Zoom speed,Scroll wheel zooms the charts', await rows());

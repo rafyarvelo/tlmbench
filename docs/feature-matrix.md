@@ -51,7 +51,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Re-projecting the last buffer while the next arrives | v1 | n/a | ✓ | |
 | Panes fill in left to right on a first open ("Reading 43%") | v1 | ✓ | ✓ (hatch differs: audit row "Building hatch") | 4.1 |
 | "coarse" label after 0.3 s | v1 | n/a | ✓ | |
-| Min/max envelope fill under a line | v1 | ✗ | ✗ | 5.4 |
+| Min/max envelope fill under a line | v1 | ✗ | ✓ (a setting, on; a visual check with a spiky channel on the Mac is left) | 5.4 |
 | Markers when zoomed past ~6 px per sample | v1 | ✓ | ✓ |  |
 | Draw every sample (setting) | v1 | ✓ | ✓ (core: `Viewport::raw_max`; CLI `--raw-max`) |  |
 | Canvas 2D fallback renderer | v1 | n/a | ✗ (thin lines on software GL only) | 5.10 |
@@ -130,7 +130,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Chips: drag, ×, +N overflow, value on hover | v1 | ✓ | ✓ | |
 | Chip click opens the channel editor (Display and Limits) | v1 | ✓ | ◐ (Display tab: name, colour, decimals, unit, line style; Limits, Value labels and Missing wait) | 5.2 |
 | View menu: Chart, Table, Chart and table, Values | v1 | ✓ | ✓ | |
-| View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ◐ (Chart, Table, Chart and table, Values, Spectrum, Checks; Gauges and XY wait for 5.4) | 5.3, 5.4 |
+| View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ✓ | 5.3, 5.4 |
 | Axis and scale: a unit's axis each, range, include zero, decimals, label, log | v1 | ✓ | ✓ | |
 | Ignore outliers (clip and mark) | v1 | ✓ | ✓ | |
 | Y zoom: Shift + scroll, drag on the y-axis | v1 | ✓ | ✓ (sets the axis's fixed range; owner, Nov 8) |  |
@@ -238,7 +238,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Rules: an expression held for a minimum time, marking events | v1 | ✓ | ✓ (core engine, the editor's Rule rows, rule events in Events) | 5.3 |
 | Checks: Expect, When, grace, settle, summary checks, severity | v1 | ✓ | ✓ (`tlmbench_store::checks`; "missing values fail" option not built) | 5.3 |
 | Rules & checks panel; one editor with Lists and ƒ | v1 | ✓ | ✓ (the "files with this import profile" attachment is CLI only) | 5.3 |
-| Check results: badges, dots, Check failed events, ▲▼ through violations | v1 | ✓ | ◐ (all built; the gauges' "✗ check" waits for the Gauges view, 5.4) | 5.3, 5.4 |
+| Check results: badges, dots, Check failed events, ▲▼ through violations | v1 | ✓ | ✓ | 5.3, 5.4 |
 | Checks pane view | v1 | ✓ | ✓ | 5.3 |
 | Folder run (files × groups), Report tab with trends | v1 | ◐ (a dialog) | ✓ (Explorer's folder, one level; results as CSV) | 5.3 |
 | Check results cached in the app cache | v1 | ✓ | ✓ (`checks-results/`, by file contents, set version, recipes and limits) | 5.3 |
@@ -247,16 +247,16 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
-| Chart and values (tiles beside the chart, shared limits) | v1 | ✓ | ✗ | 5.4 |
-| Gauges view: one widget per channel, picked from unit and name | v1 | ✓ | ✗ | 5.4 |
-| Gauge, ring, bar, tank, sparkline, state light, compass, horizon, number | v1 | ✓ | ✗ | 5.4 |
-| Commanded vs actual, bar group, flags, state timeline, XY dot | v1 | ✓ | ✗ | 5.4 |
-| Pairs and groups by name; Separate / Join; sizes S, M, L, 2×2 | v1 | ✓ | ✗ | 5.4 |
-| Min/max in view marks | v1 | ✓ | ✗ | 5.4 |
-| Widgets update in place (typed updates, 100 widgets in < 2 ms) | v1 | ✓ (string patching) | ✗ | 5.4 |
-| Declarative SVG widgets with a live preview and sanitising | v1 | ✓ | ✗ | 5.4 |
-| Code widgets (sandboxed iframe, trust prompt) | v1 | ✓ | ✗ | 5.4 |
-| XY plot: X channel, time colouring, 1:1, Alt-drag to time, local zoom | v1 | ✓ | ✗ | 5.4 |
+| Chart and values (tiles under the chart, shared limits) | v1 | ✓ | ✓ | 5.4 |
+| Gauges view: one widget per channel, picked from unit and name | v1 | ✓ | ✓ | 5.4 |
+| Gauge, ring, bar, tank, sparkline, state light, compass, horizon, number | v1 | ✓ | ✓ | 5.4 |
+| Commanded vs actual, bar group, flags, state timeline, XY dot | v1 | ✓ | ◐ (flags light bits named "bit n": names wait for descriptors that name bits in the app) | 5.4 |
+| Pairs and groups by name; Separate / Join; sizes S, M, L, 2×2 | v1 | ✓ | ✓ | 5.4 |
+| Min/max in view marks | v1 | ✓ | ✓ (from the core's exact statistics, so they wait for the pyramid) | 5.4 |
+| Widgets update in place (typed updates, 100 widgets in < 2 ms) | v1 | ✓ (string patching) | ◐ (fields patched in place: 2.2 ms median for 100 in the headless browser; the release app's measurement and the half-per-frame turns past 4 ms are left) | 5.4 |
+| Declarative SVG widgets with a live preview and sanitising | v1 | ✓ | ✓ (kept in settings until Share, 5.7) | 5.4 |
+| Code widgets (sandboxed iframe, trust prompt) | v1 | ✓ | ◐ (inline `build`/`update` code, a frame served by the `tlmwidget` scheme with a policy of its own, the trust prompt per folder; the folder with `widget.toml` and inputs by role wait for Share, 5.7, and the scheme is untested in the real webviews) | 5.4 |
+| XY plot: X channel, time colouring, 1:1, Alt-drag to time, local zoom | v1 | ✓ | ✓ (pairs by sample: channels of a file share their times) | 5.4 |
 | Icons for categories and toolbar recipe buttons | v1 | ◐ | ✗ | 5.7 |
 
 ## 13. Several files and alignment

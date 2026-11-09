@@ -20,7 +20,8 @@ run(
     await p.keyboard.press('f');
     check('and it comes back zoomed out', await until(() => (window.__tlmApp.envelopes()[0] ?? []).some((n) => n > 0), null, 8000), await env());
     // the setting is listed in Settings and on by default
-    await p.click('[data-rail="settings"]');
+    await p.click('#b-settings');
+    await p.click('#setPanel [data-sv="all"]');
     check('Settings lists the band', await until(() => /Min\/max band/.test(document.body.innerText)));
     check('it is on by default', ((await settingsLS()).envelope ?? true) === true);
   },

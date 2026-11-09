@@ -18,7 +18,7 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
 
   await viewMenu(0);
   const items = await p.$$eval('.viewmenu [data-vm]', (b) => b.map((x) => x.dataset.vm));
-  check('the view menu', items.join() === 'chart,table,both,values,spectrum,checks', items);
+  check('the view menu', items.join() === 'chart,table,both,cv,values,gauges,xy,spectrum,checks', items);
   await p.click('.viewmenu [data-vm="table"]');
   check('pane 1 is a table, no plot', (await app('modes'))[0] === 'table' && !!(await p.$(T)) && !(await p.$('#stack [data-pane="0"] .plot')));
   const chans = (await app('panes'))[0];

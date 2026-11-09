@@ -17,6 +17,37 @@ When needed:
   100 GB serves `convert`'s flat-memory claim. Neither suits CI runners (about 14 GB free); run them on the Mac.
 - Add those folders to `ro_commands` coverage, mounted read-only (`hdiutil` image or a read-only external volume).
 
+## Left from step 5.4 (Nov 9)
+
+- **Measure first:** the budget of 100 widgets in under 2 ms a frame, in the release app on the Mac (the headless
+  browser gives a median of 2.2 ms for the page's part, `t_perf_gauges`); a visual check of the Gauges view, the XY plot
+  and the min/max band with a spiky channel on the Mac; a check that the `tlmwidget` scheme works in the real webviews
+  (macOS and Linux `tlmwidget://localhost/host.html`, Windows `http://tlmwidget.localhost/host.html`; the app's policy
+  now has `frame-src` for both, and the page carries its own `default-src 'none'` with scripts and eval).
+- **Widgets, left:** the half-per-frame turns when a frame of widgets takes over 4 ms (nothing measures it yet); dragging a
+  widget's title to reorder it or to move its channel to another pane (the prototype has both); flags naming their bits
+  (they read "bit n"; the names come with descriptors that name bits in the app); the Widgets tour layout; a widget's
+  hover tooltip.
+- **Code widgets, left:** the folder format (`widget.toml` with a name, icon, inputs by role such as a pitch/roll pair, and
+  parameters, plus the entry) and reading widgets from `.tlmbench/widgets/` come with Share (5.7); until then a
+  widget is inline JSON in settings with `shared` and `by` naming where it came from; code from `shared` asks once per
+  folder, remembered in `trustedWidgetSources`; an organisation setting to turn code widgets off; HTML exports drop the
+  code and show value cards (5.10).
+- **XY, left:** channels of one file share their times, so pairing is by sample; pairing slower channels (a recording
+  with several rates, 4.3 and 5.6) needs the time maps; the range of a very long span is a pass over it before the
+  reduction pass (the pyramid's statistics would spare it for a view of whole summaries); XY inside a Gauges card
+  (the XY dot) asks the core each frame for its trail.
+- **Pane views, left:** parity scenes for Gauges, XY, the widget editor and the trust prompt; the Chart and values view puts
+  its tiles under the chart (as the prototype); a vertical split with tiles beside the chart is not built.
+- **Design notes for `docs/design.md`:** the app's "typed updates" are cards patched field by field from stable reactive
+  objects (a frame writes only what changed, so only what reads it wakes: a needle's angle, a number's text) instead
+  of build and update functions; the Gauges view reads at the pointer, then the playhead, then cursor A, then the end of
+  the view; min and max run from the start of the view to the reading time; `widgets_frame` is one call for every widget
+  (value, min and max, run start, trace); `xy_points` takes the zoom and the grid and keeps the neighbours that connect
+  points to the rest of the line; yours widgets are kept in settings until Share; code widgets are served from the app's
+  own scheme (the app's policy would stop their script) and run with `sandbox="allow-scripts"`; the min/max band is a
+  setting (on) and only reduced traces have one.
+
 ## Left from step 5.3 (Nov 9)
 
 - **Checks, left:** the gauges' "✗ check" while the playhead is inside a violation (the data is `violationAt` in
