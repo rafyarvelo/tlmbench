@@ -4849,6 +4849,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tlmbench-expr"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "tlmbench-gen"
 version = "0.1.0"
 dependencies = [
