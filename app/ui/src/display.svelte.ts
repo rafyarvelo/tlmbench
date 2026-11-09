@@ -43,8 +43,8 @@ export function setDisplay(name: string, d: ChannelDisplay): void {
 export const chCss = (ch: number): string => chColor(ch) ?? `var(--trace-${colorIdx(ch) + 1})`;
 
 /** The channel editor: which channel of the open file it shows (null: closed). */
-export const editor = $state({ ch: null as number | null, tab: 'display' as 'display' | 'limits' });
-export const openChannelEditor = (ch: number, tab: 'display' | 'limits' = 'display'): void => void Object.assign(editor, { ch, tab });
+export const editor = $state({ ch: null as number | null, tab: 'display' as 'display' | 'limits' | 'labels' });
+export const openChannelEditor = (ch: number, tab: 'display' | 'limits' | 'labels' = 'display'): void => void Object.assign(editor, { ch, tab });
 export const closeChannelEditor = (): void => void (editor.ch = null);
 
 // ---------- limits ----------

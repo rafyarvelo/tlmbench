@@ -2,6 +2,7 @@
      kept in settings by channel name, so it follows the channel into every pane and file. Changes apply as made. -->
 <script lang="ts">
   import { ICON } from '../icons';
+  import { settings, setSetting } from '../settings.svelte';
   import { closeChannelEditor, dispOf, editor, limitsOf, setDisplay, setLimits } from '../display.svelte';
   import { ui } from '../ui.svelte';
 
@@ -19,6 +20,19 @@
     setLimits(info.name, next);
   };
   const LIMS: [string, string][] = [['al', 'Alarm at or below'], ['ah', 'Alarm at or above'], ['wl', 'Warn at or below'], ['wh', 'Warn at or above']];
+  const mapText = $derived(Object.entries(info ? (settings.valueMaps[info.name] ?? {}) : {}).map(([k, l]) => `${k} = ${l}`).join('\n'));
+  function commitLabels(text: string) {
+    if (!info) return;
+    const m: Record<string, string> = {};
+    for (const line of text.split(/[\n,;]+/)) {
+      const x = /^\s*(-?\d+(?:\.\d+)?)\s*[=:]\s*(.+?)\s*$/.exec(line);
+      if (x) m[String(+x[1])] = x[2];
+    }
+    const all = { ...settings.valueMaps };
+    if (Object.keys(m).length) all[info.name] = m;
+    else delete all[info.name];
+    setSetting('valueMaps', all);
+  }
   const WIDTHS: [string, string][] = [['', 'Normal'], ['1', 'Thin'], ['2', 'Thick'], ['3', 'Heavy']];
 </script>
 
@@ -29,8 +43,17 @@
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="display" aria-selected={editor.tab === 'display'} onclick={() => (editor.tab = 'display')}>Display</button>
       <button role="tab" data-tab="limits" aria-selected={editor.tab === 'limits'} onclick={() => (editor.tab = 'limits')}>Limits</button>
+      <button role="tab" data-tab="labels" aria-selected={editor.tab === 'labels'} onclick={() => (editor.tab = 'labels')}>Value labels</button>
     </div>
-    {#if editor.tab === 'limits'}
+    {#if editor.tab === 'labels'}
+    <div class="chbody">
+      <label class="lvf"><span>Value labels</span>
+        <textarea class="sel" data-vl rows="7" spellcheck="false" placeholder={'0 = IDLE\n1 = ARMED\n2 = CRUISE'} value={mapText} onchange={(e) => commitLabels(e.currentTarget.value)}></textarea>
+        <small>One per line: value = text. Tiles, tables and Measure show the text; values without a label show as numbers. Expressions can use it: <code>state == 'CRUISE'</code>.</small></label>
+      <p class="hint">Saved in settings for “{info.name}”, in every pane and file.</p>
+    </div>
+    <footer><button class="linkbtn" data-vlclear onclick={() => commitLabels('')}>No labels</button><span class="spacer"></span><button class="tbtn primary" data-close onclick={closeChannelEditor}>Done</button></footer>
+    {:else if editor.tab === 'limits'}
     <div class="chbody">
       <div class="lvrow">{#each LIMS.slice(0, 2) as [k, t] (k)}<label class="lvf"><span>{t}</span><input class="sel" type="number" step="any" data-lim={k} value={lim[k as 'al'] ?? ''} placeholder="none" oninput={(e) => setLim(k, e.currentTarget.value)} /></label>{/each}</div>
       <div class="lvrow">{#each LIMS.slice(2) as [k, t] (k)}<label class="lvf"><span>{t}</span><input class="sel" type="number" step="any" data-lim={k} value={lim[k as 'al'] ?? ''} placeholder="none" oninput={(e) => setLim(k, e.currentTarget.value)} /></label>{/each}</div>

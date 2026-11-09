@@ -4,6 +4,7 @@
      applies: this file, or any file that has the channels. The core evaluates; nothing is written beside the data. -->
 <script lang="ts">
   import { ICON } from '../icons';
+  import { settings } from '../settings.svelte';
   import { actions, ui } from '../ui.svelte';
   import { derive, FN_HELP, FUNCTION_NAMES, quoteName, recipes, TEMPLATES, TEMPLATES2 } from '../derive.svelte';
 
@@ -14,6 +15,16 @@
   let from = 0;
   function suggest() {
     const c = ta?.selectionStart ?? 0;
+    // inside quotes after a comparison: the value names given to the channel named before it
+    const q = /("[^"]+"|[A-Za-z_][A-Za-z0-9_.]*)\s*[=!]=\s*'([^']*)$/.exec(derive.expr.slice(0, c));
+    if (q) {
+      const ch = q[1].replace(/^"|"$/g, '');
+      const typed = q[2].toLowerCase();
+      from = c - q[2].length;
+      sugg = Object.values(settings.valueMaps[ch] ?? {}).filter((l) => l.toLowerCase().startsWith(typed) && l.toLowerCase() !== typed).map((l) => l + "'").slice(0, 8);
+      pick = 0;
+      return;
+    }
     const m = /[A-Za-z_][A-Za-z0-9_.]*$/.exec(derive.expr.slice(0, c));
     if (!m) return void (sugg = []);
     const t = m[0].toLowerCase();

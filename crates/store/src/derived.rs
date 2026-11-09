@@ -31,6 +31,25 @@ pub struct Derived {
     pub skipped: Vec<(String, ExprError)>,
 }
 
+/// What expressions can name besides channels: value labels (channel, text → stored number) and warn and alarm limits
+/// (channel, alarm? → low, high).
+#[derive(Clone, Debug, Default)]
+pub struct ExprEnv {
+    pub labels: HashMap<(String, String), f64>,
+    pub limits: HashMap<(String, bool), (Option<f64>, Option<f64>)>,
+}
+
+impl ExprEnv {
+    /// A digest of everything in it, in a fixed order (it goes into the cache key of recipes that read it).
+    fn digest(&self) -> Vec<u8> {
+        let mut l: Vec<_> = self.labels.iter().map(|((c, t), v)| format!("L{c}\0{t}\0{v}")).collect();
+        let mut m: Vec<_> = self.limits.iter().map(|((c, a), (lo, hi))| format!("M{c}\0{a}\0{lo:?}\0{hi:?}")).collect();
+        l.sort();
+        m.sort();
+        l.into_iter().chain(m).collect::<Vec<_>>().join("\n").into_bytes()
+    }
+}
+
 /// A recording's channels as an expression environment.
 #[derive(Debug)]
 pub struct RecEnv<'a> {
@@ -132,12 +151,18 @@ impl Store {
         if ok.is_empty() {
             return Ok(Derived { opened: None, names: Vec::new(), skipped });
         }
-        let env = env(RecEnv::new(rec));
+        let shared = self.expr_env.read().unwrap().clone();
+        let digest = shared.digest();
+        let env = env(RecEnv::new(rec).with_labels(shared.labels).with_limits(shared.limits));
         let mut h = blake3::Hasher::new();
         h.update(base.fingerprint().as_bytes());
         h.update(&rec.layout_id());
         for r in &ok {
             h.update(r.key().as_bytes());
+            // a recipe that names a label or a limit depends on them too
+            if r.recipe.expr.contains('\'') || r.recipe.expr.contains("past_") {
+                h.update(&digest);
+            }
         }
         let key = h.finalize().to_hex()[..32].to_owned();
         let spec = DerivedSpec {

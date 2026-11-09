@@ -491,6 +491,9 @@
       names.forEach((m) => (fake.recipes = fake.recipes.filter((r) => r.name !== m[1]).concat({ name: m[1], expr: m[2], automatic: m[3] !== 'false' })));
       return names.map((m) => m[1]);
     },
+    set_expr_env({ labels, limits }) {
+      fake.exprEnv = { labels, limits };
+    },
     derive_apply({ file, recipes, exclude, progress }) {
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
@@ -544,7 +547,9 @@
       const r = fake.open.get(file)?.r;
       if (!r) throw 'that file is not open';
       const i = clampI(r, Math.round(Number(BigInt(t) - (r.t0 ?? T0)) / Number(dtNs(r))));
-      return channels.filter((ch) => ch < r.chans.length).map((ch) => ({ channel: ch, index: i, t: String(timeAt(r, i)), value: valueAt(r, ch, i) }));
+      const got = channels.filter((ch) => ch < r.chans.length).map((ch) => ({ channel: ch, index: i, t: String(timeAt(r, i)), value: valueAt(r, ch, i) }));
+      fake.lastValues = Object.fromEntries(got.map((n) => [n.channel, n.value]));
+      return got;
     },
     stats({ file, channels, span }) {
       const r = fake.open.get(file)?.r;

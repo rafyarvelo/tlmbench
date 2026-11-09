@@ -336,6 +336,33 @@ async fn derive_apply(
     Ok(Opened { id: file, info, range, status, derived, skipped })
 }
 
+/// One value label: channel `channel`'s stored number `value` is called `text`.
+#[derive(Deserialize)]
+struct LabelIn {
+    channel: String,
+    text: String,
+    value: f64,
+}
+
+/// One channel's warn or alarm limits.
+#[derive(Deserialize)]
+struct LimitIn {
+    channel: String,
+    alarm: bool,
+    lo: Option<f64>,
+    hi: Option<f64>,
+}
+
+/// The value labels and limits that derived channels' expressions read (`state == 'flight'`, `past_warn(x)`), from the
+/// app's settings. Set before files open and again when they change.
+#[tauri::command]
+fn set_expr_env(labels: Vec<LabelIn>, limits: Vec<LimitIn>, files: State<'_, Files>) {
+    files.store.set_expr_env(tlmbench_store::ExprEnv {
+        labels: labels.into_iter().map(|l| ((l.channel, l.text), l.value)).collect(),
+        limits: limits.into_iter().map(|l| ((l.channel, l.alarm), (l.lo, l.hi))).collect(),
+    });
+}
+
 #[tauri::command]
 fn recipes_list(files: State<'_, Files>) -> Vec<tlmbench_expr::Recipe> {
     tlmbench_store::Library::new(files.store.root()).list()
@@ -1641,6 +1668,7 @@ fn main() {
             recipes_import,
             recipes_export,
             derive_check,
+            set_expr_env,
             spectrum,
             packet_parts,
             import_inspect,

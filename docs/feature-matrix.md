@@ -92,7 +92,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Drop a file on the window | v1 | ✓ | ◐ (a CSV without a saved profile asks first; several files in one tab wait for 5.6) | 4.3 |
 | Settings: Basic and All, ⓘ explanations, Reset, Reset UI layout | v1 | ✓ | ✓ (rows for later steps' features come with them) |  |
 | Settings: time formats Samples and Wall clock | v1 | ✓ | ✓ |  |
-| Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ◐ (recipes in Explorer's ⋯ and folder menus; Settings waits for 5.2) | 5.2 |
+| Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ◐ (recipes in Explorer's ⋯ and folder menus; Channels list done; event categories wait) | 5.2 |
 | Settings: Record live sessions to | v1 | ✓ | ✗ | 5.5 |
 | Sidebars: collapse, move, resize, swap sides | v1 | ✓ | ✓ | |
 | Drag a sidebar panel to reorder it | v1 | ✓ | ✓ (and to the other sidebar) |  |
@@ -216,7 +216,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
-| Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ✓ (labels need the value labels of 5.2) | |
+| Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ✓ (labels and limits come from settings) | |
 | Math, sample-to-sample, rolling, one-number functions | v1 | ✓ | ✓ (a core test per function) | |
 | Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ◐ (core and CLI; causal filters for live data wait for 5.5) | 5.1 |
 | Cross-file inputs (`interp`) | v1 | ✓ | ✗ | 5.6 |
@@ -233,7 +233,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Events: name, start, duration, category, source; per recording in the cache | v1 | ✓ | ✗ | 5.2 |
 | Events panel: list, add from cursors, inline edit, filters, grouping | v1 | ✓ | ✗ | 5.2 |
 | Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ✗ | 5.2 |
-| Value labels (enums) on channels | v1 | ✓ | ✗ | 5.2 |
+| Value labels (enums) on channels | v1 | ✓ | ✓ (tiles, tables, chips and Measure show the text; expressions name them; axis ticks per value wait) | 5.2 |
 | Channel limits (warn, alarm) with sensible defaults | v1 | ✓ | ✓ | 5.2 |
 | Rules: an expression held for a minimum time, marking events | v1 | ✓ | ✗ | 5.3 |
 | Checks: Expect, When, grace, settle, summary checks, severity | v1 | ✓ | ✗ | 5.3 |

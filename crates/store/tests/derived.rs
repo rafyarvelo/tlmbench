@@ -348,3 +348,25 @@ fn the_dialog_checks_an_expression_and_previews_it() {
     // a rolling function over a window works on the preview as it will on the file
     assert_eq!(tlmbench_store::check(rec, "sma(v, 10)").unwrap().values, 991);
 }
+
+#[test]
+fn recipes_that_name_a_label_see_the_stores_labels_and_are_rebuilt_when_they_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    fs::create_dir(&data).unwrap();
+    let src = recording(&data);
+    let store = Store::new(Some(&tmp.path().join("cache")));
+    let base = store.open(&src, None).unwrap();
+    let recipes = [recipe("Armed", "a == 'ARMED'", None)];
+    let first = |store: &Store| {
+        let d = store.open_derived(&base, &recipes).unwrap();
+        let o = d.opened.expect("the recipe applies");
+        column(&o, 0)[0]
+    };
+
+    let env = |n: f64| tlmbench_store::ExprEnv { labels: [(("a".to_string(), "ARMED".to_string()), n)].into(), ..Default::default() };
+    store.set_expr_env(env(0.0)); // sample 0 of a is 0
+    assert_eq!(first(&store), 1.0);
+    store.set_expr_env(env(99.0));
+    assert_eq!(first(&store), 0.0, "a new label value is a new cache entry, not the old result");
+}

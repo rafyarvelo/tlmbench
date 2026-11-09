@@ -49,7 +49,7 @@ use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
 use tlmbench_decode::OpenOptions;
 use tlmbench_decode::profile::ImportProfile;
 
-pub use crate::derived::{Derived, RecEnv};
+pub use crate::derived::{Derived, ExprEnv, RecEnv};
 use crate::pyr::Loaded;
 pub use crate::recipes::{Library, PREVIEW_SAMPLES, Preview, check};
 
@@ -76,6 +76,8 @@ pub struct Store {
     chunks: Arc<ChunkCache>,
     /// Applied to every CSV file this store opens.
     profile: Option<Arc<ImportProfile>>,
+    /// Value labels and limits the expressions of derived channels read (set by the app from its settings).
+    expr_env: Arc<std::sync::RwLock<ExprEnv>>,
 }
 
 impl Store {
@@ -86,7 +88,13 @@ impl Store {
             limits: Limits::default(),
             chunks: Arc::new(ChunkCache::new(ChunkCache::default_budget())),
             profile: None,
+            expr_env: Arc::default(),
         }
+    }
+
+    /// Sets the value labels and limits derived channels' expressions see (`state == 'flight'`, `past_warn(x)`).
+    pub fn set_expr_env(&self, env: ExprEnv) {
+        *self.expr_env.write().unwrap() = env;
     }
 
     /// The same store, applying `profile` to every CSV file it opens (each profile has its own column cache and

@@ -110,6 +110,8 @@ export interface Settings {
   chdisp: Record<string, ChannelDisplay>;
   /** Warn and alarm limits by channel name; a channel without an entry has the starting ones for its name, if any. */
   limits: Record<string, Limits>;
+  /** Value labels (enums) by channel name: the stored number as text → what it is called. */
+  valueMaps: Record<string, Record<string, string>>;
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
@@ -185,6 +187,7 @@ export const DEFAULTS: Settings = {
   fileRecipesOff: {},
   chdisp: {},
   limits: {},
+  valueMaps: {},
   exCategories: true,
   exCatClosed: [],
   catOverride: {},
@@ -256,7 +259,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'valueMaps', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

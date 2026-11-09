@@ -8,6 +8,7 @@
   import { ICON } from '../icons';
   import { invoke } from '@tauri-apps/api/core';
   import { actions } from '../ui.svelte';
+  import { limitText } from '../display.svelte';
 
   interface Row {
     key: keyof Settings;
@@ -71,6 +72,30 @@
     await readCache();
   }
   const other = $derived(sideOf('settings') === 'left' ? 'right' : 'left');
+
+  // Channels with a display, limits or value labels of their own
+  const customised = $derived([...new Set([...Object.keys(settings.chdisp), ...Object.keys(settings.limits), ...Object.keys(settings.valueMaps)])].sort());
+  function summary(n: string): string {
+    const d = settings.chdisp[n];
+    const parts: string[] = [];
+    if (d?.alias) parts.push(`shown as ${d.alias}`);
+    if (d?.color != null) parts.push('colour');
+    if (d?.dec != null) parts.push(`${d.dec} decimals`);
+    if (d?.unit) parts.push(`unit ${d.unit}`);
+    if (d?.width || d?.dash || d?.step) parts.push('line style');
+    if (settings.limits[n]) parts.push(limitText(settings.limits[n]) || 'no limits');
+    if (settings.valueMaps[n]) parts.push(`${Object.keys(settings.valueMaps[n]).length} value labels`);
+    return parts.join(' · ');
+  }
+  function resetChannel(n: string): void {
+    for (const key of ['chdisp', 'limits', 'valueMaps'] as const) {
+      const all = { ...settings[key] } as Record<string, unknown>;
+      if (n in all) {
+        delete all[n];
+        setSetting(key, all as never);
+      }
+    }
+  }
 </script>
 
 <div class="setin" id="setPanel">
@@ -108,6 +133,14 @@
   {:else}
     <p class="setnone">No setting matches “{q.trim()}”.</p>
   {/each}
+  {#if customised.length}
+    <section id="chSet"><h3>Channels</h3>
+      {#each customised as n (n)}
+        <div class="urow" data-chset={n}><span><b>{n}</b> <small class="muted">{summary(n)}</small></span><button class="tbtn" data-chreset={n} onclick={() => resetChannel(n)}>Reset</button></div>
+      {/each}
+      <div class="urow"><span>Everything customised on channels</span><button class="tbtn" id="chResetAll" onclick={() => customised.forEach(resetChannel)}>Reset all</button></div>
+    </section>
+  {/if}
   <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span id="sessTxt">{settings.sessions[settings.folder]?.files.length ? 'Session saved · only you (app cache)' : 'Session saves automatically'}</span><button class="tbtn" id="setResetSession" data-tip="Close this folder's tabs and forget its saved session" onclick={actions.resetSession}>Reset session</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
   <section class="cache"><h3>Cache</h3>
     <p class="cpath" id="cachePath" data-tip={cache?.path}>{cache?.path ?? '…'}</p>

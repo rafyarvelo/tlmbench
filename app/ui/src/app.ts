@@ -21,7 +21,7 @@ import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
-import { chColor, chDisp, chLevel, chLimits, hasLimits, type Limits, openChannelEditor, WIDTHS } from './display.svelte';
+import { chColor, chDisp, chLevel, chLimits, hasLimits, type Limits, limitsOf, openChannelEditor, WIDTHS } from './display.svelte';
 import {
   addChannels,
   addPaneBelow,
@@ -1561,6 +1561,7 @@ async function openPath(path: string, part?: string): Promise<void> {
       let id: number | null = null;
       let early: Progress | null = null;
       progress.onmessage = (p) => (id == null ? (early = p) : onProgress(id, p));
+      await syncExprEnv();
       const o = await invoke<Opened>('open', { path, part: part ?? null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], progress });
       id = o.id;
       if (early) onProgress(id, early);
@@ -2482,6 +2483,27 @@ function deriveEditRecipe(name: string): void {
   });
 }
 
+/** Tells the core the value labels and limits that expressions can name. */
+async function syncExprEnv(): Promise<void> {
+  const labels = Object.entries(settings.valueMaps).flatMap(([channel, m]) => Object.entries(m).map(([k, text]) => ({ channel, text, value: Number(k) })));
+  const names = new Set([...Object.keys(settings.limits), ...(state.file?.info.channels.map((c) => c.name) ?? [])]);
+  const limits = [...names].flatMap((channel) => {
+    const l = limitsOf(channel);
+    return [
+      { channel, alarm: false, lo: l.wl ?? null, hi: l.wh ?? null },
+      { channel, alarm: true, lo: l.al ?? null, hi: l.ah ?? null },
+    ].filter((x) => x.lo != null || x.hi != null);
+  });
+  await invoke('set_expr_env', { labels, limits });
+}
+
+/** After labels or limits change: derived channels whose expressions name one are computed again. */
+async function labelsChanged(): Promise<void> {
+  await syncExprEnv();
+  const f = state.file;
+  if (f?.derived.some((d) => d.expr.includes("'") || d.expr.includes('past_'))) await reapply(f);
+}
+
 /** Recipes renamed by the edit being applied: old name → new. */
 let renamed: Record<string, string> = {};
 
@@ -3240,6 +3262,7 @@ function channelMenu(ch: number, x: number, y: number): void {
     { heading: name },
     { label: 'Move to a category…', meta: groupChannels(f.info.path, f.info.channels).find((g) => g.chs.includes(ch))?.name ?? '', data: { cat: '' }, run: () => categoryDialog(ch, x, y) },
     { label: 'Display…', data: { cm: 'display' }, run: () => openChannelEditor(ch) },
+    { label: 'Value labels…', data: { cm: 'labels' }, run: () => openChannelEditor(ch, 'labels') },
     { label: 'Gap factor…', meta: `${gapFactor(ch)}×`, data: { gap: '' }, run: () => gapDialog(ch, x, y) },
     { sep: true },
     ...(f.derived.some((d) => d.channel === ch)
@@ -3597,7 +3620,8 @@ onSetting((key) => {
     scheduleResize();
     return;
   }
-  if (key === 'limits' || key === 'chdisp') {
+  if (key === 'limits' || key === 'chdisp' || key === 'valueMaps') {
+    if (key !== 'chdisp') void labelsChanged();
     updateChips();
     void requestResting();
     if (key === 'chdisp') void requestView(); // steps change what is uploaded

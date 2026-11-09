@@ -31,6 +31,15 @@ run(
     await p.check('#chEditor [data-d="dash"]');
     check('line style is kept', (await settingsLS()).chdisp?.accel_x?.dash === true);
 
+    // Settings › Channels lists what is customised, with a reset per channel
+    await p.click('#chEditor [data-close]');
+    await p.click('[data-rail="settings"]');
+    check('Settings › Channels lists the channel', await until(() => !!document.querySelector('#chSet [data-chset="accel_x"]')), await text('#chSet'));
+    check('and says what is set', /shown as Lateral g/.test(await text('#chSet [data-chset="accel_x"]')) && /1 decimals/.test(await text('#chSet [data-chset="accel_x"]')), await text('#chSet [data-chset="accel_x"]'));
+    await p.click('#chSet [data-chreset="accel_x"]');
+    check('Reset takes the channel back', await until(() => !document.querySelector('#chSet [data-chset="accel_x"]')) && !(await settingsLS()).chdisp?.accel_x);
+    await p.click('[data-rail="explorer"]');
+    await p.click(chip);
     await p.click('#chEditor [data-dreset]');
     check('Reset display clears the entry', await until(() => true) && !(await settingsLS()).chdisp?.accel_x, JSON.stringify((await settingsLS()).chdisp));
     check('the chip is back to the recording\'s name', await until(() => /accel_x/.test(document.querySelector('#stack .chip[data-ch="0"]')?.textContent ?? '')));
