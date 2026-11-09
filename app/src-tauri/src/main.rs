@@ -577,6 +577,73 @@ fn recipes_export(names: Vec<String>, files: State<'_, Files>) -> String {
     tlmbench_store::Library::new(files.store.root()).export(&names)
 }
 
+/// The check sets the app keeps (the cache's `checks/`).
+#[tauri::command]
+fn check_sets_list(files: State<'_, Files>) -> Vec<tlmbench_store::checks::CheckSet> {
+    tlmbench_store::checks::Sets::new(files.store.root()).list()
+}
+
+/// Saves a set; `replacing` is its name before an edit (a rename).
+#[tauri::command]
+fn check_set_save(
+    set: tlmbench_store::checks::CheckSet,
+    replacing: Option<String>,
+    files: State<'_, Files>,
+) -> Result<(), String> {
+    tlmbench_store::checks::Sets::new(files.store.root()).save(&set, replacing.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn check_set_delete(name: String, files: State<'_, Files>) -> Result<(), String> {
+    tlmbench_store::checks::Sets::new(files.store.root()).delete(&name).map_err(|e| e.to_string())
+}
+
+/// A set's results on a file, and the read-only events they make.
+#[derive(Serialize)]
+struct CheckRun {
+    set: String,
+    result: tlmbench_store::checks::SetResult,
+    events: Vec<tlmbench_store::events::Event>,
+}
+
+/// Runs sets (by name) on an open file, or reads the results kept for its contents and the sets' versions.
+#[tauri::command]
+async fn checks_run(file: u32, sets: Vec<String>, files: State<'_, Files>) -> Result<Vec<CheckRun>, String> {
+    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let store = files.store.clone();
+    spawn_blocking(move || -> Result<Vec<CheckRun>, String> {
+        let library = tlmbench_store::checks::Sets::new(store.root());
+        let recipes = tlmbench_store::Library::new(store.root()).list();
+        sets.iter()
+            .filter_map(|n| library.get(n))
+            .map(|set| {
+                let result = store.run_checks(&base, &set, &recipes).map_err(|e| e.to_string())?;
+                let events = tlmbench_store::checks::events_of(&set, &result);
+                Ok(CheckRun { set: set.name, result, events })
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// One row run on the file in front, for the editor's preview (nothing is kept).
+#[tauri::command]
+async fn check_preview(
+    file: u32,
+    check: tlmbench_store::checks::Check,
+    files: State<'_, Files>,
+) -> Result<tlmbench_store::checks::Outcome, String> {
+    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let store = files.store.clone();
+    spawn_blocking(move || {
+        let recipes = tlmbench_store::Library::new(store.root()).list();
+        store.check_one(&base, &check, &recipes)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[derive(Serialize)]
 struct CheckError {
     msg: String,
@@ -1851,6 +1918,11 @@ fn main() {
             set_expr_env,
             adjust_apply,
             missing_between,
+            check_sets_list,
+            check_set_save,
+            check_set_delete,
+            checks_run,
+            check_preview,
             events_list,
             event_save,
             event_delete,

@@ -250,7 +250,11 @@ mod tests {
             time: TimeChoice::Column { name: "t".into(), unit: Some("ms".into()) },
             rate: RateChoice::Resample { hz: 100.0 },
             columns: vec![ColumnChoice { source: "a".into(), name: Some("A".into()), ..Default::default() }],
+            check_sets: vec!["Flight acceptance".into()],
         };
+        // the sets a profile names don't change how a file opens: same key, still the default when nothing else is set
+        assert_eq!(p.key(), ImportProfile { check_sets: Vec::new(), ..p.clone() }.key());
+        assert!(ImportProfile { check_sets: vec!["x".into()], ..Default::default() }.is_default());
         let json = serde_json::to_string(&p).unwrap();
         assert_eq!(serde_json::from_str::<ImportProfile>(&json).unwrap(), p);
         assert_eq!(serde_json::from_str::<ImportProfile>("{}").unwrap(), ImportProfile::default());

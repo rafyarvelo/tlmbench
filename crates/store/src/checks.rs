@@ -783,7 +783,17 @@ impl Store {
     }
 }
 
-/// How many violation or event spans of every check of the results fall in a map of channel → failing (for badges).
+impl Store {
+    /// One row on an opened recording, not kept: the editor's live preview.
+    pub fn check_one(&self, base: &Opened, k: &Check, recipes: &[Recipe]) -> Outcome {
+        let rec = base.recording();
+        let shared = self.expr_env.read().unwrap().clone();
+        let env = RecEnv::new(rec).with_labels(shared.labels).with_limits(shared.limits);
+        run_check(&env, k, rec.info().t_first.unwrap_or(0), recipes)
+    }
+}
+
+/// Which channels fail checks (Fail beats Warn) of every check of the results fall in a map of channel → failing (for badges).
 pub fn failing_channels(set: &CheckSet, res: &SetResult) -> HashMap<String, Verdict> {
     let mut m: HashMap<String, Verdict> = HashMap::new();
     for (k, o) in set.checks.iter().zip(&res.outcomes) {
