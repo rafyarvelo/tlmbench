@@ -705,3 +705,84 @@ mod tests {
         assert!(open_csv_with(&src, &root, Some(&bad)).is_err());
     }
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Derived channels: columns computed from another recording, stored in the same layout so they reopen the same way.
+
+/// How a derived entry's sample times are stored.
+#[derive(Clone, Debug)]
+pub enum DerivedTime {
+    /// `t.i64` holds a time per sample (the `fill` function writes it).
+    Column(String),
+    /// An even rate from `t0` (nanoseconds).
+    Rate { t0: i64, hz: f64 },
+    /// The sample number.
+    Index,
+}
+
+/// A computed channel of a derived entry: `c<k>.f64` holds its values.
+#[derive(Clone, Debug)]
+pub struct DerivedChannel {
+    pub name: String,
+    pub unit: Option<String>,
+    pub category: Option<String>,
+}
+
+/// What a derived entry holds besides its columns.
+#[derive(Clone, Debug)]
+pub struct DerivedSpec {
+    pub rows: usize,
+    pub time: DerivedTime,
+    pub t_first: Option<i64>,
+    pub t_last: Option<i64>,
+    pub channels: Vec<DerivedChannel>,
+}
+
+/// Opens the derived entry `key` under `root` (`derived/<key>`), building it first if needed: `fill` writes `t.i64`
+/// (for a time column) and `c<k>.f64` for each channel into the folder it is given, or says why it can't. `path` is
+/// the source file, for the recording's info.
+pub fn open_derived(
+    path: &Path,
+    root: &Path,
+    key: &str,
+    spec: &DerivedSpec,
+    fill: impl FnOnce(&Path) -> std::result::Result<(), String>,
+) -> Result<CachedRecording> {
+    let dir = root.join("derived").join(key);
+    let manifest = match read_manifest(&dir) {
+        Some(m) => m,
+        None => build_entry(&dir, |tmp| {
+            fill(tmp).map_err(|msg| format_err(path, msg))?;
+            Ok(Manifest {
+                version: MANIFEST_VERSION,
+                source_size: 0,
+                rows: spec.rows,
+                skipped_rows: 0,
+                time: match &spec.time {
+                    DerivedTime::Column(n) => Some(n.clone()),
+                    _ => None,
+                },
+                channels: spec
+                    .channels
+                    .iter()
+                    .enumerate()
+                    .map(|(k, c)| ManifestChannel {
+                        name: c.name.clone(),
+                        unit: c.unit.clone(),
+                        category: c.category.clone(),
+                        file: format!("c{k}.f64"),
+                        dtype: DType::F64,
+                    })
+                    .collect(),
+                skipped_columns: Vec::new(),
+                t_first: spec.t_first,
+                t_last: spec.t_last,
+                rate: match spec.time {
+                    DerivedTime::Rate { t0, hz } => Some(ManifestRate { t0, hz }),
+                    _ => None,
+                },
+            })
+        })?,
+    };
+    load(path, &dir, manifest, "Derived")
+}

@@ -21,6 +21,7 @@
 //! channel of the request at once; views from the pyramid use the chunks already there and read the rest in place.
 
 mod chunks;
+mod derived;
 mod error;
 mod live;
 mod pyr;
@@ -46,6 +47,7 @@ use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
 use tlmbench_decode::OpenOptions;
 use tlmbench_decode::profile::ImportProfile;
 
+pub use crate::derived::{Derived, RecEnv};
 use crate::pyr::Loaded;
 
 /// The cache's size limits.
@@ -136,6 +138,11 @@ impl Store {
     fn wrap(&self, path: &Path, rec: Box<dyn Recording>) -> Result<Opened> {
         let profile = self.profile.as_deref().filter(|_| rec.info().format == "CSV");
         let fingerprint = tlmbench_decode::cache::fingerprint_with(path, profile)?;
+        self.wrap_keyed(rec, fingerprint)
+    }
+
+    /// `rec` with its cache entries named by `fingerprint` (a source file's, or a derived entry's key).
+    fn wrap_keyed(&self, rec: Box<dyn Recording>, fingerprint: String) -> Result<Opened> {
         let key = pyr::key(&fingerprint, &rec.layout_id());
         let dir = self.root.join("pyr").join(pyr::VERSION);
         fs::create_dir_all(&dir).map_err(Error::io(&dir))?;
@@ -239,7 +246,7 @@ impl Store {
 }
 
 /// Folders under the cache root holding column caches, named by the format they decode.
-const COLUMN_CACHES: [&str; 2] = ["csv", "parquet"];
+const COLUMN_CACHES: [&str; 3] = ["csv", "parquet", "derived"];
 
 /// One cache entry.
 #[derive(Clone, Debug, Serialize)]

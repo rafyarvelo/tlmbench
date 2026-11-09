@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 tlmbench-core.workspace = true
 tlmbench-decode.workspace = true
+tlmbench-expr.workspace = true
 blake3.workspace = true
 bytemuck.workspace = true
 memmap2.workspace = true
