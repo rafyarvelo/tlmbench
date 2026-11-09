@@ -21,7 +21,8 @@ import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
-import { catColor, events, marked, newId, onMarksChange, type TlmEvent } from './events.svelte';
+import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
+import { type Check, type CheckSet, checks, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, type Limits, limitsOf, openChannelEditor, WIDTHS } from './display.svelte';
 import {
   addChannels,
@@ -1588,6 +1589,7 @@ async function showTab(key: number): Promise<void> {
   ui.measureDismissed = false;
   ui.channels = chanRows(d.file);
   void loadEvents();
+  scheduleChecks(0);
   $('empty').hidden = true;
   saveSession();
   await tick();
@@ -2569,12 +2571,13 @@ async function loadEvents(): Promise<void> {
   events.msg = '';
   events.editing = null;
   if (!f) {
-    events.list = [];
+    setMine([]);
+    setAuto([]);
     return;
   }
   try {
     const list = await invoke<TlmEvent[]>('events_list', { file: f.id });
-    if (state.file === f) events.list = list;
+    if (state.file === f) setMine(list);
   } catch (e) {
     note(`Couldn't read the events: ${e}`);
   }
@@ -2613,7 +2616,7 @@ async function eventSave(e: TlmEvent): Promise<void> {
   if (!f) return;
   try {
     const list = await invoke<TlmEvent[]>('event_save', { file: f.id, event: { ...e, channels: [...e.channels] } });
-    if (state.file === f) events.list = list;
+    if (state.file === f) setMine(list);
     renderPanes();
   } catch (err) {
     events.msg = String(err);
@@ -2624,7 +2627,7 @@ async function eventDelete(id: string): Promise<void> {
   const f = state.file;
   if (!f) return;
   const list = await invoke<TlmEvent[]>('event_delete', { file: f.id, id });
-  if (state.file === f) events.list = list;
+  if (state.file === f) setMine(list);
   events.editing = null;
   renderPanes();
 }
@@ -2641,6 +2644,139 @@ function eventShow(id: string): void {
   } else {
     const half = (state.t1 - state.t0) / 2n;
     glideTo(start - half, start + half);
+  }
+}
+
+// ---------- rules and checks ----------
+
+/** A copy of reactive state as plain data. */
+const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+
+/** The core's check sets. */
+async function loadCheckSets(): Promise<void> {
+  try {
+    checks.sets = await invoke<CheckSet[]>('check_sets_list');
+  } catch (e) {
+    note(`Couldn't read the check sets: ${e}`);
+  }
+}
+
+let checkTimer: ReturnType<typeof setTimeout> | undefined;
+let checkGen = 0;
+/** Runs what applies to the open file in a moment (one run for a burst of changes). */
+function scheduleChecks(ms = 200): void {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(() => void runChecks(), ms);
+}
+
+const layoutNow = (): string | null => tabs.list.find((t) => t.key === tabs.active)?.ws ?? null;
+
+/** Runs the sets that apply to the file in front, or reads the results kept for its contents and their versions; the
+ *  events they make join the Events list. */
+async function runChecks(): Promise<void> {
+  const f = state.file;
+  const gen = ++checkGen;
+  if (!f) return;
+  const path = f.info.path;
+  if (!checks.sets.length) await loadCheckSets();
+  const names = setsFor(path, layoutNow()).map((s) => s.name);
+  if (!names.length) {
+    delete checks.runs[path];
+    setAuto([]);
+    return;
+  }
+  checks.running = events.checking = true;
+  try {
+    await syncExprEnv();
+    const runs = await invoke<{ set: string; result: SetResult; events: TlmEvent[] }[]>('checks_run', { file: f.id, sets: names });
+    if (gen !== checkGen || state.file !== f) return;
+    checks.runs[path] = Object.fromEntries(runs.map((r) => [r.set, r.result]));
+    setAuto(runs.flatMap((r) => r.events));
+  } catch (e) {
+    note(`Couldn't run the checks: ${e}`);
+  } finally {
+    if (gen === checkGen) checks.running = events.checking = false;
+  }
+}
+
+/** Keeps a set (a new one, or an edit; `was` is its name before) and runs everything again. */
+async function checkSetSave(set: CheckSet, was: string | null): Promise<string | null> {
+  const name = set.name.trim();
+  if (!name) return 'A set needs a name';
+  if (checks.sets.some((s) => s.name === name && s.name !== was)) return `There's already a set called ${name}`;
+  try {
+    await invoke('check_set_save', { set: { ...structuredClone(plain(set)), name }, replacing: was });
+  } catch (e) {
+    return String(e);
+  }
+  if (was && was !== name) {
+    const A = settings.checkAttach;
+    const swap = (m: Record<string, string[]>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.map((n) => (n === was ? name : n))]));
+    setSetting('checkAttach', { files: swap(A.files), layouts: swap(A.layouts) });
+  }
+  await loadCheckSets();
+  checks.runs = {};
+  scheduleChecks(0);
+  return null;
+}
+
+async function checkSetDelete(name: string): Promise<void> {
+  await invoke('check_set_delete', { name });
+  await loadCheckSets();
+  checks.runs = {};
+  scheduleChecks(0);
+}
+
+/** The editor's live preview: one row run on the file in front, nothing kept. */
+async function checkPreview(check: Check): Promise<import('./checks.svelte').Outcome | null> {
+  const f = state.file;
+  if (!f) return null;
+  await syncExprEnv();
+  return invoke('check_preview', { file: f.id, check: plain(check) });
+}
+
+/** Frames violation `n` (a span of ns) of a check with some context either side. */
+function checkShow(start: string, end: string): void {
+  const a = BigInt(start);
+  const b = BigInt(end);
+  if (b > a) {
+    const pad = (b - a) / 2n + 1n;
+    glideTo(a - pad, b + pad);
+  } else {
+    const half = (state.t1 - state.t0) / 2n;
+    glideTo(a - half, a + half);
+  }
+}
+
+/** Opens the editor on a set (a new empty one: `null`), at a row. */
+function checkEditor(name: string | null, focus = -1, rule = false): void {
+  const found = name ? checks.sets.find((s) => s.name === name) : null;
+  const set = found ? structuredClone(plain(found)) : newSet(rule ? EVENT_RULES : 'New set');
+  checks.editor = { set, was: found?.name ?? null, focus, cats: false };
+}
+
+/** Add check… and Mark when… on a channel: a row for it, prefilled from its limits, in a new set or Event rules. */
+function checkFor(ch: number, rule: boolean): void {
+  const f = state.file;
+  if (!f) return;
+  const name = f.info.channels[ch].name;
+  const q = /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? name : `"${name}"`;
+  const l = limitsOf(name);
+  const row = newCheck(rule, rule ? 'Alarm' : 'Checks');
+  row.name = rule ? `${name} out of range` : `${name} within limits`;
+  const hi = l.wh ?? l.ah;
+  const lo = l.wl ?? l.al;
+  if (rule) row.expect = l.wh != null || l.wl != null ? `past_warn(${q})` : l.ah != null || l.al != null ? `past_alarm(${q})` : `${q} > 0`;
+  else row.expect = hi != null && lo != null ? `${q} > ${lo} && ${q} < ${hi}` : hi != null ? `${q} < ${hi}` : lo != null ? `${q} > ${lo}` : `${q} > 0`;
+  if (rule) {
+    const set = structuredClone(plain(checks.sets.find((s) => s.name === EVENT_RULES) ?? { ...newSet(EVENT_RULES), runs_on_any_file: true }));
+    set.runs_on_any_file = true;
+    set.check.push(row);
+    checks.editor = { set, was: checks.sets.some((s) => s.name === EVENT_RULES) ? EVENT_RULES : null, focus: set.check.length - 1, cats: false };
+  } else {
+    const set = { ...newSet(`${name} checks`), runs_on_any_file: false, check: [row] };
+    checks.editor = { set, was: null, focus: 0, cats: false };
+    setSetting('checkAttach', { ...settings.checkAttach, files: { ...settings.checkAttach.files, [f.info.path]: [...(settings.checkAttach.files[f.info.path] ?? []), set.name] } });
   }
 }
 
@@ -2673,6 +2809,7 @@ async function adjustChanged(): Promise<void> {
 /** After labels or limits change: derived channels whose expressions name one are computed again. */
 async function labelsChanged(): Promise<void> {
   await syncExprEnv();
+  scheduleChecks();
   const f = state.file;
   if (f?.derived.some((d) => d.expr.includes("'") || d.expr.includes('past_'))) await reapply(f);
 }
@@ -3454,6 +3591,9 @@ function channelMenu(ch: number, x: number, y: number): void {
     { label: 'Value labels…', data: { cm: 'labels' }, run: () => openChannelEditor(ch, 'labels') },
     { label: 'Gap factor…', meta: `${gapFactor(ch)}×`, data: { gap: '' }, run: () => gapDialog(ch, x, y) },
     { sep: true },
+    { label: 'Mark when…', data: { cm: 'mark' }, run: () => checkFor(ch, true) },
+    { label: 'Add check…', data: { cm: 'check' }, run: () => checkFor(ch, false) },
+    { sep: true },
     ...(f.derived.some((d) => d.channel === ch)
       ? [
           { label: 'Edit recipe…', data: { cm: 'edit' }, run: () => deriveEdit(ch) },
@@ -3646,6 +3786,12 @@ Object.assign(actions, {
   eventSave: (e: TlmEvent) => void eventSave(e),
   eventDelete: (id: string) => void eventDelete(id),
   eventShow,
+  checkSave: checkSetSave,
+  checkDelete: (name: string) => void checkSetDelete(name),
+  checkPreview,
+  checkShow,
+  checkEditor,
+  checkRun: () => scheduleChecks(0),
   redraw: () => scheduleDraw(),
   hoverAt: (t: bigint | null) => {
     if (state.hoverT === t) return;
@@ -3813,6 +3959,10 @@ onSetting((key) => {
     void refreshMeasure();
     renderPanes();
     scheduleResize();
+    return;
+  }
+  if (key === 'checkAttach') {
+    scheduleChecks(0);
     return;
   }
   if (key === 'eventsOn' || key === 'evChartsFollow' || key === 'eventCats') {

@@ -145,6 +145,38 @@
     return { derived, skipped };
   }
   const dtNs = (r) => BigInt(Math.round(1e9 / r.rate));
+  /** What a check gets: its entry in `fake.checkOutcomes`, else a pass (a rule: no events). The core's wire shapes. */
+  const outcomeOf = (r, k) => {
+    const o = fake.checkOutcomes[k.name] ?? {};
+    const runs = (o.runs ?? []).map(([a, b]) => ({ start: String(timeAt(r, 0) + BigInt(Math.round(a * 1e9))), end: String(timeAt(r, 0) + BigInt(Math.round(b * 1e9))) }));
+    const verdict = !k.enabled ? 'off' : (o.verdict ?? (k.kind === 'rule' ? 'mark' : 'pass'));
+    const names = [...new Set([...(k.expect + ' ' + (k.when ?? '')).matchAll(/"[^"]+"|[A-Za-z_][A-Za-z0-9_]*/g)].map((m) => m[0].replace(/"/g, '')).filter((n) => r.chans.some((c) => c.name === n)))];
+    return { name: k.name, verdict, count: runs.length, secs: runs.reduce((a, x) => a + Number(BigInt(x.end) - BigInt(x.start)) / 1e9, 0), runs, channels: o.channels ?? names, ...(o.worst != null ? { worst: o.worst, worst_t: runs[0]?.start } : {}), ...(o.value != null ? { value: o.value, function: o.function, limit: o.limit } : {}), ...(o.message ? { message: o.message } : {}) };
+  };
+  const RANK = { fail: 5, warn: 4, err: 3, cant: 2, pass: 1, na: 0, mark: 0, off: 0 };
+  /** The same roll-up as the core's. */
+  function rollupOf(set, outs) {
+    const groups = [];
+    set.check.forEach((k, i) => (groups.find((g) => g.name === k.group) ?? groups[groups.push({ name: k.group, os: [] }) - 1]).os.push(outs[i]));
+    const worst = (vs) => vs.reduce((a, b) => (RANK[b] > RANK[a] ? b : a), 'pass');
+    const rolls = groups.map(({ name, os }) => {
+      const counted = os.map((o) => o.verdict).filter((v) => !['na', 'mark', 'off'].includes(v));
+      const n = (v) => os.filter((o) => o.verdict === v).length;
+      const verdict = counted.length ? worst(counted) : os.some((o) => o.verdict === 'mark') ? 'mark' : os.length && os.every((o) => o.verdict === 'off') ? 'off' : 'na';
+      return { name, verdict, events: os.filter((o) => o.verdict === 'mark').reduce((a, o) => a + o.count, 0), info: set.info_groups.includes(name), total: counted.length, failed: n('fail'), warned: n('warn'), passed: n('pass') };
+    });
+    const main = rolls.filter((g) => !g.info && !['na', 'mark', 'off'].includes(g.verdict));
+    return { groups: rolls, verdict: main.length ? worst(main.map((g) => g.verdict)) : rolls.some((g) => g.verdict === 'mark') ? 'mark' : 'na', failed: outs.filter((o) => o.verdict === 'fail').length, warned: outs.filter((o) => o.verdict === 'warn').length, events: rolls.reduce((a, g) => a + g.events, 0), applies: outs.some((o) => !['cant', 'err', 'off'].includes(o.verdict)) };
+  }
+  function checkRun(r, set) {
+    const outcomes = set.check.map((k) => outcomeOf(r, k));
+    const events = [];
+    set.check.forEach((k, i) =>
+      outcomes[i].runs.forEach((s, n) => events.push({ id: `${k.kind}:${set.name}/${k.name}:${n}`, name: k.name, start: s.start, duration: String(BigInt(s.end) - BigInt(s.start)), category: k.kind === 'rule' ? (k.category ?? '') : 'check', source: k.kind === 'rule' ? 'rule' : 'check', channels: outcomes[i].channels })),
+    );
+    events.sort((a, b) => (BigInt(a.start) < BigInt(b.start) ? -1 : 1));
+    return { set: set.name, result: { set: set.name, outcomes, rollup: rollupOf(set, outcomes) }, events };
+  }
   const timeAt = (r, i) => (r.t0 ?? T0) + BigInt(i) * dtNs(r);
   const valueAt = (r, ch, i) => {
     const s = i / r.rate;
@@ -243,6 +275,12 @@
     /** Events by file path, and every event saved. */
     events: {},
     eventSaves: [],
+    /** The core's check sets, what each check gets on a file (by check name: { verdict, runs: [[from, to] seconds after the start], worst, value, function, limit, message, channels }), the runs and previews it was asked for. */
+    checkSets: [],
+    checkOutcomes: {},
+    checkRuns: [],
+    checkPreviews: [],
+    checkSetSaves: [],
     /** The adjustments (scale, offset, missing) each open or adjust_apply was given. */
     adjusts: [],
     checks: [],
@@ -506,6 +544,28 @@
       const path = fake.open.get(file).r.path;
       fake.events[path] = (fake.events[path] ?? []).filter((e) => e.id !== id);
       return fake.events[path];
+    },
+    check_sets_list: () => JSON.parse(JSON.stringify(fake.checkSets)),
+    check_set_save({ set, replacing }) {
+      fake.checkSetSaves.push({ set: JSON.parse(JSON.stringify(set)), replacing: replacing ?? null });
+      const k = fake.checkSets.findIndex((x) => x.name === (replacing ?? set.name));
+      if (k >= 0) fake.checkSets[k] = JSON.parse(JSON.stringify(set));
+      else fake.checkSets.push(JSON.parse(JSON.stringify(set)));
+      return null;
+    },
+    check_set_delete({ name }) {
+      fake.checkSets = fake.checkSets.filter((s) => s.name !== name);
+      return null;
+    },
+    checks_run({ file, sets }) {
+      const r = fake.open.get(file).r;
+      fake.checkRuns.push({ path: r.path, sets: sets.slice() });
+      return sets.map((n) => fake.checkSets.find((s) => s.name === n)).filter(Boolean).map((set) => checkRun(r, set));
+    },
+    check_preview({ file, check }) {
+      const r = fake.open.get(file).r;
+      fake.checkPreviews.push(JSON.parse(JSON.stringify(check)));
+      return outcomeOf(r, check);
     },
     recipes_list: () => fake.recipes.map((r) => ({ ...r })),
     recipe_save({ recipe, replacing }) {

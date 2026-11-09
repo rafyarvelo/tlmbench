@@ -17,6 +17,8 @@
   import DeriveDialog from './shell/DeriveDialog.svelte';
   import RecipesDialog from './shell/RecipesDialog.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
+  import CheckEditor from './shell/CheckEditor.svelte';
+  import Checks from './shell/Checks.svelte';
   import Events from './shell/Events.svelte';
   import Layouts from './shell/Layouts.svelte';
   import ImportDialog from './shell/ImportDialog.svelte';
@@ -108,6 +110,8 @@
     <div class="exwrap" data-panel="explorer" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Explorer /></div>
   {:else if id === 'events'}
     <div class="evwrap" data-panel="events" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Events /></div>
+  {:else if id === 'checks'}
+    <div class="ckwrap" data-panel="checks" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Checks /></div>
   {:else if id === 'layouts'}
     <div class="lywrap" data-panel="layouts" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Layouts /></div>
   {:else if id === 'settings'}
@@ -124,6 +128,7 @@
 <DeriveDialog />
 <ChannelEditor />
 <RecipesDialog />
+<CheckEditor />
 
 <div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>
   <Rail />
@@ -278,11 +283,13 @@
   .setwrap,
   .lywrap,
   .evwrap,
+  .ckwrap,
   .mwrap {
     flex: none;
   }
   .lywrap[hidden],
   .evwrap[hidden],
+  .ckwrap[hidden],
   .setwrap[hidden],
   .exwrap[hidden] {
     display: none;

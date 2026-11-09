@@ -1,6 +1,7 @@
 // What the shell shows about the app's state: app.ts writes it, the components render it.
 
 import type { FileTime } from './axes';
+import type { Check, CheckSet, Outcome } from './checks.svelte';
 import type { TlmEvent } from './events.svelte';
 import type { Workspace } from './workspaces';
 
@@ -110,6 +111,15 @@ export const actions = {
   eventSave: (_e: TlmEvent) => {},
   eventDelete: (_id: string) => {},
   eventShow: (_id: string) => {},
+  /** Rules & checks: keep a set (the name it had before, for an edit; an error to show, or null), delete one, run one
+   *  row on the file in front (the editor's preview), frame a violation, open the editor on a set (null: a new one) at a
+   *  row, run everything that applies again. */
+  checkSave: async (_set: CheckSet, _was: string | null): Promise<string | null> => null,
+  checkDelete: (_name: string) => {},
+  checkPreview: async (_c: Check): Promise<Outcome | null> => null,
+  checkShow: (_start: string, _end: string) => {},
+  checkEditor: (_name: string | null, _focus?: number, _rule?: boolean) => {},
+  checkRun: () => {},
   /** The Recipes manager: open, close, edit / duplicate / delete a recipe, automatic on or off, Export… and Import… text. */
   recipesOpen: () => {},
   recipesClose: () => {},

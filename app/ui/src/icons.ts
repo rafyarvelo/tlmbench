@@ -42,6 +42,7 @@ export const ICON = {
   /** move a sidebar panel to the other side */
   swap: s('<path d="M4 8h14l-3-3M20 16H6l3 3"/>'),
   events: s('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+  checks: s('<path d="M9 11l2.5 2.5L16 9"/><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   layout: s('<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 11h17M12 11v8.5"/>', 'fill="none" stroke="currentColor" stroke-width="2"'),
   edit: s('<path d="M4 20h4L19 9l-4-4L4 16z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
   plus: s('<path d="M12 5v14M5 12h14"/>', 'fill="none" stroke="currentColor" stroke-width="2.2"'),

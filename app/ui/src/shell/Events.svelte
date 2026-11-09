@@ -3,6 +3,7 @@
      shows only it); group by category, name, channel or source; click an event to frame it. Categories are in Settings. -->
 <script lang="ts">
   import { duration, readoutTime } from '../axes';
+  import { checks } from '../checks.svelte';
   import { catColor, catName, events, listed, type TlmEvent } from '../events.svelte';
   import { ICON } from '../icons';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
@@ -26,7 +27,7 @@
     };
     return out.sort((a, b) => at(a.id) - at(b.id));
   });
-  const keyOf = (e: TlmEvent) => (events.group === 'cat' ? catName(e.category) : events.group === 'name' ? e.name : events.group === 'channel' ? (e.channels[0] ?? 'No channel') : events.group === 'source' ? (e.source === 'user' ? 'Added by you' : e.source === 'rule' ? 'From rules' : 'From the file') : '');
+  const keyOf = (e: TlmEvent) => (events.group === 'cat' ? catName(e.category) : events.group === 'name' ? e.name : events.group === 'channel' ? (e.channels[0] ?? 'No channel') : events.group === 'source' ? (e.source === 'user' ? 'Added by you' : e.source === 'rule' ? 'From rules' : e.source === 'check' ? 'From checks' : 'From the file') : '');
   const groups = $derived.by(() => {
     const out: { k: string; items: TlmEvent[] }[] = [];
     for (const e of shown) {
@@ -58,6 +59,13 @@
     if (!events.group) events.group = 'cat';
     events.closed = [...new Set(events.list.map(keyOf))];
   }
+  /** A rule's or check's event opens its row in the editor. */
+  function editRow(e: TlmEvent) {
+    for (const s of checks.sets) {
+      const i = s.check.findIndex((k) => k.name === e.name && k.kind === (e.source === 'rule' ? 'rule' : 'check'));
+      if (i >= 0) return actions.checkEditor(s.name, i);
+    }
+  }
   const editing = $derived(events.list.find((e) => e.id === events.editing));
 </script>
 
@@ -75,6 +83,7 @@
       <div class="evbar">
         <button class="tbtn" id="evMarker" data-tip="Add a marker at cursor A" onclick={() => actions.eventAdd(false)}>{@html ICON.plus}Marker at A</button>
         <button class="tbtn" id="evRange" data-tip="Add a range from cursor A to B" onclick={() => actions.eventAdd(true)}>{@html ICON.plus}Range A–B</button>
+        <button class="tbtn" id="evRules" data-tip="Rules mark events wherever a condition holds" onclick={() => actions.checkEditor('Event rules', -1, true)}>Rules…</button>
       </div>
       {#if events.msg}<p class="evnote" id="evMsg" role="status">{events.msg}</p>{/if}
       <div class="evfilter">
@@ -94,13 +103,17 @@
           {/each}
         </div>
       {/if}
-      <div class="evsum" id="evSum">{shown.length === events.list.length ? `${events.list.length} ${events.list.length === 1 ? 'event' : 'events'}` : `${shown.length} of ${events.list.length} events`}</div>
+      <div class="evsum" id="evSum">{shown.length === events.list.length ? `${events.list.length} ${events.list.length === 1 ? 'event' : 'events'}` : `${shown.length} of ${events.list.length} events`}{#if events.auto.length} · {events.mine.length} yours, {events.auto.filter((e) => e.source === 'rule').length} from rules, {events.auto.filter((e) => e.source === 'check').length} from checks{/if}{#if events.checking} · checking rules…{/if}</div>
       {#snippet row(e: TlmEvent)}
         <div class="evitem" class:editing={events.editing === e.id}>
-          <button class="ev" data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? ' · added by you' : ''}" onclick={() => actions.eventShow(e.id)}>
+          <button class="ev" data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? ' · added by you' : e.source === 'rule' ? ' · from a rule' : e.source === 'check' ? ' · a check failed' : ''}" onclick={() => actions.eventShow(e.id)}>
             <i></i><span class="evname">{e.name}</span><span class="evwhen num">{when(e)}<small>{lasts(e)}</small></span>
           </button>
-          <button class="evedit" data-evedit={e.id} aria-label="Edit {e.name}" aria-expanded={events.editing === e.id} data-tip="Edit" onclick={() => (events.editing = events.editing === e.id ? null : e.id)}>{@html ICON.edit}</button>
+          {#if e.source === 'user'}
+            <button class="evedit" data-evedit={e.id} aria-label="Edit {e.name}" aria-expanded={events.editing === e.id} data-tip="Edit" onclick={() => (events.editing = events.editing === e.id ? null : e.id)}>{@html ICON.edit}</button>
+          {:else if e.source === 'rule' || e.source === 'check'}
+            <button class="evedit" data-evedit={e.id} aria-label="Edit the {e.source} {e.name}" data-tip="Edit its {e.source}" onclick={() => editRow(e)}>{@html ICON.edit}</button>
+          {/if}
         </div>
         {#if events.editing === e.id && editing}
           <div class="evform">

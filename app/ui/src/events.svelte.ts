@@ -20,8 +20,12 @@ export interface TlmEvent {
 export const UNCATEGORIZED = '#8A94A3';
 
 export const events = $state({
-  /** Every event of the open file, in start order. */
+  /** Every event of the open file, in start order: the ones you added, and the read-only ones from rules and checks. */
   list: [] as TlmEvent[],
+  mine: [] as TlmEvent[],
+  auto: [] as TlmEvent[],
+  /** Rules and checks are still running on the open file. */
+  checking: false,
   /** The panel: text filter, grouping, categories hidden in the list (ids; '' is uncategorized), groups closed, the event being edited. */
   q: '',
   group: '' as '' | 'cat' | 'name' | 'channel' | 'source',
@@ -31,6 +35,18 @@ export const events = $state({
   /** A line under the panel's buttons ("Place cursor A first"). */
   msg: '',
 });
+
+const byStart = (a: TlmEvent, b: TlmEvent) => (BigInt(a.start) < BigInt(b.start) ? -1 : BigInt(a.start) > BigInt(b.start) ? 1 : 0);
+/** The events you added, as the core keeps them. */
+export function setMine(list: TlmEvent[]): void {
+  events.mine = list;
+  events.list = [...list, ...events.auto].sort(byStart);
+}
+/** The events rules and checks make, read-only: recomputed whenever they run. */
+export function setAuto(list: TlmEvent[]): void {
+  events.auto = list;
+  events.list = [...events.mine, ...list].sort(byStart);
+}
 
 export const catOf = (id: string): EventCategory | undefined => settings.eventCats.find((c) => c.id === id);
 export const catName = (id: string): string => catOf(id)?.name ?? 'Uncategorized';

@@ -39,6 +39,8 @@ export async function open(opts = {}) {
   const launch = opts.launch === undefined ? Object.keys(files)[0] ?? null : opts.launch;
   await p.addInitScript(FAKE);
   await p.addInitScript(([files, launch]) => Object.assign(window.__tlmFake.files, files) && (window.__tlmFake.launch = launch), [files, launch]);
+  // what the fake core holds from the start: `setup(fake)` runs before the page does
+  if (opts.setup) await p.addInitScript(([src, arg]) => (0, eval)(`(${src})`)(window.__tlmFake, arg), [opts.setup.toString(), opts.setupArg ?? null]);
   // first-launch settings, once per test: a reload finds what the page saved
   if (opts.settings) await p.addInitScript((s) => { if (!sessionStorage.getItem('tlm.seeded')) { sessionStorage.setItem('tlm.seeded', '1'); localStorage.setItem('tlmbench.settings', s); } }, JSON.stringify(opts.settings));
   const errs = [];

@@ -9,6 +9,7 @@
   import { TIME_FORMATS } from '../axes';
   import { addPaneBelow, allMode, clearChannels, clearPanes, setAllModes, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
+  import CheckBadge from './CheckBadge.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
 
   const ALL: ['chart' | 'table' | 'both', string, string, string][] = [
@@ -171,7 +172,7 @@
         }}
         ondragend={() => (dragTab = null)}
       >
-        {@html t.ws ? ICON.layout : ICON.file}<span class="nm">{t.name}</span>{#if t.live}<span class="livedot" data-live-tab aria-label="live"></span>{/if}{#if t.dirty}<span class="dirty" data-dirty aria-label="unsaved changes" data-tip="Unsaved changes: Save layout (⌘S) or Revert changes in the tab menu"></span>{/if}
+        {@html t.ws ? ICON.layout : ICON.file}<span class="nm">{t.name}</span><CheckBadge path={t.path} />{#if t.live}<span class="livedot" data-live-tab aria-label="live"></span>{/if}{#if t.dirty}<span class="dirty" data-dirty aria-label="unsaved changes" data-tip="Unsaved changes: Save layout (⌘S) or Revert changes in the tab menu"></span>{/if}
         <span
           class="tm"
           role="button"

@@ -33,6 +33,7 @@
     units,
     axisKey,
   } from '../stack.svelte';
+  import { failingChannels } from '../checks.svelte';
   import { settings } from '../settings.svelte';
   import { actions, ui } from '../ui.svelte';
   import AxisDialog from './AxisDialog.svelte';
@@ -99,6 +100,7 @@
     setPlotH(i, h + (e.key === 'ArrowDown' ? 10 : -10));
   }
   /** A chip dragged by its name: its channel and pane (drop on a chip to reorder, on a pane to move; Alt copies). */
+  const failing = $derived(ui.path ? failingChannels(ui.path) : new Map());
   const isChip = (e: DragEvent) => !!e.dataTransfer?.types.includes('application/x-tlm-chip');
   const chipOf = (e: DragEvent): null | { ch: number; from: number } => {
     try {
@@ -271,7 +273,7 @@
                     }}
                     ondragover={(e) => isChip(e) && (e.preventDefault(), e.stopPropagation())}
                     ondrop={(e) => dropChip(e, i, ch)}
-                    >{chName(ch)}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}{#if units(i).length > 1}<span class="side" data-side>· {axisKey(i, ch) === 'u1' ? 'R' : 'L'}</span>{/if}<span class="val" data-val={ch}
+                    >{chName(ch)}{#if failing.has(info?.name ?? '')}<span class="chkdot" class:warn={failing.get(info?.name ?? '') === 'warn'} data-chkdot data-tip="Used by a failing check"></span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}{#if units(i).length > 1}<span class="side" data-side>· {axisKey(i, ch) === 'u1' ? 'R' : 'L'}</span>{/if}<span class="val" data-val={ch}
                       >{stack.values[ch] ?? ''}</span
                     ><button class="cx" data-chip-x={ch} aria-label="Take {info?.name ?? ch} out of pane {i + 1}" data-tip="Take out of this pane" onclick={(e) => (e.stopPropagation(), removeChannel(ch, i))}>{@html ICON.close}</button></span
                   >
@@ -401,6 +403,17 @@
 {/if}
 
 <style>
+  .chkdot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 5px;
+    border-radius: 50%;
+    background: var(--danger);
+  }
+  .chkdot.warn {
+    background: var(--warn);
+  }
   .stack.nopanes {
     flex: 1;
   }

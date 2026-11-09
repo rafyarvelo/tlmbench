@@ -13,6 +13,8 @@
   import { addChannels, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui } from '../ui.svelte';
+  import CheckBadge from './CheckBadge.svelte';
+  import { failingChannels } from '../checks.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
 
   let q = $state('');
@@ -40,6 +42,8 @@
   });
 
   const isOpen = (path: string) => path === ui.path;
+  /** Channels used by a failing check on the open file. */
+  const failing = $derived(ui.path ? failingChannels(ui.path) : new Map());
   const inTab = (path: string) => tabs.list.some((t) => t.path === path);
   /** The open files, each with the tab a click brings forward (its file tab, else a layout shown on it). */
   const openFiles = $derived(
@@ -392,7 +396,7 @@
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span>{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span><CheckBadge {path} />{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
@@ -449,11 +453,22 @@
     onkeydown={(e) => key(e, { kind: 'chan', ch })}
   >
     <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
-    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{chName(ch)}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.missing && !settings.quietUI}<span class="miss" data-miss={c.missing} data-tip="{c.missing.toLocaleString()} samples are missing in this file" aria-label="{c.missing} missing">⌀ {c.missing.toLocaleString()}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
+    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{chName(ch)}</span>{#if failing.has(c.name)}<span class="chkdot" class:warn={failing.get(c.name) === 'warn'} data-chkdot data-tip="Used by a failing check" aria-label="used by a failing check"></span>{/if}{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.missing && !settings.quietUI}<span class="miss" data-miss={c.missing} data-tip="{c.missing.toLocaleString()} samples are missing in this file" aria-label="{c.missing} missing">⌀ {c.missing.toLocaleString()}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
   </div>
 {/snippet}
 
 <style>
+  .chkdot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    margin-left: 5px;
+    border-radius: 50%;
+    background: var(--danger);
+  }
+  .chkdot.warn {
+    background: var(--warn);
+  }
   .dglyph {
     margin-right: 4px;
     color: var(--accent);
