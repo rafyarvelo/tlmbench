@@ -27,6 +27,21 @@ run(
     await p.selectOption(`${dlg} [data-r="tpl"]`, 'prod');
     check('a template fills the expression', (await field('expr')) === 'accel_x * accel_y', await field('expr'));
 
+    // autocomplete: functions and channels for the word at the cursor, accepted with Tab
+    await p.fill(`${dlg} [data-r="expr"]`, '');
+    await p.focus(`${dlg} [data-r="expr"]`);
+    await p.keyboard.type('sm');
+    check('typing a function\'s start suggests it', await until(() => [...document.querySelectorAll('#deriveSugg [data-sugg]')].some((e) => e.dataset.sugg === 'sma(')), await p.$$eval('#deriveSugg li', (e) => e.map((x) => x.textContent)));
+    await p.keyboard.press('Tab');
+    check('Tab accepts it, bracket and all', (await field('expr')) === 'sma(', await field('expr'));
+    await p.keyboard.type('mo');
+    check('and a channel\'s start suggests the channels', await until(() => [...document.querySelectorAll('#deriveSugg [data-sugg]')].map((e) => e.dataset.sugg).join().startsWith('motor_rpm,motor_rpm_target')), await p.$$eval('#deriveSugg li', (e) => e.map((x) => x.textContent)));
+    await p.keyboard.press('ArrowDown');
+    await p.keyboard.press('Enter');
+    check('the arrow keys choose, Enter accepts', (await field('expr')) === 'sma(motor_rpm_target', await field('expr'));
+    await p.fill(`${dlg} [data-r="expr"]`, 'accel_x * accel_y');
+    await p.selectOption(`${dlg} [data-r="tpl"]`, 'prod');
+
     // the check names the character
     await p.fill(`${dlg} [data-r="expr"]`, 'accel_x * (accel_y');
     check('a missing bracket is named at its character', await until(() => /Expected "\)" \(at character 19\)/.test(document.querySelector('#recStat')?.textContent ?? '')), await status());

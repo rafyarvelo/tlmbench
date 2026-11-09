@@ -513,6 +513,7 @@
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
       fake.spectra.push({ file, channels, t0, t1 });
+      if (fake.spectrumNone) return [];
       const n = 1024;
       return channels.map((channel) => ({ channel, df: o.r.rate / n, nyquist: o.r.rate / 2, peak_hz: 12.5 * (channel + 1), peak_amp: 1 + channel, n, mag: Array.from({ length: n / 2 + 1 }, (_, k) => 1 / (1 + k) + (k === 13 * (channel + 1) ? 1 + channel : 0)) }));
     },

@@ -9,7 +9,7 @@ the design). **Prototype** and **App**: ✓ done, ◐ partly, ✗ missing, **sim
 synthesized in the page, so there is no real file I/O), **n/a** doesn't apply. A ✓ in the App column means it works as
 in the prototype and the design, not just that something exists.
 
-Totals over the 203 rows below: the app has 76 ✓, 21 ◐ and 106 ✗. The prototype has 158 ✓, 6 ◐ and 12 ✗, and 27 rows
+Totals over the 204 rows below: the app has 108 ✓, 29 ◐ and 67 ✗. The prototype has 158 ✓, 6 ◐ and 12 ✗, and 27 rows
 are simulated or don't apply to it. Its gaps are the parts only real software can have (multiple windows, plugins,
 alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
@@ -36,7 +36,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Cache cap and low-disk eviction; Settings shows path, size, Clear | v1 | n/a | ◐ (Settings → Cache: folder, size, Clear cache; Open folder reveals it in the file manager) | 4.1 |
 | Scale and offset per channel (before the pyramid) | v1 | ✓ | ◐ (from descriptors only) | 5.2 |
 | Missing values per channel (raw values, range, Missing when) | v1 | ✓ | ✗ | 5.2 |
-| Derived channels computed in the core, cached with a pyramid | v1 | sim | ◐ (core and CLI: `Store::open_derived`, `Store::join`, `tlmbench derive`; the app waits for its UI) | 5.1 |
+| Derived channels computed in the core, cached with a pyramid | v1 | sim | ✓ (`Store::open_derived`, `Store::join`, `tlmbench derive`, the app's ƒ rows) | |
 | WASM decoder plugins (wasmtime) | v1 | ✗ | ✗ | 5.9 |
 | Native decoder plugins | v1 | ✗ | ✗ | 5.9 |
 | Plugins listed in Settings | v1 | ✗ | ✗ | 5.9 |
@@ -92,7 +92,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Drop a file on the window | v1 | ✓ | ◐ (a CSV without a saved profile asks first; several files in one tab wait for 5.6) | 4.3 |
 | Settings: Basic and All, ⓘ explanations, Reset, Reset UI layout | v1 | ✓ | ✓ (rows for later steps' features come with them) |  |
 | Settings: time formats Samples and Wall clock | v1 | ✓ | ✓ |  |
-| Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ✗ | 5.1, 5.2 |
+| Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ◐ (recipes in Explorer's ⋯ and folder menus; Settings waits for 5.2) | 5.2 |
 | Settings: Record live sessions to | v1 | ✓ | ✗ | 5.5 |
 | Sidebars: collapse, move, resize, swap sides | v1 | ✓ | ✓ | |
 | Drag a sidebar panel to reorder it | v1 | ✓ | ✓ (and to the other sidebar) |  |
@@ -103,20 +103,20 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Folder tree, files a decoder recognizes, files that can't be opened | v1 | ✓ | ✓ | |
 | Title row: add shown channels, Expand all, Collapse all | v1 | ✓ | ✓ | |
-| Title row: New derived channel, Categories toggle | v1 | ✓ | ◐ (Categories; New derived channel waits for 5.1) | 5.1 |
+| Title row: New derived channel, Categories toggle | v1 | ✓ | ✓ | |
 | Folder button with the folder's name and menu (recordings ▾) | v1 | ✓ | ✓ |  |
-| Folder menu: Import all, recipes and profiles | v1 | ✓ | ◐ (Import all; recipes and profiles wait for 5.1) | 4.3, 5.1 |
+| Folder menu: Import all, recipes and profiles | v1 | ✓ | ◐ (Import all, Recipes…; profiles wait for the profiles tab) | 5.1 |
 | Filter with regex, matching units and categories | v1 | ✓ | ✓ | |
 | Open files strip: Show only these, Close all | v1 | ✓ | ✓ | |
 | `.tlmbench` entry at the top (shared views count) | v1 | ✓ | ✓ | |
 | Categories by name prefix, your own categories, counts | v1 | ✓ | ✓ | |
-| Multi-select, selection bar (Add, Chart, Table, Remove) | v1 | ✓ | ◐ (channels and files; no Derive in the bar) | 5.1 |
+| Multi-select, selection bar (Add, Chart, Table, Remove, Derive…) | v1 | ✓ | ✓ | |
 | Drag channels to panes | v1 | ✓ | ✓ | |
 | File right-click: Open, Open only this, Close | v1 | ✓ | ✓ | |
 | File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ◐ (Format descriptor…; the rest wait for 5.6) | 5.6 |
 | Channel right-click: category, gap factor | v1 | ✓ | ✓ | |
-| Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ✗ | 5.1–5.3 |
-| Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ✗ | 5.1–5.3 |
+| Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ◐ (category, gap factor, Derive…, Edit recipe…, Remove) | 5.2, 5.3 |
+| Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ◐ (ƒ) | 5.2, 5.3 |
 | Data rate shown on imported files; "primary" with several open | v1 | ✓ | ◐ (the rate chip on an open CSV's row, a click shows its import settings; primary waits for 5.6) | 4.3, 5.6 |
 | Import a local folder (browser snapshot in the prototype) | v1 | ✓ | ✓ (Open folder reads the disk; Import all in the folder menu) | |
 
@@ -130,7 +130,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Chips: drag, ×, +N overflow, value on hover | v1 | ✓ | ✓ | |
 | Chip click opens the channel editor (Display and Limits) | v1 | ✓ | ✗ | 5.2 |
 | View menu: Chart, Table, Chart and table, Values | v1 | ✓ | ✓ | |
-| View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ✗ | 5.1, 5.3, 5.4 |
+| View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ◐ (Chart, Table, Chart and table, Values, Spectrum) | 5.3, 5.4 |
 | Axis and scale: a unit's axis each, range, include zero, decimals, label, log | v1 | ✓ | ✓ | |
 | Ignore outliers (clip and mark) | v1 | ✓ | ✓ | |
 | Y zoom: Shift + scroll, drag on the y-axis | v1 | ✓ | ✓ (sets the axis's fixed range; owner, Nov 8) |  |
@@ -216,15 +216,15 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
-| Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ◐ (core and CLI; autocomplete and the dialog are app work) | 5.1 |
-| Math, sample-to-sample, rolling, one-number functions | v1 | ✓ | ◐ (core and CLI, a test per function) | 5.1 |
+| Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ✓ (labels need the value labels of 5.2) | |
+| Math, sample-to-sample, rolling, one-number functions | v1 | ✓ | ✓ (a core test per function) | |
 | Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ◐ (core and CLI; causal filters for live data wait for 5.5) | 5.1 |
 | Cross-file inputs (`interp`) | v1 | ✓ | ✗ | 5.6 |
-| Derive… dialog: checks as you type, preview, where it applies | v1 | ✓ | ✗ | 5.1 |
-| A − B, A ÷ B, A × B, A + B with two selected | v1 | ✓ | ✗ | 5.1 |
-| Recipes library; Recipes and profiles manager; TOML import/export | v1 | ✓ | ◐ (core: recipes in the shared TOML, recipes that use recipes, `--recipes`; the library in the app cache and the manager are app work) | 5.1 |
-| Spectrum (FFT) pane view | v1 | ✓ | ◐ (the core's FFT and `Opened::spectrum`; the pane view is app work) | 5.1 |
-| Autocomplete for channels, functions and value names | v1 | ✓ | ✗ | 5.1 |
+| Derive… dialog: checks as you type, preview, where it applies | v1 | ✓ | ✓ (this file, any file with the channels; a profile's waits for the profiles tab) | |
+| A − B, A ÷ B, A × B, A + B with two selected | v1 | ✓ | ✓ | |
+| Recipes library; Recipes and profiles manager; TOML import/export | v1 | ✓ | ◐ (the library in the app cache, the Recipes manager with TOML export and import; the import-profiles tab and Share to `.tlmbench/recipes/` wait) | 5.1 |
+| Spectrum (FFT) pane view | v1 | ✓ | ✓ | |
+| Autocomplete for channels, functions and value names | v1 | ✓ | ◐ (channels, recipes, functions; value names wait for 5.2) | 5.2 |
 
 ## 11. Events, rules and checks
 

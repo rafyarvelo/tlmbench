@@ -8,7 +8,7 @@ import { ui } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
  * view, the chart with its table below, or value tiles. */
-export type PaneMode = 'chart' | 'table' | 'both' | 'values';
+export type PaneMode = 'chart' | 'table' | 'both' | 'values' | 'spectrum';
 
 /** One of a pane's value axes (design: Pane axes); what's left out is the default (fit the view, auto decimals). */
 export interface AxisSettings {
@@ -384,13 +384,13 @@ export function movePane(from: number, to: number): void {
 /** Every pane with channels as a chart, a table or both (panes of values keep their view). */
 export function setAllModes(mode: 'chart' | 'table' | 'both'): void {
   edit(() => {
-    for (const p of stack.panes) if (p.mode !== 'values') p.mode = mode;
+    for (const p of stack.panes) if (p.mode !== 'values' && p.mode !== 'spectrum') p.mode = mode;
   });
 }
 
 /** The view every pane shares, when they do (else null). */
 export function allMode(): null | 'chart' | 'table' | 'both' {
-  const ms = new Set(stack.panes.filter((p) => p.channels.length && p.mode !== 'values').map((p) => p.mode ?? 'chart'));
+  const ms = new Set(stack.panes.filter((p) => p.channels.length && p.mode !== 'values' && p.mode !== 'spectrum').map((p) => p.mode ?? 'chart'));
   return ms.size === 1 ? ([...ms][0] as 'chart' | 'table' | 'both') : null;
 }
 
@@ -431,7 +431,7 @@ export function setTable(i: number, patch: Partial<Pick<Pane, 'widths' | 'tableH
 
 const unitOf = (ch: number) => ui.channels[ch]?.unit ?? '';
 /** Whether pane `i` draws a chart. */
-export const hasChart = (i: number) => !['values', 'table'].includes(stack.panes[i]?.mode ?? 'chart');
+export const hasChart = (i: number) => !['values', 'table', 'spectrum'].includes(stack.panes[i]?.mode ?? 'chart');
 /** Pane `i`'s units, an axis each: the first on the left, the second on the right (any more share the left). */
 export const units = (i: number): string[] => [...new Set((stack.panes[i]?.channels ?? []).map(unitOf))].slice(0, 2);
 /** The axis channel `ch` is drawn against in pane `i`. */

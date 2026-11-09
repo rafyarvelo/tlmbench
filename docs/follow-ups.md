@@ -27,6 +27,12 @@ When needed:
   median that doesn't sort the window per sample; parallel chunks for rolling windows by time and for recipes whose
   state is a window of samples (replay the window before each chunk; exact when the window is in time, and for sample
   windows when the chunk has no gaps); two passes of a one-number recipe in one read.
+- **App half of 5.1, left:** the Recipes manager's import-profiles tab and a profile's own recipes (the import
+  dialog's Derived section, "Files with this import profile" in Derive…); Share writing recipes to
+  `.tlmbench/recipes/` and a shared layout embedding the recipes it plots; Settings → recipes (5.2 builds Settings'
+  channel list); the parity scenes for the Derive, Recipes and Spectrum dialogs (`just app-parity`); the spectrum's
+  frequency axis zoom and a log frequency option; recipes edited in a window that has the file open reaching other
+  windows (multiple windows are 5.10); recipes using channels of another file (5.6).
 - A one-sample recording's `duration()` is 0 (the interval after the last sample is taken from the one before it).
 - Value labels and limits (`state == 'flight'`, `past_warn`) reach the engine through `RecEnv::with_labels` and
   `with_limits`; the app has no labels or limits until step 5.2.

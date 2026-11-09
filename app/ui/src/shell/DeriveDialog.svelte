@@ -4,8 +4,42 @@
      applies: this file, or any file that has the channels. The core evaluates; nothing is written beside the data. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { actions } from '../ui.svelte';
-  import { derive, FN_HELP, TEMPLATES, TEMPLATES2 } from '../derive.svelte';
+  import { actions, ui } from '../ui.svelte';
+  import { derive, FN_HELP, FUNCTION_NAMES, quoteName, recipes, TEMPLATES, TEMPLATES2 } from '../derive.svelte';
+
+  // autocomplete: functions, the file's channels and the recipes, for the word at the cursor
+  let ta = $state<HTMLTextAreaElement>();
+  let sugg = $state<string[]>([]);
+  let pick = $state(0);
+  let from = 0;
+  function suggest() {
+    const c = ta?.selectionStart ?? 0;
+    const m = /[A-Za-z_][A-Za-z0-9_.]*$/.exec(derive.expr.slice(0, c));
+    if (!m) return void (sugg = []);
+    const t = m[0].toLowerCase();
+    from = c - m[0].length;
+    const names = [...ui.channels.filter((x) => !x.derived).map((x) => quoteName(x.name)), ...recipes.list.map((r) => quoteName(r.name)).filter((n) => n !== derive.editing)];
+    const all = [...names, ...FUNCTION_NAMES.map((f) => `${f}(`)];
+    sugg = [...new Set(all)].filter((s) => s.replace(/^"/, '').toLowerCase().startsWith(t) && s.replace(/^"/, '').toLowerCase() !== t).slice(0, 8);
+    pick = 0;
+  }
+  function accept(s: string) {
+    const c = ta?.selectionStart ?? derive.expr.length;
+    actions.deriveExpr(derive.expr.slice(0, from) + s + derive.expr.slice(c));
+    const at = from + s.length;
+    sugg = [];
+    queueMicrotask(() => (ta?.setSelectionRange(at, at), ta?.focus()));
+  }
+  function complete(e: KeyboardEvent) {
+    if (!sugg.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      pick = (pick + (e.key === 'ArrowDown' ? 1 : sugg.length - 1)) % sugg.length;
+    } else if (e.key === 'Tab' || e.key === 'Enter') {
+      e.preventDefault();
+      accept(sugg[pick]);
+    }
+  }
 
   const two = $derived(derive.base.length === 2);
   const templates = $derived(two ? TEMPLATES2 : TEMPLATES);
@@ -36,7 +70,13 @@
       <label class="lvf"><span>Name</span>
         <input class="sel" data-r="name" value={derive.name} spellcheck="false" oninput={(e) => (derive.name = e.currentTarget.value)} /></label>
       <label class="lvf"><span>Expression</span>
-        <textarea class="sel recexpr" data-r="expr" rows="2" spellcheck="false" value={derive.expr} oninput={(e) => actions.deriveExpr(e.currentTarget.value)}></textarea></label>
+        <textarea class="sel recexpr" data-r="expr" rows="2" spellcheck="false" value={derive.expr} bind:this={ta}
+          oninput={(e) => (actions.deriveExpr(e.currentTarget.value), suggest())} onkeydown={complete} onclick={suggest} onblur={() => (sugg = [])}></textarea></label>
+      {#if sugg.length}
+        <ul class="sugg" id="deriveSugg" role="listbox" aria-label="Suggestions">
+          {#each sugg as s, k (s)}<li role="option" aria-selected={k === pick} class:on={k === pick} data-sugg={s} onmousedown={(e) => (e.preventDefault(), accept(s))}>{s}</li>{/each}
+        </ul>
+      {/if}
       <p class="recstat" class:bad={!derive.status.ok && !derive.status.pending} class:okay={derive.status.ok} id="recStat" role="status">{derive.status.text}</p>
       <div class="lvrow">
         <label class="lvf"><span>Unit</span><input class="sel" data-r="unit" value={derive.unit} oninput={(e) => (derive.unit = e.currentTarget.value)} /></label>
@@ -126,6 +166,26 @@
     padding: 6px 8px;
     font-family: var(--font-data);
     resize: vertical;
+  }
+  .sugg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sugg li {
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-family: var(--font-data);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .sugg li.on {
+    border-color: var(--accent);
+    background: var(--raised);
   }
   .recstat {
     min-height: 16px;
