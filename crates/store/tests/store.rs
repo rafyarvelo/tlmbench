@@ -417,10 +417,7 @@ fn a_widget_frame_answers_value_min_max_and_run_start_in_one_call() {
     let opened = store.open(&path, None).unwrap();
     // before the build: values and runs answer, min and max wait for the exact statistics
     let t_of = |i: usize| opened.recording().time_at(i);
-    let reqs = [
-        WidgetReq { channel: 0, minmax: true, run: true },
-        WidgetReq { channel: 1, minmax: false, run: false },
-    ];
+    let reqs = [WidgetReq { channel: 0, minmax: true, run: true }, WidgetReq { channel: 1, minmax: false, run: false }];
     let view = (t_of(1_000_000), t_of(1_500_000));
     let f = opened.widgets_frame(t_of(1_200_000), view, &reqs).unwrap();
     assert_eq!(f.index, 1_200_000);
@@ -445,4 +442,53 @@ fn a_widget_frame_answers_value_min_max_and_run_start_in_one_call() {
     let f = opened.widgets_frame(t_of(1_800_000), view, &reqs).unwrap();
     let all: Vec<f64> = (1_000_000..1_500_000).map(|i| value(0, i) as f64).collect();
     assert_eq!(f.widgets[0].max, Some(all.iter().cloned().fold(f64::MIN, f64::max)));
+}
+
+#[test]
+fn xy_points_pair_by_time_reduce_on_a_grid_and_follow_the_zoom() {
+    use tlmbench_store::xy::XyReq;
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let store = Store::new(Some(cache.path()));
+    let opened = store.open(&path, None).unwrap();
+    let t_of = |i: usize| opened.recording().time_at(i);
+    let q = XyReq {
+        x: 0,
+        ys: vec![1],
+        t0: t_of(100_000),
+        t1: t_of(200_000),
+        rect: None,
+        grid: (16, 8),
+        max_points: 1_000_000,
+    };
+    let r = opened.xy_points(&q);
+    let all: Vec<(f64, f64)> = (100_000..200_000).map(|i| (value(0, i) as f64, value(1, i) as f64)).collect();
+    let rg = r.range.unwrap();
+    assert_eq!(rg[0], all.iter().map(|p| p.0).fold(f64::MAX, f64::min));
+    assert_eq!(rg[3], all.iter().map(|p| p.1).fold(f64::MIN, f64::max));
+    let s = &r.series[0];
+    assert!(s.x.len() < all.len() / 2, "reduced: {} of {}", s.x.len(), all.len());
+    assert!(s.x.len() > 100);
+    assert_eq!((s.x[0], s.y[0]), all[0], "the first sample starts the line");
+    assert_eq!(s.t[0], t_of(100_000));
+    assert!(s.t.windows(2).all(|w| w[0] < w[1]), "in time order");
+    // every point is a real sample pair
+    assert!(s.x.iter().zip(&s.y).all(|(&x, &y)| all.contains(&(x, y))));
+
+    // a zoom returns the points in it and the neighbours that connect them
+    let rect = [rg[0] + (rg[1] - rg[0]) * 0.4, rg[0] + (rg[1] - rg[0]) * 0.6, rg[2], rg[3]];
+    let z = opened.xy_points(&XyReq { rect: Some(rect), ..q.clone() });
+    let zs = &z.series[0];
+    assert!(zs.x.len() < s.x.len());
+    let in_rect = |x: f64| x >= rect[0] && x <= rect[1];
+    assert!(zs.x.iter().filter(|&&x| in_rect(x)).count() >= all.iter().filter(|p| in_rect(p.0)).count() / 40);
+    // missing samples break the line with one NaN pair per stretch (the spike at 2,000,045 splits this one in two)
+    let g = opened.xy_points(&XyReq { t0: t_of(1_999_000), t1: t_of(2_006_000), ..q.clone() });
+    let gs = &g.series[0];
+    assert_eq!(gs.x.iter().filter(|x| x.is_nan()).count(), 2);
+    assert!(gs.x.iter().zip(&gs.y).all(|(x, y)| x.is_nan() == y.is_nan()));
+    // past max_points every n-th point is kept
+    let m = opened.xy_points(&XyReq { max_points: 50, ..q.clone() });
+    assert!(m.sampled && m.series[0].x.len() <= 60);
 }

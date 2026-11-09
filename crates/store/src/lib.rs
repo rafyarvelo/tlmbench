@@ -30,8 +30,9 @@ mod joined;
 mod live;
 mod pyr;
 mod recipes;
-pub mod widgets;
 pub mod sys;
+pub mod widgets;
+pub mod xy;
 
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};

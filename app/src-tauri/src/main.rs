@@ -1433,6 +1433,129 @@ struct Span {
     t1: String,
 }
 
+/// What one widget reads (see [`widgets_frame`]).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WidgetAsk {
+    channel: u32,
+    #[serde(default)]
+    minmax: bool,
+    #[serde(default)]
+    run: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WidgetAnswer {
+    value: Option<f64>,
+    min: Option<f64>,
+    max: Option<f64>,
+    run_start: Option<String>,
+}
+
+#[derive(Serialize)]
+struct WidgetsFrame {
+    index: u64,
+    t: String,
+    widgets: Vec<WidgetAnswer>,
+}
+
+/// Every widget of a Gauges pane in one call: the value at `t` (the nearest sample), the lowest and highest value
+/// from the start of `view` to `t`, and the time the current run of equal values began. None (null) for an empty
+/// recording; min and max are null until the pyramid is built.
+#[tauri::command]
+async fn widgets_frame(
+    file: u32,
+    t: String,
+    view: Span,
+    widgets: Vec<WidgetAsk>,
+    files: State<'_, Files>,
+) -> Result<Option<WidgetsFrame>, String> {
+    let o = files.get(file)?;
+    let (t, v0, v1) = (parse_time(&t)?, parse_time(&view.t0)?, parse_time(&view.t1)?);
+    spawn_blocking(move || {
+        let n = o.recording().info().channels.len();
+        let reqs: Vec<tlmbench_store::widgets::WidgetReq> = widgets
+            .iter()
+            .map(|w| tlmbench_store::widgets::WidgetReq {
+                channel: (w.channel as usize).min(n.saturating_sub(1)),
+                minmax: w.minmax,
+                run: w.run,
+            })
+            .collect();
+        o.widgets_frame(t, (v0, v1), &reqs).map(|f| WidgetsFrame {
+            index: f.index as u64,
+            t: f.t.to_string(),
+            widgets: f
+                .widgets
+                .into_iter()
+                .map(|w| WidgetAnswer {
+                    value: w.value,
+                    min: w.min,
+                    max: w.max,
+                    run_start: w.run_start.map(|t| t.to_string()),
+                })
+                .collect(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// What an XY pane asks for (see [`xy_points`]).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct XyAsk {
+    x: u32,
+    ys: Vec<u32>,
+    /// `[x0, x1, y0, y1]` of a zoomed pane.
+    rect: Option<[f64; 4]>,
+    grid: (u32, u32),
+    max_points: Option<u32>,
+}
+
+/// Points of Y channels against an X channel over a span, reduced to a pixel grid (see `tlmbench_store::xy`).
+/// Little-endian: `TLMX`, u32 series, u32 flags (bit 0 sampled, bit 1 has a range), u32 0, f64 x0, x1, y0, y1; then
+/// per series u32 channel, u32 n, and n × i64 time (ns), n × f64 x, n × f64 y (NaN pairs break the line).
+#[tauri::command]
+async fn xy_points(file: u32, span: Span, ask: XyAsk, files: State<'_, Files>) -> Result<Response, String> {
+    let o = files.get(file)?;
+    let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
+    let bytes = spawn_blocking(move || {
+        let n = o.recording().info().channels.len() as u32;
+        let ok = |c: &u32| *c < n;
+        let q = tlmbench_store::xy::XyReq {
+            x: ask.x.min(n.saturating_sub(1)) as usize,
+            ys: ask.ys.iter().filter(|c| ok(c)).map(|&c| c as usize).collect(),
+            t0,
+            t1,
+            rect: ask.rect,
+            grid: ask.grid,
+            max_points: ask.max_points.unwrap_or(100_000) as usize,
+        };
+        let r = o.xy_points(&q);
+        let mut out = Vec::with_capacity(48 + r.series.iter().map(|s| 8 + 24 * s.x.len()).sum::<usize>());
+        out.extend_from_slice(b"TLMX");
+        out.extend_from_slice(&(r.series.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(u32::from(r.sampled) | (u32::from(r.range.is_some()) << 1)).to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes());
+        for v in r.range.unwrap_or([f64::NAN; 4]) {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        for s in &r.series {
+            out.extend_from_slice(&(s.channel as u32).to_le_bytes());
+            out.extend_from_slice(&(s.x.len() as u32).to_le_bytes());
+            s.t.iter().for_each(|t| out.extend_from_slice(&t.to_le_bytes()));
+            s.x.iter().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
+            s.y.iter().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
+        }
+        out
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(Response::new(bytes))
+}
+
 /// Exact stats of each channel over `[t0, t1)`; None until the pyramid is built (exact answers wait for it).
 #[tauri::command]
 async fn stats(
@@ -1990,6 +2113,8 @@ fn main() {
             close,
             view,
             values_at,
+            widgets_frame,
+            xy_points,
             stats,
             rows,
             table_query,
