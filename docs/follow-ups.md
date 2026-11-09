@@ -41,14 +41,13 @@ When needed:
 
 - **Derived channels: the budget for stateful recipes.** The roadmap asks a derived channel over 100M samples to
   evaluate at least as fast as the pyramid builds. `just derived-bench` (100M samples, written as f64): element-wise
-  recipes 0.7 s against a 0.8 s pyramid build (they run in parallel chunks and are bound by the write); running totals
-  and differences 1.0–1.3 s, rolling windows 1.5 s, a zero-phase low-pass 1.8 s, a z-score (two passes) 2.9 s,
-  `median(x, 5)` 3.7 s (7 s before the window was kept in order; the bench now has a median row). The budget (within
-  about 2× of the 0.9 s pyramid build, so 1.8 s) is still missed by the median, and a z-score (2.1 s) is just over it.
-  They run one chunk after another because each carries state. Next speed-ups, in order: parallel chunks for rolling
-  windows by time and for recipes whose state is a window of samples (replay the window before each chunk; exact when
-  the window is in time, and for sample windows when the chunk has no gaps), which also takes the median under the
-  budget; two passes of a one-number recipe in one read.
+  recipes 0.7 s against a 0.8 s pyramid build (they run in parallel chunks and are bound by the write); rolling
+  windows over samples (mean, std, min, max, sum, `median`) 0.5–0.9 s: they also run in parallel, each chunk replaying
+  the samples before it (exact; a chunk whose window would reach back past the replay because of gaps sends the whole
+  recipe the sequential way). Still sequential, because each carries state: running totals and differences
+  1.0–1.1 s, rolling windows by time 1.5 s, a zero-phase low-pass 1.7 s, a z-score (two passes) 2.1 s. All within 2×
+  of the pyramid (1.7 s) except the z-score, just over, and the low-pass at the line. Next, if wanted: replay for
+  windows by time; two passes of a one-number recipe in one read.
 - **App half of 5.1, left:** the Recipes manager's import-profiles tab and a profile's own recipes (the import
   dialog's Derived section, "Files with this import profile" in Derive…); Share writing recipes to
   `.tlmbench/recipes/` and a shared layout embedding the recipes it plots; Settings → recipes (5.2 builds Settings'

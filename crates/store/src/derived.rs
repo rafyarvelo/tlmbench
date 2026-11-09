@@ -261,6 +261,32 @@ fn write_channel(env: &RecEnv, r: &Resolved, rows: usize, path: &Path) -> std::r
             write_at(&file, bytemuck::cast_slice(&s.v), a as u64 * 8).map_err(io)
         });
     }
+    if let Some(warm) = tlmbench_expr::warm_rows(&r.expr).filter(|_| rows > CHUNK) {
+        // only windows of samples carry over: every chunk on its own from a replay of the samples before it, in
+        // parallel; a chunk whose window reaches back past the replay (gaps) sends the whole recipe the sequential way
+        let file = File::create(path).map_err(io)?;
+        file.set_len(rows as u64 * 8).map_err(io)?;
+        let starts: Vec<usize> = (0..rows).step_by(CHUNK).collect();
+        let done = starts.par_iter().try_fold(
+            || true,
+            |ok, &a| -> std::result::Result<bool, String> {
+                let end = (a + CHUNK).min(rows);
+                let Some(v) = tlmbench_expr::eval_warm(&r.expr, env, a..end, warm).map_err(fail)? else {
+                    return Ok(false);
+                };
+                let s = v.series().ok_or_else(|| format!("{name}: computed a number where samples were expected"))?;
+                if s.len() != end - a {
+                    return Err(format!("{name}: computed {} samples for {}", s.len(), end - a));
+                }
+                write_at(&file, bytemuck::cast_slice(&s.v), a as u64 * 8).map_err(io)?;
+                Ok(ok)
+            },
+        );
+        let ok = done.try_reduce(|| true, |x, y| Ok(x && y))?;
+        if ok {
+            return Ok(());
+        }
+    }
     let mut w = BufWriter::new(File::create(path).map_err(io)?);
     let mut wrote = 0usize;
     let mut failed = None;

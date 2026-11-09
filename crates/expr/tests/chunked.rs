@@ -165,3 +165,45 @@ fn a_chunk_is_streamed_not_collected() {
     let n = run(&parse("mean(x)").unwrap(), &r, 300, &mut |_, _| called = true).unwrap();
     assert!(n.is_some() && !called);
 }
+
+#[test]
+fn windowed_recipes_compute_a_chunk_from_a_replay() {
+    use tlmbench_expr::{eval_warm, warm_rows};
+    let r = rec(4000);
+    for (src, warm) in [
+        ("median(x, 5)", 5),
+        ("sma(x, 10)", 10),
+        ("rolling_max(x, 7) - rolling_min(x, 7)", 14),
+        ("sma(median(x, 3), 4) * 2", 7),
+        ("rolling_std(x, 25)", 25),
+    ] {
+        let e = parse(src).unwrap();
+        assert_eq!(warm_rows(&e), Some(warm), "{src}");
+        let whole = eval_chunked(&e, &r, usize::MAX).unwrap();
+        let w = whole.series().unwrap();
+        let (mut replayed, mut short) = (0, 0);
+        for a in (0..4000).step_by(250) {
+            match eval_warm(&e, &r, a..(a + 250).min(4000), warm).unwrap() {
+                Some(v) => {
+                    replayed += 1;
+                    let s = v.series().unwrap();
+                    assert_eq!(s.len(), 250);
+                    for i in 0..250 {
+                        let (p, q) = (s.v[i], w.v[a + i]);
+                        assert!(
+                            (p.is_nan() && q.is_nan()) || (p - q).abs() <= 1e-9 * q.abs().max(1.0),
+                            "{src} at {}",
+                            a + i
+                        );
+                    }
+                }
+                None => short += 1,
+            }
+        }
+        assert!(replayed > 10 && short <= 2, "{src}: {replayed} replayed, {short} fell back");
+    }
+    // anything else keeps its state from one chunk to the next
+    for src in ["cumsum(x)", "sma(x, 0.1s)", "lowpass(x, 5)", "mean(x)", "x * 2", "sma(x, 5) + delta(x)"] {
+        assert_eq!(warm_rows(&parse(src).unwrap()), None, "{src}");
+    }
+}

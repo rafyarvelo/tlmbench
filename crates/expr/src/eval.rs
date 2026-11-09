@@ -117,8 +117,43 @@ pub fn eval_range(e: &Expr, env: &dyn Env, r: Range<usize>) -> R<Val> {
         ));
     }
     let mut st = vec![St::default(); plan.nodes.len()];
-    let mut cx = Ctx { env, commit: r.len(), range: r, pass: 0, cursor: 0, st: &mut st, plan: &plan, resolved: &[] };
+    let mut cx =
+        Ctx { env, commit: r.len(), range: r, pass: 0, cursor: 0, st: &mut st, plan: &plan, resolved: &[], warm: 0 };
     ev(e, &mut cx)
+}
+
+/// The number of samples to replay before a chunk of a recipe whose only state is windows of samples, so that the
+/// chunk can be computed on its own (and in parallel with the others). `None` for any other recipe.
+pub fn warm_rows(e: &Expr) -> Option<usize> {
+    analyze(e, None).ok().filter(|p| p.warmable && !p.stateless && p.depth == 0).map(|p| p.warm)
+}
+
+/// Samples `r` of a recipe with a [warm-up](warm_rows), computed alone from `warm` samples before it. `None` when a
+/// window needed more real samples than the replay held (gaps), and the recipe must then run in one piece.
+pub fn eval_warm(e: &Expr, env: &dyn Env, r: Range<usize>, warm: usize) -> R<Option<Val>> {
+    let plan = analyze(e, env.hz())?;
+    let from = r.start.saturating_sub(warm);
+    let mut st = vec![St::default(); plan.nodes.len()];
+    let n = r.len();
+    let mut cx = Ctx {
+        env,
+        range: from..r.end,
+        commit: r.end - from,
+        pass: 0,
+        cursor: 0,
+        st: &mut st,
+        plan: &plan,
+        resolved: &[],
+        warm: r.start - from,
+    };
+    let v = ev(e, &mut cx)?;
+    if st.iter().any(|s| s.short) {
+        return Ok(None);
+    }
+    Ok(Some(match v {
+        Val::Ser(s) => Val::Ser(s.slice(r.start - from..r.start - from + n)),
+        other => other,
+    }))
 }
 
 /// Streams the expression's output chunk by chunk: `sink(start, chunk)`. Returns the number when the expression's
@@ -149,6 +184,7 @@ pub fn run(e: &Expr, env: &dyn Env, chunk: usize, sink: &mut dyn FnMut(usize, &S
                 st: &mut st,
                 plan: &plan,
                 resolved: &resolved,
+                warm: 0,
             };
             let val = ev(e, &mut cx)?;
             if last {
@@ -258,6 +294,10 @@ struct Plan {
     depth: usize,
     /// Samples read past the end of a chunk.
     ahead: usize,
+    /// Whether the only state is windows of samples (rolling min, max, mean, sum, std and median): a chunk can then
+    /// be computed alone from `warm` samples before it.
+    warmable: bool,
+    warm: usize,
 }
 
 struct NoEnv;
@@ -286,6 +326,25 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
                 let kind = metric_kind(f, args.len());
                 if kind.is_some() || !is_elementwise(f) {
                     plan.stateless = false;
+                    let rolling = matches!(
+                        f.as_str(),
+                        "sma"
+                            | "rolling_mean"
+                            | "movavg"
+                            | "rolling_std"
+                            | "rolling_min"
+                            | "rolling_max"
+                            | "rolling_sum"
+                            | "median"
+                    );
+                    let w = match args.get(1).map(|a| eval(a, &NoEnv)) {
+                        Some(Ok(v)) if rolling && kind.is_none() => window(Some(&v), f, 0).ok(),
+                        _ => None,
+                    };
+                    match w {
+                        Some(Window::Samples(n)) => plan.warm += n,
+                        _ => plan.warmable = false,
+                    }
                 }
                 plan.nodes[id].inner = plan.nodes.len() - id - 1;
                 if let Some(k) = kind {
@@ -314,7 +373,7 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
             _ => Ok((0, 0)),
         }
     }
-    let mut plan = Plan { stateless: true, ..Plan::default() };
+    let mut plan = Plan { stateless: true, warmable: true, ..Plan::default() };
     (plan.depth, plan.ahead) = walk(e, &mut plan, hz)?;
     Ok(plan)
 }
@@ -338,6 +397,8 @@ struct St {
     /// A constant argument (a number where a channel was expected): the one-number result is that number.
     constant: Option<f64>,
     carry: [Carry; 2],
+    /// A window began with fewer samples than it needs: the replay before a chunk was too short.
+    short: bool,
 }
 
 struct Ctx<'a> {
@@ -351,6 +412,8 @@ struct Ctx<'a> {
     st: &'a mut Vec<St>,
     plan: &'a Plan,
     resolved: &'a [Option<f64>],
+    /// Of the samples read, how many come before the chunk and only bring the windows up to date.
+    warm: usize,
 }
 
 fn num_of(v: &Val) -> Option<f64> {
@@ -876,7 +939,14 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
                 "median" => Roll::Median,
                 _ => Roll::Mean,
             };
-            sample_op(cx, id, ser(0)?, matches!(w, Window::Secs(_)), move |st, v, t| rolling(st, v, t, w, kind))
+            let s0 = ser(0)?;
+            if let (true, Window::Samples(n)) = (cx.warm > 0, w) {
+                // the window at the chunk's first sample must lie inside the replay
+                if s0.v[..(cx.warm + 1).min(s0.len())].iter().filter(|x| !x.is_nan()).count() < n {
+                    cx.st[id].short = true;
+                }
+            }
+            sample_op(cx, id, s0, matches!(w, Window::Secs(_)), move |st, v, t| rolling(st, v, t, w, kind))
         }
         "ema" => {
             let w = win(1)?;
