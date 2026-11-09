@@ -71,8 +71,30 @@ export interface Axis {
 
 export type Rgba = [number, number, number, number];
 
+const ENV_VERT = `#version 300 es
+in vec2 a_p;
+uniform vec2 u_x;
+uniform vec2 u_y;
+void main() { gl_Position = vec4(a_p.x * u_x.x + u_x.y, a_p.y * u_y.x + u_y.y, 0.0, 1.0); }`;
+const ENV_FRAG = `#version 300 es
+precision mediump float;
+uniform vec4 u_color;
+out vec4 color;
+void main() { color = u_color; }`;
+
+/** The band between each pixel column's lowest and highest value: a triangle strip (x, min), (x, max) per column, in
+ * runs that break where a column has no data. */
+export interface GlEnvelope {
+  vao: WebGLVertexArrayObject;
+  buf: WebGLBuffer;
+  /** [first vertex, vertex count] of each run of adjacent columns */
+  runs: [number, number][];
+}
+
 /** One uploaded trace. */
 export interface GlTrace {
+  /** The min/max band, for a reduced trace (see `Renderer.envelope`). */
+  env?: GlEnvelope;
   vao: WebGLVertexArrayObject;
   bufs: WebGLBuffer[];
   /** [start, count] of each run without NaN */
@@ -94,6 +116,7 @@ export class Renderer {
   /** Lines as quads (a width of CSS pixels), or WebGL's own one-pixel lines: software GL (headless test browsers) draws quads slowly. */
   quads: boolean;
   private loc: Record<'a_x0' | 'a_y0' | 'a_x1' | 'a_y1', number>;
+  private env: { prog: WebGLProgram; uX: WebGLUniformLocation; uY: WebGLUniformLocation; uColor: WebGLUniformLocation; a: number };
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true });
@@ -111,6 +134,8 @@ export class Renderer {
     this.uW = gl.getUniformLocation(this.prog, 'u_w')!;
     this.uPoints = gl.getUniformLocation(this.prog, 'u_points')!;
     this.uDash = gl.getUniformLocation(this.prog, 'u_dash')!;
+    const ep = link(gl, ENV_VERT, ENV_FRAG);
+    this.env = { prog: ep, uX: gl.getUniformLocation(ep, 'u_x')!, uY: gl.getUniformLocation(ep, 'u_y')!, uColor: gl.getUniformLocation(ep, 'u_color')!, a: gl.getAttribLocation(ep, 'a_p') };
     this.loc = Object.fromEntries((['a_x0', 'a_y0', 'a_x1', 'a_y1'] as const).map((n) => [n, gl.getAttribLocation(this.prog, n)])) as Renderer['loc'];
   }
 
@@ -154,14 +179,63 @@ export class Renderer {
     return t;
   }
 
+  /** Builds the min/max band of a reduced trace (x in pixel columns, as the core sends it) and puts it on `t`; nothing
+   * for a trace with at most one value per column. */
+  envelope(t: GlTrace, x: Float32Array, y: Float32Array): void {
+    this.dropEnvelope(t);
+    const cols: number[] = [];
+    let [col, mn, mx] = [NaN, Infinity, -Infinity];
+    const flush = () => Number.isFinite(mn) && cols.push(col + 0.5, mn, col + 0.5, mx);
+    for (let i = 0; i < x.length; i++) {
+      if (Number.isNaN(y[i])) continue;
+      const c = Math.floor(x[i]);
+      if (c !== col) {
+        flush();
+        [col, mn, mx] = [c, Infinity, -Infinity];
+      }
+      mn = Math.min(mn, y[i]);
+      mx = Math.max(mx, y[i]);
+    }
+    flush();
+    if (cols.length < 8) return;
+    const runs: [number, number][] = [];
+    let start = 0;
+    for (let k = 1; k <= cols.length / 4; k++) {
+      // a run ends where the next column isn't the one beside it
+      if (k === cols.length / 4 || cols[4 * k] - cols[4 * (k - 1)] > 1.5) {
+        if (k - start >= 2) runs.push([2 * start, 2 * (k - start)]);
+        start = k;
+      }
+    }
+    if (!runs.length) return;
+    const gl = this.gl;
+    const vao = gl.createVertexArray()!;
+    const buf = gl.createBuffer()!;
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cols), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(this.env.a);
+    gl.vertexAttribPointer(this.env.a, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    t.env = { vao, buf, runs };
+  }
+
+  dropEnvelope(t: GlTrace): void {
+    if (!t.env) return;
+    this.gl.deleteVertexArray(t.env.vao);
+    this.gl.deleteBuffer(t.env.buf);
+    t.env = undefined;
+  }
+
   free(t: GlTrace): void {
+    this.dropEnvelope(t);
     this.gl.deleteVertexArray(t.vao);
     t.bufs.forEach((b) => this.gl.deleteBuffer(b));
   }
 
   /** Draws `t` into `rect` (CSS pixels from the canvas's top left); clip space spans the rect. `width` is in CSS pixels.
-   *  Nothing is drawn outside `clip` (the stack's visible part, when panes scroll). */
-  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = LINE_WIDTH, clip?: Rect, dashed = false): void {
+   *  Nothing is drawn outside `clip` (the stack's visible part, when panes scroll). A `fill` above 0 shades the trace's min/max band first, at that opacity. */
+  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width = LINE_WIDTH, clip?: Rect, dashed = false, fill = 0): void {
     if ((!t.runs.length && !t.dashes.length) || rect.w <= 0 || rect.h <= 0) return;
     const gl = this.gl;
     const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
@@ -179,6 +253,17 @@ export class Renderer {
     gl.viewport(vx, vy, vw, vh);
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(sx, sy, sw, sh);
+    if (t.env && fill) {
+      gl.useProgram(this.env.prog);
+      gl.uniform2f(this.env.uX, x.a, x.b);
+      gl.uniform2f(this.env.uY, y.a, y.b);
+      gl.uniform4f(this.env.uColor, rgba[0], rgba[1], rgba[2], fill);
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.bindVertexArray(t.env.vao);
+      for (const [first, count] of t.env.runs) gl.drawArrays(gl.TRIANGLE_STRIP, first, count);
+      gl.disable(gl.BLEND);
+    }
     gl.useProgram(this.prog);
     gl.uniform2f(this.uX, x.a, x.b);
     gl.uniform2f(this.uY, y.a, y.b);

@@ -8,7 +8,7 @@ import { ui } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
  * view, the chart with its table below, or value tiles. */
-export type PaneMode = 'chart' | 'table' | 'both' | 'values' | 'spectrum' | 'checks' | 'gauges' | 'xy';
+export type PaneMode = 'chart' | 'table' | 'both' | 'values' | 'spectrum' | 'checks' | 'gauges' | 'xy' | 'cv';
 
 /** One of a pane's value axes (design: Pane axes); what's left out is the default (fit the view, auto decimals). */
 export interface AxisSettings {

@@ -109,6 +109,8 @@ export interface Settings {
   clickMode: 'select' | 'act';
   /** Hides badges and counts until they matter. */
   quietUI: boolean;
+  /** A reduced trace (min and max per pixel column) gets a faint fill between its extremes. */
+  envelope: boolean;
   /** The channel the overview is pinned to (null: it follows the selected pane). */
   overviewCh: number | null;
   /** Tooltips (Short retires each after three showings; `tipsSeen` counts them by tip). */
@@ -206,6 +208,7 @@ export const DEFAULTS: Settings = {
   fileOpenNew: 'starter',
   clickMode: 'select',
   quietUI: false,
+  envelope: true,
   overviewCh: null,
   tooltips: 'short',
   tipsSeen: {},

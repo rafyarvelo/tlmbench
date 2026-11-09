@@ -15,6 +15,9 @@ import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialo
 import { type AxesStyle, drawAxes, duration, fileTime, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3, runGate4 } from './gate';
 import { type Axis, type GlTrace, LINE_WIDTH, type Rect, Renderer, type Rgba } from './gl';
+
+/** How opaque the min/max band under a reduced line is. */
+const ENVELOPE_ALPHA = 0.16;
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
@@ -301,8 +304,11 @@ function upload(layer: Layer | null, reply: Reply, logOf: (ch: number) => boolea
       }
       ud = t.dashed && (Uint32Array.from(t.dashed, (k) => 2 * k) as typeof t.dashed);
     }
+    const gl = renderer.upload(ux, uy, old?.gl, ud);
+    if (t.kind === 'm4') renderer.envelope(gl, t.x, y);
+    else renderer.dropEnvelope(gl);
     next.traces.set(t.channel, {
-      gl: renderer.upload(ux, uy, old?.gl, ud),
+      gl,
       x: t.x,
       y,
       log,
@@ -433,7 +439,7 @@ async function requestHover(t: bigint | null): Promise<void> {
 let restingWanted = 0;
 async function requestResting(): Promise<void> {
   const f = state.file;
-  const chans = [...new Set(stack.panes.filter((p) => p.mode === 'values').flatMap((p) => p.channels))];
+  const chans = [...new Set(stack.panes.filter((p) => p.mode === 'values' || p.mode === 'cv').flatMap((p) => p.channels))];
   const mine = ++restingWanted;
   setValuesAt();
   if (!f || !chans.length) {
@@ -776,7 +782,7 @@ function draw(): void {
         if (!t || t.log !== !!yr.log) continue;
         const y: Axis = { a: 2 / (yr.max - yr.min), b: (-2 * yr.min) / (yr.max - yr.min) - 1 };
         const cd = chDisp(ch);
-        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r, LINE_WIDTH * (WIDTHS[cd.width ?? 0] ?? 1), clip, !!cd.dash);
+        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r, LINE_WIDTH * (WIDTHS[cd.width ?? 0] ?? 1), clip, !!cd.dash, settings.envelope ? ENVELOPE_ALPHA : 0);
       }
       markers[i] = chans.length === 1 ? drawMarkers(ctx, r, main, chans[0], ranges[keyOf.get(chans[0])!], tk) : 0;
       for (const key of keys) if (axisOf(i, key).range === 'robust') drawClipped(ctx, r, main, chans.filter((ch) => keyOf.get(ch) === key), ranges[key], tk);
@@ -4160,6 +4166,8 @@ export const gateApi = {
   sel: () => stack.sel,
   mode: () => settings.mode,
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
+  /** Per pane and channel: the runs of the min/max band under a reduced line (0 for a raw trace). */
+  envelopes: () => state.layers.map((l) => (l ? [...l.traces.values()].map((t) => t.gl.env?.runs.length ?? 0) : null)),
   /** Per pane and channel: the connected stretches drawn dashed, and the solid runs. */
   dashes: () => state.layers.map((l) => (l ? [...l.traces.values()].map((t) => [t.gl.dashes.length, t.gl.runs.length]) : null)),
   /** The marks the charts draw: matches and rows left out. */

@@ -14,7 +14,7 @@ run('modes', async ({ p, check, text, visible, until, settingsLS, wait }) => {
   check('panes start as charts', (await app('modes')).every((m) => m === 'chart'), await app('modes'));
   await viewMenu(0);
   const items = await p.$$eval('.viewmenu [data-vm]', (b) => b.map((x) => x.dataset.vm + ':' + x.getAttribute('aria-checked')));
-  check('the view menu', items.join() === 'chart:true,table:false,both:false,values:false,gauges:false,xy:false,spectrum:false,checks:false', items);
+  check('the view menu', items.join() === 'chart:true,table:false,both:false,cv:false,values:false,gauges:false,xy:false,spectrum:false,checks:false', items);
   await pick('values');
   check('pane 1 shows values', JSON.stringify(await app('modes')).startsWith('["values"'), await app('modes'));
   const chans = (await app('panes'))[0];
@@ -43,4 +43,12 @@ run('modes', async ({ p, check, text, visible, until, settingsLS, wait }) => {
   await pick('chart');
   check('chart again', (await app('modes'))[0] === 'chart' && (await settingsLS()).layouts['/data/flight.tlm'][0].mode === undefined, await app('modes'));
   check('and it draws', await until(() => { const d = window.__tlmApp.drawn()[0]; return d && d.length; }));
+
+  // Chart and values: the chart with its tiles below, one set of limits for both
+  await viewMenu(0);
+  await pick('cv');
+  check('Chart and values keeps the chart and adds a tile per channel', await until((n) => !!document.querySelector('#stack [data-pane="0"] .plot') && document.querySelectorAll('#stack [data-pane="0"] [data-tile]').length === n, chans.length));
+  check('the chart still draws', await until(() => { const d = window.__tlmApp.drawn()[0]; return d && d.length; }));
+  check('the tiles hold a value', await until((c) => /\d/.test(document.querySelector(`#stack [data-pane="0"] [data-tile="${c}"] .tval`)?.textContent ?? ''), chans[0]));
+  check('and are kept with the layout', (await settingsLS()).layouts['/data/flight.tlm'][0].mode === 'cv');
 });

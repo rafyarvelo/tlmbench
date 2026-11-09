@@ -53,13 +53,14 @@
     { mode: 'chart', label: 'Chart', hint: 'Channels over time' },
     { mode: 'table', label: 'Table', hint: 'The samples in view, one row each' },
     { mode: 'both', label: 'Chart and table', hint: 'The chart with its table below' },
+    { mode: 'cv', label: 'Chart and values', hint: 'The chart with value tiles below it' },
     { mode: 'values', label: 'Values', hint: 'Value tiles at the pointer, cursor A or the end of the view' },
     { mode: 'gauges', label: 'Gauges', hint: 'One widget per channel: gauges, bars, rings, a compass, a horizon and more' },
     { mode: 'xy', label: 'XY plot', hint: 'One channel against another: a GPS track, current against throttle' },
     { mode: 'spectrum', label: 'Spectrum', hint: 'The frequency content of each channel over the time view' },
     { mode: 'checks', label: 'Checks', hint: 'What the rules and checks found: the sets, their groups and verdicts' },
   ] as const;
-  const VIEW_ICON = { chart: ICON.vchart, table: ICON.vtable, both: ICON.vboth, values: ICON.vvalues, spectrum: ICON.vspectrum, checks: ICON.vchecks, gauges: ICON.vgauges, xy: ICON.vxy } as const;
+  const VIEW_ICON = { chart: ICON.vchart, table: ICON.vtable, both: ICON.vboth, cv: ICON.vboth, values: ICON.vvalues, spectrum: ICON.vspectrum, checks: ICON.vchecks, gauges: ICON.vgauges, xy: ICON.vxy } as const;
   const viewName = (i: number) => VIEWS.find((v) => v.mode === (stack.panes[i]?.mode ?? 'chart'))!.label;
   /** A channel dragged from Explorer: the pane it would land in (-1: a new pane). */
   let chanOver = $state<number | null>(null);
@@ -234,6 +235,23 @@
   }
 </script>
 
+{#snippet tileGrid(p: (typeof stack.panes)[number])}
+                <div class="tiles" data-tiles>
+                  <div class="twhere" data-where-line>{ui.valuesAt}</div>
+                  {#each p.channels as ch (ch)}
+                    {@const lvl = stack.values[ch] != null ? stack.levels[ch] : stack.restingLevels[ch]}
+                    <div class="tile {lvl ?? ''}" style="--c: {chCss(ch)}" data-tile={ch} data-level={lvl ?? ''} role="button" tabindex="0" data-tip="Warn and alarm limits" onclick={() => openChannelEditor(ch, 'limits')} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openChannelEditor(ch, 'limits'))}>
+                      <span class="tname">{chName(ch)}</span>
+                      <span class="tval">{stack.values[ch] ?? stack.resting[ch] ?? '–'}</span>
+                      {#if chUnit(ch)}<span class="tunit">{chUnit(ch)}</span>{/if}
+                      <span class="tlim">{limitText(chLimits(ch)) || 'Click to set limits'}</span>
+                    </div>
+                  {:else}
+                    <span class="mnote">Tick channels on the left to show them here</span>
+                  {/each}
+                </div>
+{/snippet}
+
 <svelte:document onpointerdown={outside} />
 <svelte:window onkeydowncapture={key} />
 
@@ -316,20 +334,7 @@
                 >
               </div>
               {#if p.mode === 'values'}
-                <div class="tiles" data-tiles>
-                  <div class="twhere" data-where-line>{ui.valuesAt}</div>
-                  {#each p.channels as ch (ch)}
-                    {@const lvl = stack.values[ch] != null ? stack.levels[ch] : stack.restingLevels[ch]}
-                    <div class="tile {lvl ?? ''}" style="--c: {chCss(ch)}" data-tile={ch} data-level={lvl ?? ''} role="button" tabindex="0" data-tip="Warn and alarm limits" onclick={() => openChannelEditor(ch, 'limits')} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openChannelEditor(ch, 'limits'))}>
-                      <span class="tname">{chName(ch)}</span>
-                      <span class="tval">{stack.values[ch] ?? stack.resting[ch] ?? '–'}</span>
-                      {#if chUnit(ch)}<span class="tunit">{chUnit(ch)}</span>{/if}
-                      <span class="tlim">{limitText(chLimits(ch)) || 'Click to set limits'}</span>
-                    </div>
-                  {:else}
-                    <span class="mnote">Tick channels on the left to show them here</span>
-                  {/each}
-                </div>
+                {@render tileGrid(p)}
               {:else if p.mode === 'table'}
                 <Table {i} />
               {:else if p.mode === 'spectrum'}
@@ -367,6 +372,7 @@
                   ></div>
                 {/if}
                 {#if p.mode === 'both'}<Table {i} height={p.tableH ?? 210} />{/if}
+                {#if p.mode === 'cv'}{@render tileGrid(p)}{/if}
               {/if}
             </section>
           {/each}
