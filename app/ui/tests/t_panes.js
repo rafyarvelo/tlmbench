@@ -14,7 +14,7 @@ run('panes', async ({ p, check, text, visible, paneCount, until, settingsLS, wai
 
   check('three panes', (await paneCount()) === 3);
   const items = await menu(0);
-  check('the ⋯ menu', items.join('|') === 'Axis and scale…|Event markers|Close others|Close panes below|Close pane|Duplicate|Duplicate beside|Split right|Split down|Add a pane below', items);
+  check('the ⋯ menu', items.join('|') === 'Event markers in this pane|Axis and scale…|Close others|Close panes below|Close pane|Duplicate|Duplicate beside|Split right|Split down|Add a pane below', items);
   await p.keyboard.press('Escape');
   check('Esc closes it', !(await visible('.panemenu')));
 

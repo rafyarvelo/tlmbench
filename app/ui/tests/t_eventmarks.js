@@ -39,11 +39,11 @@ run(
 
     // one pane only
     await p.click('#stack [data-pane="0"] [data-pmenu]');
-    await p.locator('.panemenu .mi', { hasText: /^Event markers$/ }).click();
+    await p.locator('.panemenu .mi', { hasText: /^Event markers in this pane$/ }).click();
     check('a pane\'s menu hides the markers in that pane only', await until(() => window.__tlmApp.eventsDrawn()[0] === 0 && window.__tlmApp.eventsDrawn()[1] === 3), await drawn());
     check('and it is kept with the layout', JSON.stringify((await settingsLS()).layouts ?? {}).includes('"events":false'));
     await p.click('#stack [data-pane="0"] [data-pmenu]');
-    await p.locator('.panemenu .mi', { hasText: /^Event markers$/ }).click();
+    await p.locator('.panemenu .mi', { hasText: /^Event markers in this pane$/ }).click();
     check('turning it back on', await until(() => window.__tlmApp.eventsDrawn()[0] === 3));
 
     // the chips decide underneath

@@ -173,8 +173,8 @@
   const items = (i: number): MenuItem[] => [
     ...(hasChart(i)
       ? [
+          { label: 'Event markers in this pane', checked: stack.panes[i]?.events !== false, data: { pm: 'events' }, run: () => toggleEvents(i) },
           { label: 'Axis and scale…', run: () => (axes = { ...menuAt!, i }) },
-          { label: 'Event markers', checked: stack.panes[i]?.events !== false, data: { pm: 'events' }, run: () => toggleEvents(i) },
           { sep: true } as const,
         ]
       : []),
