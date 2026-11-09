@@ -34,6 +34,9 @@ struct Files {
     store: Store,
     next: AtomicU32,
     open: Mutex<HashMap<u32, Arc<StoreOpened>>>,
+    /// A file with derived channels shows them joined to its recording: the recording alone, to join again when the
+    /// recipes change.
+    bases: Mutex<HashMap<u32, Arc<StoreOpened>>>,
     live: Mutex<HashMap<u32, Arc<LiveEntry>>>,
     /// Sorted and filtered row lists, by query token (the latest per table; see `table_query`).
     queries: Mutex<HashMap<u32, Arc<RowQuery>>>,
@@ -85,6 +88,80 @@ struct Opened {
     /// First and last sample times as decimal strings: JSON numbers lose i64 nanoseconds past 2^53.
     range: Option<(String, String)>,
     status: Status,
+    /// The derived channels among `info.channels` (they come after the recording's own).
+    derived: Vec<DerivedInfo>,
+    /// Recipes asked for that don't apply to this file, and why.
+    skipped: Vec<Skipped>,
+}
+
+/// A derived channel: where it is in the channel list, and the recipe it comes from.
+#[derive(Serialize)]
+struct DerivedInfo {
+    channel: usize,
+    name: String,
+    expr: String,
+    automatic: bool,
+}
+
+#[derive(Serialize)]
+struct Skipped {
+    name: String,
+    why: String,
+}
+
+/// `base` with the library's recipes that apply to it (the automatic ones, and those named in `attached`) as channels
+/// after its own: what the file shows, the channels derived, and the attached recipes that didn't apply.
+fn with_derived(
+    store: &Store,
+    base: &Arc<StoreOpened>,
+    attached: &[String],
+) -> Result<(Arc<StoreOpened>, Vec<DerivedInfo>, Vec<Skipped>), String> {
+    let lib = tlmbench_store::Library::new(store.root());
+    let recipes: Vec<tlmbench_expr::Recipe> =
+        lib.list().into_iter().filter(|r| r.automatic || attached.contains(&r.name)).collect();
+    let mut skipped: Vec<Skipped> = attached
+        .iter()
+        .filter(|n| !recipes.iter().any(|r| &r.name == *n))
+        .map(|n| Skipped { name: n.clone(), why: "There is no recipe with that name".into() })
+        .collect();
+    if recipes.is_empty() {
+        return Ok((base.clone(), Vec::new(), skipped));
+    }
+    let d = store.open_derived(base, &recipes).map_err(|e| e.to_string())?;
+    // an automatic recipe that needs channels the file lacks just doesn't apply; one the user attached is reported
+    skipped.extend(
+        d.skipped
+            .iter()
+            .filter(|(n, _)| attached.contains(n))
+            .map(|(n, e)| Skipped { name: n.clone(), why: e.msg.clone() }),
+    );
+    let Some(opened) = d.opened else { return Ok((base.clone(), Vec::new(), skipped)) };
+    let first = base.recording().info().channels.len();
+    let derived = d
+        .names
+        .iter()
+        .enumerate()
+        .map(|(k, name)| {
+            let r = recipes.iter().find(|r| &r.name == name).expect("computed from a recipe in the list");
+            DerivedInfo { channel: first + k, name: name.clone(), expr: r.expr.clone(), automatic: r.automatic }
+        })
+        .collect();
+    let joined = store.join(base.clone(), Arc::new(opened)).map_err(|e| e.to_string())?;
+    Ok((Arc::new(joined), derived, skipped))
+}
+
+/// Builds `o`'s pyramid in the background, reporting progress (the part of `open` shared with applying recipes).
+fn build_in_background(o: Arc<StoreOpened>, progress: Channel<Progress>) {
+    std::thread::spawn(move || {
+        let rec = o.recording();
+        let send = |done: u64, total: u64, error: Option<String>| {
+            let built_until = done.checked_sub(1).map(|i| rec.time_at(i as usize).to_string());
+            let _ = progress.send(Progress { done, total, built_until, error });
+        };
+        if let Err(e) = o.build(&mut |done, total| send(done, total, None)) {
+            send(0, rec.info().samples as u64, Some(e.to_string()));
+        }
+    });
 }
 
 /// Build progress, streamed while the pyramid is built.
@@ -182,40 +259,167 @@ async fn open(
     path: String,
     profile: Option<ImportProfile>,
     part: Option<String>,
+    recipes: Option<Vec<String>>,
     progress: Channel<Progress>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
     let store = files.store.clone();
-    let o = spawn_blocking(move || {
+    let attached = recipes.unwrap_or_default();
+    let (base, shown, derived, skipped) = spawn_blocking(move || -> Result<_, String> {
         let profile = profile.or_else(|| saved_profile(store.root(), Path::new(&path)));
-        store.with_profile(profile).open_part(Path::new(&path), None, part.as_deref())
+        let base = store
+            .clone()
+            .with_profile(profile)
+            .open_part(Path::new(&path), None, part.as_deref())
+            .map_err(|e| e.to_string())?;
+        let base = Arc::new(base);
+        let (shown, derived, skipped) = with_derived(&store, &base, &attached)?;
+        Ok((base, shown, derived, skipped))
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
-    let o = Arc::new(o);
+    .map_err(|e| e.to_string())??;
     let id = files.next.fetch_add(1, Ordering::Relaxed) + 1;
-    let info = o.recording().info().clone();
+    let info = shown.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
-    let status = o.status();
-    files.open.lock().unwrap().insert(id, o.clone());
+    let status = shown.status();
+    files.open.lock().unwrap().insert(id, shown.clone());
+    files.bases.lock().unwrap().insert(id, base);
     if status != Status::Built {
-        std::thread::spawn(move || {
-            let rec = o.recording();
-            let send = |done: u64, total: u64, error: Option<String>| {
-                let built_until = done.checked_sub(1).map(|i| rec.time_at(i as usize).to_string());
-                let _ = progress.send(Progress { done, total, built_until, error });
-            };
-            if let Err(e) = o.build(&mut |done, total| send(done, total, None)) {
-                send(0, rec.info().samples as u64, Some(e.to_string()));
-            }
-        });
+        build_in_background(shown, progress);
     }
-    Ok(Opened { id, info, range, status })
+    Ok(Opened { id, info, range, status, derived, skipped })
+}
+
+/// Changes which recipes an open file shows (the automatic ones, and these): the same file id, with its channels
+/// recomputed. The recording's own channels keep their numbers; derived ones come after.
+#[tauri::command]
+async fn derive_apply(
+    file: u32,
+    recipes: Vec<String>,
+    progress: Channel<Progress>,
+    files: State<'_, Files>,
+) -> Result<Opened, String> {
+    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let store = files.store.clone();
+    let b = base.clone();
+    let (shown, derived, skipped) =
+        spawn_blocking(move || with_derived(&store, &b, &recipes)).await.map_err(|e| e.to_string())??;
+    let info = shown.recording().info().clone();
+    let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
+    let status = shown.status();
+    if let Some(old) = files.open.lock().unwrap().insert(file, shown.clone()) {
+        old.cancel();
+    }
+    if status != Status::Built {
+        build_in_background(shown, progress);
+    }
+    Ok(Opened { id: file, info, range, status, derived, skipped })
+}
+
+#[tauri::command]
+fn recipes_list(files: State<'_, Files>) -> Vec<tlmbench_expr::Recipe> {
+    tlmbench_store::Library::new(files.store.root()).list()
+}
+
+/// Saves a recipe; `replacing` is its name before an edit (a rename).
+#[tauri::command]
+fn recipe_save(
+    recipe: tlmbench_expr::Recipe,
+    replacing: Option<String>,
+    files: State<'_, Files>,
+) -> Result<(), String> {
+    // the expression must at least parse: a recipe that can't is never saved
+    tlmbench_expr::parse(&recipe.expr).map_err(|e| format!("{} (at {})", e.msg, e.at))?;
+    tlmbench_store::Library::new(files.store.root()).save(&recipe, replacing.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn recipe_delete(name: String, files: State<'_, Files>) -> Result<(), String> {
+    tlmbench_store::Library::new(files.store.root()).delete(&name).map_err(|e| e.to_string())
+}
+
+/// Adds the recipes in a recipe file's text; their names.
+#[tauri::command]
+fn recipes_import(text: String, files: State<'_, Files>) -> Result<Vec<String>, String> {
+    tlmbench_store::Library::new(files.store.root()).import(&text)
+}
+
+/// The named recipes (all when none are named) as a recipe file's text.
+#[tauri::command]
+fn recipes_export(names: Vec<String>, files: State<'_, Files>) -> String {
+    tlmbench_store::Library::new(files.store.root()).export(&names)
+}
+
+#[derive(Serialize)]
+struct CheckError {
+    msg: String,
+    at: usize,
+}
+
+/// The Derive dialog's check: an expression against a file's channels, with a summary of what it gives over the start
+/// of the file, or the mistake and the character it is at.
+#[tauri::command]
+async fn derive_check(
+    file: u32,
+    expr: String,
+    files: State<'_, Files>,
+) -> Result<Result<tlmbench_store::Preview, CheckError>, String> {
+    let o = files.get(file)?;
+    spawn_blocking(move || tlmbench_store::check(o.recording(), &expr).map_err(|e| CheckError { msg: e.msg, at: e.at }))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// A channel's spectrum over a time view.
+#[derive(Serialize)]
+struct SpectrumReply {
+    channel: u32,
+    /// Hz between bins, and the Nyquist frequency.
+    df: f64,
+    nyquist: f64,
+    peak_hz: f64,
+    peak_amp: f64,
+    /// Samples transformed.
+    n: usize,
+    /// Amplitude per bin, DC first.
+    mag: Vec<f32>,
+}
+
+/// The Spectrum view: each channel's frequency content over `t0..t1` (none for a view under 16 samples).
+#[tauri::command]
+async fn spectrum(
+    file: u32,
+    channels: Vec<u32>,
+    t0: String,
+    t1: String,
+    files: State<'_, Files>,
+) -> Result<Vec<SpectrumReply>, String> {
+    let o = files.get(file)?;
+    let (t0, t1) = (parse_time(&t0)?, parse_time(&t1)?);
+    spawn_blocking(move || {
+        channels
+            .iter()
+            .filter_map(|&c| {
+                let s = o.spectrum(c as usize, t0, t1, tlmbench_expr::fft::MAX_POINTS)?;
+                Some(SpectrumReply {
+                    channel: c,
+                    df: s.df,
+                    nyquist: s.nyquist,
+                    peak_hz: s.peak_hz,
+                    peak_amp: s.peak_amp,
+                    n: s.n,
+                    mag: s.mag.iter().map(|&m| m as f32).collect(),
+                })
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn close(file: u32, files: State<'_, Files>) {
+    files.bases.lock().unwrap().remove(&file);
     if let Some(o) = files.open.lock().unwrap().remove(&file) {
         o.cancel();
     }
@@ -298,7 +502,7 @@ async fn live_connect(endpoint: String, descriptor: Option<String>, files: State
     let o = entry.follow.read().unwrap().opened();
     let info = o.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
-    Ok(Opened { id, info, range, status: Status::Built })
+    Ok(Opened { id, info, range, status: Status::Built, derived: Vec::new(), skipped: Vec::new() })
 }
 
 fn tlmbench_decode_descriptor(text: &str) -> Result<tlmbench_decode::descriptor::Descriptor, String> {
@@ -1397,12 +1601,21 @@ fn main() {
             store: Store::new(None),
             next: AtomicU32::new(0),
             open: Mutex::default(),
+            bases: Mutex::default(),
             live: Mutex::default(),
             queries: Mutex::default(),
             cancels: Mutex::default(),
         })
         .invoke_handler(tauri::generate_handler![
             open,
+            derive_apply,
+            recipes_list,
+            recipe_save,
+            recipe_delete,
+            recipes_import,
+            recipes_export,
+            derive_check,
+            spectrum,
             packet_parts,
             import_inspect,
             profile_save,
@@ -1503,6 +1716,73 @@ mod tests {
         // past the end: no rows, the count still given
         let out = encode_rows(rec.as_ref(), &[0], t(2), t(8), 100, 10);
         assert_eq!((u64::from_le_bytes(out[16..24].try_into().unwrap()), out.len()), (6, 32));
+    }
+}
+
+#[cfg(test)]
+mod derive_tests {
+    use super::*;
+
+    fn recipe(name: &str, expr: &str, automatic: bool) -> tlmbench_expr::Recipe {
+        tlmbench_expr::Recipe {
+            name: name.into(),
+            expr: expr.into(),
+            unit: Some("W".into()),
+            category: None,
+            decimals: None,
+            automatic,
+        }
+    }
+
+    /// Automatic recipes join a file's channels, attached ones too, and one that can't apply is reported only when asked for.
+    #[test]
+    fn a_file_shows_its_automatic_and_attached_recipes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("p.csv");
+        let body: String = (0..50).map(|i| format!("{i},{},{}\n", 10 + i % 3, 1 + i % 4)).collect();
+        std::fs::write(&path, format!("time,v,i\n{body}")).unwrap();
+        let store = Store::new(Some(&dir.path().join("cache")));
+        let lib = tlmbench_store::Library::new(store.root());
+        lib.save(&recipe("Power", "v * i", true), None).unwrap();
+        lib.save(&recipe("Needs gps", "gps + 1", true), None).unwrap(); // automatic, cannot apply: silent
+        lib.save(&recipe("Half", "v / 2", false), None).unwrap(); // only when attached
+        lib.save(&recipe("Bad", "nope + 1", false), None).unwrap();
+        let base = Arc::new(store.open(&path, None).unwrap());
+
+        let (shown, derived, skipped) = with_derived(&store, &base, &[]).unwrap();
+        let names: Vec<&str> = shown.recording().info().channels.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["v", "i", "Power"]);
+        assert_eq!(
+            (derived.len(), derived[0].channel, derived[0].expr.as_str(), derived[0].automatic),
+            (1, 2, "v * i", true)
+        );
+        assert!(skipped.is_empty());
+
+        let (shown, derived, skipped) =
+            with_derived(&store, &base, &["Half".into(), "Bad".into(), "Gone".into()]).unwrap();
+        assert_eq!(shown.recording().info().channels.len(), 4);
+        assert_eq!(
+            derived.iter().map(|d| (d.name.as_str(), d.channel)).collect::<Vec<_>>(),
+            [("Half", 2), ("Power", 3)]
+        );
+        let mut s: Vec<(String, String)> = skipped.into_iter().map(|s| (s.name, s.why)).collect();
+        s.sort();
+        assert_eq!(
+            s,
+            [
+                ("Bad".into(), "There's no channel called nope".into()),
+                ("Gone".into(), "There is no recipe with that name".into())
+            ]
+        );
+        // the derived channel's values are in the joined recording
+        assert_eq!(shown.recording().value_at(3, 1, &Default::default()), 22.0);
+
+        // with no recipes the file is just the recording
+        for r in ["Power", "Needs gps", "Half", "Bad"] {
+            lib.delete(r).unwrap();
+        }
+        let (plain, derived, _) = with_derived(&store, &base, &[]).unwrap();
+        assert!(Arc::ptr_eq(&plain, &base) && derived.is_empty());
     }
 }
 

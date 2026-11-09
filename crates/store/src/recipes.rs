@@ -50,7 +50,7 @@ impl Library {
             .filter_map(|t| tlmbench_expr::recipe::from_toml(&t).ok())
             .flatten()
             .collect();
-        out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        out.sort_by_key(|r| r.name.to_lowercase());
         out.dedup_by(|a, b| a.name == b.name);
         out
     }
