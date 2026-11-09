@@ -11,6 +11,8 @@ use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod check;
+
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
 use tlmbench_core::datetime::{format_duration, format_time, parse_decimal, parse_iso};
@@ -139,6 +141,9 @@ enum Command {
         #[command(flatten)]
         common: Common,
     },
+    /// Run check sets on recordings and report: exit 0 all pass, 1 a check failed, 2 a file or check couldn't run, 3 a
+    /// configuration error (the highest applies)
+    Check(check::Args),
     /// Record a live source into a new session folder until it ends (or --seconds pass); prints its stream health
     Record {
         /// tcp://host:port (connects to it), udp://host:port (listens on it), serial://port?baud=rate (a serial port,
@@ -332,6 +337,7 @@ fn main() -> ExitCode {
             let c = ConvertArgs { to, out, channels, span, resample, layout, time, raw, delimiter, units_row, json };
             convert(&files, &c, jobs, &common)
         }
+        Command::Check(a) => check::run(a),
         Command::Record { endpoint, descriptor, out, seconds, idle_end, ring_mb, json } => {
             record(endpoint, descriptor.as_deref(), out, seconds, idle_end, ring_mb, json)
         }
@@ -1005,8 +1011,19 @@ fn record(
 /// The recipes `--derived`, `--recipes` and `--expr` ask for, for the recording at `path`: the library's automatic ones
 /// (with `--derived`), then the one-offs. One-offs are marked so a mistake in one is an error, not a skipped recipe.
 fn recipes_for(path: &std::path::Path, common: &Common) -> Result<(Vec<tlmbench_expr::Recipe>, usize), Fail> {
+    recipe_library(path, common, common.derived, false)
+}
+
+/// The recipe library for `path` (`load`: read it even without `--derived`; `every`: not only the automatic ones), then
+/// the `--expr` one-offs.
+fn recipe_library(
+    path: &std::path::Path,
+    common: &Common,
+    load: bool,
+    every: bool,
+) -> Result<(Vec<tlmbench_expr::Recipe>, usize), Fail> {
     let mut out: Vec<tlmbench_expr::Recipe> = Vec::new();
-    if common.derived {
+    if load {
         let mut files = Vec::new();
         let mut roots = common.recipes.clone();
         if roots.is_empty() {
@@ -1037,7 +1054,9 @@ fn recipes_for(path: &std::path::Path, common: &Common) -> Result<(Vec<tlmbench_
                 }
             }
         }
-        out.retain(|r| r.automatic);
+        if !every {
+            out.retain(|r| r.automatic);
+        }
     }
     let library = out.len();
     for e in &common.exprs {

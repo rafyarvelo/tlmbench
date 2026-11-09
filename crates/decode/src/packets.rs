@@ -983,7 +983,8 @@ fn read_index(dir: &Path) -> Option<(IndexManifest, Vec<Entry>)> {
 fn write_index(dir: &Path, m: &IndexManifest, index: &[Entry]) -> Result<()> {
     let parent = dir.parent().expect("cache dirs have a parent");
     fs::create_dir_all(parent).map_err(io_err(parent))?;
-    let tmp = parent.join(format!(".{}.tmp-{}", dir.file_name().unwrap().to_string_lossy(), std::process::id()));
+    let tmp =
+        parent.join(format!(".{}.tmp-{}", dir.file_name().unwrap().to_string_lossy(), crate::cache::unique_suffix()));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp).map_err(io_err(&tmp))?;
     let raw: Vec<u8> = index

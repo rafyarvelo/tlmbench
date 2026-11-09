@@ -769,7 +769,14 @@ impl Store {
         let res = run_set(&env, set, rec.info().t_first.unwrap_or(0), recipes);
         let dir = path.parent().expect("a file in checks-results/");
         fs::create_dir_all(dir).map_err(Error::io(dir))?;
-        let tmp = path.with_extension("tmp");
+        // files with the same contents share a key, and may be checked at the same moment: each writes its own
+        // temporary file
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let tmp = path.with_extension(format!(
+            "{}-{}.tmp",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         fs::write(&tmp, serde_json::to_string(&res).expect("results serialize")).map_err(Error::io(&tmp))?;
         fs::rename(&tmp, &path).map_err(Error::io(&path))?;
         Ok(res)

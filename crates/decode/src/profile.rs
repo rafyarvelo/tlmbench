@@ -67,18 +67,22 @@ pub struct ImportProfile {
     pub time: TimeChoice,
     pub rate: RateChoice,
     pub columns: Vec<ColumnChoice>,
+    /// Check sets that run on files with this profile (by name). They change nothing about how the file opens.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub check_sets: Vec<String>,
 }
 
 impl ImportProfile {
     /// True when the profile changes nothing (the file opens as if it had none).
     pub fn is_default(&self) -> bool {
-        self == &Self::default()
+        self == &Self { check_sets: self.check_sets.clone(), ..Self::default() }
     }
 
     /// A short hash of the profile's meaning, for the cache key. Choices equal to the defaults don't count, and
     /// column choices count in the order of their sources, so equal profiles always share an entry.
     pub fn key(&self) -> String {
         let mut p = self.clone();
+        p.check_sets.clear();
         p.columns.retain(|c| *c != ColumnChoice { source: c.source.clone(), ..Default::default() });
         p.columns.sort_by(|a, b| a.source.cmp(&b.source));
         let json = serde_json::to_vec(&p).expect("profiles serialize");

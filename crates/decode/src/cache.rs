@@ -204,12 +204,20 @@ pub(crate) fn read_manifest(dir: &Path) -> Option<Manifest> {
     (m.version == MANIFEST_VERSION).then_some(m)
 }
 
+/// A suffix for a temporary folder that no other build, in this process or another, uses at the same moment (files with
+/// the same contents share a cache entry and may be opened at once).
+pub(crate) fn unique_suffix() -> String {
+    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    format!("{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+}
+
 /// Builds a cache entry: `write` fills a temporary folder beside `dir` and returns the manifest, which is written
 /// last; the folder is then renamed into place, so a failed or interrupted build leaves nothing.
 pub(crate) fn build_entry(dir: &Path, write: impl FnOnce(&Path) -> Result<Manifest>) -> Result<Manifest> {
     let parent = dir.parent().expect("cache dirs have a parent");
     fs::create_dir_all(parent).map_err(io_err(parent))?;
-    let tmp = parent.join(format!(".{}.tmp-{}", dir.file_name().unwrap().to_string_lossy(), std::process::id()));
+    let tmp =
+        parent.join(format!(".{}.tmp-{}", dir.file_name().unwrap().to_string_lossy(), crate::cache::unique_suffix()));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp).map_err(io_err(&tmp))?;
     let manifest = match write(&tmp) {
