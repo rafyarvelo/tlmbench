@@ -105,6 +105,8 @@ export const actions = {
   deriveRemove: (_ch: number, _from: 'file' | 'all') => {},
   /** Events: add a marker at cursor A or a range A–B to the open file, save an edited one, delete one, frame one in the view. */
   eventAdd: (_range: boolean) => {},
+  /** A pane's event markers were switched: draw and save the layout. */
+  eventsRedraw: () => {},
   eventSave: (_e: TlmEvent) => {},
   eventDelete: (_id: string) => {},
   eventShow: (_id: string) => {},

@@ -127,6 +127,9 @@ export interface Settings {
   chdisp: Record<string, ChannelDisplay>;
   /** Warn and alarm limits by channel name; a channel without an entry has the starting ones for its name, if any. */
   limits: Record<string, Limits>;
+  /** Event markers show on charts and the overview (E); the Events panel's chips decide too unless unlinked. */
+  eventsOn: boolean;
+  evChartsFollow: boolean;
   /** Event categories (name, colour, whether charts mark them); events point at them by id. */
   eventCats: EventCategory[];
   /** Value labels (enums) by channel name: the stored number as text → what it is called. */
@@ -207,6 +210,8 @@ export const DEFAULTS: Settings = {
   chdisp: {},
   limits: {},
   valueMaps: {},
+  eventsOn: true,
+  evChartsFollow: true,
   eventCats: structuredClone(DEFAULT_CATEGORIES),
   exCategories: true,
   exCatClosed: [],

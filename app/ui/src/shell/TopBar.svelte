@@ -91,6 +91,7 @@
         ]
       : []),
     { heading: 'View' },
+    { label: 'Event markers', kbd: 'E', checked: settings.eventsOn, run: () => setSetting('eventsOn', !settings.eventsOn) },
     { label: 'Lock the time view', kbd: 'L', checked: settings.locked, run: () => setSetting('locked', !settings.locked) },
     { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
     { label: 'Overview above the panes', checked: settings.overviewTop, run: () => setSetting('overviewTop', !settings.overviewTop) },
@@ -233,6 +234,7 @@
   {/if}
   {#if !narrow}<span class="vsep" aria-hidden="true"></span>{/if}
   {#if !narrow}
+    <button class="tb" id="b-events" aria-pressed={settings.eventsOn} aria-label="Event markers" data-tip="Show or hide event markers on the charts and the overview (E)" onclick={() => setSetting('eventsOn', !settings.eventsOn)}>{@html ICON.events}</button>
     <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
   {/if}
   {#if barW >= 1200}

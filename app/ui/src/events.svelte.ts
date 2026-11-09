@@ -46,3 +46,20 @@ export function listed(): TlmEvent[] {
 
 /** A fresh id for an event. */
 export const newId = (): string => 'm' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+
+/** The events charts and the overview mark: every event unless E is off, in categories shown on charts (and, while the
+ *  panel's chips are linked, not hidden there). */
+export function marked(): TlmEvent[] {
+  if (!settings.eventsOn) return [];
+  return events.list.filter((e) => (catOf(e.category)?.chart ?? true) && !(settings.evChartsFollow && events.hidden.includes(e.category)));
+}
+
+// What charts and the overview mark follows the list and the panel's chips: draw again when either changes.
+let redraw = () => {};
+export const onMarksChange = (f: () => void): void => void (redraw = f);
+$effect.root(() => {
+  $effect(() => {
+    void JSON.stringify([events.list, events.hidden]);
+    redraw();
+  });
+});

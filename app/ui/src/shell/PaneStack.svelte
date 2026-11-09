@@ -34,7 +34,7 @@
     axisKey,
   } from '../stack.svelte';
   import { settings } from '../settings.svelte';
-  import { ui } from '../ui.svelte';
+  import { actions, ui } from '../ui.svelte';
   import AxisDialog from './AxisDialog.svelte';
   import AddPane from './AddPane.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -171,7 +171,13 @@
   }
 
   const items = (i: number): MenuItem[] => [
-    ...(hasChart(i) ? [{ label: 'Axis and scale…', run: () => (axes = { ...menuAt!, i }) }, { sep: true } as const] : []),
+    ...(hasChart(i)
+      ? [
+          { label: 'Axis and scale…', run: () => (axes = { ...menuAt!, i }) },
+          { label: 'Event markers', checked: stack.panes[i]?.events !== false, data: { pm: 'events' }, run: () => toggleEvents(i) },
+          { sep: true } as const,
+        ]
+      : []),
     { label: 'Close others', run: () => closeOthers(i), disabled: stack.panes.length < 2 },
     { label: 'Close panes below', run: () => closeBelow(i), disabled: !hasBelow(i) },
     { label: 'Close pane', run: () => closePane(i) },
@@ -182,6 +188,13 @@
     { label: 'Split down', run: () => splitDown(i) },
     { label: 'Add a pane below', run: () => addPaneBelow(i) },
   ];
+
+  function toggleEvents(i: number) {
+    const p = stack.panes[i];
+    if (p.events === false) delete p.events;
+    else p.events = false;
+    actions.eventsRedraw();
+  }
 
   const viewItems = (i: number): MenuItem[] =>
     VIEWS.map((v) => ({ label: v.label, note: v.hint, icon: VIEW_ICON[v.mode], checked: (stack.panes[i]?.mode ?? 'chart') === v.mode, radio: true, data: { vm: v.mode }, run: () => setMode(i, v.mode) }));

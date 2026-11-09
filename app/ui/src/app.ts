@@ -21,7 +21,7 @@ import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
-import { events, newId, type TlmEvent } from './events.svelte';
+import { catColor, events, marked, newId, onMarksChange, type TlmEvent } from './events.svelte';
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, type Limits, limitsOf, openChannelEditor, WIDTHS } from './display.svelte';
 import {
   addChannels,
@@ -750,6 +750,7 @@ function draw(): void {
         if (y && !y.log) learnDecimals(state.file.id, ch, y.min, y.max);
       }
     drawAxes(ctx, r, { t0: state.t0, t1: state.t1, left: ranges.u0, right: ranges.u1 }, { ...style, timeLabels: labelled(i) });
+    evDrawn[i] = stack.panes[i].events !== false ? drawEvents(ctx, r, marked(), tk) : 0;
     for (const ch of chans) drawLimits(ctx, r, chLimits(ch), ranges[keyOf.get(ch) ?? 'u0'], tk);
     if (main && span > 0) {
       const x: Axis = { a: (2 * main.xScaleNs) / span, b: (2 * Number(main.originNs - state.t0)) / span - 1 };
@@ -829,6 +830,53 @@ function robust(ts: DrawnTrace[]): [number, number] | null {
 }
 
 /** Ignore outliers: what's beyond the axis's range is clipped, marked with a small triangle at the edge. */
+/** How many events each pane drew last (tests read it). */
+const evDrawn: number[] = [];
+
+/** Events on a chart, quietly: a range is a wash fading from a thin bar at the top to nothing; an instant a fading hairline
+ *  under a small notch. No labels: the pointer readout and the Events panel name them. */
+function drawEvents(ctx: CanvasRenderingContext2D, r: Rect, list: TlmEvent[], _tk: Record<string, string>): number {
+  const span = Number(state.t1 - state.t0);
+  if (!list.length || span <= 0) return 0;
+  let drawn = 0;
+  const px = (t: bigint) => r.x + (Number(t - state.t0) / span) * r.w;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.clip();
+  for (const e of list) {
+    const [a, d] = [BigInt(e.start), BigInt(e.duration)];
+    if (a + d < state.t0 || a > state.t1) continue;
+    drawn++;
+    const color = catColor(e.category);
+    if (d > 0n) {
+      const [x0, x1] = [px(a), Math.max(px(a + d), px(a) + 2)];
+      const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h * 0.9);
+      g.addColorStop(0, css(color, 0.26));
+      g.addColorStop(1, css(color, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x0, r.y, x1 - x0, r.h * 0.9);
+      ctx.fillStyle = css(color, 0.9);
+      ctx.fillRect(x0, r.y, x1 - x0, 2);
+    } else {
+      const x = Math.round(px(a)) + 0.5;
+      const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h * 0.9);
+      g.addColorStop(0, css(color, 0.6));
+      g.addColorStop(1, css(color, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 0.5, r.y, 1, r.h * 0.9);
+      ctx.fillStyle = css(color, 0.95);
+      ctx.beginPath();
+      ctx.moveTo(x - 4, r.y);
+      ctx.lineTo(x + 4, r.y);
+      ctx.lineTo(x, r.y + 6);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+  return drawn;
+}
+
 /** A channel's limits on its axis, under the traces: shading beyond each (yellow past warn, red past alarm) and a dashed line at each. */
 function drawLimits(ctx: CanvasRenderingContext2D, r: Rect, lim: Limits, ax: YAxis | undefined, tk: Record<string, string>): void {
   if (!ax || ax.log || !hasLimits(lim) || !(ax.max > ax.min)) return;
@@ -1189,6 +1237,14 @@ function drawOverview(ctx: CanvasRenderingContext2D, tk: Record<string, string>)
     ctx.fillStyle = css(tk['--fg'], 0.6);
     ctx.fillRect(x0, r.y, x1 - x0, 3);
   }
+  // a tick along the bottom for each event, in its category's colour
+  for (const e of marked()) {
+    const [a, d] = [BigInt(e.start), BigInt(e.duration)];
+    const x0 = r.x + (Number(a - t0) / span) * r.w;
+    const x1 = Math.max(x0 + 2, r.x + (Number(a + d - t0) / span) * r.w);
+    ctx.fillStyle = css(catColor(e.category), 0.9);
+    ctx.fillRect(x0, r.y + r.h - 4, x1 - x0, 4);
+  }
   drawBuilding(ctx, r, false, t0, t1);
   drawPlayhead(ctx, r, tk, t0, t1);
   // the window on the current view
@@ -1276,7 +1332,8 @@ function updateChips(): void {
   });
   if (JSON.stringify(values) !== JSON.stringify(stack.values)) stack.values = values;
   if (JSON.stringify(levels) !== JSON.stringify(stack.levels)) stack.levels = levels;
-  ui.pointer = state.hoverT != null ? `pointer ${readoutTime(state.hoverT, Number(state.t1 - state.t0))}` : '';
+  const hit = state.hoverT != null ? eventAt(state.hoverT) : null;
+  ui.pointer = state.hoverT != null ? `pointer ${readoutTime(state.hoverT, Number(state.t1 - state.t0))}${hit ? ` · ${hit.name}` : ''}` : '';
 }
 
 function saveLayout(): void {
@@ -2508,6 +2565,14 @@ async function loadEvents(): Promise<void> {
   }
 }
 
+onMarksChange(() => scheduleDraw());
+
+/** The marked event the pointer time is in (an instant: within a few pixels of it). */
+function eventAt(t: bigint): TlmEvent | null {
+  const tol = BigInt(Math.round(Number(state.t1 - state.t0) / 250));
+  return marked().find((e) => t >= BigInt(e.start) - tol && t <= BigInt(e.start) + BigInt(e.duration) + tol) ?? null;
+}
+
 /** Adds a marker at cursor A, or a range from A to B, to the open file. */
 async function eventAdd(range: boolean): Promise<void> {
   const f = state.file;
@@ -3531,6 +3596,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'p') setMode('pan');
   else if (k === 'c') setMode('cursor');
   else if (k === 'f') fit();
+  else if (k === 'e') setSetting('eventsOn', !settings.eventsOn);
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') panBy(e.key === 'ArrowLeft' ? -0.15 : 0.15);
   else if (k === '+' || k === '=' || e.key === 'ArrowUp') zoomBy(0.7);
   else if (k === '-' || e.key === 'ArrowDown') zoomBy(1 / 0.7);
@@ -3560,6 +3626,7 @@ function toggleFocus(on = !ui.focus): void {
 }
 
 Object.assign(actions, {
+  eventsRedraw: () => (saveLayout(), renderPanes()),
   eventAdd: (range: boolean) => void eventAdd(range),
   eventSave: (e: TlmEvent) => void eventSave(e),
   eventDelete: (id: string) => void eventDelete(id),
@@ -3733,6 +3800,10 @@ onSetting((key) => {
     scheduleResize();
     return;
   }
+  if (key === 'eventsOn' || key === 'evChartsFollow' || key === 'eventCats') {
+    renderPanes();
+    return;
+  }
   if (key === 'limits' || key === 'chdisp' || key === 'valueMaps') {
     if (key !== 'chdisp') void labelsChanged();
     else void adjustChanged();
@@ -3844,6 +3915,8 @@ export const gateApi = {
   /** The marks the charts draw: matches and rows left out. */
   bands: () => Object.entries(ui.bands).map(([i, [a, b]]) => [Number(i), String(a), String(b)]),
   marks: () => (ui.marks ? { pane: ui.marks.pane, hits: ui.marks.hits.length, excluded: ui.marks.excluded.length, overview: ui.marks.overview.length } : null),
+  /** How many events each pane drew last. */
+  eventsDrawn: () => [...evDrawn],
   /** How many sample markers each pane drew last. */
   markers: () => [...markers],
   /** The overview's channels as last drawn: columns with values and those with a band. */

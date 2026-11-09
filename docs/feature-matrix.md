@@ -73,7 +73,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Time range (click to change the format), span in words | v1 | ✓ | ✓ | |
 | Mouse modes, Clear, Back, Fit, Play back, Lock | v1 | ✓ | ✓ | |
 | All panes as charts, tables or both (top bar) | v1 | ✓ | ✓ built (`t_allmodes`; panes of values keep their view) | 4.2 |
-| Event markers toggle (top bar, E) | v1 | ✓ | ✗ | 5.2 |
+| Event markers toggle (top bar, E) | v1 | ✓ | ✓ | 5.2 |
 | Remove every channel / every pane (top bar) | v1 | ✓ | ✓ (icons at 1300 px and wider, ⋯ otherwise) |  |
 | ⋯ menu: View, All panes, Window groups | v1 | ✓ | ✓ | |
 | ⋯ menu: Export group (data, image, HTML) | v1 | ✓ | ◐ (data and image; HTML waits) | 5.10 |
@@ -126,7 +126,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Panes synced on x; split right (3 a row) and down; drag to move | v1 | ✓ | ✓ | |
 | Pane ⋯ menu: axis and scale, close, duplicate, split, add below | v1 | ✓ | ✓ | |
-| Pane ⋯ menu: event markers in this pane | v1 | ✓ | ✗ | 5.2 |
+| Pane ⋯ menu: event markers in this pane | v1 | ✓ | ✓ | 5.2 |
 | Chips: drag, ×, +N overflow, value on hover | v1 | ✓ | ✓ | |
 | Chip click opens the channel editor (Display and Limits) | v1 | ✓ | ◐ (Display tab: name, colour, decimals, unit, line style; Limits, Value labels and Missing wait) | 5.2 |
 | View menu: Chart, Table, Chart and table, Values | v1 | ✓ | ✓ | |
@@ -136,14 +136,14 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Y zoom: Shift + scroll, drag on the y-axis | v1 | ✓ | ✓ (sets the axis's fixed range; owner, Nov 8) |  |
 | Fixed pane heights and a height grip, as the prototype | v1 | ✓ | ✓ |  |
 | Limit lines and shading past warn and alarm | v1 | ✓ | ✓ | 5.2 |
-| Event markers on charts (washes, notches, tooltips) | v1 | ✓ | ✗ | 5.2 |
+| Event markers on charts (washes, notches, tooltips) | v1 | ✓ | ◐ (washes and notches; the pointer readout names the event; no tooltip) | 5.2 |
 | Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ◐ (Apply to charts and its chip work, the core leaves the rows out; match marks and hatching are drawn from `table_marks`) | 4.2 |
 | Table rows band on the charts | v1 | ✓ | ✓ built (`t_tablequery`) | 4.2 |
 | Settings → Gaps in lines: break at gaps, or connect across them (dashed) | — (owner, Nov 8; needs a design entry) | ✗ | ✓ built (`t_gaps`; core `connect_gaps`, `query view --connect-gaps`) | 4.2 |
 | Hover readout snapping to samples; legend values | v1 | ✓ | ✓ | |
 | Overview: picker, range, window, gestures, top or bottom | v1 | ✓ | ✓ | |
 | Overview drawing: min/max band per channel with a midline | v1 | ✓ | ✓ |  |
-| Overview event ticks | v1 | ✓ | ✗ | 5.2 |
+| Overview event ticks | v1 | ✓ | ✓ | 5.2 |
 | Values view: tiles at the pointer, cursor A or the end of the view | v1 | ✓ | ✓ | |
 | Values tiles coloured by limits | v1 | ✓ | ✓ | 5.2 |
 
@@ -232,7 +232,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Events: name, start, duration, category, source; per recording in the cache | v1 | ✓ | ✗ | 5.2 |
 | Events panel: list, add from cursors, inline edit, filters, grouping | v1 | ✓ | ✓ | 5.2 |
-| Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ✗ | 5.2 |
+| Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ◐ (Settings: add, rename, recolour, Charts, delete; sharing waits) | 5.2, 5.7 |
 | Value labels (enums) on channels | v1 | ✓ | ✓ (tiles, tables, chips and Measure show the text; expressions name them; axis ticks per value wait) | 5.2 |
 | Channel limits (warn, alarm) with sensible defaults | v1 | ✓ | ✓ | 5.2 |
 | Rules: an expression held for a minimum time, marking events | v1 | ✓ | ✗ | 5.3 |

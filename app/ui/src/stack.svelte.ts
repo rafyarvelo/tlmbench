@@ -43,6 +43,8 @@ export interface Pane {
   tfilt?: { scope?: 'file'; apply?: boolean };
   /** Channels whose columns the table leaves out (they stay in the pane and its chart). */
   hideCols?: number[];
+  /** Event markers on this pane's chart (false: hidden here; the top bar's E and the categories decide underneath). */
+  events?: boolean;
   beside?: boolean;
   under?: boolean;
 }

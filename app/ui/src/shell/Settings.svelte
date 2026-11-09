@@ -3,7 +3,7 @@
 <script lang="ts">
   import { TIME_FORMATS } from '../axes';
   import { resetTips } from '../tips';
-  import { movePanel, resetSettings, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
+  import { type EventCategory, movePanel, resetSettings, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { ICON } from '../icons';
   import { invoke } from '@tauri-apps/api/core';
@@ -73,6 +73,16 @@
   }
   const other = $derived(sideOf('settings') === 'left' ? 'right' : 'left');
 
+  function editCat(i: number, patch: Partial<EventCategory>): void {
+    setSetting('eventCats', settings.eventCats.map((c, k) => (k === i ? { ...c, ...patch } : c)));
+  }
+  function delCat(i: number): void {
+    setSetting('eventCats', settings.eventCats.filter((_, k) => k !== i));
+  }
+  function addCat(): void {
+    const id = 'c' + Date.now().toString(36);
+    setSetting('eventCats', [...settings.eventCats, { id, name: 'New category', color: '#4cc2ff', chart: true }]);
+  }
   // Channels with a display, limits or value labels of their own
   const customised = $derived([...new Set([...Object.keys(settings.chdisp), ...Object.keys(settings.limits), ...Object.keys(settings.valueMaps)])].sort());
   function summary(n: string): string {
@@ -133,6 +143,18 @@
   {:else}
     <p class="setnone">No setting matches “{q.trim()}”.</p>
   {/each}
+  <section id="evCatSet">
+    <h3>Event categories</h3>
+    {#each settings.eventCats as c, i (c.id)}
+      <div class="urow evcatrow" data-evcatrow={c.id}>
+        <input type="color" class="catcol" aria-label="Colour of {c.name}" value={c.color} onchange={(e) => editCat(i, { color: e.currentTarget.value })} />
+        <input class="sel catname" aria-label="Name of the category" value={c.name} spellcheck="false" onchange={(e) => editCat(i, { name: e.currentTarget.value.trim() || c.name })} />
+        <label class="catchart" data-tip="Mark this category's events on charts"><input type="checkbox" checked={c.chart} onchange={(e) => editCat(i, { chart: e.currentTarget.checked })} />Charts</label>
+        <button class="tbtn" data-catdel={c.id} aria-label="Delete {c.name}" data-tip="Delete it; its events become Uncategorized" onclick={() => delCat(i)}>{@html ICON.trash}</button>
+      </div>
+    {/each}
+    <div class="urow"><span class="muted">Charts mark an event when its category is on and the Events panel shows it.</span><button class="tbtn" id="catAdd" onclick={addCat}>{@html ICON.plus}Add</button></div>
+  </section>
   {#if customised.length}
     <section id="chSet"><h3>Channels</h3>
       {#each customised as n (n)}
@@ -271,6 +293,27 @@
     justify-content: space-between;
     gap: 8px;
     color: var(--fg-muted);
+    font-size: 11.5px;
+  }
+  .evcatrow {
+    gap: 8px;
+  }
+  .catcol {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .catname {
+    flex: 1;
+    min-width: 0;
+  }
+  .catchart {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-size: 11.5px;
   }
 </style>
