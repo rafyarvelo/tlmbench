@@ -8,6 +8,9 @@ pub enum Error {
     Io { path: PathBuf, source: std::io::Error },
     #[error("{}: the cache entry is damaged (delete it to rebuild): {why}", path.display())]
     Damaged { path: PathBuf, why: String },
+    /// Something asked for can't be done (a condition that doesn't parse, say).
+    #[error("{0}")]
+    Invalid(String),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

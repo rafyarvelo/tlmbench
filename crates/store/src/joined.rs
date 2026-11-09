@@ -87,6 +87,10 @@ impl Recording for Joined {
         let (r, c) = self.at(channel);
         r.scale_offset(c)
     }
+    fn missing_mask(&self, channel: usize) -> Mask {
+        let (r, c) = self.at(channel);
+        r.missing_mask(c)
+    }
     fn chunked(&self, channel: usize) -> bool {
         let (r, c) = self.at(channel);
         r.chunked(c)

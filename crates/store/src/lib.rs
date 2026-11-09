@@ -20,6 +20,7 @@
 //! decoded chunks kept in memory ([`ChunkCache`], 25% of RAM): raw reductions fill the chunks they read for every
 //! channel of the request at once; views from the pyramid use the chunks already there and read the rest in place.
 
+mod adjust;
 mod chunks;
 mod derived;
 mod error;
@@ -49,6 +50,7 @@ use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
 use tlmbench_decode::OpenOptions;
 use tlmbench_decode::profile::ImportProfile;
 
+pub use crate::adjust::Adjust;
 pub use crate::derived::{Derived, ExprEnv, RecEnv};
 use crate::pyr::Loaded;
 pub use crate::recipes::{Library, PREVIEW_SAMPLES, Preview, check};
@@ -76,6 +78,8 @@ pub struct Store {
     chunks: Arc<ChunkCache>,
     /// Applied to every CSV file this store opens.
     profile: Option<Arc<ImportProfile>>,
+    /// Scale, offset and missing values by channel name, applied to every recording this store opens.
+    adjust: Arc<Vec<(String, Adjust)>>,
     /// Value labels and limits the expressions of derived channels read (set by the app from its settings).
     expr_env: Arc<std::sync::RwLock<ExprEnv>>,
 }
@@ -88,6 +92,7 @@ impl Store {
             limits: Limits::default(),
             chunks: Arc::new(ChunkCache::new(ChunkCache::default_budget())),
             profile: None,
+            adjust: Arc::default(),
             expr_env: Arc::default(),
         }
     }
@@ -101,6 +106,13 @@ impl Store {
     /// pyramid; other formats ignore it).
     pub fn with_profile(mut self, profile: Option<ImportProfile>) -> Self {
         self.profile = profile.filter(|p| !p.is_default()).map(Arc::new);
+        self
+    }
+
+    /// The same store, applying `adjust` (by channel name) to every recording it opens: a scale and offset on top of
+    /// the format's, and which samples are missing. Each distinct set has its own pyramid.
+    pub fn with_adjust(mut self, adjust: Vec<(String, Adjust)>) -> Self {
+        self.adjust = Arc::new(adjust.into_iter().filter(|(_, a)| *a != Adjust::default()).collect());
         self
     }
 
@@ -128,13 +140,31 @@ impl Store {
     /// Opens the packet type `part` of a file with `[[packet_types]]` (any other file: `None`).
     pub fn open_part(&self, path: &Path, descriptor: Option<&Path>, part: Option<&str>) -> Result<Opened> {
         let opts = self.options(descriptor, part);
+        let opts = self.adjusted(path, opts, |o| tlmbench_decode::open(path, o).map(|r| vec![r]))?;
         self.wrap(path, tlmbench_decode::open(path, &opts)?)
     }
 
     /// Opens every recording a file holds: one, or one per packet type, in the descriptor's order.
     pub fn open_all(&self, path: &Path, descriptor: Option<&Path>) -> Result<Vec<Opened>> {
         let opts = self.options(descriptor, None);
+        let opts = self.adjusted(path, opts, |o| tlmbench_decode::open_all(path, o))?;
         tlmbench_decode::open_all(path, &opts)?.into_iter().map(|rec| self.wrap(path, rec)).collect()
+    }
+
+    /// `opts` with this store's adjustments: the conditions in them are evaluated against the file opened plain.
+    fn adjusted(
+        &self,
+        _path: &Path,
+        mut opts: OpenOptions,
+        open: impl Fn(&OpenOptions) -> tlmbench_decode::Result<Vec<Box<dyn Recording>>>,
+    ) -> Result<OpenOptions> {
+        if self.adjust.is_empty() {
+            return Ok(opts);
+        }
+        let plain = if self.adjust.iter().any(|(_, a)| a.when.is_some()) { open(&opts)? } else { Vec::new() };
+        let refs: Vec<&dyn Recording> = plain.iter().map(|r| r.as_ref()).collect();
+        opts.adjust = crate::adjust::resolve(&self.adjust, &refs)?;
+        Ok(opts)
     }
 
     fn options(&self, descriptor: Option<&Path>, part: Option<&str>) -> OpenOptions {
@@ -143,6 +173,7 @@ impl Store {
             part: part.map(str::to_owned),
             profile: self.profile.as_deref().cloned(),
             cache_dir: Some(self.root.clone()),
+            adjust: Vec::new(),
         }
     }
 
@@ -382,6 +413,11 @@ pub struct View {
 }
 
 impl Opened {
+    /// The store this was opened through (with its profile and adjustments).
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
     pub fn recording(&self) -> &dyn Recording {
         self.rec.as_ref()
     }

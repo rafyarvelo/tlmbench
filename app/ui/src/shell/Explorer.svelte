@@ -449,7 +449,7 @@
     onkeydown={(e) => key(e, { kind: 'chan', ch })}
   >
     <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
-    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{chName(ch)}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
+    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{chName(ch)}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.missing && !settings.quietUI}<span class="miss" data-miss={c.missing} data-tip="{c.missing.toLocaleString()} samples are missing in this file" aria-label="{c.missing} missing">⌀ {c.missing.toLocaleString()}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
   </div>
 {/snippet}
 
@@ -700,6 +700,12 @@
     height: 12px;
   }
   .meta,
+  .miss {
+    margin-left: 6px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--fg-muted);
+  }
   .unit {
     margin-left: auto;
     color: var(--fg-muted);

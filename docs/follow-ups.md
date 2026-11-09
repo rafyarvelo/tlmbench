@@ -19,19 +19,16 @@ When needed:
 
 ## Left from step 5.2 so far (Nov 9)
 
-- **Scale and offset, and missing values, in the core.** Only the fixed-record and packet decoders implement
-  `Channels::transform` (from the descriptor); the other decoders have none, and `Recording` wrappers can't change
-  what an inner recording's `summarize`, `view` and pyramid do. So a user's scale and offset (and a channel's missing
-  values: raw values, a valid range, Missing when) have to be applied where the decoder reads: an
-  `Adjusted<C: Channels>` built inside `decode::open` from new `OpenOptions` (per channel name: scale, offset, missing),
-  overriding `transform` and wrapping `dispatch`'s samples so a missing sample reads as NaN (the gap marker), with
-  the adjustments in `layout_id` so the pyramid key changes. The existing sample `Mask` (excluded runs) could carry
-  Missing as well, but it reads every sample in view and skips the pyramid, so it is too slow to be the main path.
-  The ⌀ count and Measure's Missing count and duration come from the same pass.
+- **Scale, offset and missing values (built).** `tlmbench_core::adjust::Adjusted` wraps a decoder's `Channels`: it
+  composes the user's scale and offset with the format's and reads missing samples as NaN, and its layout id carries
+  them so each set has its own pyramid. `Store::with_adjust` takes them by channel name (a "missing when" condition is
+  evaluated once into a mask, against the file opened plain); the app's `open` and `adjust_apply` pass them, and the
+  UI reopens every open file when they change. Left: a missing channel's scan runs at open (about one pass per
+  adjusted channel); `tlmbench` CLI flags for them (`--scale`, `--missing`); a descriptor's own missing values;
+  "Missing when" can't use derived channels; stored values (before scale) are what the list and range compare to.
 - **Axis ticks per value** for a channel with value labels (the prototype's axis shows one tick per labelled value).
 - **Line width, dashed and steps are saved and drawn, but headless test browsers draw lines as one pixel and solid**,
   so they are only checked by hand on the Mac.
-- **Missing when** needs the same adjusted open (an expression over the file's channels, run before the pyramid).
 
 ## Left from step 5.1 (Nov 8)
 

@@ -21,7 +21,7 @@ import { bindTips, flash } from './tips';
 import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
-import { chColor, chDisp, chLevel, chLimits, hasLimits, type Limits, limitsOf, openChannelEditor, WIDTHS } from './display.svelte';
+import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, type Limits, limitsOf, openChannelEditor, WIDTHS } from './display.svelte';
 import {
   addChannels,
   addPaneBelow,
@@ -86,6 +86,7 @@ interface Opened {
   /** The derived channels among `info.channels` (they come after the recording's own), and recipes that didn't apply. */
   derived?: DerivedInfo[];
   skipped?: { name: string; why: string }[];
+  missing?: MissingInfo[];
 }
 
 interface Progress {
@@ -144,10 +145,11 @@ const renderer = new Renderer($<HTMLCanvasElement>('gl'));
 // ---------- state ----------
 
 /** An open file: its id in the core, what it holds, and its first and last sample times. */
-type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[] };
+type MissingInfo = { channel: number; count: number; ns: number };
+type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[]; missing: MissingInfo[]; adjustKey: string };
 
 /** Explorer's rows for a file's channels: the recording's, then its derived ones (marked ƒ). */
-const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
+const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, missing: f.missing.find((m) => m.channel === i)?.count, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
 
 const state = {
   file: null as null | OpenFile,
@@ -1359,10 +1361,11 @@ async function refreshMeasure(): Promise<void> {
   const [a, b] = both ? (state.A! <= state.B! ? [state.A!, state.B!] : [state.B!, state.A!]) : [state.t0, state.t1 - 1n];
   const at = (t: bigint | null) => (t != null && chans.length ? invoke<Nearest[]>('values_at', { file: f.id, channels: chans, t: t.toString() }) : Promise.resolve([] as Nearest[]));
   const t0 = performance.now();
-  const [va, vb, st] = await Promise.all([
+  const [va, vb, st, mi] = await Promise.all([
     at(state.A),
     at(state.B),
     measureCh != null ? invoke<ChannelStats[] | null>('stats', { file: f.id, channels: [measureCh], span: { t0: a.toString(), t1: (b + 1n).toString() } }) : Promise.resolve(null),
+    measureCh != null && f.missing.some((m) => m.channel === measureCh) ? invoke<MissingInfo[]>('missing_between', { file: f.id, channels: [measureCh], t0: a.toString(), t1: b.toString() }) : Promise.resolve([] as MissingInfo[]),
   ]);
   const ms = performance.now() - t0;
   if (seq !== measureSeq) return;
@@ -1397,6 +1400,7 @@ async function refreshMeasure(): Promise<void> {
           stat('Mean', s?.mean != null ? fv(measureCh!, s.mean) : '—') +
           stat('RMS', rms != null ? fv(measureCh!, rms) : '—') +
           stat('Std dev', sd != null ? fv(measureCh!, sd) : '—') +
+          (mi[0] ? stat('Missing', mi[0].count.toLocaleString()) + stat('Missing for', duration(mi[0].ns)) : '') +
           stat('Computed in', `${ms.toFixed(ms < 10 ? 1 : 0)} ms`);
   const pick = `<select class="sel" data-mch aria-label="Channel for the stats">${chans.map((ch) => `<option value="${ch}"${ch === measureCh ? ' selected' : ''}>${esc(f.info.channels[ch].name)}</option>`).join('')}</select>`;
   ui.statsTitle = `Stats · ${both ? 'between cursors' : 'visible range'}`;
@@ -1562,14 +1566,14 @@ async function openPath(path: string, part?: string): Promise<void> {
       let early: Progress | null = null;
       progress.onmessage = (p) => (id == null ? (early = p) : onProgress(id, p));
       await syncExprEnv();
-      const o = await invoke<Opened>('open', { path, part: part ?? null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], progress });
+      const o = await invoke<Opened>('open', { path, part: part ?? null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], adjust: adjustList(), progress });
       id = o.id;
       if (early) onProgress(id, early);
       if (!o.range) {
         void invoke('close', { file: o.id });
         throw new Error('it has no samples');
       }
-      file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: o.derived ?? [] };
+      file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: o.derived ?? [], missing: o.missing ?? [], adjustKey: JSON.stringify(adjustList()) };
       for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
       building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
     }
@@ -1627,7 +1631,7 @@ async function openLive(endpoint: string, descriptor: string): Promise<void> {
     const o = await invoke<Opened>('live_connect', { endpoint, descriptor: descriptor || null });
     if (!o.range) throw new Error('no samples yet');
     const key = nextTab++;
-    const file: OpenFile = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: [] };
+    const file: OpenFile = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: [], missing: [], adjustKey: '' };
     tabData.set(key, {
       file,
       building: null,
@@ -2497,6 +2501,18 @@ async function syncExprEnv(): Promise<void> {
   await invoke('set_expr_env', { labels, limits });
 }
 
+/** After scale, offset or missing values change: every open file opens again with them (one at a time). */
+async function adjustChanged(): Promise<void> {
+  const key = JSON.stringify(adjustList());
+  const seen = new Set<OpenFile>();
+  for (const t of tabs.list) {
+    const f = tabData.get(t.key)?.file;
+    if (f) seen.add(f);
+  }
+  if (state.file) seen.add(state.file);
+  for (const f of seen) if (f.adjustKey !== key) await reapply(f, true);
+}
+
 /** After labels or limits change: derived channels whose expressions name one are computed again. */
 async function labelsChanged(): Promise<void> {
   await syncExprEnv();
@@ -2508,7 +2524,7 @@ async function labelsChanged(): Promise<void> {
 let renamed: Record<string, string> = {};
 
 /** Asks the core to show `file` with the recipes it should have now, and fits the panes to the new channel list. */
-async function reapply(file: OpenFile): Promise<void> {
+async function reapply(file: OpenFile, reopen = false): Promise<void> {
   const path = file.info.path;
   const have = new Set(recipes.list.map((r) => r.name));
   // the channels as they stand keep their order (and their numbers); what was added to this file follows
@@ -2519,7 +2535,21 @@ async function reapply(file: OpenFile): Promise<void> {
   const before = file.info.channels.map((c) => c.name);
   const progress = new Channel<Progress>();
   progress.onmessage = (p) => onProgress(file.id, p);
-  const o = await invoke<Opened>('derive_apply', { file: file.id, recipes: wanted, exclude: settings.fileRecipesOff[path] ?? [], progress });
+  const exclude = settings.fileRecipesOff[path] ?? [];
+  const adjust = adjustList();
+  let o: Opened;
+  try {
+    o = reopen ? await invoke<Opened>('adjust_apply', { file: file.id, adjust, recipes: wanted, exclude, progress }) : await invoke<Opened>('derive_apply', { file: file.id, recipes: wanted, exclude, progress });
+  } catch (e) {
+    // a condition that doesn't parse: the editor says so; the file keeps what it had
+    editor.error = String(e);
+    return;
+  }
+  if (reopen) {
+    editor.error = '';
+    file.adjustKey = JSON.stringify(adjust);
+  }
+  file.missing = o.missing ?? [];
   file.info = o.info;
   file.derived = o.derived ?? [];
   for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
@@ -2542,6 +2572,8 @@ async function reapply(file: OpenFile): Promise<void> {
     renderPanes();
     state.ovStale = true;
     void requestView('exact');
+    void refreshMeasure();
+    void requestResting();
   }
 }
 
@@ -3622,6 +3654,7 @@ onSetting((key) => {
   }
   if (key === 'limits' || key === 'chdisp' || key === 'valueMaps') {
     if (key !== 'chdisp') void labelsChanged();
+    else void adjustChanged();
     updateChips();
     void requestResting();
     if (key === 'chdisp') void requestView(); // steps change what is uploaded

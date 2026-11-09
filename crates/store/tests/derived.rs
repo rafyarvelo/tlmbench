@@ -370,3 +370,53 @@ fn recipes_that_name_a_label_see_the_stores_labels_and_are_rebuilt_when_they_cha
     store.set_expr_env(env(99.0));
     assert_eq!(first(&store), 0.0, "a new label value is a new cache entry, not the old result");
 }
+
+#[test]
+fn adjusted_channels_scale_and_go_missing_where_asked_and_get_their_own_pyramid() {
+    use tlmbench_core::chunks::Held;
+    use tlmbench_store::Adjust;
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    fs::create_dir(&data).unwrap();
+    let src = recording(&data);
+    let root = tmp.path().join("cache");
+    let plain = Store::new(Some(&root)).open(&src, None).unwrap();
+    let held = Held::default();
+    let at = |o: &tlmbench_store::Opened, c, i| o.recording().value_at(c, i, &held);
+
+    let adj = |a: Adjust| Store::new(Some(&root)).with_adjust(vec![("a".into(), a)]).open(&src, None).unwrap();
+    let scaled = adj(Adjust { scale: 2.0, offset: 1.0, hi: Some(3.0), ..Default::default() });
+    assert_ne!(plain.key(), scaled.key(), "adjustments are part of the pyramid's key");
+    let mut missing = 0;
+    for i in 0..N {
+        let raw = value(0, i) as f64;
+        if raw > 3.0 {
+            missing += 1;
+        }
+        if i < 3000 {
+            let got = at(&scaled, 0, i);
+            if raw > 3.0 {
+                assert!(got.is_nan(), "sample {i} is above the valid range");
+            } else {
+                assert!((got - (raw * 2.0 + 1.0)).abs() < 1e-9, "sample {i}: {got} for {raw}");
+            }
+            assert_eq!(at(&scaled, 1, i), at(&plain, 1, i), "other channels are untouched");
+        }
+    }
+    assert_eq!(scaled.recording().missing_mask(0).excluded(), missing);
+    assert_eq!(scaled.recording().missing_mask(1).excluded(), 0);
+    assert!(missing > 0);
+
+    // a condition on another channel
+    let when = adj(Adjust { when: Some("b > 4".into()), ..Default::default() });
+    let want = (0..N).filter(|&i| value(1, i) as f64 > 4.0).count();
+    assert_eq!(when.recording().missing_mask(0).excluded(), want);
+    assert!(at(&when, 0, (0..N).find(|&i| value(1, i) > 4.0).unwrap()).is_nan());
+
+    // sentinels
+    let sent = adj(Adjust { values: vec![value(0, 5) as f64], ..Default::default() });
+    assert!(at(&sent, 0, 5).is_nan());
+    // a condition that doesn't parse is an error naming the mistake
+    let bad = Store::new(Some(&root)).with_adjust(vec![("a".into(), Adjust { when: Some("b >".into()), ..Default::default() })]).open(&src, None);
+    assert!(bad.unwrap_err().to_string().contains("Missing when"));
+}

@@ -35,7 +35,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | LRU chunk store | v1 | n/a | ✓ | |
 | Cache cap and low-disk eviction; Settings shows path, size, Clear | v1 | n/a | ◐ (Settings → Cache: folder, size, Clear cache; Open folder reveals it in the file manager) | 4.1 |
 | Scale and offset per channel (before the pyramid) | v1 | ✓ | ◐ (from descriptors only) | 5.2 |
-| Missing values per channel (raw values, range, Missing when) | v1 | ✓ | ✗ | 5.2 |
+| Missing values per channel (raw values, range, Missing when) | v1 | ✓ | ✓ (applied in the decoders' reads; the pyramid is rebuilt for them) | 5.2 |
 | Derived channels computed in the core, cached with a pyramid | v1 | sim | ✓ (`Store::open_derived`, `Store::join`, `tlmbench derive`, the app's ƒ rows) | |
 | WASM decoder plugins (wasmtime) | v1 | ✗ | ✗ | 5.9 |
 | Native decoder plugins | v1 | ✗ | ✗ | 5.9 |
@@ -116,7 +116,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ◐ (Format descriptor…; the rest wait for 5.6) | 5.6 |
 | Channel right-click: category, gap factor | v1 | ✓ | ✓ | |
 | Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ◐ (category, gap factor, Display…, Derive…, Edit recipe…, Remove) | 5.2, 5.3 |
-| Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ◐ (ƒ) | 5.2, 5.3 |
+| Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ◐ (ƒ, ⌀) | 5.3 |
 | Data rate shown on imported files; "primary" with several open | v1 | ✓ | ◐ (the rate chip on an open CSV's row, a click shows its import settings; primary waits for 5.6) | 4.3, 5.6 |
 | Import a local folder (browser snapshot in the prototype) | v1 | ✓ | ✓ (Open folder reads the disk; Import all in the folder menu) | |
 
@@ -171,7 +171,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Cursors A and B (mode, keys over plots and rows), Esc clears | v1 | ✓ | ✓ | |
 | Measure: values at A and B, Δt, 1/Δt, exact stats, channel picker | v1 | ✓ | ✓ | |
-| Measure: Missing count and duration | v1 | ✓ | ✗ (needs core) | 5.2 |
+| Measure: Missing count and duration | v1 | ✓ | ✓ | 5.2 |
 | Measure: Δy and frequency | v1 | ✓ | ✓ |  |
 
 ## 8. Time modes: Play and Live

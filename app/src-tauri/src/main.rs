@@ -92,6 +92,74 @@ struct Opened {
     derived: Vec<DerivedInfo>,
     /// Recipes asked for that don't apply to this file, and why.
     skipped: Vec<Skipped>,
+    /// Channels with samples called missing (see `Adjust`): how many, and for how long.
+    missing: Vec<Missing>,
+}
+
+/// How much of a channel is missing.
+#[derive(Serialize)]
+struct Missing {
+    channel: usize,
+    count: usize,
+    /// Nanoseconds the missing samples stand for (each lasts until the next sample).
+    ns: i64,
+}
+
+/// Missing samples of `rec`'s channels in samples `a..b`, for those with any.
+fn missing_in(rec: &dyn tlmbench_core::Recording, channels: impl Iterator<Item = usize>, a: usize, b: usize) -> Vec<Missing> {
+    let n = rec.info().samples;
+    channels
+        .filter_map(|channel| {
+            let mask = rec.missing_mask(channel);
+            let (mut count, mut ns) = (0usize, 0i64);
+            for r in mask.runs() {
+                let (s, e) = (r.start.max(a), r.end.min(b));
+                if s >= e {
+                    continue;
+                }
+                count += e - s;
+                let end = if e < n { rec.time_at(e) } else { rec.time_at(n - 1) };
+                ns += end - rec.time_at(s);
+            }
+            (count > 0).then_some(Missing { channel, count, ns })
+        })
+        .collect()
+}
+
+/// Every channel's missing samples over the whole recording.
+fn missing_all(rec: &dyn tlmbench_core::Recording) -> Vec<Missing> {
+    missing_in(rec, 0..rec.info().channels.len(), 0, rec.info().samples)
+}
+
+/// One channel's adjustments from the app's settings (see `tlmbench_store::Adjust`).
+#[derive(Deserialize)]
+struct AdjustIn {
+    channel: String,
+    scale: Option<f64>,
+    offset: Option<f64>,
+    values: Option<Vec<f64>>,
+    lo: Option<f64>,
+    hi: Option<f64>,
+    when: Option<String>,
+}
+
+fn adjusts(a: Option<Vec<AdjustIn>>) -> Vec<(String, tlmbench_store::Adjust)> {
+    a.unwrap_or_default()
+        .into_iter()
+        .map(|a| {
+            (
+                a.channel,
+                tlmbench_store::Adjust {
+                    scale: a.scale.unwrap_or(1.0),
+                    offset: a.offset.unwrap_or(0.0),
+                    values: a.values.unwrap_or_default(),
+                    lo: a.lo,
+                    hi: a.hi,
+                    when: a.when.filter(|w| !w.trim().is_empty()),
+                },
+            )
+        })
+        .collect()
 }
 
 /// A derived channel: where it is in the channel list, and the recipe it comes from.
@@ -278,10 +346,12 @@ async fn open(
     part: Option<String>,
     recipes: Option<Vec<String>>,
     exclude: Option<Vec<String>>,
+    adjust: Option<Vec<AdjustIn>>,
     progress: Channel<Progress>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
     let store = files.store.clone();
+    let adjust = adjusts(adjust);
     let attached = recipes.unwrap_or_default();
     let exclude = exclude.unwrap_or_default();
     let (base, shown, derived, skipped) = spawn_blocking(move || -> Result<_, String> {
@@ -289,6 +359,7 @@ async fn open(
         let base = store
             .clone()
             .with_profile(profile)
+            .with_adjust(adjust)
             .open_part(Path::new(&path), None, part.as_deref())
             .map_err(|e| e.to_string())?;
         let base = Arc::new(base);
@@ -304,9 +375,10 @@ async fn open(
     files.open.lock().unwrap().insert(id, shown.clone());
     files.bases.lock().unwrap().insert(id, base);
     if status != Status::Built {
-        build_in_background(shown, progress);
+        build_in_background(shown.clone(), progress);
     }
-    Ok(Opened { id, info, range, status, derived, skipped })
+    let missing = missing_all(shown.recording());
+    Ok(Opened { id, info, range, status, derived, skipped, missing })
 }
 
 /// Changes which recipes an open file shows (the automatic ones, and these): the same file id, with its channels
@@ -331,9 +403,10 @@ async fn derive_apply(
         old.cancel();
     }
     if status != Status::Built {
-        build_in_background(shown, progress);
+        build_in_background(shown.clone(), progress);
     }
-    Ok(Opened { id: file, info, range, status, derived, skipped })
+    let missing = missing_all(shown.recording());
+    Ok(Opened { id: file, info, range, status, derived, skipped, missing })
 }
 
 /// One value label: channel `channel`'s stored number `value` is called `text`.
@@ -361,6 +434,62 @@ fn set_expr_env(labels: Vec<LabelIn>, limits: Vec<LimitIn>, files: State<'_, Fil
         labels: labels.into_iter().map(|l| ((l.channel, l.text), l.value)).collect(),
         limits: limits.into_iter().map(|l| ((l.channel, l.alarm), (l.lo, l.hi))).collect(),
     });
+}
+
+/// Opens an open file again with other adjustments (scale and offset, missing values) and the recipes it has now:
+/// the same file id, a new pyramid for the new values.
+#[tauri::command]
+async fn adjust_apply(
+    file: u32,
+    adjust: Vec<AdjustIn>,
+    recipes: Vec<String>,
+    exclude: Vec<String>,
+    progress: Channel<Progress>,
+    files: State<'_, Files>,
+) -> Result<Opened, String> {
+    let old = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let store = files.store.clone();
+    let adjust = adjusts(Some(adjust));
+    let (base, shown, derived, skipped) = spawn_blocking(move || -> Result<_, String> {
+        let info = old.recording().info();
+        let base = old
+            .store()
+            .clone()
+            .with_adjust(adjust)
+            .open_part(&info.path, None, info.part.as_deref())
+            .map_err(|e| e.to_string())?;
+        let base = Arc::new(base);
+        let (shown, derived, skipped) = with_derived(&store, &base, &recipes, &exclude)?;
+        Ok((base, shown, derived, skipped))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let info = shown.recording().info().clone();
+    let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
+    let status = shown.status();
+    if let Some(prev) = files.open.lock().unwrap().insert(file, shown.clone()) {
+        prev.cancel();
+    }
+    files.bases.lock().unwrap().insert(file, base);
+    if status != Status::Built {
+        build_in_background(shown.clone(), progress);
+    }
+    let missing = missing_all(shown.recording());
+    Ok(Opened { id: file, info, range, status, derived, skipped, missing })
+}
+
+/// Missing samples of the given channels between two times (the cursors, or the view).
+#[tauri::command]
+async fn missing_between(file: u32, channels: Vec<u32>, t0: String, t1: String, files: State<'_, Files>) -> Result<Vec<Missing>, String> {
+    let o = files.get(file)?;
+    let (t0, t1): (i64, i64) = (t0.parse().map_err(|_| "bad time")?, t1.parse().map_err(|_| "bad time")?);
+    spawn_blocking(move || {
+        let rec = o.recording();
+        let (a, b) = (rec.lower_bound(t0), rec.lower_bound(t1.saturating_add(1)));
+        missing_in(rec, channels.into_iter().map(|c| c as usize), a, b)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -555,7 +684,7 @@ async fn live_connect(endpoint: String, descriptor: Option<String>, files: State
     let o = entry.follow.read().unwrap().opened();
     let info = o.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
-    Ok(Opened { id, info, range, status: Status::Built, derived: Vec::new(), skipped: Vec::new() })
+    Ok(Opened { id, info, range, status: Status::Built, derived: Vec::new(), skipped: Vec::new(), missing: Vec::new() })
 }
 
 fn tlmbench_decode_descriptor(text: &str) -> Result<tlmbench_decode::descriptor::Descriptor, String> {
@@ -1669,6 +1798,8 @@ fn main() {
             recipes_export,
             derive_check,
             set_expr_env,
+            adjust_apply,
+            missing_between,
             spectrum,
             packet_parts,
             import_inspect,

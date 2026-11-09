@@ -290,6 +290,7 @@ fn packet_types_open_one_recording_each() {
         part: None,
         profile: None,
         cache_dir: Some(tmp.path().join("c")),
+        adjust: Vec::new(),
     };
     let all = crate::open_all(&path, &opts).unwrap();
     let infos: Vec<_> = all.iter().map(|r| (r.info().part.clone().unwrap(), r.info().samples)).collect();

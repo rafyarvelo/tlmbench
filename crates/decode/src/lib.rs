@@ -33,7 +33,8 @@ pub fn read_head(path: &Path, n: usize) -> Result<Vec<u8>> {
     bytes::read_head(path, n)
 }
 pub use error::{Error, Result};
-use tlmbench_core::Recording;
+use tlmbench_core::adjust::{Adjusted, ChannelAdjust};
+use tlmbench_core::{Channels, Recording};
 
 #[derive(Clone, Debug, Default)]
 pub struct OpenOptions {
@@ -45,6 +46,14 @@ pub struct OpenOptions {
     pub profile: Option<profile::ImportProfile>,
     /// Cache root; defaults to [`cache::cache_root`].
     pub cache_dir: Option<PathBuf>,
+    /// A person's scale, offset and missing values by channel name (see [`tlmbench_core::adjust`]): applied inside
+    /// the reads, and part of the layout id so a pyramid is built for them.
+    pub adjust: Vec<(String, ChannelAdjust)>,
+}
+
+/// `c` as a recording, with `opts`' adjustments applied when there are any.
+fn boxed<C: Channels + 'static>(c: C, opts: &OpenOptions) -> Box<dyn Recording> {
+    if opts.adjust.iter().all(|(_, a)| a.is_identity()) { Box::new(c) } else { Box::new(Adjusted::new(c, &opts.adjust)) }
 }
 
 /// Opens a recording, choosing the decoder from the options and the file's first bytes. A packet file with several
@@ -85,14 +94,14 @@ pub fn open_all(path: &Path, opts: &OpenOptions) -> Result<Vec<Box<dyn Recording
             }
             return parts
                 .into_iter()
-                .map(|(d, q)| Ok(Box::new(packets::PacketFile::open(path, d, q, &name, &root)?) as Box<dyn Recording>))
+                .map(|(d, q)| Ok(boxed(packets::PacketFile::open(path, d, q, &name, &root)?, opts)))
                 .collect();
         }
-        return Ok(vec![Box::new(fixed::FixedWidth::open_with_descriptor(path, desc)?)]);
+        return Ok(vec![boxed(fixed::FixedWidth::open_with_descriptor(path, desc)?, opts)]);
     }
     let head = bytes::read_head(path, 4096)?;
     if head.starts_with(reference::MAGIC) {
-        return Ok(vec![Box::new(fixed::FixedWidth::open_reference(path)?)]);
+        return Ok(vec![boxed(fixed::FixedWidth::open_reference(path)?, opts)]);
     }
     // a descriptor whose `files` patterns name this file (in the folder's .tlmbench/decoders or the app cache)
     let root = cache::cache_root(opts.cache_dir.as_deref());
@@ -101,11 +110,11 @@ pub fn open_all(path: &Path, opts: &OpenOptions) -> Result<Vec<Box<dyn Recording
     }
     if parquet::looks_like_parquet(&head) {
         let root = cache::cache_root(opts.cache_dir.as_deref());
-        return Ok(vec![Box::new(parquet::open_parquet(path, &root)?)]);
+        return Ok(vec![boxed(parquet::open_parquet(path, &root)?, opts)]);
     }
     if csv::looks_like_csv(path, &head) {
         let root = cache::cache_root(opts.cache_dir.as_deref());
-        return Ok(vec![Box::new(cache::open_csv_with(path, &root, opts.profile.as_ref())?)]);
+        return Ok(vec![boxed(cache::open_csv_with(path, &root, opts.profile.as_ref())?, opts)]);
     }
     Err(Error::UnknownFormat(path.to_owned()))
 }

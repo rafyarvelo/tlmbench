@@ -33,6 +33,20 @@
     else delete all[info.name];
     setSetting('valueMaps', all);
   }
+  const miss = $derived(d.missing ?? {});
+  const setMiss = (k: 'vals' | 'lo' | 'hi' | 'when', raw: string) => {
+    const m: NonNullable<typeof d.missing> = { ...miss };
+    if (k === 'when') {
+      if (raw.trim()) m.when = raw.trim();
+      else delete m.when;
+    } else if (k === 'vals') {
+      const vals = raw.split(/[,;\s]+/).filter((t) => t !== '' && Number.isFinite(+t)).map(Number);
+      if (vals.length) m.vals = vals;
+      else delete m.vals;
+    } else if (raw === '' || !Number.isFinite(+raw)) delete m[k];
+    else m[k] = +raw;
+    set({ missing: Object.keys(m).length ? m : undefined });
+  };
   const WIDTHS: [string, string][] = [['', 'Normal'], ['1', 'Thin'], ['2', 'Thick'], ['3', 'Heavy']];
 </script>
 
@@ -82,6 +96,26 @@
         <label class="lvf"><span>Unit label</span>
           <input class="sel" data-d="unit" value={d.unit ?? ''} placeholder={info.unit ?? 'none'} onchange={(e) => set({ unit: e.currentTarget.value.trim() })} /></label>
       </div>
+      <div class="lvrow">
+        <label class="lvf"><span>Scale</span>
+          <input class="sel" type="number" step="any" data-d="scale" value={d.scale ?? ''} placeholder="1" onchange={(e) => set({ scale: num(e.currentTarget.value) })} /></label>
+        <label class="lvf"><span>Offset</span>
+          <input class="sel" type="number" step="any" data-d="offset" value={d.offset ?? ''} placeholder="0" onchange={(e) => set({ offset: num(e.currentTarget.value) })} /></label>
+      </div>
+      <p class="hint">Shown value = stored × scale + offset, for example ADC counts to volts. A format descriptor can set this for every file of that logger.</p>
+      <div class="lvrow">
+        <label class="lvf"><span>Treat as missing</span>
+          <input class="sel" data-m="vals" value={(miss.vals ?? []).join(', ')} placeholder="-9999, 65535" spellcheck="false" onchange={(e) => setMiss('vals', e.currentTarget.value)} /></label>
+        <label class="lvf"><span>Valid from</span>
+          <input class="sel" type="number" step="any" data-m="lo" value={miss.lo ?? ''} placeholder="any" onchange={(e) => setMiss('lo', e.currentTarget.value)} /></label>
+        <label class="lvf"><span>Valid to</span>
+          <input class="sel" type="number" step="any" data-m="hi" value={miss.hi ?? ''} placeholder="any" onchange={(e) => setMiss('hi', e.currentTarget.value)} /></label>
+      </div>
+      <label class="lvf"><span>Missing when</span>
+        <input class="sel" data-m="when" value={miss.when ?? ''} placeholder="gps_fix < 3 or status == 'ERR'" spellcheck="false" onchange={(e) => setMiss('when', e.currentTarget.value)} />
+        <small>Values, range and condition use the stored numbers, before scale. A condition can use any channel of the file.</small></label>
+      {#if editor.error}<p class="hint err" id="chErr">⚠ {editor.error}</p>{/if}
+      <p class="hint">Missing values become gaps everywhere: charts, autoscale, tables, statistics, derived channels and exports.{#if info.missing} <b>{info.missing.toLocaleString()}</b> are missing in this file now.{/if}</p>
       <div class="lvrow">
         <label class="lvf"><span>Line width</span>
           <select class="sel" data-d="width" value={d.width == null ? '' : String(d.width)} onchange={(e) => set({ width: num(e.currentTarget.value) })}>
@@ -217,6 +251,9 @@
   .swc span.on {
     border: 2px solid var(--fg);
     color: transparent;
+  }
+  .err {
+    color: var(--danger);
   }
   .chk {
     display: flex;

@@ -242,6 +242,11 @@ export interface ChannelDisplay {
   width?: number;
   dash?: boolean;
   step?: boolean;
+  /** Raw counts to engineering units: shown = stored × scale + offset (on top of what the format says). */
+  scale?: number;
+  offset?: number;
+  /** Which samples are missing: stored values from a list, outside a valid range, or while a condition holds. */
+  missing?: { vals?: number[]; lo?: number; hi?: number; when?: string };
 }
 
 export function saveSettings(): void {

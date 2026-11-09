@@ -43,8 +43,8 @@ export function setDisplay(name: string, d: ChannelDisplay): void {
 export const chCss = (ch: number): string => chColor(ch) ?? `var(--trace-${colorIdx(ch) + 1})`;
 
 /** The channel editor: which channel of the open file it shows (null: closed). */
-export const editor = $state({ ch: null as number | null, tab: 'display' as 'display' | 'limits' | 'labels' });
-export const openChannelEditor = (ch: number, tab: 'display' | 'limits' | 'labels' = 'display'): void => void Object.assign(editor, { ch, tab });
+export const editor = $state({ ch: null as number | null, error: '', tab: 'display' as 'display' | 'limits' | 'labels' });
+export const openChannelEditor = (ch: number, tab: 'display' | 'limits' | 'labels' = 'display'): void => void Object.assign(editor, { ch, tab, error: '' });
 export const closeChannelEditor = (): void => void (editor.ch = null);
 
 // ---------- limits ----------
@@ -107,3 +107,23 @@ export const chLevel = (ch: number, v: number | null | undefined): Level => leve
 export const chDisp = (ch: number): ChannelDisplay => dispOf(ui.channels[ch]?.name ?? '');
 /** Line width factors by the editor's setting (1 thin, 2 thick, 3 heavy; normal is 1). */
 export const WIDTHS: Record<number, number> = { 1: 0.7, 2: 1.8, 3: 2.8 };
+
+/** What the core applies to channels' stored values, from the display settings: scale and offset, missing values. */
+export interface AdjustOut {
+  channel: string;
+  scale?: number;
+  offset?: number;
+  values?: number[];
+  lo?: number;
+  hi?: number;
+  when?: string;
+}
+export function adjustList(): AdjustOut[] {
+  const out: AdjustOut[] = [];
+  for (const [channel, d] of Object.entries(settings.chdisp)) {
+    const m = d.missing;
+    if ((d.scale ?? 1) === 1 && !d.offset && !m) continue;
+    out.push({ channel, scale: d.scale, offset: d.offset, values: m?.vals, lo: m?.lo, hi: m?.hi, when: m?.when });
+  }
+  return out;
+}

@@ -106,6 +106,11 @@ pub trait Channels: Send + Sync + Debug {
     /// Bytes that identify how the source is decoded (format and descriptor), for cache keys.
     fn layout_id(&self) -> Vec<u8>;
 
+    /// The samples of channel `channel` a person called missing (see [`crate::adjust`]); none unless adjusted.
+    fn missing_mask(&self, _channel: usize) -> Mask {
+        Mask::default()
+    }
+
     /// Hints that samples in `ranges` will be read soon: a decoder reading a cold file can fetch them all at once
     /// (in parallel) rather than fault them in one by one.
     fn prefetch(&self, _ranges: &[std::ops::Range<usize>]) {}
@@ -198,6 +203,11 @@ pub trait Recording: Send + Sync + Debug {
 
     /// See [`Channels::layout_id`].
     fn layout_id(&self) -> Vec<u8>;
+
+    /// See [`Channels::missing_mask`].
+    fn missing_mask(&self, _channel: usize) -> Mask {
+        Mask::default()
+    }
 }
 
 impl<C: Channels> Recording for C {
@@ -427,6 +437,10 @@ impl<C: Channels> Recording for C {
         if let TimeSource::Column { .. } = Channels::describe(self).time {
             self.dispatch_times(Op(gaps, from));
         }
+    }
+
+    fn missing_mask(&self, channel: usize) -> Mask {
+        Channels::missing_mask(self, channel)
     }
 
     fn layout_id(&self) -> Vec<u8> {

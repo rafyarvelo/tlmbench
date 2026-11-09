@@ -104,6 +104,7 @@ impl Store {
             part: None,
             profile: None,
             cache_dir: Some(self.root.clone()),
+            adjust: Vec::new(),
         };
         let rec = tlmbench_decode::open(path, &opts)?;
         Ok(Opened {

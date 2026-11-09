@@ -115,6 +115,19 @@
   }
   const exprNames = (expr) => [...expr.matchAll(/"([^"]+)"|\b([A-Za-z_][A-Za-z0-9_.]*)\b(?!\s*\()/g)].map((m) => m[1] ?? m[2]).filter((n) => !FNS.has(n) && !/^\d/.test(n));
   /** The library's recipes that apply to a recording (automatic, or attached by name) as channels after its own. */
+  /** A channel adjusted with a missing rule has 7 samples (7 ms) missing, so the badge and Measure have something to show. */
+  function missingOf(r, adjust) {
+    r.missing = (adjust ?? [])
+      .filter((a) => a.values?.length || a.lo != null || a.hi != null || a.when)
+      .map((a) => ({ channel: r.chans.findIndex((c) => c.name === a.channel), count: 7, ns: 7e6 }))
+      .filter((m) => m.channel >= 0);
+    return r.missing;
+  }
+  /** A condition with "bad" in it is a mistake the core names. */
+  function badWhen(adjust) {
+    const w = (adjust ?? []).find((a) => /bad/.test(a.when ?? ''));
+    if (w) throw `Missing when: There's no channel called bad (at 0)`;
+  }
   function applyRecipes(r, attached, exclude = []) {
     const named = [...new Set(attached)].map((n) => fake.recipes.find((x) => x.name === n)).filter(Boolean);
     const picked = named.concat(fake.recipes.filter((x) => x.automatic && !exclude.includes(x.name) && !named.includes(x)));
@@ -227,6 +240,8 @@
     recipes: [],
     recipeSaves: [],
     derivedApplied: [],
+    /** The adjustments (scale, offset, missing) each open or adjust_apply was given. */
+    adjusts: [],
     checks: [],
     spectra: [],
     /** CSV files the import dialog sees, by path: `fake.csv(path, names, opts)`; the profiles saved by header, what
@@ -436,7 +451,9 @@
     },
     // the packet types of the descriptor that names the file (each opens as its own recording)
     packet_parts: ({ path }) => (known(path).find((k) => k.claims)?.descriptor.packet_types ?? []).map((t) => t.name),
-    open({ path, profile: given, part, recipes, exclude, progress }) {
+    open({ path, profile: given, part, recipes, exclude, adjust, progress }) {
+      fake.adjusts.push(adjust ?? []);
+      badWhen(adjust);
       fake.opened.push({ path, part: part ?? null });
       // the core applies the header's saved profile when none is given
       const profile = given ?? fake.profiles[fake.csvs[path]?.header_key]?.profile ?? null;
@@ -467,7 +484,7 @@
       r.base = r.chans.slice();
       const { derived, skipped } = applyRecipes(r, recipes ?? [], exclude ?? []);
       const info = { path, ...(part ? { part } : {}), format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
-      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped };
+      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped, missing: missingOf(r, adjust) };
     },
     // derived channels: the library (`recipes`), the recipes each open or apply was given, and what a check or spectrum was asked
     recipes_list: () => fake.recipes.map((r) => ({ ...r })),
@@ -494,6 +511,23 @@
     set_expr_env({ labels, limits }) {
       fake.exprEnv = { labels, limits };
     },
+    /** An open file opened again with other adjustments: every open or apply's list is in `adjusts`. */
+    adjust_apply({ file, adjust, recipes, exclude }) {
+      const o = fake.open.get(file);
+      if (!o) throw 'that file is not open';
+      fake.adjusts.push(adjust ?? []);
+      badWhen(adjust);
+      const r = o.r;
+      r.chans = r.base.slice();
+      const { derived, skipped } = applyRecipes(r, recipes, exclude ?? []);
+      const info = { path: r.path, format: 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
+      return { id: file, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: { state: 'built' }, derived, skipped, missing: missingOf(r, adjust) };
+    },
+    missing_between({ file, channels }) {
+      const o = fake.open.get(file);
+      if (!o) throw 'that file is not open';
+      return channels.filter((c) => (o.r.missing ?? []).some((m) => m.channel === c)).map((c) => ({ channel: c, count: 3, ns: 3e6 }));
+    },
     derive_apply({ file, recipes, exclude, progress }) {
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
@@ -502,7 +536,7 @@
       const { derived, skipped } = applyRecipes(r, recipes, exclude ?? []);
       fake.derivedApplied.push({ file, recipes, exclude });
       const info = { path: r.path, format: 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
-      return { id: file, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: { state: 'built' }, derived, skipped };
+      return { id: file, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: { state: 'built' }, derived, skipped, missing: r.missing ?? [] };
     },
     derive_check({ file, expr }) {
       const o = fake.open.get(file);

@@ -22,7 +22,7 @@ export const ui = $state({
   /** The folder Explorer lists (null: none open). */
   folder: null as FolderEntry | null,
   /** Its channels' names and units. */
-  channels: [] as { name: string; unit: string | null; category?: string | null; /** A derived channel: its recipe's expression. */ derived?: { expr: string; automatic: boolean } }[],
+  channels: [] as { name: string; unit: string | null; category?: string | null; /** Samples called missing in this file. */ missing?: number; /** A derived channel: its recipe's expression. */ derived?: { expr: string; automatic: boolean } }[],
   path: '',
   /** How the open file's times read: sample numbers, dates and times, or offsets from its start. */
   time: 'relative' as FileTime,
