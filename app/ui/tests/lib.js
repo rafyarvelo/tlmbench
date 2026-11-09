@@ -42,7 +42,8 @@ export async function open(opts = {}) {
   // what the fake core holds from the start: `setup(fake)` runs before the page does
   if (opts.setup) await p.addInitScript(([src, arg]) => (0, eval)(`(${src})`)(window.__tlmFake, arg), [opts.setup.toString(), opts.setupArg ?? null]);
   // first-launch settings, once per test: a reload finds what the page saved
-  if (opts.settings) await p.addInitScript((s) => { if (!sessionStorage.getItem('tlm.seeded')) { sessionStorage.setItem('tlm.seeded', '1'); localStorage.setItem('tlmbench.settings', s); } }, JSON.stringify(opts.settings));
+  // (frames of the page, such as a sandboxed code widget, have no storage: nothing to seed there)
+  if (opts.settings) await p.addInitScript((s) => { try { if (!sessionStorage.getItem('tlm.seeded')) { sessionStorage.setItem('tlm.seeded', '1'); localStorage.setItem('tlmbench.settings', s); } } catch { /* no storage here */ } }, JSON.stringify(opts.settings));
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message + ' @ ' + String(e.stack || '').split('\n')[1]));
   p.on('console', (m) => m.type() === 'error' && errs.push('console: ' + m.text()));

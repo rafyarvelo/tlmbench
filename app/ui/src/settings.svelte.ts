@@ -5,6 +5,7 @@ import type { TimeFormat } from './axes';
 import type { Limits } from './display.svelte';
 import type { Pane } from './stack.svelte';
 import type { Workspace } from './workspaces';
+import type { CustomWidget } from './widgets';
 
 export type Mode = 'box' | 'pan' | 'cursor';
 export type Theme = 'system' | 'light' | 'dark';
@@ -128,6 +129,9 @@ export interface Settings {
   chdisp: Record<string, ChannelDisplay>;
   /** Warn and alarm limits by channel name; a channel without an entry has the starting ones for its name, if any. */
   limits: Record<string, Limits>;
+  /** Widgets of your own (declarative SVG or code), and the shared folders whose code widgets you allowed to run. */
+  customWidgets: CustomWidget[];
+  trustedWidgetSources: string[];
   /** Play pauses at an event: 'off', 'any', or 'cat:<id>' for one category's events. */
   stopAt: string;
   /** Event markers show on charts and the overview (E); the Events panel's chips decide too unless unlinked. */
@@ -214,6 +218,8 @@ export const DEFAULTS: Settings = {
   fileRecipesOff: {},
   chdisp: {},
   limits: {},
+  customWidgets: [],
+  trustedWidgetSources: [],
   valueMaps: {},
   stopAt: 'off',
   eventsOn: true,
@@ -300,7 +306,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

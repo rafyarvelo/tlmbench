@@ -14,11 +14,15 @@
   import { ui } from '../ui.svelte';
   import { decodeXy } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
+  import CodeWidget from './CodeWidget.svelte';
   import Widget from './Widget.svelte';
+  import { fillTemplate, sanitizeSvg } from '../widgets';
+  import { openWidgetEditor } from '../customwidgets.svelte';
 
   let { i }: { i: number } = $props();
 
   const pane = $derived(stack.panes[i]);
+  const customs = $derived(new Map(settings.customWidgets.map((w) => [w.id, w])));
   const gchan = (ch: number): GChan => ({ ch, name: ui.channels[ch]?.name ?? '', unit: ui.channels[ch]?.unit ?? '', labelled: Object.keys(settings.valueMaps[ui.channels[ch]?.name ?? ''] ?? {}).length });
   const chans = $derived((pane?.channels ?? []).map(gchan));
   const lay = $derived(layoutOf(chans, pane?.widgets));
@@ -322,6 +326,7 @@
       out.push({ heading: c.name });
       out.push({ label: `Automatic (${typeName(autoWidget(c))})`, radio: true, checked: !cfg.type, run: () => set({ type: undefined }) });
       for (const t of TYPES.filter((x) => !MULTI[x.type])) out.push({ label: t.name, note: t.hint, radio: true, checked: !!cfg.type && L.type === t.type, data: { wt: t.type }, run: () => set({ type: t.type }) });
+      for (const w of customs.values()) out.push({ label: w.name, note: w.shared ? `Shared in ${w.shared}` : 'Your widget', radio: true, checked: cfg.type === w.id, data: { wt: w.id }, icon: w.icon ? sanitizeSvg(w.icon) : undefined, run: () => set({ type: w.id }) });
       const tg = targetOf(c, chans);
       const xy = xyPartner(c, chans);
       const sib = chans.filter((o) => o.ch !== ch && !paired.has(o.ch) && groupKey(o.name) === groupKey(c.name) && o.unit === c.unit);
@@ -345,6 +350,7 @@
         set(m.length === 2 && m[1] > m[0] ? { min: m[0], max: m[1] } : { min: undefined, max: undefined });
       },
     });
+    out.push({ label: 'Your widgets…', data: { wt: 'yours' }, run: openWidgetEditor });
     return out;
   }
 </script>
@@ -374,7 +380,10 @@
           <button class="gwt" data-gwt={ui.channels[ch]?.name} aria-haspopup="menu" aria-label="Widget for {chName(ch)}" data-tip="Choose the widget, or set its range" onclick={(ev) => (menu = menu?.ch === ch ? null : { ch, anchor: ev.currentTarget as HTMLElement })}>⋯</button>
         </div>
         <div class="gwb">
-          {#if !readings[ch]}<div class="gpend">reading…</div>{:else}<Widget type={L.type} x={c.x} r={c.r} members={c.members} e={c.e} />{/if}
+          {#if !readings[ch]}<div class="gpend">reading…</div>
+          {:else if customs.get(L.type)?.code}<CodeWidget spec={customs.get(L.type)!} x={c.x} title={chName(ch)} />
+          {:else if customs.get(L.type)}{@html fillTemplate(customs.get(L.type)!, c.x)}
+          {:else}<Widget type={L.type} x={c.x} r={c.r} members={c.members} e={c.e} />{/if}
         </div>
       </div>
       {/if}
