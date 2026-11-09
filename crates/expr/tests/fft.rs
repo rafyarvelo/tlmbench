@@ -8,8 +8,7 @@ fn sine(n: usize, hz: f64, rate: f64, amp: f64) -> Vec<f64> {
 #[test]
 fn a_sine_shows_its_frequency_and_amplitude() {
     // 125 Hz is 128 bins of 0.977 Hz
-    let x: Vec<f64> =
-        sine(1024, 125.0, 1000.0, 2.0).iter().map(|v| v + 7.0).collect();
+    let x: Vec<f64> = sine(1024, 125.0, 1000.0, 2.0).iter().map(|v| v + 7.0).collect();
     let s = spectrum(&x, 1000.0).unwrap();
     assert_eq!((s.n, s.mag.len(), s.nyquist), (1024, 513, 500.0));
     assert!((s.peak_hz - 125.0).abs() <= s.df, "{}", s.peak_hz);

@@ -104,7 +104,7 @@ impl Env for RecEnv<'_> {
     }
 }
 
-fn write_f64(w: &mut impl Write, v: &[f64]) -> std::io::Result<()> {
+fn write_f64(w: &mut (impl Write + ?Sized), v: &[f64]) -> std::io::Result<()> {
     w.write_all(bytemuck::cast_slice(v))
 }
 
@@ -179,8 +179,60 @@ fn write_times(rec: &dyn Recording, dir: &Path) -> std::io::Result<()> {
     w.flush()
 }
 
+/// Writes `bytes` at `offset`.
+fn write_at(f: &File, bytes: &[u8], offset: u64) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::FileExt::write_all_at(f, bytes, offset)
+    }
+    #[cfg(windows)]
+    {
+        let (mut done, mut at) = (0, offset);
+        while done < bytes.len() {
+            let n = std::os::windows::fs::FileExt::seek_write(f, &bytes[done..], at)?;
+            done += n;
+            at += n as u64;
+        }
+        Ok(())
+    }
+}
+
 fn write_channel(env: &RecEnv, r: &Resolved, rows: usize, path: &Path) -> std::result::Result<(), String> {
-    let io = |e: std::io::Error| format!("{}: {e}", r.recipe.name);
+    let name = &r.recipe.name;
+    let io = |e: std::io::Error| format!("{name}: {e}");
+    let fail = |e: tlmbench_expr::ExprError| format!("{name}: {}", e.msg);
+    let flat = |w: &mut dyn Write, x: f64| -> std::result::Result<(), String> {
+        let block = vec![x; CHUNK.min(rows.max(1))];
+        let mut left = rows;
+        while left > 0 {
+            let n = left.min(block.len());
+            write_f64(w, &block[..n]).map_err(io)?;
+            left -= n;
+        }
+        w.flush().map_err(io)
+    };
+    if tlmbench_expr::is_stateless(&r.expr) && rows > 0 {
+        // every chunk on its own, in parallel, each written where it belongs
+        let first = tlmbench_expr::eval_range(&r.expr, env, 0..CHUNK.min(rows)).map_err(fail)?;
+        if let Some(x) = first.number() {
+            return flat(&mut BufWriter::new(File::create(path).map_err(io)?), x);
+        }
+        let file = File::create(path).map_err(io)?;
+        file.set_len(rows as u64 * 8).map_err(io)?;
+        let starts: Vec<usize> = (0..rows).step_by(CHUNK).collect();
+        return starts.par_iter().try_for_each(|&a| {
+            let v = if a == 0 {
+                first.clone()
+            } else {
+                tlmbench_expr::eval_range(&r.expr, env, a..(a + CHUNK).min(rows)).map_err(fail)?
+            };
+            let s = v.series().ok_or_else(|| format!("{name}: computed a number where samples were expected"))?;
+            if s.len() != (a + CHUNK).min(rows) - a {
+                return Err(format!("{name}: computed {} samples for {}", s.len(), (a + CHUNK).min(rows) - a));
+            }
+            write_at(&file, bytemuck::cast_slice(&s.v), a as u64 * 8).map_err(io)
+        });
+    }
     let mut w = BufWriter::new(File::create(path).map_err(io)?);
     let mut wrote = 0usize;
     let mut failed = None;
@@ -190,23 +242,18 @@ fn write_channel(env: &RecEnv, r: &Resolved, rows: usize, path: &Path) -> std::r
             wrote += s.len();
         }
     })
-    .map_err(|e| format!("{}: {}", r.recipe.name, e.msg))?;
+    .map_err(fail)?;
     if let Some(e) = failed {
         return Err(io(e));
     }
     // a one-number recipe is a flat line
     if let Some(x) = number {
-        let block = vec![x; CHUNK.min(rows.max(1))];
-        let mut left = rows;
-        while left > 0 {
-            let n = left.min(block.len());
-            write_f64(&mut w, &block[..n]).map_err(io)?;
-            left -= n;
-        }
+        flat(&mut w, x)
     } else if wrote != rows {
-        return Err(format!("{}: computed {wrote} samples for {rows}", r.recipe.name));
+        Err(format!("{name}: computed {wrote} samples for {rows}"))
+    } else {
+        w.flush().map_err(io)
     }
-    w.flush().map_err(io)
 }
 
 impl Opened {

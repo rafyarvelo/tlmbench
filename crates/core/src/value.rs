@@ -63,7 +63,27 @@ impl Column {
 
     /// Every value as f64, times `scale` plus `offset` (shown values).
     pub fn to_f64(&self, scale: f64, offset: f64) -> Vec<f64> {
-        (0..self.len()).map(|i| self.get_f64(i) * scale + offset).collect()
+        macro_rules! conv {
+            ($v:expr) => {
+                if scale == 1.0 && offset == 0.0 {
+                    $v.iter().map(|&x| x as f64).collect()
+                } else {
+                    $v.iter().map(|&x| x as f64 * scale + offset).collect()
+                }
+            };
+        }
+        match self {
+            Column::I8(v) => conv!(v),
+            Column::I16(v) => conv!(v),
+            Column::I32(v) => conv!(v),
+            Column::I64(v) => conv!(v),
+            Column::U8(v) => conv!(v),
+            Column::U16(v) => conv!(v),
+            Column::U32(v) => conv!(v),
+            Column::U64(v) => conv!(v),
+            Column::F32(v) => conv!(v),
+            Column::F64(v) => conv!(v),
+        }
     }
 }
 

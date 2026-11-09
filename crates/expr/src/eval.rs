@@ -100,6 +100,27 @@ pub fn eval_chunked(e: &Expr, env: &dyn Env, chunk: usize) -> R<Val> {
     Ok(Val::Ser(Series::new(v, grid)))
 }
 
+/// Whether every sample of the result depends only on the inputs at that sample (no rolling, filter, running or
+/// one-number function): then any range can be computed alone, in any order, and in parallel with others.
+pub fn is_stateless(e: &Expr) -> bool {
+    analyze(e, None).is_ok_and(|p| p.stateless)
+}
+
+/// Samples `r` of the result of a [stateless](is_stateless) expression, computed alone. A number when the expression
+/// is one.
+pub fn eval_range(e: &Expr, env: &dyn Env, r: Range<usize>) -> R<Val> {
+    let plan = analyze(e, env.hz())?;
+    if !plan.stateless {
+        return Err(ExprError::new(
+            "This expression carries values from one sample to the next: it can't be computed in pieces",
+            0,
+        ));
+    }
+    let mut st = vec![St::default(); plan.nodes.len()];
+    let mut cx = Ctx { env, commit: r.len(), range: r, pass: 0, cursor: 0, st: &mut st, plan: &plan, resolved: &[] };
+    ev(e, &mut cx)
+}
+
 /// Streams the expression's output chunk by chunk: `sink(start, chunk)`. Returns the number when the expression's
 /// result is one (a flat line), and then never calls `sink`.
 pub fn run(e: &Expr, env: &dyn Env, chunk: usize, sink: &mut dyn FnMut(usize, &Series)) -> R<Option<f64>> {
@@ -196,8 +217,42 @@ struct Node {
     inner: usize,
 }
 
+/// Functions whose output at a sample depends only on the inputs at that sample.
+fn is_elementwise(f: &str) -> bool {
+    matches!(
+        f,
+        "abs"
+            | "sqrt"
+            | "ln"
+            | "log"
+            | "log10"
+            | "exp"
+            | "pow"
+            | "floor"
+            | "ceil"
+            | "sign"
+            | "round"
+            | "clamp"
+            | "sin"
+            | "cos"
+            | "tan"
+            | "asin"
+            | "acos"
+            | "atan"
+            | "atan2"
+            | "deg"
+            | "rad"
+            | "if"
+            | "interp"
+            | "past_warn"
+            | "past_alarm"
+    ) || (matches!(f, "min" | "max"))
+}
+
 #[derive(Default)]
 struct Plan {
+    /// Every call is element by element, and there is no one-number function: any chunk can be computed alone.
+    stateless: bool,
     /// One per call, in the order evaluation meets them.
     nodes: Vec<Node>,
     depth: usize,
@@ -229,6 +284,9 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
                     (depth, ahead) = (depth.max(d), ahead.max(h));
                 }
                 let kind = metric_kind(f, args.len());
+                if kind.is_some() || !is_elementwise(f) {
+                    plan.stateless = false;
+                }
                 plan.nodes[id].inner = plan.nodes.len() - id - 1;
                 if let Some(k) = kind {
                     depth += 1;
@@ -256,7 +314,7 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
             _ => Ok((0, 0)),
         }
     }
-    let mut plan = Plan::default();
+    let mut plan = Plan { stateless: true, ..Plan::default() };
     (plan.depth, plan.ahead) = walk(e, &mut plan, hz)?;
     Ok(plan)
 }
@@ -380,6 +438,31 @@ fn elementwise(args: &[Val], f: impl Fn(&[f64]) -> f64) -> R<Val> {
         return Ok(Val::Num(if xs.iter().any(|x| x.is_nan()) { f64::NAN } else { f(&xs) }));
     };
     let (grid, len) = (lead.grid.clone(), lead.len());
+    // the usual case, borrowed: one or two series on one grid (and numbers)
+    let same = |a: &Val| matches!(a, Val::Ser(s) if s.grid == grid && s.len() == len) || num_of(a).is_some();
+    if args.len() <= 2 && args.iter().all(same) {
+        fn col(a: &Val) -> Result<&[f64], f64> {
+            match a {
+                Val::Ser(s) => Ok(&s.v[..]),
+                v => Err(num_of(v).unwrap()),
+            }
+        }
+        let mut out = Vec::with_capacity(len);
+        match (col(&args[0]), args.get(1).map(|a| col(a))) {
+            (Ok(x), None) => out.extend(x.iter().map(|&x| if x.is_nan() { f64::NAN } else { f(&[x]) })),
+            (Ok(x), Some(Ok(y))) => {
+                out.extend(x.iter().zip(y).map(|(&x, &y)| if x.is_nan() || y.is_nan() { f64::NAN } else { f(&[x, y]) }))
+            }
+            (Ok(x), Some(Err(k))) => {
+                out.extend(x.iter().map(|&x| if x.is_nan() || k.is_nan() { f64::NAN } else { f(&[x, k]) }))
+            }
+            (Err(k), Some(Ok(y))) => {
+                out.extend(y.iter().map(|&y| if y.is_nan() || k.is_nan() { f64::NAN } else { f(&[k, y]) }))
+            }
+            _ => unreachable!("a series leads"),
+        }
+        return Ok(Val::Ser(Series::new(out, grid)));
+    }
     let cols: Vec<Result<Vec<f64>, f64>> = args
         .iter()
         .map(|a| match a {
@@ -429,15 +512,21 @@ fn window(v: Option<&Val>, f: &str, at: usize) -> R<Window> {
     }
 }
 
-/// The non-gap samples of `s`: their indices, values and times.
-fn compact(s: &Series) -> (Vec<usize>, Vec<f64>, Vec<f64>) {
+/// The non-gap samples of `s`: their indices (`None`: all of them, in order), values and, when `times`, their times.
+fn compact(s: &Series, times: bool) -> (Option<Vec<usize>>, std::borrow::Cow<'_, [f64]>, Vec<f64>) {
+    use std::borrow::Cow;
+    if !s.v.iter().any(|x| x.is_nan()) {
+        let t = if times { (0..s.len()).map(|i| s.time(i)).collect() } else { Vec::new() };
+        return (None, Cow::Borrowed(&s.v[..]), t);
+    }
     let idx: Vec<usize> = (0..s.len()).filter(|&i| !s.v[i].is_nan()).collect();
     let v = idx.iter().map(|&i| s.v[i]).collect();
-    let t = idx.iter().map(|&i| s.time(i)).collect();
-    (idx, v, t)
+    let t = if times { idx.iter().map(|&i| s.time(i)).collect() } else { Vec::new() };
+    (Some(idx), Cow::Owned(v), t)
 }
 
-fn scatter(s: &Series, idx: &[usize], res: Vec<f64>) -> Val {
+fn scatter(s: &Series, idx: Option<&[usize]>, res: Vec<f64>) -> Val {
+    let Some(idx) = idx else { return Val::Ser(Series::new(res, s.grid.clone())) };
     let mut out = vec![f64::NAN; s.len()];
     for (j, &i) in idx.iter().enumerate() {
         out[i] = res[j];
@@ -446,29 +535,36 @@ fn scatter(s: &Series, idx: &[usize], res: Vec<f64>) -> Val {
 }
 
 /// Runs `f(state, values, times)` over the non-gap samples; gaps stay gaps. The state advances over the committed
-/// samples only; the margin is computed from a copy.
-fn sample_op(cx: &mut Ctx, id: usize, s: &Series, f: impl Fn(&mut St, &[f64], &[f64]) -> Vec<f64>) -> Val {
-    let (idx, v, t) = compact(s);
-    let k = idx.partition_point(|&i| i < cx.commit);
+/// samples only; the margin is computed from a copy. `times` says whether `f` reads the times (otherwise empty).
+fn sample_op(cx: &mut Ctx, id: usize, s: &Series, times: bool, f: impl Fn(&mut St, &[f64], &[f64]) -> Vec<f64>) -> Val {
+    let (idx, v, t) = compact(s, times);
+    let k = idx.as_ref().map_or(cx.commit.min(v.len()), |idx| idx.partition_point(|&i| i < cx.commit));
+    let tk = |r: Range<usize>| if times { &t[r] } else { &t[..0] };
     let st = &mut cx.st[id];
-    let mut res = f(st, &v[..k], &t[..k]);
+    let mut res = f(st, &v[..k], tk(0..k));
     if k < v.len() {
         let mut tmp = st.clone();
-        res.extend(f(&mut tmp, &v[k..], &t[k..]));
+        res.extend(f(&mut tmp, &v[k..], tk(k..v.len())));
     }
-    scatter(s, &idx, res)
+    scatter(s, idx.as_deref(), res)
 }
 
 /// The values `n` samples back (NaN before there are `n`), and their times.
 fn lag(st: &mut St, v: &[f64], t: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
+    let with_t = !t.is_empty();
     let hist = st.v.len();
     let all_v: Vec<f64> = st.v.iter().chain(v).copied().collect();
     let all_t: Vec<f64> = st.t.iter().chain(t).copied().collect();
     let at = |all: &[f64], j: usize| if hist + j >= n { all[hist + j - n] } else { f64::NAN };
-    let out = ((0..v.len()).map(|j| at(&all_v, j)).collect(), (0..v.len()).map(|j| at(&all_t, j)).collect());
+    let out = (
+        (0..v.len()).map(|j| at(&all_v, j)).collect(),
+        if with_t { (0..v.len()).map(|j| at(&all_t, j)).collect() } else { Vec::new() },
+    );
     let keep = all_v.len().saturating_sub(n);
     st.v = all_v[keep..].iter().copied().collect();
-    st.t = all_t[keep..].iter().copied().collect();
+    if with_t {
+        st.t = all_t[keep..].iter().copied().collect();
+    }
     out
 }
 
@@ -486,12 +582,16 @@ fn rolling(st: &mut St, v: &[f64], t: &[f64], w: Window, kind: Roll) -> Vec<f64>
     let mut out = Vec::with_capacity(v.len());
     for j in 0..v.len() {
         st.v.push_back(v[j]);
-        st.t.push_back(t[j]);
+        if let Window::Secs(_) = w {
+            st.t.push_back(t[j]);
+        }
         st.a += v[j];
         st.b += v[j] * v[j];
         let evict = |st: &mut St| {
             let x = st.v.pop_front().unwrap();
-            st.t.pop_front();
+            if matches!(w, Window::Secs(_)) {
+                st.t.pop_front();
+            }
             st.a -= x;
             st.b -= x * x;
         };
@@ -670,23 +770,23 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
             [n] => n.clone(),
             _ => ew(&|x| x.iter().copied().fold(f64::NEG_INFINITY, f64::max))?,
         },
-        "delta" | "diff" => sample_op(cx, id, ser(0)?, |st, v, t| {
+        "delta" | "diff" => sample_op(cx, id, ser(0)?, false, |st, v, t| {
             let (p, _) = lag(st, v, t, 1);
             v.iter().zip(p).map(|(x, p)| x - p).collect()
         }),
         "prev" => {
             let n = a.get(1).and_then(num_of).unwrap_or(1.0).max(0.0) as usize;
-            sample_op(cx, id, ser(0)?, move |st, v, t| lag(st, v, t, n).0)
+            sample_op(cx, id, ser(0)?, false, move |st, v, t| lag(st, v, t, n).0)
         }
-        "pct_change" => sample_op(cx, id, ser(0)?, |st, v, t| {
+        "pct_change" => sample_op(cx, id, ser(0)?, false, |st, v, t| {
             let (p, _) = lag(st, v, t, 1);
             v.iter().zip(p).map(|(x, p)| if p != 0.0 { x / p - 1.0 } else { f64::NAN }).collect()
         }),
-        "rate" => sample_op(cx, id, ser(0)?, |st, v, t| {
+        "rate" => sample_op(cx, id, ser(0)?, true, |st, v, t| {
             let (p, pt) = lag(st, v, t, 1);
             (0..v.len()).map(|j| if t[j] > pt[j] { (v[j] - p[j]) / (t[j] - pt[j]) } else { f64::NAN }).collect()
         }),
-        "cumsum" => sample_op(cx, id, ser(0)?, |st, v, _| {
+        "cumsum" => sample_op(cx, id, ser(0)?, false, |st, v, _| {
             v.iter()
                 .map(|x| {
                     st.a += x;
@@ -694,7 +794,7 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
                 })
                 .collect()
         }),
-        "integral" => sample_op(cx, id, ser(0)?, |st, v, t| {
+        "integral" => sample_op(cx, id, ser(0)?, true, |st, v, t| {
             (0..v.len())
                 .map(|j| {
                     if st.flag {
@@ -707,7 +807,7 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
         }),
         "running_max" | "running_min" => {
             let max = f == "running_max";
-            sample_op(cx, id, ser(0)?, move |st, v, _| {
+            sample_op(cx, id, ser(0)?, false, move |st, v, _| {
                 v.iter()
                     .map(|&x| {
                         st.a = if !st.flag {
@@ -734,11 +834,11 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
                 "median" => Roll::Median,
                 _ => Roll::Mean,
             };
-            sample_op(cx, id, ser(0)?, move |st, v, t| rolling(st, v, t, w, kind))
+            sample_op(cx, id, ser(0)?, matches!(w, Window::Secs(_)), move |st, v, t| rolling(st, v, t, w, kind))
         }
         "ema" => {
             let w = win(1)?;
-            sample_op(cx, id, ser(0)?, move |st, v, t| {
+            sample_op(cx, id, ser(0)?, matches!(w, Window::Secs(_)), move |st, v, t| {
                 (0..v.len())
                     .map(|j| {
                         let al = match w {
@@ -747,7 +847,10 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
                             Window::Secs(_) => 1.0,
                         };
                         st.a = if st.flag { st.a + al * (v[j] - st.a) } else { v[j] };
-                        (st.b, st.flag) = (t[j], true);
+                        if let Window::Secs(_) = w {
+                            st.b = t[j];
+                        }
+                        st.flag = true;
                         st.a
                     })
                     .collect()
@@ -794,12 +897,13 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
                     }
                 }
             }
-            let (idx, mut v, _) = compact(s);
-            let k = idx.partition_point(|&i| i < cx.commit);
+            let (idx, v, _) = compact(s, false);
+            let k = idx.as_ref().map_or(cx.commit.min(v.len()), |idx| idx.partition_point(|&i| i < cx.commit));
+            let mut v = v.into_owned();
             for (stage, bq) in bqs.iter().enumerate() {
                 v = filters::zero_phase(bq, &mut cx.st[id].carry[stage], &v, k);
             }
-            scatter(s, &idx, v)
+            scatter(s, idx.as_deref(), v)
         }
         "interp" => {
             let mut s = ser(0)?.clone();
