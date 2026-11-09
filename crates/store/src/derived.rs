@@ -41,7 +41,7 @@ pub struct ExprEnv {
 
 impl ExprEnv {
     /// A digest of everything in it, in a fixed order (it goes into the cache key of recipes that read it).
-    fn digest(&self) -> Vec<u8> {
+    pub(crate) fn digest(&self) -> Vec<u8> {
         let mut l: Vec<_> = self.labels.iter().map(|((c, t), v)| format!("L{c}\0{t}\0{v}")).collect();
         let mut m: Vec<_> = self.limits.iter().map(|((c, a), (lo, hi))| format!("M{c}\0{a}\0{lo:?}\0{hi:?}")).collect();
         l.sort();
