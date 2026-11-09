@@ -22,6 +22,7 @@ import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSe
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import {
+  addChannels,
   addPaneBelow,
   assignColors,
   colorIdx,
@@ -46,6 +47,7 @@ import {
 import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
 import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
 import { type ExportContext, exp, FORMATS, img } from './exports.svelte';
+import { derive, type DerivedInfo, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
 import { SvgContext, svg } from './svgctx';
 import { tabs } from './tabs.svelte';
 import { actions, type FolderEntry, ui } from './ui.svelte';
@@ -80,6 +82,9 @@ interface Opened {
   /** First and last sample times as decimal strings (exact i64 nanoseconds). */
   range: [string, string] | null;
   status: Status;
+  /** The derived channels among `info.channels` (they come after the recording's own), and recipes that didn't apply. */
+  derived?: DerivedInfo[];
+  skipped?: { name: string; why: string }[];
 }
 
 interface Progress {
@@ -138,7 +143,10 @@ const renderer = new Renderer($<HTMLCanvasElement>('gl'));
 // ---------- state ----------
 
 /** An open file: its id in the core, what it holds, and its first and last sample times. */
-type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint };
+type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[] };
+
+/** Explorer's rows for a file's channels: the recording's, then its derived ones (marked ƒ). */
+const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
 
 const state = {
   file: null as null | OpenFile,
@@ -1436,7 +1444,7 @@ async function showTab(key: number): Promise<void> {
   ui.path = d.file.info.path;
   ui.time = fileTime(d.file.info.time.kind === 'index', d.file.first);
   ui.measureDismissed = false;
-  ui.channels = d.file.info.channels.map((c) => ({ name: c.name, unit: c.unit, category: c.category }));
+  ui.channels = chanRows(d.file);
   $('empty').hidden = true;
   saveSession();
   await tick();
@@ -1488,17 +1496,18 @@ async function openPath(path: string, part?: string): Promise<void> {
       let id: number | null = null;
       let early: Progress | null = null;
       progress.onmessage = (p) => (id == null ? (early = p) : onProgress(id, p));
-      const o = await invoke<Opened>('open', { path, part: part ?? null, progress });
+      const o = await invoke<Opened>('open', { path, part: part ?? null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], progress });
       id = o.id;
       if (early) onProgress(id, early);
       if (!o.range) {
         void invoke('close', { file: o.id });
         throw new Error('it has no samples');
       }
-      file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
+      file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: o.derived ?? [] };
+      for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
       building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
     }
-    const n = file.info.channels.length;
+    const n = file.info.channels.length - file.derived.length;
     tabData.set(key, {
       file,
       building,
@@ -1552,7 +1561,7 @@ async function openLive(endpoint: string, descriptor: string): Promise<void> {
     const o = await invoke<Opened>('live_connect', { endpoint, descriptor: descriptor || null });
     if (!o.range) throw new Error('no samples yet');
     const key = nextTab++;
-    const file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]) };
+    const file: OpenFile = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: [] };
     tabData.set(key, {
       file,
       building: null,
@@ -2321,6 +2330,238 @@ function exportContext(): ExportContext | null {
   };
 }
 
+// ---------- Derived channels: Derive…, Edit recipe…, Remove ----------
+
+const dedupe = (names: string[]) => [...new Set(names)];
+const autoSymbol: Record<string, string> = { diff2: '−', ratio: '÷', prod: '×', sum2: '+' };
+
+/** The expression a template gives for the channels the dialog starts from. */
+function fillTemplate(expr: string): string {
+  const [a, b] = derive.base;
+  const A = a ? quoteName(a.name) : 'X';
+  const B = b ? quoteName(b.name) : 'B';
+  return expr.replace(/\bX\b/g, A).replace(/\bA\b/g, A).replace(/\bB\b/g, B);
+}
+
+function autoName(id: string): string {
+  const [a, b] = derive.base;
+  const T = derive.base.length === 2 ? TEMPLATES2 : TEMPLATES;
+  const t = T.find((x) => x.id === id);
+  if (!t || id === 'custom') return '';
+  if (a && b) return `${a.name} ${autoSymbol[id] ?? '+'} ${b.name}`;
+  return `${a ? `${a.name} ` : ''}${t.label.replace(/ \(.*\)$/, '').toLowerCase()}`;
+}
+
+async function refreshRecipes(): Promise<void> {
+  recipes.list = await invoke<Recipe[]>('recipes_list');
+}
+
+let deriveCheckToken = 0;
+let deriveCheckTimer = 0;
+
+/** Checks the expression against the open file, a moment after typing stops: the mistake and where, or a preview. */
+function deriveCheckSoon(): void {
+  clearTimeout(deriveCheckTimer);
+  derive.status = { ok: false, text: 'Checking…', pending: true };
+  deriveCheckTimer = window.setTimeout(() => void deriveCheck(), 150);
+}
+
+async function deriveCheck(): Promise<void> {
+  const f = state.file;
+  const expr = derive.expr;
+  const token = ++deriveCheckToken;
+  if (!f) return;
+  const r = await invoke<{ preview: { samples: number; values: number; min: number | null; max: number | null; number: number | null } | null; error: { msg: string; at: number } | null }>('derive_check', { file: f.id, expr }).catch((e) => ({ preview: null, error: { msg: String(e), at: -1 } }));
+  if (token !== deriveCheckToken) return;
+  const u = derive.unit ? ` ${derive.unit}` : '';
+  const sig = (x: number | null) => (x == null ? '' : +x.toPrecision(4));
+  if (r.error) derive.status = { ok: false, text: `${r.error.msg}${r.error.at >= 0 ? ` (at character ${r.error.at + 1})` : ''}`, pending: false };
+  else if (r.preview?.number != null) derive.status = { ok: true, text: `One number for the whole file: ${+r.preview.number.toPrecision(6)}${u}. It plots as a flat line and shows as the channel's value.`, pending: false };
+  else if (r.preview && r.preview.values > 0) derive.status = { ok: true, text: `${r.preview.values.toLocaleString('en-US')} samples${r.preview.samples < f.info.samples ? ' at the start' : ''} · from ${sig(r.preview.min)} to ${sig(r.preview.max)}${u}`, pending: false };
+  else derive.status = { ok: false, text: 'No values: every sample is a gap (check the window or the inputs).', pending: false };
+}
+
+function deriveTemplate(id: string): void {
+  const T = derive.base.length === 2 ? TEMPLATES2 : TEMPLATES;
+  const t = T.find((x) => x.id === id);
+  if (!t) return;
+  derive.tpl = id;
+  derive.expr = fillTemplate(t.expr);
+  derive.unit = t.unit(derive.base[0]?.unit ?? '');
+  derive.name = autoName(id) || derive.name;
+  deriveCheckSoon();
+}
+
+function deriveOpen(chs: number[]): void {
+  if (!state.file) return;
+  const base = chs.slice(0, 2).map((ch) => ({ name: ui.channels[ch]?.name ?? '', unit: ui.channels[ch]?.unit ?? '' }));
+  Object.assign(derive, { open: true, editing: null, busy: false, base, category: 'Derived', decimals: 3, scope: 'file', error: '' });
+  void refreshRecipes();
+  deriveTemplate((base.length === 2 ? TEMPLATES2 : TEMPLATES)[0].id);
+}
+
+function deriveEdit(ch: number): void {
+  const name = ui.channels[ch]?.name;
+  const r = recipes.list.find((x) => x.name === name);
+  const go = (r: Recipe) => {
+    Object.assign(derive, { open: true, editing: r.name, busy: false, base: [], tpl: 'custom', name: r.name, expr: r.expr, unit: r.unit ?? '', category: r.category ?? 'Derived', decimals: r.decimals ?? 3, scope: 'keep', error: '' });
+    deriveCheckSoon();
+  };
+  if (r) return go(r);
+  void refreshRecipes().then(() => {
+    const found = recipes.list.find((x) => x.name === name);
+    if (found) go(found);
+  });
+}
+
+/** Recipes renamed by the edit being applied: old name → new. */
+let renamed: Record<string, string> = {};
+
+/** Asks the core to show `file` with the recipes it should have now, and fits the panes to the new channel list. */
+async function reapply(file: OpenFile): Promise<void> {
+  const path = file.info.path;
+  const have = new Set(recipes.list.map((r) => r.name));
+  // the channels as they stand keep their order (and their numbers); what was added to this file follows
+  const att = settings.fileRecipes[path] ?? [];
+  const off = settings.fileRecipesOff[path] ?? [];
+  const kept = file.derived.filter((d) => !off.includes(d.name) && (d.automatic || att.includes(d.name))).map((d) => d.name);
+  const wanted = dedupe([...kept.map((n) => renamed[n] ?? n), ...att]).filter((n) => have.has(n));
+  const before = file.info.channels.map((c) => c.name);
+  const progress = new Channel<Progress>();
+  progress.onmessage = (p) => onProgress(file.id, p);
+  const o = await invoke<Opened>('derive_apply', { file: file.id, recipes: wanted, exclude: settings.fileRecipesOff[path] ?? [], progress });
+  file.info = o.info;
+  file.derived = o.derived ?? [];
+  for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
+  // panes keep the channels that are still there, under their new numbers
+  const after = o.info.channels.map((c) => c.name);
+  const to = (n: number): number | undefined => {
+    const k = after.indexOf(renamed[before[n]] ?? before[n]);
+    return k < 0 ? undefined : k;
+  };
+  const fix = (p: Pane) => remapPane(p, to);
+  for (const t of tabs.list) {
+    const d = tabData.get(t.key);
+    if (d?.file === file && t.key !== tabs.active) d.panes.forEach(fix);
+  }
+  if (state.file === file) {
+    stack.panes.forEach(fix);
+    ui.channels = chanRows(file);
+    normalize();
+    await tick();
+    renderPanes();
+    state.ovStale = true;
+    void requestView('exact');
+  }
+}
+
+/** A pane's channel numbers (and the table state keyed by them) under a new numbering; `to` is undefined for a gone channel. */
+function remapPane(p: Pane, to: (n: number) => number | undefined): void {
+  p.channels = p.channels.map(to).filter((n): n is number => n != null);
+  if (p.hideCols) p.hideCols = p.hideCols.map(to).filter((n): n is number => n != null);
+  const col = (id: string) => {
+    const m = /^c(\d+)$/.exec(id);
+    if (!m) return id;
+    const n = to(+m[1]);
+    return n == null ? null : `c${n}`;
+  };
+  if (p.sort) p.sort = p.sort.flatMap((k) => (col(k.col) == null ? [] : [{ ...k, col: col(k.col)! }]));
+  for (const key of ['filters', 'widths'] as const) {
+    const rec = p[key] as Record<string, unknown> | undefined;
+    if (rec) (p as unknown as Record<string, unknown>)[key] = Object.fromEntries(Object.entries(rec).flatMap(([k, v]) => (col(k) == null ? [] : [[col(k)!, v]])));
+  }
+}
+
+/** Every open file shows the library as it is now. */
+async function reapplyAll(): Promise<void> {
+  const files = new Set<OpenFile>();
+  for (const t of tabs.list) {
+    const f = fileOf(t.key);
+    if (f && !t.live) files.add(f);
+  }
+  for (const f of files) await reapply(f);
+}
+
+async function deriveSubmit(): Promise<void> {
+  const f = state.file;
+  if (!f || derive.busy || !derive.status.ok) return;
+  derive.busy = true;
+  derive.error = '';
+  const editingName = derive.editing;
+  const name = derive.name.trim() || 'Derived';
+  const old = editingName ? recipes.list.find((r) => r.name === editingName) : undefined;
+  const recipe: Recipe = {
+    name,
+    expr: derive.expr.trim(),
+    unit: derive.unit.trim() || null,
+    category: derive.category.trim() || 'Derived',
+    decimals: derive.decimals,
+    automatic: derive.scope === 'auto' ? true : derive.scope === 'keep' ? (old?.automatic ?? false) : false,
+  };
+  try {
+    await invoke('recipe_save', { recipe, replacing: editingName });
+    // a rename: files that had the recipe keep it under its new name
+    if (editingName && editingName !== name) {
+      const swap = (m: Record<string, string[]>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.map((n) => (n === editingName ? name : n))]));
+      setSetting('fileRecipes', swap(settings.fileRecipes));
+      setSetting('fileRecipesOff', swap(settings.fileRecipesOff));
+    }
+    if (!editingName && derive.scope === 'file') setSetting('fileRecipes', { ...settings.fileRecipes, [f.info.path]: dedupe([...(settings.fileRecipes[f.info.path] ?? []), name]) });
+    // an automatic recipe on a file that had left it out comes back
+    if (recipe.automatic && settings.fileRecipesOff[f.info.path]?.includes(name)) setSetting('fileRecipesOff', { ...settings.fileRecipesOff, [f.info.path]: settings.fileRecipesOff[f.info.path].filter((n) => n !== name) });
+    await refreshRecipes();
+    derive.open = false;
+    renamed = editingName && editingName !== name ? { [editingName]: name } : {};
+    try {
+      await reapplyAll();
+    } finally {
+      renamed = {};
+    }
+    if (!editingName) {
+      const ch = f.info.channels.findIndex((c, i) => c.name === name && f.derived.some((d) => d.channel === i));
+      if (ch >= 0) addChannels([ch]);
+    }
+  } catch (e) {
+    derive.error = `Couldn't save it: ${e}`;
+  } finally {
+    derive.busy = false;
+  }
+}
+
+/** Takes a derived channel off this file (an attached recipe is detached; an automatic one is left out) or deletes its recipe; Undo puts it back. */
+async function deriveRemove(ch: number, from: 'file' | 'all'): Promise<void> {
+  const f = state.file;
+  const d = f?.derived.find((x) => x.channel === ch);
+  if (!f || !d) return;
+  const path = f.info.path;
+  const was = recipes.list.find((r) => r.name === d.name);
+  const snapshot = { att: settings.fileRecipes, off: settings.fileRecipesOff };
+  const without = (m: Record<string, string[]>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.filter((n) => n !== d.name)]));
+  if (from === 'file') {
+    setSetting('fileRecipes', { ...settings.fileRecipes, [path]: (settings.fileRecipes[path] ?? []).filter((n) => n !== d.name) });
+    if (d.automatic) setSetting('fileRecipesOff', { ...settings.fileRecipesOff, [path]: dedupe([...(settings.fileRecipesOff[path] ?? []), d.name]) });
+  } else {
+    await invoke('recipe_delete', { name: d.name });
+    setSetting('fileRecipes', without(settings.fileRecipes));
+    setSetting('fileRecipesOff', without(settings.fileRecipesOff));
+  }
+  await refreshRecipes();
+  await reapplyAll();
+  const where = from === 'all' ? 'every file' : nameOf(path);
+  note(`Removed ${d.name} from ${where}.`);
+  ui.undo = () => {
+    void (async () => {
+      if (from === 'all' && was) await invoke('recipe_save', { recipe: was, replacing: null });
+      setSetting('fileRecipes', snapshot.att);
+      setSetting('fileRecipesOff', snapshot.off);
+      await refreshRecipes();
+      await reapplyAll();
+      ui.note = '';
+      ui.undo = null;
+    })();
+  };
+}
+
 function exportOpen(): void {
   const ctx = exportContext();
   if (!ctx) return;
@@ -2869,9 +3110,18 @@ function channelMenu(ch: number, x: number, y: number): void {
     { heading: name },
     { label: 'Move to a category…', meta: groupChannels(f.info.path, f.info.channels).find((g) => g.chs.includes(ch))?.name ?? '', data: { cat: '' }, run: () => categoryDialog(ch, x, y) },
     { label: 'Gap factor…', meta: `${gapFactor(ch)}×`, data: { gap: '' }, run: () => gapDialog(ch, x, y) },
+    { sep: true },
+    ...(f.derived.some((d) => d.channel === ch)
+      ? [
+          { label: 'Edit recipe…', data: { cm: 'edit' }, run: () => deriveEdit(ch) },
+          { label: 'Derive from this…', data: { cm: 'derive' }, run: () => deriveOpen([ch]) },
+          { label: 'Remove from this file', data: { cm: 'rm-file' }, run: () => void deriveRemove(ch, 'file') },
+          { label: 'Remove from every file', data: { cm: 'rm-all' }, run: () => void deriveRemove(ch, 'all') },
+        ]
+      : [{ label: 'Derive…', data: { cm: 'derive' }, run: () => deriveOpen([ch]) }]),
   ];
   // its pick opens a dialog in `popup`: unmount the menu first (onclose), then run
-  popMenu = mount(Menu, { target: document.body, props: { class: 'chmenu', label: name, at: { x, y }, items, onclose: () => closePopup() } });
+  popMenu = mount(Menu, { target: document.body, props: { class: 'chmenu chanmenu', label: name, at: { x, y }, items, onclose: () => closePopup() } });
 }
 
 /** Moves channel `ch` to a category of your own (a name; empty puts it back where its name says). */
@@ -3105,6 +3355,18 @@ Object.assign(actions, {
   importAll: (paths: string[]) => void openWithImport(paths, true),
   importGo: () => void importGo(),
   importCancel,
+  deriveOpen,
+  deriveEdit,
+  deriveTemplate,
+  deriveExpr: (text: string) => {
+    derive.expr = text;
+    deriveCheckSoon();
+  },
+  deriveSubmit: () => void deriveSubmit(),
+  deriveClose: () => {
+    derive.open = false;
+  },
+  deriveRemove: (ch: number, from: 'file' | 'all') => void deriveRemove(ch, from),
   exportOpen,
   exportGo: () => void exportGo(),
   exportClose: () => {

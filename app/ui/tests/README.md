@@ -1,7 +1,7 @@
 # The app's UI tests
 
 The built UI (`app/ui/dist`) in headless Chromium, with `fakecore.js` answering the Tauri commands the UI calls
-(`launch`, `open`, `import_inspect`, `profile_save`, `close`, `view`, `values_at`, `stats`, `rows`, `shared_views`, `share_view`, `export_view`, `list_folder`, `live_connect`, `live_state`, `live_stop`, `usage`, `cache_info`, `cache_clear`, the window title, the file
+(`launch`, `open`, `import_inspect`, `profile_save`, `close`, `view`, `derive_apply`, `derive_check`, `recipes_list`, `recipe_save`, `recipe_delete`, `recipes_import`, `recipes_export`, `spectrum`, `values_at`, `stats`, `rows`, `shared_views`, `share_view`, `export_view`, `list_folder`, `live_connect`, `live_state`, `live_stop`, `usage`, `cache_info`, `cache_clear`, the window title, the file
 and folder dialogs and drag and drop) from synthetic
 recordings. Tests check behaviour and state, not pixels; check visual changes with a screenshot.
 
@@ -25,6 +25,7 @@ PASS or FAIL with its failed checks; full output goes to `out/<test>.txt` and a 
 | t_controls | Lock (button, L, refused wheel/keys/Fit with an Unlock note, cursors still working, saved), ← → pan and + − ↑ ↓ zoom, T theme, the ⋯ menu's groups, Remove every channel / pane with Undo (and as top-bar icons at 1300 px and wider), Clear cursors always on the bar, Focus mode (Ctrl+., Esc, Exit focus) |
 | t_sidebars | dragging a sidebar's inner edge (200 px to half the window, double-click resets, saved), collapsing Explorer and Measure's panels, Collapse all in ⋯, panels moving between the sidebars (⇄, or dragged by their title to reorder or change sides), the layout and sizes after a reload, Reset UI layout |
 | t_channels | Explorer's categories (grouped by name prefix, counts, folding, Chart on a group), channel swatches (check, colour, "pane N"), the selection bar for one or several channels (Add to pane N, Chart, Table, Remove), Ctrl/Cmd-click, Shift-click, Ctrl+A and Esc, dragging channels onto a pane or empty space, the file right-click menu, Show only these, Close all files with Undo |
+| t_derived | Derive… from the selection bar (A − B, A ÷ B, A × B, A + B for two channels) and the title row's ƒ button, templates, the live check naming the character (a missing bracket, an unknown function, a missing channel, a one-number result) with a preview, Add and plot (the recipe saved with its unit, category and decimals; attached to the file; the ƒ row; the pane), Edit recipe… from the right-click menu (a rename keeps the file's recipe and the pane's channel), Remove from this file and Remove from every file with Undo, an automatic recipe reaching another file, Esc |
 | t_start | the start page with no file (Open folder…, Open recording…, Connect live source…), recent recordings newest first, the rail's logo opening it over the tabs (Esc closes it), Show this page at launch |
 | t_tips | the floating tooltip (after a pause, at once on keyboard focus, hidden when the pointer leaves), Short retiring a tip after three showings (saved), Full, Off, Reset tooltips |
 | t_time | the menu on the time range (ten formats) changing the range, readouts and cursor tiles, Time decimals, Time labels on every chart, all saved; Wall clock (only for a file with an absolute start), sample numbers for a file with no time |

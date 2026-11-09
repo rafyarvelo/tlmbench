@@ -230,6 +230,7 @@
     <button class="phtog" id="exToggle" aria-expanded={!closed} aria-label="Explorer panel" data-tip="Collapse or expand this panel" onclick={() => setPanelOpen('explorer', closed)}><span class="chv" class:shut={closed}>{@html ICON.chev}</span>Explorer</button><span class="spacer"></span>
     <button class="ibtn exall" id="exAddShown" aria-label={addShownTip} disabled={!ui.file || !shownChans.length} data-tip={addShownTip} onclick={() => addChannels(shownChans)}>{@html ICON.add}</button>
     <button class="ibtn exall" id="exCats" aria-label="Show categories" aria-pressed={settings.exCategories} data-tip={settings.exCategories ? 'Showing categories. Click for a flat list' : 'Showing a flat list. Click to group channels into categories'} onclick={() => setSetting('exCategories', !settings.exCategories)}>{@html ICON.cats}</button>
+    <button class="ibtn exall" id="exDerive" aria-label="New derived channel" disabled={!ui.file} data-tip="New derived channel: compute one from this file's channels" onclick={() => actions.deriveOpen(picked.length ? picked : sel?.startsWith('ch:') ? [+sel.slice(3)] : [])}>ƒ</button>
     <span class="exsep" aria-hidden="true"></span>
     <button class="ibtn exall" id="treeExpand" aria-label="Expand all" data-tip="Expand all folders and channel groups" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
     <button class="ibtn exall" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all channel groups, and the folders without an open file" onclick={collapseAll}>{@html ICON.collapse}</button>
@@ -319,6 +320,7 @@
       <button class="tbtn" data-sel="add" data-tip="Plot in the selected pane" onclick={() => addChannels(targets)}>Add to pane {stack.sel + 1}</button>
       <button class="tbtn" data-sel="chart" onclick={() => newPaneWith(targets)}>Chart</button>
       <button class="tbtn" data-sel="table" onclick={() => newPaneWith(targets, 'table')}>Table</button>
+      <button class="tbtn" data-sel="derive" data-tip={targets.length > 2 ? 'Pick one or two channels to derive from' : 'A new channel computed from this one'} disabled={targets.length > 2} onclick={() => actions.deriveOpen(targets)}>Derive…</button>
       <button class="tbtn" data-sel="remove" disabled={!targets.some(plottedAnywhere)} data-tip="Take out of every pane" onclick={() => removeChannels(targets)}>Remove</button>
     </div>
   {/if}
@@ -435,17 +437,25 @@
     draggable="true"
     style="--d: {depth}; --c: var(--trace-{colorIdx(ch) + 1})"
     data-ch={ch}
+    data-derived={c.derived ? '' : undefined}
     onclick={(e) => clickChan(e, ch)}
     ondblclick={() => toggleChannel(ch)}
     ondragstart={(e) => dragChan(e, ch)}
     onkeydown={(e) => key(e, { kind: 'chan', ch })}
   >
     <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
-    <span class="nm">{c.name}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.unit}<span class="unit">{c.unit}</span>{/if}
+    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{c.name}</span>{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.unit}<span class="unit">{c.unit}</span>{/if}
   </div>
 {/snippet}
 
 <style>
+  .dglyph {
+    margin-right: 4px;
+    color: var(--accent);
+    font-family: var(--font-data);
+    font-style: italic;
+    font-size: 12px;
+  }
   #exMore :global(svg) {
     width: 12px;
     height: 12px;

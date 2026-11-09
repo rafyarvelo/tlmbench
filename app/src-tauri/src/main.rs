@@ -115,7 +115,12 @@ type Shown = (Arc<StoreOpened>, Vec<DerivedInfo>, Vec<Skipped>);
 
 /// `base` with the library's recipes that apply to it (those named in `attached`, in that order, then the automatic
 /// ones) as channels after its own: what the file shows, the channels derived, and the attached recipes that didn't apply.
-fn with_derived(store: &Store, base: &Arc<StoreOpened>, attached: &[String]) -> Result<Shown, String> {
+fn with_derived(
+    store: &Store,
+    base: &Arc<StoreOpened>,
+    attached: &[String],
+    exclude: &[String],
+) -> Result<Shown, String> {
     let lib = tlmbench_store::Library::new(store.root());
     // the attached ones in the order given (so a channel keeps its number when others come and go), then the
     // automatic ones that weren't named, by name
@@ -126,7 +131,10 @@ fn with_derived(store: &Store, base: &Arc<StoreOpened>, attached: &[String]) -> 
             recipes.push(r.clone());
         }
     }
-    let rest: Vec<_> = all.into_iter().filter(|r| r.automatic && !recipes.iter().any(|x| x.name == r.name)).collect();
+    let rest: Vec<_> = all
+        .into_iter()
+        .filter(|r| r.automatic && !exclude.contains(&r.name) && !recipes.iter().any(|x| x.name == r.name))
+        .collect();
     recipes.extend(rest);
     let mut skipped: Vec<Skipped> = attached
         .iter()
@@ -269,11 +277,13 @@ async fn open(
     profile: Option<ImportProfile>,
     part: Option<String>,
     recipes: Option<Vec<String>>,
+    exclude: Option<Vec<String>>,
     progress: Channel<Progress>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
     let store = files.store.clone();
     let attached = recipes.unwrap_or_default();
+    let exclude = exclude.unwrap_or_default();
     let (base, shown, derived, skipped) = spawn_blocking(move || -> Result<_, String> {
         let profile = profile.or_else(|| saved_profile(store.root(), Path::new(&path)));
         let base = store
@@ -282,7 +292,7 @@ async fn open(
             .open_part(Path::new(&path), None, part.as_deref())
             .map_err(|e| e.to_string())?;
         let base = Arc::new(base);
-        let (shown, derived, skipped) = with_derived(&store, &base, &attached)?;
+        let (shown, derived, skipped) = with_derived(&store, &base, &attached, &exclude)?;
         Ok((base, shown, derived, skipped))
     })
     .await
@@ -305,6 +315,7 @@ async fn open(
 async fn derive_apply(
     file: u32,
     recipes: Vec<String>,
+    exclude: Vec<String>,
     progress: Channel<Progress>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
@@ -312,7 +323,7 @@ async fn derive_apply(
     let store = files.store.clone();
     let b = base.clone();
     let (shown, derived, skipped) =
-        spawn_blocking(move || with_derived(&store, &b, &recipes)).await.map_err(|e| e.to_string())??;
+        spawn_blocking(move || with_derived(&store, &b, &recipes, &exclude)).await.map_err(|e| e.to_string())??;
     let info = shown.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
     let status = shown.status();
@@ -1764,7 +1775,7 @@ mod derive_tests {
         lib.save(&recipe("Bad", "nope + 1", false), None).unwrap();
         let base = Arc::new(store.open(&path, None).unwrap());
 
-        let (shown, derived, skipped) = with_derived(&store, &base, &[]).unwrap();
+        let (shown, derived, skipped) = with_derived(&store, &base, &[], &[]).unwrap();
         let names: Vec<&str> = shown.recording().info().channels.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["v", "i", "Power"]);
         assert_eq!(
@@ -1774,7 +1785,7 @@ mod derive_tests {
         assert!(skipped.is_empty());
 
         let (shown, derived, skipped) =
-            with_derived(&store, &base, &["Half".into(), "Bad".into(), "Gone".into()]).unwrap();
+            with_derived(&store, &base, &["Half".into(), "Bad".into(), "Gone".into()], &[]).unwrap();
         assert_eq!(shown.recording().info().channels.len(), 4);
         assert_eq!(
             derived.iter().map(|d| (d.name.as_str(), d.channel)).collect::<Vec<_>>(),
@@ -1792,11 +1803,15 @@ mod derive_tests {
         // the derived channel's values are in the joined recording
         assert_eq!(shown.recording().value_at(3, 1, &Default::default()), 22.0);
 
+        // an automatic recipe can be left out of one file
+        let (shown, derived, _) = with_derived(&store, &base, &[], &["Power".into()]).unwrap();
+        assert!(derived.is_empty() && Arc::ptr_eq(&shown, &base));
+
         // with no recipes the file is just the recording
         for r in ["Power", "Needs gps", "Half", "Bad"] {
             lib.delete(r).unwrap();
         }
-        let (plain, derived, _) = with_derived(&store, &base, &[]).unwrap();
+        let (plain, derived, _) = with_derived(&store, &base, &[], &[]).unwrap();
         assert!(Arc::ptr_eq(&plain, &base) && derived.is_empty());
     }
 }

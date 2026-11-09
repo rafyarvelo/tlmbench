@@ -22,7 +22,7 @@ export const ui = $state({
   /** The folder Explorer lists (null: none open). */
   folder: null as FolderEntry | null,
   /** Its channels' names and units. */
-  channels: [] as { name: string; unit: string | null; category?: string | null }[],
+  channels: [] as { name: string; unit: string | null; category?: string | null; /** A derived channel: its recipe's expression. */ derived?: { expr: string; automatic: boolean } }[],
   path: '',
   /** How the open file's times read: sample numbers, dates and times, or offsets from its start. */
   time: 'relative' as FileTime,
@@ -94,6 +94,14 @@ export const actions = {
   importGo: () => {},
   importCancel: () => {},
   /** Export data… and Save the view as an image…: open the dialogs, write the files. */
+  /** Derive…: a new channel from these channels (none, one, or two), editing a derived channel's recipe, removing it. */
+  deriveOpen: (_chs: number[]) => {},
+  deriveEdit: (_ch: number) => {},
+  deriveTemplate: (_id: string) => {},
+  deriveExpr: (_text: string) => {},
+  deriveSubmit: () => {},
+  deriveClose: () => {},
+  deriveRemove: (_ch: number, _from: 'file' | 'all') => {},
   exportOpen: () => {},
   exportGo: () => {},
   exportClose: () => {},

@@ -115,9 +115,9 @@
   }
   const exprNames = (expr) => [...expr.matchAll(/"([^"]+)"|\b([A-Za-z_][A-Za-z0-9_.]*)\b(?!\s*\()/g)].map((m) => m[1] ?? m[2]).filter((n) => !FNS.has(n) && !/^\d/.test(n));
   /** The library's recipes that apply to a recording (automatic, or attached by name) as channels after its own. */
-  function applyRecipes(r, attached) {
+  function applyRecipes(r, attached, exclude = []) {
     const named = [...new Set(attached)].map((n) => fake.recipes.find((x) => x.name === n)).filter(Boolean);
-    const picked = named.concat(fake.recipes.filter((x) => x.automatic && !named.includes(x)));
+    const picked = named.concat(fake.recipes.filter((x) => x.automatic && !exclude.includes(x.name) && !named.includes(x)));
     const skipped = attached.filter((n) => !fake.recipes.some((x) => x.name === n)).map((name) => ({ name, why: 'There is no recipe with that name' }));
     const derived = [];
     for (const x of picked) {
@@ -436,7 +436,7 @@
     },
     // the packet types of the descriptor that names the file (each opens as its own recording)
     packet_parts: ({ path }) => (known(path).find((k) => k.claims)?.descriptor.packet_types ?? []).map((t) => t.name),
-    open({ path, profile: given, part, recipes, progress }) {
+    open({ path, profile: given, part, recipes, exclude, progress }) {
       fake.opened.push({ path, part: part ?? null });
       // the core applies the header's saved profile when none is given
       const profile = given ?? fake.profiles[fake.csvs[path]?.header_key]?.profile ?? null;
@@ -465,7 +465,7 @@
       const ch = progress && { id: progress.id ?? Number(String(progress).replace(/\D/g, '')), next: 0 };
       fake.open.set(id, { r, progress: ch });
       r.base = r.chans.slice();
-      const { derived, skipped } = applyRecipes(r, recipes ?? []);
+      const { derived, skipped } = applyRecipes(r, recipes ?? [], exclude ?? []);
       const info = { path, ...(part ? { part } : {}), format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
       return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped };
     },
@@ -491,13 +491,13 @@
       names.forEach((m) => (fake.recipes = fake.recipes.filter((r) => r.name !== m[1]).concat({ name: m[1], expr: m[2], automatic: m[3] !== 'false' })));
       return names.map((m) => m[1]);
     },
-    derive_apply({ file, recipes, progress }) {
+    derive_apply({ file, recipes, exclude, progress }) {
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
       const r = o.r;
       r.chans = r.base.slice();
-      const { derived, skipped } = applyRecipes(r, recipes);
-      fake.derivedApplied.push({ file, recipes });
+      const { derived, skipped } = applyRecipes(r, recipes, exclude ?? []);
+      fake.derivedApplied.push({ file, recipes, exclude });
       const info = { path: r.path, format: 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
       return { id: file, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: { state: 'built' }, derived, skipped };
     },

@@ -102,6 +102,9 @@ export interface Settings {
   /** Export data…: what was chosen last, and Save the view as an image…. */
   exportData: ExportOpts;
   exportImage: ImageOpts;
+  /** Derived channels: the recipes added to one file (by path, in the order they were added), and the automatic ones left out of it. */
+  fileRecipes: Record<string, string[]>;
+  fileRecipesOff: Record<string, string[]>;
   /** Explorer groups channels into categories (by name prefix), and the categories folded shut. */
   exCategories: boolean;
   exCatClosed: string[];
@@ -173,6 +176,8 @@ export const DEFAULTS: Settings = {
   importWhere: 'tabs',
   exportData: { format: 'csv', range: 'view', channels: 'tab', layout: 'wide', resample: false, hz: 100, time: 'auto', raw: false },
   exportImage: { format: 'png', what: 'all', scale: 2 },
+  fileRecipes: {},
+  fileRecipesOff: {},
   exCategories: true,
   exCatClosed: [],
   catOverride: {},
@@ -232,7 +237,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
