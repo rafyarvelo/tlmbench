@@ -106,7 +106,12 @@ struct Missing {
 }
 
 /// Missing samples of `rec`'s channels in samples `a..b`, for those with any.
-fn missing_in(rec: &dyn tlmbench_core::Recording, channels: impl Iterator<Item = usize>, a: usize, b: usize) -> Vec<Missing> {
+fn missing_in(
+    rec: &dyn tlmbench_core::Recording,
+    channels: impl Iterator<Item = usize>,
+    a: usize,
+    b: usize,
+) -> Vec<Missing> {
     let n = rec.info().samples;
     channels
         .filter_map(|channel| {
@@ -339,7 +344,9 @@ async fn packet_parts(path: String, files: State<'_, Files>) -> Result<Vec<Strin
     .map_err(|e| e.to_string())
 }
 
+/// Opens a file with the recipes and adjustments it should have (one IPC argument each, as the UI sends them).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn open(
     path: String,
     profile: Option<ImportProfile>,
@@ -504,7 +511,11 @@ async fn event_save(
 
 /// Removes an event; the events now.
 #[tauri::command]
-async fn event_delete(file: u32, id: String, files: State<'_, Files>) -> Result<Vec<tlmbench_store::events::Event>, String> {
+async fn event_delete(
+    file: u32,
+    id: String,
+    files: State<'_, Files>,
+) -> Result<Vec<tlmbench_store::events::Event>, String> {
     let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
     let root = files.store.root().to_owned();
     spawn_blocking(move || tlmbench_store::events::delete(&root, base.identity(), &id).map_err(|e| e.to_string()))
@@ -514,7 +525,13 @@ async fn event_delete(file: u32, id: String, files: State<'_, Files>) -> Result<
 
 /// Missing samples of the given channels between two times (the cursors, or the view).
 #[tauri::command]
-async fn missing_between(file: u32, channels: Vec<u32>, t0: String, t1: String, files: State<'_, Files>) -> Result<Vec<Missing>, String> {
+async fn missing_between(
+    file: u32,
+    channels: Vec<u32>,
+    t0: String,
+    t1: String,
+    files: State<'_, Files>,
+) -> Result<Vec<Missing>, String> {
     let o = files.get(file)?;
     let (t0, t1): (i64, i64) = (t0.parse().map_err(|_| "bad time")?, t1.parse().map_err(|_| "bad time")?);
     spawn_blocking(move || {

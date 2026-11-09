@@ -23,8 +23,8 @@
 mod adjust;
 mod chunks;
 mod derived;
-pub mod events;
 mod error;
+pub mod events;
 mod joined;
 mod live;
 mod pyr;

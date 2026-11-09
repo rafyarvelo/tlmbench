@@ -364,7 +364,10 @@ fn recipes_that_name_a_label_see_the_stores_labels_and_are_rebuilt_when_they_cha
         column(&o, 0)[0]
     };
 
-    let env = |n: f64| tlmbench_store::ExprEnv { labels: [(("a".to_string(), "ARMED".to_string()), n)].into(), ..Default::default() };
+    let env = |n: f64| tlmbench_store::ExprEnv {
+        labels: [(("a".to_string(), "ARMED".to_string()), n)].into(),
+        ..Default::default()
+    };
     store.set_expr_env(env(0.0)); // sample 0 of a is 0
     assert_eq!(first(&store), 1.0);
     store.set_expr_env(env(99.0));
@@ -417,7 +420,9 @@ fn adjusted_channels_scale_and_go_missing_where_asked_and_get_their_own_pyramid(
     let sent = adj(Adjust { values: vec![value(0, 5) as f64], ..Default::default() });
     assert!(at(&sent, 0, 5).is_nan());
     // a condition that doesn't parse is an error naming the mistake
-    let bad = Store::new(Some(&root)).with_adjust(vec![("a".into(), Adjust { when: Some("b >".into()), ..Default::default() })]).open(&src, None);
+    let bad = Store::new(Some(&root))
+        .with_adjust(vec![("a".into(), Adjust { when: Some("b >".into()), ..Default::default() })])
+        .open(&src, None);
     assert!(bad.unwrap_err().to_string().contains("Missing when"));
 }
 

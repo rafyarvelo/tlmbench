@@ -53,7 +53,11 @@ pub struct OpenOptions {
 
 /// `c` as a recording, with `opts`' adjustments applied when there are any.
 fn boxed<C: Channels + 'static>(c: C, opts: &OpenOptions) -> Box<dyn Recording> {
-    if opts.adjust.iter().all(|(_, a)| a.is_identity()) { Box::new(c) } else { Box::new(Adjusted::new(c, &opts.adjust)) }
+    if opts.adjust.iter().all(|(_, a)| a.is_identity()) {
+        Box::new(c)
+    } else {
+        Box::new(Adjusted::new(c, &opts.adjust))
+    }
 }
 
 /// Opens a recording, choosing the decoder from the options and the file's first bytes. A packet file with several

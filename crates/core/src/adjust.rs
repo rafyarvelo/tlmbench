@@ -36,7 +36,10 @@ impl ChannelAdjust {
     }
 
     pub fn has_missing(&self) -> bool {
-        !self.values.is_empty() || self.lo.is_some() || self.hi.is_some() || self.when.as_ref().is_some_and(|m| !m.is_empty())
+        !self.values.is_empty()
+            || self.lo.is_some()
+            || self.hi.is_some()
+            || self.when.as_ref().is_some_and(|m| !m.is_empty())
     }
 
     fn id(&self, out: &mut Vec<u8>) {
@@ -150,7 +153,11 @@ impl<C: Channels> Channels for Adjusted<C> {
 
     fn dispatch<O: ChannelOp>(&self, channel: usize, op: O) -> O::Out {
         let m = &self.missing[channel];
-        if m.is_empty() { self.inner.dispatch(channel, op) } else { self.inner.dispatch(channel, MissingOp { op, mask: m }) }
+        if m.is_empty() {
+            self.inner.dispatch(channel, op)
+        } else {
+            self.inner.dispatch(channel, MissingOp { op, mask: m })
+        }
     }
 
     fn dispatch_held<O: ChannelOp>(&self, channel: usize, held: &Held, op: O) -> O::Out {
