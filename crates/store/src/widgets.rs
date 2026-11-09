@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use tlmbench_core::Timestamp;
+use tlmbench_core::gaps::DEFAULT_FACTOR;
+use tlmbench_core::{Timestamp, Viewport};
 
-use crate::Opened;
+use crate::{Opened, Precision};
 
 /// Samples read at a time while a channel's state runs are indexed.
 const SLICE: usize = 1 << 20;
@@ -23,6 +24,8 @@ pub struct WidgetReq {
     pub minmax: bool,
     /// The time the current run of equal values began (state lights, timelines, flags).
     pub run: bool,
+    /// The channel over the view reduced to about this many pixel columns (sparklines, state strips); 0: none.
+    pub trace: u32,
 }
 
 /// One widget's answer; each part is None when it wasn't asked for, isn't known yet, or the sample is missing.
@@ -33,6 +36,8 @@ pub struct WidgetOut {
     pub max: Option<f64>,
     /// Nanoseconds since the epoch, as a string like every time on the wire.
     pub run_start: Option<Timestamp>,
+    /// The view's trace as `(fraction of the view, value)` points, NaN breaking the line; empty when not asked for.
+    pub trace: Vec<(f32, f32)>,
 }
 
 /// A frame: the sample read (the one nearest the time asked) and an answer per request, in order.
@@ -66,6 +71,13 @@ impl Opened {
         }
         for (i, r) in reqs.iter().enumerate().filter(|(_, r)| r.run) {
             out[i].run_start = self.run_start(r.channel, index);
+        }
+        for (i, r) in reqs.iter().enumerate().filter(|(_, r)| r.trace > 0) {
+            let span = (view.1 - view.0).max(1) as f64;
+            let vp = Viewport { t0: view.0, t1: view.1, width_px: r.trace, raw_max: 0 };
+            let v = self.view(r.channel, vp, DEFAULT_FACTOR, Precision::Coarse);
+            out[i].trace =
+                v.trace.t.iter().zip(&v.trace.y).map(|(&t, &y)| (((t - view.0) as f64 / span) as f32, y)).collect();
         }
         Some(Frame { index, t: ts, widgets: out })
     }

@@ -1442,6 +1442,9 @@ struct WidgetAsk {
     minmax: bool,
     #[serde(default)]
     run: bool,
+    /// Pixel columns of the view's trace (0: none).
+    #[serde(default)]
+    trace: u32,
 }
 
 #[derive(Serialize)]
@@ -1451,6 +1454,8 @@ struct WidgetAnswer {
     min: Option<f64>,
     max: Option<f64>,
     run_start: Option<String>,
+    /// `[x0, y0, x1, y1, ...]`: fractions of the view and values (null where the line breaks).
+    trace: Vec<Option<f32>>,
 }
 
 #[derive(Serialize)]
@@ -1481,6 +1486,7 @@ async fn widgets_frame(
                 channel: (w.channel as usize).min(n.saturating_sub(1)),
                 minmax: w.minmax,
                 run: w.run,
+                trace: w.trace.min(600),
             })
             .collect();
         o.widgets_frame(t, (v0, v1), &reqs).map(|f| WidgetsFrame {
@@ -1494,6 +1500,7 @@ async fn widgets_frame(
                     min: w.min,
                     max: w.max,
                     run_start: w.run_start.map(|t| t.to_string()),
+                    trace: w.trace.iter().flat_map(|&(x, y)| [Some(x), (!y.is_nan()).then_some(y)]).collect(),
                 })
                 .collect(),
         })

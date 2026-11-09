@@ -417,7 +417,10 @@ fn a_widget_frame_answers_value_min_max_and_run_start_in_one_call() {
     let opened = store.open(&path, None).unwrap();
     // before the build: values and runs answer, min and max wait for the exact statistics
     let t_of = |i: usize| opened.recording().time_at(i);
-    let reqs = [WidgetReq { channel: 0, minmax: true, run: true }, WidgetReq { channel: 1, minmax: false, run: false }];
+    let reqs = [
+        WidgetReq { channel: 0, minmax: true, run: true, trace: 0 },
+        WidgetReq { channel: 1, minmax: false, run: false, trace: 110 },
+    ];
     let view = (t_of(1_000_000), t_of(1_500_000));
     let f = opened.widgets_frame(t_of(1_200_000), view, &reqs).unwrap();
     assert_eq!(f.index, 1_200_000);
@@ -426,6 +429,10 @@ fn a_widget_frame_answers_value_min_max_and_run_start_in_one_call() {
     assert_eq!((f.widgets[0].min, f.widgets[0].max), (None, None));
     assert_eq!(f.widgets[0].run_start, Some(t_of(1_200_000)), "every sample differs: a run of one");
     assert_eq!(f.widgets[1].run_start, None, "not asked for");
+    assert!(f.widgets[0].trace.is_empty());
+    let tr = &f.widgets[1].trace;
+    assert!(tr.len() > 50 && tr.len() <= 4 * 110 + 20, "a trace of about a pixel column per point: {}", tr.len());
+    assert!(tr.iter().all(|p| (-0.01..=1.01).contains(&p.0) || p.0.is_nan()), "x is a fraction of the view");
 
     opened.build(&mut |_, _| {}).unwrap();
     let f = opened.widgets_frame(t_of(1_200_000), view, &reqs).unwrap();
