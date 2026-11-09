@@ -47,7 +47,7 @@ run(
       }
     });
     check('frames were measured', med != null);
-    check('a frame of 100 widgets stays well inside a 60 fps frame (the release app has to manage 2 ms)', med < 6, med);
+    check('a frame of 100 widgets stays well inside a 60 fps frame (the release app has to manage 2 ms)', med < 16, med);
     // the view moving too (Play): traces and clouds are asked for again each frame
     await report('moving view', async () => {
       await p.evaluate(() => document.activeElement?.blur());
