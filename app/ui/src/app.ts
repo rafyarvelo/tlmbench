@@ -22,7 +22,7 @@ import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSe
 import { type Health, live, liveActions } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
-import { type Check, type CheckSet, checks, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
+import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, type Limits, limitsOf, openChannelEditor, WIDTHS } from './display.svelte';
 import {
   addChannels,
@@ -2692,6 +2692,18 @@ async function runChecks(): Promise<void> {
     if (gen !== checkGen || state.file !== f) return;
     checks.runs[path] = Object.fromEntries(runs.map((r) => [r.set, r.result]));
     setAuto(runs.flatMap((r) => r.events));
+    const g = checks.goto;
+    if (g && g.path === path) {
+      checks.goto = null;
+      const set = checks.sets.find((s) => s.name === g.set);
+      const res = checks.runs[path]?.[g.set];
+      const first = set?.check
+        .map((k, n) => ({ k, o: res?.outcomes[n] }))
+        .filter((x) => x.k.group === g.group && x.o?.runs.length)
+        .map((x) => x.o!.runs[0])
+        .sort((a, b) => (BigInt(a.start) < BigInt(b.start) ? -1 : 1))[0];
+      if (first) checkShow(first.start, first.end);
+    }
   } catch (e) {
     note(`Couldn't run the checks: ${e}`);
   } finally {
@@ -2733,6 +2745,58 @@ async function checkPreview(check: Check): Promise<import('./checks.svelte').Out
   if (!f) return null;
   await syncExprEnv();
   return invoke('check_preview', { file: f.id, check: plain(check) });
+}
+
+/** The folder run: one set on every recording in Explorer's folder, three at a time, each opened by the core without
+ *  showing it. */
+async function checkFolderRun(set: string): Promise<void> {
+  const root = ui.folder;
+  if (!root || folderRun.busy) return;
+  const paths = root.children.filter((c) => !c.dir && c.openable !== false && !c.needsDescriptor).map((c) => c.path);
+  Object.assign(folderRun, { set, files: paths, busy: true, done: 0, rows: {} });
+  let next = 0;
+  const work = async () => {
+    for (let i = next++; i < paths.length; i = next++) {
+      const path = paths[i];
+      try {
+        const runs = await invoke<{ set: string; result: SetResult; t_first: string }[]>('checks_run_path', { path, sets: [set], adjust: adjustList() });
+        folderRun.rows[path] = runs[0] ? { res: runs[0].result, first: runs[0].t_first } : { error: `No set called ${set}` };
+      } catch (e) {
+        folderRun.rows[path] = { error: String(e) };
+      }
+      folderRun.done++;
+    }
+  };
+  await Promise.all([work(), work(), work()]);
+  folderRun.busy = false;
+}
+
+/** A folder run's results as CSV, written where the person chooses. */
+async function checkFolderCsv(): Promise<void> {
+  const set = checks.sets.find((s) => s.name === folderRun.set);
+  if (!set) return;
+  const q = (x: string) => (/[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x);
+  const lines = ['file,group,check,kind,verdict,count,seconds'];
+  for (const [path, r] of Object.entries(folderRun.rows)) {
+    if (!r.res) lines.push(`${q(path)},,,,error,,`);
+    else set.check.forEach((k, n) => lines.push([q(path), q(k.group), q(k.name), k.kind, r.res!.outcomes[n].verdict, r.res!.outcomes[n].count, r.res!.outcomes[n].secs.toFixed(3)].join(',')));
+  }
+  const path = await saveDialog({ defaultPath: 'check-results.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
+  if (!path) return;
+  try {
+    await invoke('write_text_file', { path, text: lines.join('\n') + '\n' });
+    note(`Wrote ${nameOf(path)}.`);
+  } catch (e) {
+    note(`Couldn't write the results: ${e}`);
+  }
+}
+
+/** A grid cell: open that file and go to its first violation in that group. */
+function checkOpenCell(path: string, group: string): void {
+  checks.goto = { path, set: folderRun.set, group };
+  checks.folder = false;
+  if (state.file?.info.path === path) scheduleChecks(0);
+  else actions.openPath(path);
 }
 
 /** Frames violation `n` (a span of ns) of a check with some context either side. */
@@ -3792,6 +3856,9 @@ Object.assign(actions, {
   checkShow,
   checkEditor,
   checkRun: () => scheduleChecks(0),
+  checkFolderRun: (set: string) => void checkFolderRun(set),
+  checkFolderCsv: () => void checkFolderCsv(),
+  checkOpenCell,
   redraw: () => scheduleDraw(),
   hoverAt: (t: bigint | null) => {
     if (state.hoverT === t) return;

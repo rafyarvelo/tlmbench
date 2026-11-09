@@ -76,7 +76,7 @@ run(
     await p.click('#eventsPanel [data-evdel]');
     check('Delete removes it', await until(() => document.querySelectorAll('#eventsPanel .ev[data-ev]').length === 1));
     check('and the core forgets it', (await fake(() => Object.values(window.__tlmFake.events)[0].length)) === 1);
-    check('categories are in settings', ((await settingsLS()).eventCats ?? []).length === 5);
+    check('categories are in settings', ((await settingsLS()).eventCats ?? []).length === 6);
   },
   { files: { '/data/flight.tlm': {} }, launch: '/data/flight.tlm' },
 );

@@ -17,9 +17,34 @@ When needed:
   100 GB serves `convert`'s flat-memory claim. Neither suits CI runners (about 14 GB free); run them on the Mac.
 - Add those folders to `ro_commands` coverage, mounted read-only (`hdiutil` image or a read-only external volume).
 
+## Left from step 5.3 (Nov 9)
+
+- **Checks, left:** the gauges' "✗ check" while the playhead is inside a violation (the data is `violationAt` in
+  `checks.svelte.ts`; it waits for the Gauges view, 5.4); the option that makes missing values fail a check; "Check
+  against limits…" in a sets menu (the editor's + From limits is built); the "files with this import profile"
+  attachment in the app (the profile's `check_sets` and `--sets-from-profile` exist in the core and CLI, the import
+  dialog doesn't offer it); Share of sets to `.tlmbench/checks/` and of event rules (5.7); the folder run of
+  sub-folders (Explorer's folder, one level for now) and its grid cell opening at the first violation of a
+  *group* (it picks the earliest first violation of its checks); live files running checks every few seconds (5.5);
+  the HTML report's cells linking to an exported view at the violation (5.10); parity scenes for the panel, the
+  editor and the folder dialog.
+- **Speed:** `tlmbench check` of three rows (two sample checks, one scoped, and a summary) over 100M samples takes
+  3.0 s from a built pyramid's cache against 1.25 s to build the pyramid: it streams each row on one thread. Next, if
+  wanted: rows in parallel (they are independent), and parallel chunks for a sample check whose scope is none.
+- **Design notes for `docs/design.md`:** checks run as their own pass over the data after open (not in the pyramid's
+  pass), cached by file contents, set version, recipes it names and, for expressions that use them, labels and limits;
+  results are in `<cache>/checks-results/`, sets are TOML files in `<cache>/checks/` (the format of the examples:
+  `schema`, `name`, `runs_on_any_file`, `info_groups`, `[[check]]` rows with `kind`, `group`, `expect`, `when`,
+  `severity`, `category`, `grace`, `settle`, `enabled`); a violation is one run: samples closer than 0.25 s join and
+  runs shorter than the grace are dropped (an instant for a one-sample rule event); a set's badge and line leave out
+  info-only groups; the exit code of `tlmbench check` is the highest that applies (3 configuration, 2 can't run or
+  unreadable, 1 failed); the category of failures is `check` ("Check failed"); recipes are read by name where a
+  channel is missing (a quoted name); an import profile may name sets (`check_sets`); two files with the same
+  contents share cache entries, and parallel runs on them no longer collide on temporary folders.
+
 ## Left from step 5.2 (Nov 9)
 
-- **Events, left:** events detected in the file, from rules and from failed checks (5.3); Share to `.tlmbench/events/` and
+- **Events, left:** events detected in the file (rule and check events are built in 5.3); Share to `.tlmbench/events/` and
   `categories.toml` (5.7); a marker's tooltip on hover (the pointer readout names the event for now); a separate Event
   column and channel-cell tints in tables (needs events that list channels); Stop at for several categories at once;
   the Events panel's file chips and "Charts follow these filters" link (one file per tab for now); events of the live

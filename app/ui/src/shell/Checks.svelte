@@ -133,7 +133,7 @@
       <div class="ckbar">
         <button class="tbtn" data-cnew onclick={() => actions.checkEditor(null)}>{@html ICON.plus}New set</button>
         <button class="tbtn" data-cnewrule onclick={() => actions.checkEditor(null, -1, true)}>{@html ICON.plus}Rule</button>
-        <button class="tbtn" data-cfolder disabled={!ui.path} data-tip="Run a set on every recording in a folder" onclick={() => (checks.folder = true)}>Run on folder…</button>
+        <button class="tbtn" data-cfolder disabled={!ui.folder} data-tip="Run a set on every recording in a folder" onclick={() => (checks.folder = true)}>Run on folder…</button>
       </div>
       {#if !ui.path}
         <p class="cknote">Open a recording to run checks on it.</p>

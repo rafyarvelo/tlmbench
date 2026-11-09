@@ -309,7 +309,7 @@ fn describe(o: &Outcome) -> String {
     parts.join(" · ")
 }
 
-fn rows<'a>(f: &'a FileRes) -> impl Iterator<Item = (&'a CheckSet, &'a Check, &'a Outcome)> {
+fn rows(f: &FileRes) -> impl Iterator<Item = (&CheckSet, &Check, &Outcome)> {
     f.sets.iter().flat_map(|(s, r)| s.checks.iter().zip(&r.outcomes).map(move |(k, o)| (s, k, o)))
 }
 

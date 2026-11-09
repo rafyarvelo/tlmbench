@@ -69,5 +69,5 @@ run('sidebars', async ({ p, check, visible, plotAt, settingsLS, until, wait }) =
   await p.click('#b-settings');
   await p.click('#setResetUi');
   await p.click('[data-rail="explorer"]');
-  check('Reset UI layout restores sizes and panels', Math.round(await width('side')) === 300 && Math.round(await width('measure')) === 260 && (await order()).left.join() === 'explorer,events,layouts,settings' && (await order()).right.join() === 'cur,stats', [await width('side'), await width('measure'), await order()]);
+  check('Reset UI layout restores sizes and panels', Math.round(await width('side')) === 300 && Math.round(await width('measure')) === 260 && (await order()).left.join() === 'explorer,events,checks,layouts,settings' && (await order()).right.join() === 'cur,stats', [await width('side'), await width('measure'), await order()]);
 });

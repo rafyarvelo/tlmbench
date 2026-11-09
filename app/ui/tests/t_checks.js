@@ -145,6 +145,15 @@ run(
     check('with the edits', saved.replacing === 'Flight acceptance' && saved.set.check.length === 5 && saved.set.check[1].expect === 'motor_rpm > 3' && saved.set.check[4].expect === 'battery_v >= 16' && saved.set.check[4].name === 'Sixteen volts', saved.set.check.map((k) => k.expect));
     check('and runs it again, showing the new check', await until(() => /Sixteen volts/.test(document.querySelector('#checksBody').innerText), null, 6000), await body());
 
+    // the Checks pane view, on the pane that holds flight_mode and accel_x
+    const vm = () => p.evaluate(() => [...document.querySelectorAll('#stack section.pane')].find((s) => s.querySelector('.chip[data-ch="2"]')).querySelector('[data-vmenu]').click());
+    await vm();
+    check('Checks is a pane view', (await p.$$eval('.menu [data-vm]', (e) => e.map((x) => x.dataset.vm))).includes('checks'));
+    await p.click('.menu [data-vm="checks"]');
+    check('a Checks pane with channels shows only the checks that use them', await until(() => { const t = document.querySelector('#stack [data-fchecks]')?.innerText ?? ''; return /RPM below 7500/.test(t) && !/Battery above/.test(t); }), await text('#stack [data-fchecks]'));
+    await vm();
+    await p.click('.menu [data-vm="chart"]');
+
     // Add check… from a channel
     await rail('explorer');
     await p.click('#explorer .row.chan[data-ch="1"] .nm', { button: 'right' });

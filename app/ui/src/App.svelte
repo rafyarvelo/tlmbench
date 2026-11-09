@@ -18,6 +18,7 @@
   import RecipesDialog from './shell/RecipesDialog.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
   import CheckEditor from './shell/CheckEditor.svelte';
+  import FolderRun from './shell/FolderRun.svelte';
   import Checks from './shell/Checks.svelte';
   import Events from './shell/Events.svelte';
   import Layouts from './shell/Layouts.svelte';
@@ -129,6 +130,7 @@
 <ChannelEditor />
 <RecipesDialog />
 <CheckEditor />
+<FolderRun />
 
 <div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>
   <Rail />

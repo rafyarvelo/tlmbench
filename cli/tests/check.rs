@@ -223,7 +223,7 @@ fn twenty_files_run_in_parallel_and_report_in_name_order() {
     assert_eq!(code(&o), 1, "{}", text(&o));
     let csv = std::fs::read_to_string(out.path().join("results.csv")).unwrap();
     let files: Vec<&str> = csv.lines().skip(1).map(|l| l.split(',').next().unwrap()).collect();
-    let mut firsts: Vec<&str> = files.iter().copied().collect();
+    let mut firsts: Vec<&str> = files.to_vec();
     firsts.dedup();
     assert_eq!(firsts.len(), 20);
     assert!(firsts.windows(2).all(|w| w[0] < w[1]), "name order: {firsts:?}");

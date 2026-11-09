@@ -9,7 +9,7 @@ run('leftovers', async ({ p, check, wait, text, until, visible, settingsLS, pane
   const app = (f) => p.evaluate((f) => window.__tlmApp[f](), f);
   const range = () => text('#rangeTxt');
   const order = await p.$$eval('.arail > button', (b) => b.map((x) => x.dataset.rail ?? x.id));
-  check('Settings sits under Live', order.join() === 'b-start,explorer,events,layouts,measure,live,settings', order);
+  check('Settings sits under Live', order.join() === 'b-start,explorer,events,checks,layouts,measure,live,settings', order);
   check('the span reads in words', /^\d+\.\d\d (min|s|h) visible$/.test(await text('#spanTxt')), await text('#spanTxt'));
   check('the status bar has a state', true);
 

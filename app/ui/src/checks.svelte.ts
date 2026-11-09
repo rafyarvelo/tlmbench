@@ -95,6 +95,19 @@ export const checks = $state({
   editor: null as null | { set: CheckSet; was: string | null; focus: number; cats: boolean },
   /** The folder run's dialog. */
   folder: false,
+  /** A folder run's grid cell that was clicked: once its file is open and has run, go to the first violation in that group. */
+  goto: null as null | { path: string; set: string; group: string },
+});
+
+/** A folder run: one set over the files of a folder. Each row is a file's result (or why it couldn't be checked). */
+export const folderRun = $state({
+  set: '',
+  files: [] as string[],
+  busy: false,
+  done: 0,
+  rows: {} as Record<string, { error?: string; res?: SetResult; first?: string }>,
+  tab: 'grid' as 'grid' | 'report',
+  group: '',
 });
 
 /** The sets that run on a file: the ones that run on any file, the ones attached to the file, to the layout in front

@@ -604,6 +604,8 @@ struct CheckRun {
     set: String,
     result: tlmbench_store::checks::SetResult,
     events: Vec<tlmbench_store::events::Event>,
+    /// The file's first sample (ns, decimal), for ordering a folder run by date.
+    t_first: String,
 }
 
 /// Runs sets (by name) on an open file, or reads the results kept for its contents and the sets' versions.
@@ -619,12 +621,61 @@ async fn checks_run(file: u32, sets: Vec<String>, files: State<'_, Files>) -> Re
             .map(|set| {
                 let result = store.run_checks(&base, &set, &recipes).map_err(|e| e.to_string())?;
                 let events = tlmbench_store::checks::events_of(&set, &result);
-                Ok(CheckRun { set: set.name, result, events })
+                Ok(CheckRun {
+                    set: set.name,
+                    result,
+                    events,
+                    t_first: base.recording().info().t_first.unwrap_or(0).to_string(),
+                })
             })
             .collect()
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Sets run on a file that isn't open (the folder run): opened as `open` would, not kept; nothing is shown of it.
+#[tauri::command]
+async fn checks_run_path(
+    path: String,
+    sets: Vec<String>,
+    adjust: Option<Vec<AdjustIn>>,
+    files: State<'_, Files>,
+) -> Result<Vec<CheckRun>, String> {
+    let store = files.store.clone();
+    let adjust = adjusts(adjust);
+    spawn_blocking(move || -> Result<Vec<CheckRun>, String> {
+        let profile = saved_profile(store.root(), Path::new(&path));
+        let base = store
+            .clone()
+            .with_profile(profile)
+            .with_adjust(adjust)
+            .open_part(Path::new(&path), None, None)
+            .map_err(|e| e.to_string())?;
+        let library = tlmbench_store::checks::Sets::new(store.root());
+        let recipes = tlmbench_store::Library::new(store.root()).list();
+        sets.iter()
+            .filter_map(|n| library.get(n))
+            .map(|set| {
+                let result = store.run_checks(&base, &set, &recipes).map_err(|e| e.to_string())?;
+                let events = tlmbench_store::checks::events_of(&set, &result);
+                Ok(CheckRun {
+                    set: set.name,
+                    result,
+                    events,
+                    t_first: base.recording().info().t_first.unwrap_or(0).to_string(),
+                })
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Writes text to a file the person chose in a save dialog (a report, a CSV).
+#[tauri::command]
+fn write_text_file(path: String, text: String) -> Result<(), String> {
+    std::fs::write(&path, text).map_err(|e| format!("{path}: {e}"))
 }
 
 /// One row run on the file in front, for the editor's preview (nothing is kept).
@@ -1922,6 +1973,8 @@ fn main() {
             check_set_save,
             check_set_delete,
             checks_run,
+            checks_run_path,
+            write_text_file,
             check_preview,
             events_list,
             event_save,

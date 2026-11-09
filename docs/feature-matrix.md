@@ -64,7 +64,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
 | Rail: Explorer, Measure, Live, Settings | v1 | ✓ | ✓ | |
-| Rail: Events, Rules & checks, Layouts | v1 | ✓ | ◐ (Events, Layouts; Rules & checks waits) | 5.3 |
+| Rail: Events, Rules & checks, Layouts | v1 | ✓ | ✓ | 5.3 |
 | Tabs: file and workspace tabs, drag to reorder, keys, Undo on close | v1 | ✓ | ✓ | |
 | Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ✓ (one file per tab until 5.6) | 5.6 |
 | Tab menu actions: Save layout, Save as, Revert, Share, Export file, Delete, Close… | v1 | ✓ | ✓ | |
@@ -115,8 +115,8 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | File right-click: Open, Open only this, Close | v1 | ✓ | ✓ | |
 | File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ◐ (Format descriptor…; the rest wait for 5.6) | 5.6 |
 | Channel right-click: category, gap factor | v1 | ✓ | ✓ | |
-| Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ◐ (category, gap factor, Display…, Derive…, Edit recipe…, Remove) | 5.2, 5.3 |
-| Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ◐ (ƒ, ⌀) | 5.3 |
+| Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ✓ | 5.2, 5.3 |
+| Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ✓ (a ✓ / ! / ✗ badge on tabs and Explorer files, a dot on failing channels in Explorer and on chips, a dot on the rail button) | 5.3 |
 | Data rate shown on imported files; "primary" with several open | v1 | ✓ | ◐ (the rate chip on an open CSV's row, a click shows its import settings; primary waits for 5.6) | 4.3, 5.6 |
 | Import a local folder (browser snapshot in the prototype) | v1 | ✓ | ✓ (Open folder reads the disk; Import all in the folder menu) | |
 
@@ -130,7 +130,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Chips: drag, ×, +N overflow, value on hover | v1 | ✓ | ✓ | |
 | Chip click opens the channel editor (Display and Limits) | v1 | ✓ | ◐ (Display tab: name, colour, decimals, unit, line style; Limits, Value labels and Missing wait) | 5.2 |
 | View menu: Chart, Table, Chart and table, Values | v1 | ✓ | ✓ | |
-| View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ◐ (Chart, Table, Chart and table, Values, Spectrum) | 5.3, 5.4 |
+| View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ◐ (Chart, Table, Chart and table, Values, Spectrum, Checks; Gauges and XY wait for 5.4) | 5.3, 5.4 |
 | Axis and scale: a unit's axis each, range, include zero, decimals, label, log | v1 | ✓ | ✓ | |
 | Ignore outliers (clip and mark) | v1 | ✓ | ✓ | |
 | Y zoom: Shift + scroll, drag on the y-axis | v1 | ✓ | ✓ (sets the axis's fixed range; owner, Nov 8) |  |
@@ -235,13 +235,13 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ◐ (Settings: add, rename, recolour, Charts, delete; sharing waits) | 5.2, 5.7 |
 | Value labels (enums) on channels | v1 | ✓ | ✓ (tiles, tables, chips and Measure show the text; expressions name them; axis ticks per value wait) | 5.2 |
 | Channel limits (warn, alarm) with sensible defaults | v1 | ✓ | ✓ | 5.2 |
-| Rules: an expression held for a minimum time, marking events | v1 | ✓ | ✗ | 5.3 |
-| Checks: Expect, When, grace, settle, summary checks, severity | v1 | ✓ | ✗ | 5.3 |
-| Rules & checks panel; one editor with Lists and ƒ | v1 | ✓ | ✗ | 5.3 |
-| Check results: badges, dots, Check failed events, ▲▼ through violations | v1 | ✓ | ✗ | 5.3 |
-| Checks pane view | v1 | ✓ | ✗ | 5.3 |
-| Folder run (files × groups), Report tab with trends | v1 | ◐ (a dialog) | ✗ | 5.3 |
-| Check results cached in the app cache | v1 | ✓ | ✗ | 5.3 |
+| Rules: an expression held for a minimum time, marking events | v1 | ✓ | ✓ (core engine, the editor's Rule rows, rule events in Events) | 5.3 |
+| Checks: Expect, When, grace, settle, summary checks, severity | v1 | ✓ | ✓ (`tlmbench_store::checks`; "missing values fail" option not built) | 5.3 |
+| Rules & checks panel; one editor with Lists and ƒ | v1 | ✓ | ✓ (the "files with this import profile" attachment is CLI only) | 5.3 |
+| Check results: badges, dots, Check failed events, ▲▼ through violations | v1 | ✓ | ◐ (all built; the gauges' "✗ check" waits for the Gauges view, 5.4) | 5.3, 5.4 |
+| Checks pane view | v1 | ✓ | ✓ | 5.3 |
+| Folder run (files × groups), Report tab with trends | v1 | ◐ (a dialog) | ✓ (Explorer's folder, one level; results as CSV) | 5.3 |
+| Check results cached in the app cache | v1 | ✓ | ✓ (`checks-results/`, by file contents, set version, recipes and limits) | 5.3 |
 
 ## 12. Pane views and widgets
 
@@ -282,7 +282,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | `.tlmbench/` for every object (events, checks, categories, recipes, profiles, decoders, widgets, icons, time maps) | v1 | ◐ (views, events, checks, categories) | ◐ (views only) | 5.7 |
 | `tlmbench config export`; nearest `.tlmbench/` or `--config` | v1 | n/a | ✗ | 5.7 |
 | CLI: info, build, query, record, convert | v1 | n/a | ✓ | |
-| CLI: `check` with JUnit, CSV, JSON, HTML reports | v1 | n/a | ✗ | 5.3 |
+| CLI: `check` with JUnit, CSV, JSON, HTML reports | v1 | n/a | ✓ (the HTML report's cells don't link to an exported view until 5.10) | 5.3 |
 | CLI: `export html` | v1 | n/a | ✗ | 5.10 |
 | Python bindings | v1 | n/a | ✗ | 5.10 |
 | Browser-only mode (core in WASM) | v1 | n/a | ✗ | 5.10 |

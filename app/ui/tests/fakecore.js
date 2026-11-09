@@ -562,6 +562,25 @@
       fake.checkRuns.push({ path: r.path, sets: sets.slice() });
       return sets.map((n) => fake.checkSets.find((s) => s.name === n)).filter(Boolean).map((set) => checkRun(r, set));
     },
+    /** A file that isn't open, checked by the folder run: its outcomes are `fake.checkFileOutcomes[path][check name]`, else the general ones. */
+    checks_run_path({ path, sets }) {
+      const r = recording(path, fake.files[path] ?? {});
+      if (fake.checkFileTimes?.[path]) r.t0 = BigInt(fake.checkFileTimes[path]);
+      fake.checkRuns.push({ path, sets: sets.slice(), folder: true });
+      const saved = fake.checkOutcomes;
+      fake.checkOutcomes = { ...saved, ...(fake.checkFileOutcomes?.[path] ?? {}) };
+      try {
+        const out = sets.map((n) => fake.checkSets.find((s) => s.name === n)).filter(Boolean).map((set) => ({ ...checkRun(r, set), t_first: String(timeAt(r, 0)) }));
+        if (fake.checkFileOutcomes?.[path]?.__error) throw fake.checkFileOutcomes[path].__error;
+        return out;
+      } finally {
+        fake.checkOutcomes = saved;
+      }
+    },
+    write_text_file({ path, text }) {
+      fake.written = { path, text };
+      return null;
+    },
     check_preview({ file, check }) {
       const r = fake.open.get(file).r;
       fake.checkPreviews.push(JSON.parse(JSON.stringify(check)));

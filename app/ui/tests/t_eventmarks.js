@@ -53,12 +53,12 @@ run(
 
     // a category's Charts switch
     await p.click('[data-rail="settings"]');
-    check('Settings lists the categories', await until(() => document.querySelectorAll('#evCatSet [data-evcatrow]').length === 5));
+    check('Settings lists the categories', await until(() => document.querySelectorAll('#evCatSet [data-evcatrow]').length === 6));
     await p.click('#evCatSet [data-evcatrow="alarm"] .catchart input');
     check('a category with Charts off is not marked', await until(() => window.__tlmApp.eventsDrawn().every((n) => n === 1)), await drawn());
     await p.click('#evCatSet [data-evcatrow="alarm"] .catchart input');
     await p.click('#catAdd');
-    check('Add makes a category', await until(() => document.querySelectorAll('#evCatSet [data-evcatrow]').length === 6));
+    check('Add makes a category', await until(() => document.querySelectorAll('#evCatSet [data-evcatrow]').length === 7));
     await p.click('#evCatSet [data-catdel]:last-of-type');
     await p.click('[data-rail="explorer"]');
 

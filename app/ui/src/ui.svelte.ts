@@ -120,6 +120,10 @@ export const actions = {
   checkShow: (_start: string, _end: string) => {},
   checkEditor: (_name: string | null, _focus?: number, _rule?: boolean) => {},
   checkRun: () => {},
+  /** The folder run: run a set on Explorer's folder, write its results as CSV, open a grid cell's file at its first violation in the group. */
+  checkFolderRun: (_set: string) => {},
+  checkFolderCsv: () => {},
+  checkOpenCell: (_path: string, _group: string) => {},
   /** The Recipes manager: open, close, edit / duplicate / delete a recipe, automatic on or off, Export… and Import… text. */
   recipesOpen: () => {},
   recipesClose: () => {},
