@@ -90,7 +90,7 @@ pub(crate) fn run(r: &Replay, ring: &mut Ring, stop: &AtomicBool) -> io::Result<
             }
         }
         ring.counters.bytes_in.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-        ring.push(&bytes);
+        ring.push_always(&bytes);
         pos = hi;
         if hi == n && !r.looped {
             return Ok(());

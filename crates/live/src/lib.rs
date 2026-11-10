@@ -378,9 +378,16 @@ struct Ring<'a> {
 impl Ring<'_> {
     /// Pushes the whole records in `bytes` (a multiple of the record size); those that don't fit are dropped.
     fn push(&mut self, bytes: &[u8]) {
+        // a device's frames are let go by while paused (a gap)
         if self.counters.paused.load(Ordering::Relaxed) {
             return;
         }
+        self.push_always(bytes);
+    }
+
+    /// Pushes whatever the pause: a replay stops its own clock, so a batch it has already made is never thrown away
+    /// (pausing between building a batch and pushing it would lose the batch).
+    fn push_always(&mut self, bytes: &[u8]) {
         let n = bytes.len() / self.rs;
         let fit = n.min(self.producer.slots() / self.rs);
         if fit > 0 {
