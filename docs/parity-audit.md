@@ -590,3 +590,10 @@ The owner decides; this is the order I'd suggest.
 
 Phase 5 items (events, rules and checks, widgets and gauges, derived channels, slots and several files per tab,
 HTML export, the channel editor) stay where the roadmap puts them.
+
+## Step 5.6 (Nov 10)
+
+New scene `alignment` (two files in one tab). The app's fields in the Alignment section now use the shared `.sel` style; the
+prototype lists file 2 in the Files panel and the app in Explorer under its slot, so the two differ by design there
+(the slot number badge and the file label have no prototype twin). `just app-parity` over all scenes: 211 differences in
+23 scenes (the harness reports, it doesn't fail).

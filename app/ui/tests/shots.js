@@ -65,7 +65,8 @@ for (const scheme of ['dark', 'light']) {
   await p.dblclick('#explorer .row.file[data-path$="flight.tlm"]');
   await p.waitForTimeout(800);
   await p.click('#explorer .row.file[data-path$="gps.tlm"]');
-  await p.click('#explorer .row.file.sel [data-addtab]');
+  await p.click('#explorer .row.file.sel', { button: 'right' });
+    await p.click('.filemenu [data-fm="add"]');
   await p.waitForTimeout(800);
   await p.click('#explorer .row.chan[data-ch="6"] .box');
   await p.evaluate(() => (window.__tlmFake.alignResults.xcorr = { knots: [['0', '-3330000000']], residuals: [['1000000000', 420000], ['9000000000', -310000], ['17000000000', 150000], ['25000000000', -90000]], quality: 0.97, note: 'Matched on accel_x: −3.33 s, r = 0.97', channel: 'accel_x' }));

@@ -76,6 +76,24 @@ export const SCENES = [
     focus: ['#tabMenu', AM],
   },
   {
+    name: 'alignment',
+    about: 'Two files in one tab: file 2 opened beside the primary, with its alignment control (the prototype lists it in the Files panel; the app in Explorer under slot 2).',
+    proto: async (p) => { await p.dblclick('.fitem[data-file="gpslog"] .fname'); await p.waitForSelector('#openFiles [data-falign]'); },
+    app: async (p) => {
+      if (!(await p.$('#explorer .row.file[data-path$="esc_bench_1412.csv"]'))) await p.click('#explorer .row.dir[data-path$="bench"]');
+      await p.click('#explorer .row.file[data-path$="esc_bench_1412.csv"]');
+      await p.click('#explorer .row.file.sel', { button: 'right' });
+      await p.click('.filemenu [data-fm="add"]');
+      await p.click('#explorer .row.slot[data-slot="2"]');
+      await p.waitForSelector('.align select');
+    },
+    pairs: [
+      ['alignment select', '#openFiles [data-falign]', '.align select'],
+      ['file label', '#openFiles .fopen .fname', '#explorer .row.slot[data-slot="2"] .nm'],
+      ['slot number', '.slotn', '.slotn'],
+    ],
+  },
+  {
     name: 'new-tab-menu',
     about: 'The + after the tabs.',
     proto: click('#wsTabNew'),

@@ -26,7 +26,8 @@ run(
 
     // Add to this tab
     await p.click(`#explorer .row.file[data-path="${B}"]`);
-    await p.click('#explorer .row.file.sel [data-addtab]');
+    await p.click('#explorer .row.file.sel', { button: 'right' });
+    await p.click('.filemenu [data-fm="add"]');
     check('Add to tab: two slots', await until(() => document.querySelectorAll('#explorer .row.slot').length === 2));
     check('the core was asked to group both', JSON.stringify(await calls('groupSets')) === '[[1,2]]', await calls('groupSets'));
     check('slot 1 is the primary', (await text('#explorer .row.slot[data-slot="1"] [data-primary]')) === 'primary');

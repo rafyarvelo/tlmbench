@@ -69,14 +69,16 @@
     min-width: 0;
   }
   .slotn {
-    display: inline-grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex: none;
-    min-width: 18px;
-    height: 18px;
-    border-radius: 9px;
-    border: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--fg-muted);
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font: 600 11px var(--font-data);
   }
 </style>

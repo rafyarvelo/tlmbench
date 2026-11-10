@@ -15,7 +15,8 @@ run(
     await p.dblclick(`#explorer .row.file[data-path="${A}"]`);
     await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'flight.tlm');
     await p.click(`#explorer .row.file[data-path="${B}"]`);
-    await p.click('#explorer .row.file.sel [data-addtab]');
+    await p.click('#explorer .row.file.sel', { button: 'right' });
+    await p.click('.filemenu [data-fm="add"]');
     await until(() => document.querySelectorAll('#explorer .row.slot').length === 2);
     await p.click('#explorer .row.slot[data-slot="2"]');
     await p.selectOption('[data-falign="2"]', 'manual');

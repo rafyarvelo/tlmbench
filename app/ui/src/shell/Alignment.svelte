@@ -49,7 +49,7 @@
 <div class="align" data-align={slot.slot} aria-label="Alignment of {slot.name}">
   <label class="arow">
     <span>Alignment</span>
-    <select data-falign={slot.slot} value={m} disabled={a.locked} aria-label="Alignment for {slot.name}" onchange={choose}>
+    <select class="sel" data-falign={slot.slot} value={m} disabled={a.locked} aria-label="Alignment for {slot.name}" onchange={choose}>
       {#each METHODS as [id, label] (id)}<option value={id}>{label}</option>{/each}
     </select>
   </label>
@@ -57,7 +57,7 @@
   {#if m === 'manual'}
     <label class="arow">
       <span>Seconds after file 1 starts</span>
-      <input type="number" step="0.1" data-foff={slot.slot} disabled={a.locked} value={seconds ?? a.offset} aria-label="Offset in seconds for {slot.name}"
+      <input class="sel" type="number" step="0.1" data-foff={slot.slot} disabled={a.locked} value={seconds ?? a.offset} aria-label="Offset in seconds for {slot.name}"
         onchange={(e) => ((seconds = +e.currentTarget.value), actions.alignSet(slot.slot, 'manual', { seconds: +e.currentTarget.value }))} />
     </label>
   {/if}
@@ -65,7 +65,7 @@
   {#if m === 'xcorr' || m === 'timesrc' || m === 'events'}
     <label class="arow">
       <span>{m === 'events' ? 'Event name' : 'Channel'}</span>
-      <select data-fchan={slot.slot} disabled={a.locked} value={a.channel ?? ''} aria-label="Channel to match on"
+      <select class="sel" data-fchan={slot.slot} disabled={a.locked} value={a.channel ?? ''} aria-label="Channel to match on"
         onchange={(e) => actions.alignSet(slot.slot, m, { channel: e.currentTarget.value || undefined })}>
         <option value="">Automatic</option>
         {#each shared as n (n)}<option value={n}>{clean(n)}</option>{/each}
@@ -110,7 +110,7 @@
     <span>Nudge</span>
     <span class="nudge">
       <button class="tbtn" data-nudge="-" disabled={a.locked} aria-label="Earlier by {step} s" onclick={() => actions.alignNudge(slot.slot, -step)}>−</button>
-      <input type="number" min="0.001" step="0.01" bind:value={step} aria-label="Nudge step in seconds" />
+      <input class="sel" type="number" min="0.001" step="0.01" bind:value={step} aria-label="Nudge step in seconds" />
       <span class="u">s</span>
       <button class="tbtn" data-nudge="+" disabled={a.locked} aria-label="Later by {step} s" onclick={() => actions.alignNudge(slot.slot, step)}>+</button>
     </span>
@@ -121,7 +121,7 @@
   </label>
   <label class="arow">
     <span>Channel prefix</span>
-    <input type="text" data-prefix={slot.slot} placeholder={slot.path.split(/[\\/]/).pop()?.replace(/\.[^.]*$/, '')} value={slot.name === slot.path.split(/[\\/]/).pop()?.replace(/\.[^.]*$/, '') ? '' : slot.name} aria-label="Channel prefix for {slot.name}"
+    <input class="sel" type="text" data-prefix={slot.slot} placeholder={slot.path.split(/[\\/]/).pop()?.replace(/\.[^.]*$/, '')} value={slot.name === slot.path.split(/[\\/]/).pop()?.replace(/\.[^.]*$/, '') ? '' : slot.name} aria-label="Channel prefix for {slot.name}"
       onchange={(e) => actions.setPrefix(slot.path, e.currentTarget.value)} />
   </label>
 </div>

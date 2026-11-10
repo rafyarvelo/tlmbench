@@ -410,7 +410,6 @@
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
-      {#if ui.file && !ui.start}<button class="tbtn" data-addtab data-tip="Show it in the tab in front, on the same timeline" onclick={(e) => (e.stopPropagation(), actions.addToTab(path))}>Add to tab</button>{/if}
     {/if}
   </div>
   {#if open && !fileShut(path)}
@@ -494,17 +493,17 @@
     gap: 6px;
   }
   .slotn {
-    display: inline-grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex: none;
     min-width: 16px;
     height: 16px;
+    padding: 0 4px;
     border-radius: 8px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--fg-muted);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font: 600 11px var(--font-data);
   }
   .slotact {
     display: none;
