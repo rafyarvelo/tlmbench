@@ -11,6 +11,7 @@ pub mod pyramid;
 pub mod recording;
 pub mod table;
 pub mod time;
+pub mod timemap;
 pub mod value;
 pub mod wire;
 
