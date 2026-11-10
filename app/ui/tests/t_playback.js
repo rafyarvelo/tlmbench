@@ -42,6 +42,7 @@ run(
 
     // pausing a replay stops time: the badge says PAUSED and why, the recorded time holds, resuming goes on
     await p.click('#lvSrcBtn');
+    await until(() => document.querySelectorAll('#lvSources [data-card]').length === 1 && /Streaming/.test(document.querySelector('#lvSources [data-card]')?.textContent ?? ''), null, 8000);
     check('the Sources panel has the source\'s card', (await p.$$('#lvSources [data-card]')).length === 1 && /Streaming/.test(await text('#lvSources [data-card]')) && (await text('#lvSrcBtn')) === '1 source');
     await p.click('#lvSources [data-spause]');
     check('pause shows PAUSED', await until(() => document.getElementById('lvBadge')?.textContent === 'PAUSED'));
