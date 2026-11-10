@@ -244,6 +244,12 @@
     unopenable: [],
     /** Live sources by endpoint: a recording spec, plus `already` (seconds recorded when it connects). */
     sources: {},
+    /** What the live commands were asked: connects, and triggers armed. A trigger fires this long after it is armed (ms). */
+    liveConnects: [],
+    triggers: [],
+    triggerAfter: 1000,
+    /** Records the live sources report dropped. */
+    liveDropped: 0,
     calls: [],
     /** Shared views by folder and file, folders that can't be written, what Save… dialogs return, exports written. */
     views: {},
@@ -896,20 +902,46 @@
       fake.queries.set(token, { first: a, ids, hits });
       return { matched: ids.length, total: b - a, done: true, hits: hits.length };
     },
-    // a live source: a recording that grows with the clock at its rate, until stopped
-    live_connect({ endpoint, descriptor }) {
-      const spec = fake.sources[endpoint];
+    // a live source: a recording that grows with the clock at its rate, until stopped. A replay's pause stops its clock;
+    // a device's doesn't (the recording goes on, with a gap).
+    live_connect({ args }) {
+      const { endpoint, descriptor, name, record, dir, addTo } = args;
+      fake.liveConnects.push(JSON.parse(JSON.stringify(args)));
+      const replay = endpoint.startsWith('replay://');
+      const spec = fake.sources[endpoint] ?? (replay ? { rate: 1000, already: 1 } : null);
       if (!spec) throw `couldn't connect to ${endpoint}: connection refused`;
-      if (!endpoint.startsWith('file://') && !descriptor) throw `${endpoint} needs a descriptor for its frames`;
+      if (!replay && !endpoint.startsWith('file://') && !descriptor) throw `${endpoint} needs a descriptor for its frames`;
       const r = recording(endpoint, { ...spec, samples: 1 });
       const t0 = Date.now() - (spec.already ?? 1) * 1000;
       let stopped = null;
-      const n = () => Math.max(1, Math.floor((((stopped ?? Date.now()) - t0) / 1000) * r.rate));
+      let pausedAt = null;
+      let pausedFor = 0;
+      let paused = false;
+      // the clock the recording grows with: a replay's stops while paused
+      const clock = () => (stopped ?? (replay && pausedAt != null ? pausedAt : Date.now())) - (replay ? pausedFor : 0);
+      const n = () => Math.max(1, Math.floor(((clock() - t0) / 1000) * r.rate));
       Object.defineProperty(r, 'samples', { get: n });
       Object.defineProperty(r, 'done', { get: n });
       const id = nextFile++;
-      const health = () => ({ endpoint, bytes_in: n() * 24, records_in: n(), records_dropped: 0, records_written: n(), sequence_missing: 0, sequence_repeated: 0, malformed_bytes: 0, rows_skipped: 0, rows_back_in_time: 0, files: ['/rec/session-1/source-1.tlm'], ring_bytes: 1 << 26, ring_high_water_bytes: 4096, ended: stopped != null, error: null, seconds: (Date.now() - t0) / 1000 });
-      fake.open.set(id, { r, progress: null, live: { health, stop: () => (stopped ??= Date.now()) } });
+      const health = () => ({ endpoint, bytes_in: n() * 24, records_in: n(), records_dropped: fake.liveDropped ?? 0, records_written: n(), sequence_missing: 0, sequence_repeated: 0, malformed_bytes: 0, rows_skipped: 0, rows_back_in_time: 0, files: [`/rec/session-1/source-${addTo != null ? 2 : 1}.tlm`], ring_bytes: 1 << 26, ring_high_water_bytes: 4096, ended: stopped != null, error: null, paused, seconds: (clock() - t0) / 1000 });
+      const live = {
+        health,
+        name: name || endpoint,
+        recording: record !== false,
+        stopped: () => stopped != null,
+        stop: () => (stopped ??= Date.now()),
+        pause: (p) => {
+          if (p === paused) return;
+          paused = p;
+          if (p) pausedAt = Date.now();
+          else {
+            pausedFor += Date.now() - pausedAt;
+            pausedAt = null;
+          }
+        },
+        trigger: null,
+      };
+      fake.open.set(id, { r, progress: null, live });
       fake.files[endpoint] = spec;
       const info = () => ({ path: endpoint, format: 'tlm', samples: n(), time: { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] });
       fake.open.get(id).info = info;
@@ -918,12 +950,53 @@
     live_state({ file }) {
       const o = fake.open.get(file);
       if (!o?.live) throw 'that source is not open';
-      return { range: [String(timeAt(o.r, 0)), String(timeAt(o.r, o.r.samples - 1))], samples: o.r.samples, part: 1, info: o.info(), session: '/rec/session-1', health: o.live.health() };
+      const L = o.live;
+      const last = timeAt(o.r, o.r.samples - 1);
+      // a trigger fires `fake.triggerAfter` ms after it was armed (and again that long after, when it repeats)
+      const T = L.trigger;
+      if (T?.armed && Date.now() >= T.nextAt) {
+        T.count++;
+        T.last = String(last);
+        T.armed = T.spec.repeat;
+        T.nextAt = Date.now() + (fake.triggerAfter ?? 1000);
+        const ev = { id: `trigger:${last}`, name: `Trigger: ${T.spec.channel} ${{ rise: 'rises through', fall: 'falls through', above: 'goes above', below: 'goes below' }[T.spec.kind]} ${T.spec.level}`, start: String(last), duration: '0', category: 'trigger', source: 'rule', channels: [T.spec.channel] };
+        fake.events[o.r.path] = [...(fake.events[o.r.path] ?? []), ev];
+      }
+      const trigger = T ? { armed: T.armed, count: T.count, last: T.last, pending: T.last != null && BigInt(T.last) + BigInt(Math.round(T.spec.post * 1e9)) > last, error: null, spec: T.spec } : { armed: false, count: 0, last: null, pending: false, error: null, spec: null };
+      return { range: [String(timeAt(o.r, 0)), String(last)], samples: o.r.samples, part: 1, info: o.info(), session: '/rec/session-1', name: L.name, recording: L.recording, stopped: L.stopped(), health: L.health(), trigger };
     },
     live_stop({ file }) {
       const o = fake.open.get(file);
       o.live.stop();
       return o.live.health();
+    },
+    live_pause({ file, paused }) {
+      fake.open.get(file).live.pause(paused);
+      return null;
+    },
+    live_trigger({ file, spec }) {
+      const L = fake.open.get(file).live;
+      const chans = fake.open.get(file).r.chans.map((c) => c.name);
+      if (!spec) {
+        if (L.trigger) L.trigger.armed = false;
+      } else {
+        if (/cumsum/.test(spec.channel)) throw "This channel needs the whole recording to compute, so it can't trigger live";
+        if (!chans.includes(spec.channel) && !/[(+\-*/]/.test(spec.channel)) throw `There's no channel called ${spec.channel}`;
+        fake.triggers.push(JSON.parse(JSON.stringify(spec)));
+        L.trigger = { spec, armed: true, count: 0, last: null, nextAt: Date.now() + (fake.triggerAfter ?? 1000) };
+      }
+      const T = L.trigger;
+      return T ? { armed: T.armed, count: T.count, last: T.last, pending: false, error: null, spec: T.spec } : { armed: false, count: 0, last: null, pending: false, error: null, spec: null };
+    },
+    live_preview({ endpoint, descriptor }) {
+      const path = endpoint.replace(/^(replay|file):\/\//, '').replace(/\?.*$/, '');
+      if (/^(replay|file):/.test(endpoint)) {
+        const r = recording(path, fake.files[path] ?? {});
+        return { detail: `${path.endsWith('.csv') ? 'CSV' : 'tlm'}, ${r.samples.toLocaleString()} samples`, channels: r.chans.map((c) => [c.name, c.unit]) };
+      }
+      if (!descriptor) throw "Choose the frames' descriptor to see how they decode";
+      const spec = fake.sources[endpoint] ?? { channels: ['rpm', 'temp'] };
+      return { detail: '16 bytes a frame, 1000 Hz', channels: spec.channels.map((c) => [c, null]) };
     },
     'plugin:dialog|open': ({ options }) => (options?.directory ? fake.pickFolder : fake.pick),
     'plugin:dialog|save': () => fake.savePick,

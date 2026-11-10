@@ -7,6 +7,7 @@
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { ICON } from '../icons';
   import { invoke } from '@tauri-apps/api/core';
+  import { open as openDialog } from '@tauri-apps/plugin-dialog';
   import { actions } from '../ui.svelte';
   import { limitText } from '../display.svelte';
 
@@ -52,6 +53,11 @@
     { key: 'measureAuto', section: 'Display', label: 'Open Measure when both cursors are placed', hint: 'It closes again when you clear the cursors, unless you opened it yourself.' },
     { key: 'showPerf', section: 'Display', label: 'Show performance details', hint: 'A status bar with the last view: points drawn, how they were reduced, and the round trip.' },
   ];
+
+  async function chooseRecDir() {
+    const p = await openDialog({ directory: true, title: 'Record live sessions to' });
+    if (typeof p === 'string' && p) setSetting('recordTo', p);
+  }
 
   let q = $state('');
   let open = $state<Record<string, boolean>>({});
@@ -164,6 +170,9 @@
       <div class="urow"><span>Everything customised on channels</span><button class="tbtn" id="chResetAll" onclick={() => customised.forEach(resetChannel)}>Reset all</button></div>
     </section>
   {/if}
+  <section id="liveSet"><h3>Live</h3>
+    <div class="urow"><span>Record live sessions to<br /><small class="muted" id="recDir">{settings.recordTo || 'The Recordings folder in the app’s data folder'}</small></span><span class="uctl"><button class="tbtn" id="recChoose" onclick={chooseRecDir}>Choose…</button>{#if settings.recordTo}<button class="tbtn" id="recDefault" onclick={() => setSetting('recordTo', '')}>Default</button>{/if}</span></div>
+  </section>
   <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span id="sessTxt">{settings.sessions[settings.folder]?.files.length ? 'Session saved · only you (app cache)' : 'Session saves automatically'}</span><button class="tbtn" id="setResetSession" data-tip="Close this folder's tabs and forget its saved session" onclick={actions.resetSession}>Reset session</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
   <section class="cache"><h3>Cache</h3>
     <p class="cpath" id="cachePath" data-tip={cache?.path}>{cache?.path ?? '…'}</p>
@@ -234,6 +243,10 @@
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .uctl {
+    display: flex;
+    gap: 6px;
   }
   .urow {
     display: flex;

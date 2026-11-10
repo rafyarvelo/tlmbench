@@ -21,8 +21,8 @@ const ENVELOPE_ALPHA = 0.16;
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
-import { applyTheme, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
-import { type Health, live, liveActions } from './live.svelte';
+import { applyTheme, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
+import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
 import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
@@ -1594,7 +1594,7 @@ async function showTab(key: number): Promise<void> {
   stack.sel = d.sel;
   normalize();
   closePlay();
-  Object.assign(live, { on: !!d.live, following: d.live?.following ?? true, win: d.live?.win ?? 30, sources: false, health: d.live?.health ?? null });
+  Object.assign(live, { on: !!d.live, following: d.live?.following ?? true, win: d.live?.win ?? 30, sources: false, health: d.live?.health ?? null, trigger: null, trace: '', stopped: false, name: '' });
   ui.file = nameOf(d.file.info.path);
   ui.path = d.file.info.path;
   ui.time = fileTime(d.file.info.time.kind === 'index', d.file.first);
@@ -1711,12 +1711,18 @@ let liveDriving = false;
 let livePolledAt = 0;
 let liveRaf = 0;
 
-/** Connects a live source and opens it in a tab of its own, following now. */
-async function openLive(endpoint: string, descriptor: string): Promise<void> {
+const isReplay = (endpoint: string) => endpoint.startsWith('replay://');
+const baseName = (p: string) => p.replace(/\?.*$/, '').split(/[\\/]/).pop() || p;
+
+/** Connects a live source and opens it in a tab of its own, following now (from a live tab, it joins that session). */
+async function openLive(a: ConnectArgs, save: boolean, form: ConnectForm): Promise<void> {
   live.connecting = true;
   live.error = '';
   try {
-    const o = await invoke<Opened>('live_connect', { endpoint, descriptor: descriptor || null });
+    const addTo = live.addTo != null ? (fileOf(live.addTo)?.id ?? null) : null;
+    const o = await invoke<Opened>('live_connect', {
+      args: { endpoint: a.endpoint, descriptor: a.descriptor || null, name: a.name || null, record: a.record, dir: settings.recordTo || null, addTo },
+    });
     if (!o.range) throw new Error('no samples yet');
     const key = nextTab++;
     const file: OpenFile = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: [], missing: [], adjustKey: '' };
@@ -1735,9 +1741,11 @@ async function openLive(endpoint: string, descriptor: string): Promise<void> {
       play: null,
       live: { following: true, win: 30, health: null },
     });
-    const name = endpoint.replace(/^file:\/\//, '').split(/[\\/]/).pop() || endpoint;
-    tabs.list.push({ key, path: endpoint, name, live: true });
+    const name = a.name || baseName(a.endpoint);
+    tabs.list.push({ key, path: a.endpoint, name, live: true });
     live.connect = false;
+    if (save) setSetting('savedConnections', [...settings.savedConnections, { ...form, id: 's' + Date.now().toString(36) }]);
+    setSetting('liveForm', form);
     await showTab(key);
     void pollLive();
   } catch (e) {
@@ -1753,7 +1761,20 @@ interface LiveState {
   info: RecordingInfo;
   health: Health;
   session: string;
+  name: string;
+  recording: boolean;
+  stopped: boolean;
+  trigger: TriggerStatus;
 }
+
+/** Crossings whose window the view has been set to, by file: a new one freezes the view on its window once the
+ *  recording reaches its post time. */
+const trigHandled = new Map<number, string | null>();
+let trigCount = 0;
+let lastLiveChecks = 0;
+/** Files whose checks ran once more after their source ended. */
+const liveChecked = new Set<number>();
+let traceAt = 0;
 
 /** Asks the source in front how far it has recorded (the view follows that). */
 async function pollLive(): Promise<void> {
@@ -1770,13 +1791,94 @@ async function pollLive(): Promise<void> {
     live.recorded = Number(f.last - f.first) / 1e9;
     live.health = st.health;
     live.session = st.session;
+    live.name = st.name;
+    live.recording = st.recording;
+    live.stopped = st.stopped;
+    live.replay = isReplay(st.health.endpoint);
+    live.trigger = st.trigger;
+    handleTrigger(f, st.trigger);
     if (!live.following) live.back = Math.max(0, Number(f.last - state.t1) / 1e9);
     if (live.following && !liveRaf) liveRaf = requestAnimationFrame(followLive);
+    // rules and checks run again every couple of seconds on what has been recorded, and once more when it ends
+    const now = performance.now();
+    const last = st.health.ended && !liveChecked.has(f.id);
+    if ((now - lastLiveChecks > LIVE_CHECKS_MS || last) && !checks.running) {
+      lastLiveChecks = now;
+      if (last) liveChecked.add(f.id);
+      scheduleChecks(0);
+    }
+    void liveTrace(f);
   } catch {
     /* the tab closed meanwhile */
   }
 }
 setInterval(() => void pollLive(), 100);
+
+/** How often a live file's checks and rules run again. */
+const LIVE_CHECKS_MS = 2000;
+
+/** A trigger fired: its event joins the list, and once the recording reaches its post time the view holds the window
+ *  around it (Follow goes back to live). */
+function handleTrigger(f: NonNullable<typeof state.file>, T: TriggerStatus): void {
+  if (!trigHandled.has(f.id)) trigHandled.set(f.id, T.last);
+  if (T.count !== trigCount) {
+    trigCount = T.count;
+    void loadEvents();
+  }
+  if (!T.last || T.last === trigHandled.get(f.id) || !T.spec) return;
+  const at = BigInt(T.last);
+  const post = BigInt(Math.round(T.spec.post * 1e9));
+  if (f.last < at + post && !live.health?.ended) return;
+  trigHandled.set(f.id, T.last);
+  live.following = false;
+  liveDriving = true;
+  setView(at - BigInt(Math.round(T.spec.pre * 1e9)), at + post + 1n);
+  liveDriving = false;
+  live.back = Math.max(0, Number(f.last - state.t1) / 1e9);
+}
+
+/** The session drawn small behind the strip's scrubber: the first plotted channel, reduced to about 300 columns. */
+async function liveTrace(f: NonNullable<typeof state.file>): Promise<void> {
+  if (performance.now() - traceAt < 1500 || f.last <= f.first) return;
+  traceAt = performance.now();
+  try {
+    const ch = stack.panes[0]?.channels[0] ?? 0;
+    const batch = decodeBatch(await invoke<ArrayBuffer>('view', { file: f.id, generation: 0, precision: 'coarse', entries: [entry(OVERVIEW, [ch], f.first, f.last + 1n, 300)] }));
+    const t = batch.entries.get(OVERVIEW)?.traces[0];
+    if (!t || state.file !== f || !t.x.length) return;
+    const x0 = t.x[0];
+    const dx = t.x[t.x.length - 1] - x0 || 1;
+    const dy = t.yMax - t.yMin || 1;
+    let d = '';
+    for (let i = 0; i < t.x.length; i++) d += `${i ? 'L' : 'M'}${((t.x[i] - x0) / dx).toFixed(4)} ${(1 - (t.y[i] - t.yMin) / dy).toFixed(4)}`;
+    live.trace = d;
+  } catch {
+    /* the view will draw it next time */
+  }
+}
+
+/** Every live tab's source, for the Sources panel's cards. */
+async function pollCards(): Promise<void> {
+  const liveTabs = tabs.list.filter((t) => t.live);
+  if (!liveTabs.length) {
+    if (live.cards.length) live.cards = [];
+    return;
+  }
+  const cards = await Promise.all(
+    liveTabs.map(async (t): Promise<SourceCard | null> => {
+      const f = fileOf(t.key);
+      if (!f) return null;
+      try {
+        const st = await invoke<LiveState>('live_state', { file: f.id });
+        return { key: t.key, name: st.name || t.name, endpoint: st.health.endpoint, health: st.health, stopped: st.stopped, replay: isReplay(st.health.endpoint), session: st.session, recording: st.recording };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  live.cards = cards.filter((c): c is SourceCard => !!c);
+}
+setInterval(() => void pollCards(), 500);
 
 /** Each frame while following: the view's end at now (the last recorded time, moved on by the time since it was
  * asked, at most 0.15 s), over the window. */
@@ -1784,7 +1886,7 @@ function followLive(now: number): void {
   liveRaf = 0;
   const f = state.file;
   if (!live.on || !live.following || !f) return;
-  if (live.health?.ended) return followTo(f.last + 1n);
+  if (live.health?.ended || live.health?.paused) return followTo(f.last + 1n);
   const ahead = BigInt(Math.round(Math.min(150, Math.max(0, now - livePolledAt)) * 1e6));
   followTo(f.last + 1n + ahead);
   liveRaf = requestAnimationFrame(followLive);
@@ -1798,7 +1900,7 @@ function followTo(end: bigint): void {
 }
 
 Object.assign(liveActions, {
-  connect: (endpoint: string, descriptor: string) => void openLive(endpoint, descriptor),
+  connect: (a: ConnectArgs, save: boolean, form: ConnectForm) => void openLive(a, save, form),
   setWindow: (w: number) => {
     live.win = w;
     const f = state.file;
@@ -1823,10 +1925,47 @@ Object.assign(liveActions, {
     liveDriving = false;
     live.back = Math.max(0, Number(f.last - end) / 1e9);
   },
-  stop: async () => {
-    const f = state.file;
+  stop: async (key?: number) => {
+    const f = key == null ? state.file : fileOf(key);
     if (!f) return;
-    live.health = await invoke<Health>('live_stop', { file: f.id });
+    const h = await invoke<Health>('live_stop', { file: f.id });
+    if (f === state.file) {
+      live.health = h;
+      live.stopped = true;
+    }
+    void pollCards();
+  },
+  pause: async (key?: number) => {
+    const k = key ?? tabs.active;
+    const f = fileOf(k);
+    const card = live.cards.find((c) => c.key === k);
+    if (!f) return;
+    const paused = card ? card.health.paused : !!live.health?.paused;
+    await invoke('live_pause', { file: f.id, paused: !paused });
+    void pollLive();
+    void pollCards();
+  },
+  remove: (key: number) => void closeTab(key),
+  show: (key: number) => void showTab(key),
+  trigger: async (spec: TriggerForm | null): Promise<string | null> => {
+    const f = state.file;
+    if (!f) return null;
+    try {
+      const T = await invoke<TriggerStatus>('live_trigger', { file: f.id, spec });
+      live.trigger = T;
+      trigHandled.set(f.id, T.last);
+      if (spec) liveActions.jump();
+      return null;
+    } catch (e) {
+      return String(e);
+    }
+  },
+  preview: async (endpoint: string, descriptor: string) => {
+    try {
+      return await invoke<{ detail: string; channels: [string, string | null][] }>('live_preview', { endpoint, descriptor: descriptor || null });
+    } catch (e) {
+      return String(e);
+    }
   },
 });
 
@@ -4134,7 +4273,8 @@ export const gateApi = {
   set onPaint(f: ((p: { coarse: boolean; complete: boolean }) => void) | null) {
     state.onPaint = f;
   },
-  connect: (endpoint: string, descriptor: string) => openLive(endpoint, descriptor),
+  connect: (endpoint: string, descriptor: string) =>
+    openLive({ endpoint, descriptor, name: '', record: true }, false, { kind: 'tcp', name: '', record: true, port: '', baud: '115200', address: '', path: '', descriptor, recording: '', speed: 1, startAt: 0, loop: false }),
   liveWindow: (s: number) => liveActions.setWindow(s),
   liveHealth: () => live.health as LiveHealth | null,
   stopLive: async () => {

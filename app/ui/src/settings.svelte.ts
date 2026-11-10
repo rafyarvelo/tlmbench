@@ -35,7 +35,37 @@ export const DEFAULT_CATEGORIES: EventCategory[] = [
   { id: 'mode', name: 'Mode change', color: '#F25FC0', chart: true },
   { id: 'milestone', name: 'Milestone', color: '#3FCF8E', chart: true },
   { id: 'check', name: 'Check failed', color: '#FF7A59', chart: true },
+  { id: 'trigger', name: 'Trigger', color: '#E8C547', chart: true },
 ];
+
+/** What the Connect dialog collects (see Connect.svelte). */
+export interface ConnectForm {
+  kind: 'playback' | 'serial' | 'udp' | 'tcp' | 'file';
+  name: string;
+  record: boolean;
+  port: string;
+  baud: string;
+  address: string;
+  path: string;
+  descriptor: string;
+  /** File playback: the recording, the speed, where to start (seconds) and whether it loops. */
+  recording: string;
+  speed: number;
+  startAt: number;
+  loop: boolean;
+}
+export interface SavedConnection extends ConnectForm {
+  id: string;
+}
+/** A live trigger as the popover edits it (the core's `trigger::Spec`). */
+export interface TriggerForm {
+  channel: string;
+  kind: 'rise' | 'fall' | 'above' | 'below';
+  level: number;
+  pre: number;
+  post: number;
+  repeat: boolean;
+}
 
 export interface PanelLayout {
   left: PanelId[];
@@ -175,6 +205,13 @@ export interface Settings {
   /** A session per folder ('' for none, owner Nov 7): its tabs, open files, and each file's time range and cursors,
    *  restored when the folder opens and listed under Recent sessions on the start page. */
   sessions: Record<string, Session>;
+  /** Where live sessions are recorded ('' is the default folder in the app's data folder). */
+  recordTo: string;
+  /** Connections saved from the Connect dialog, listed on the start page. */
+  savedConnections: SavedConnection[];
+  /** The Connect dialog's last form, and the trigger's last settings. */
+  liveForm: Partial<ConnectForm>;
+  liveTrigger: TriggerForm;
   /** Your layouts (workspaces), this computer only. */
   workspaces: Workspace[];
   /** Each file's panes (their channel numbers and where they sit), by file path. */
@@ -245,6 +282,10 @@ export const DEFAULTS: Settings = {
   folder: '',
   exExpanded: [],
   sessions: {},
+  recordTo: '',
+  savedConnections: [],
+  liveForm: {},
+  liveTrigger: { channel: '', kind: 'rise', level: 0, pre: 2, post: 3, repeat: false },
   layouts: {},
   workspaces: [],
   gapFactors: {},
@@ -261,7 +302,7 @@ function load(): Settings {
     if (L && !L.left.includes('events') && !L.right.includes('events')) L.left.splice(Math.min(1, L.left.length), 0, 'events');
     if (L && !L.left.includes('checks') && !L.right.includes('checks')) L.left.splice(Math.min(2, L.left.length), 0, 'checks');
     // the category check failures sort into joins the ones saved before it
-    if (!s.eventCats.some((c) => c.id === 'check')) s.eventCats.push(structuredClone(DEFAULT_CATEGORIES.find((c) => c.id === 'check')!));
+    for (const id of ['check', 'trigger']) if (!s.eventCats.some((c) => c.id === id)) s.eventCats.push(structuredClone(DEFAULT_CATEGORIES.find((c) => c.id === id)!));
     return s;
   } catch {
     return structuredClone(DEFAULTS);
@@ -309,7 +350,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

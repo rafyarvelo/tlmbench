@@ -11,8 +11,10 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
 
   await p.click('[data-rail="live"]');
   check('Live opens the Connect dialog', await p.isVisible('#liveDlg'));
+  check('the dialog starts on file playback, which needs a recording', (await p.getAttribute('#liveDlg [data-kind="playback"]', 'aria-pressed')) === 'true' && (await p.isDisabled('#lvConnect')));
+  await p.click('#liveDlg [data-kind="tcp"]');
   check('TCP needs a descriptor', await p.isDisabled('#lvConnect'));
-  check('laid out as the prototype\'s: the kinds on the left, each with what it\'s for', (await p.$$eval('#liveDlg .lvkind', (b) => b.map((x) => x.querySelector('b').textContent))).join() === 'Serial port,UDP,TCP,Tail a file' && (await p.getAttribute('#liveDlg [data-kind="tcp"]', 'aria-pressed')) === 'true');
+  check('laid out as the prototype\'s: the kinds on the left, each with what it\'s for', (await p.$$eval('#liveDlg .lvkind', (b) => b.map((x) => x.querySelector('b').textContent))).join() === 'File playback,Serial port,UDP,TCP,Tail a file' && (await p.getAttribute('#liveDlg [data-kind="tcp"]', 'aria-pressed')) === 'true');
   check('...over a scrim, with a × to close', (await p.isVisible('.scrim')) && (await p.isVisible('#liveDlg .dclose')));
   await p.click('#liveDlg [data-kind="serial"]');
   await p.fill('#lvPort', '/dev/tty.usbserial-1');
@@ -27,9 +29,9 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   check('a refused connection says so', await until(() => /connection refused/.test(document.getElementById('lvErr')?.textContent ?? '')), await text('#lvErr'));
   await p.fill('#lvAddr', '127.0.0.1:9000');
   await p.click('#lvConnect');
-  check('connecting opens a live tab', await until(() => document.querySelector('#wsTabs [aria-selected=true]')?.dataset.tip === 'tcp://127.0.0.1:9000') && !(await p.isVisible('#liveDlg')));
+  check('connecting opens a live tab', await until(() => document.querySelector('#wsTabs [aria-selected=true]')?.dataset.tip === '127.0.0.1:9000') && !(await p.isVisible('#liveDlg')));
   check('a pulsing dot on the live tab and on the rail', (await p.$$('[data-live-tab]')).length === 1 && (await p.$$('[data-live-dot]')).length === 1);
-  check('the live strip: LIVE and the time recorded', (await text('#lvBadge')) === 'LIVE' && /REC 4\d\.\d+ s/.test(await text('#lvRec')), await text('#liveStrip'));
+  check('the live strip: LIVE, the session\'s name and the time recorded', (await text('#lvBadge')) === 'LIVE' && (await text('#lvSession')) === '127.0.0.1:9000' && /REC 4\d\.\d+ s/.test(await text('#lvRec')), await text('#liveStrip'));
   check('no overview in a live tab', !(await p.$('.overview')));
   check('every channel drawn', await until(() => window.__tlmApp.drawn().every((d) => d && d.length)));
 
@@ -57,16 +59,17 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
 
   // Sources: stream health and the recording; Stop
   await p.click('#lvSrcBtn');
+  check('the Sources panel has a card for the source', (await p.$$('#lvSources [data-card]')).length === 1 && (await text('#lvSrcBtn')) === '1 source');
   check('Sources shows the stream health', /1,000 records\/s|99\d records\/s/.test(await text('#lvRate')) && (await text('#lvDrop')) === '0' && (await text('#lvFile')) === 'source-1.tlm', await text('#lvSources'));
   await p.click('#lvStop');
-  check('Stop ends the recording', await until(() => document.getElementById('lvBadge')?.textContent === 'ENDED') && !(await visible('#lvStop')));
+  check('Stop ends the recording', await until(() => document.getElementById('lvBadge')?.textContent === 'STOPPED') && !(await visible('#lvStop')));
 
   // another tab hides the strip; coming back, it is there
   await fake(() => window.__tlmFake.drop(['/data/flight.tlm']));
   await until(() => document.querySelector('#wsTabs [aria-selected=true]')?.dataset.tip === '/data/flight.tlm');
   check('a file tab has no live strip', !(await visible('#liveStrip')) && !!(await p.$('.overview')));
   await p.click('#wsTabs .wstab[data-tip="tcp://127.0.0.1:9000"]');
-  check('back in the live tab', await until(() => !!document.getElementById('liveStrip')) && (await text('#lvBadge')) === 'ENDED');
+  check('back in the live tab', await until(() => !!document.getElementById('liveStrip')) && (await until(() => document.getElementById('lvBadge')?.textContent === 'STOPPED')));
   check('live tabs are not reopened at launch', !(await settingsLS()).sessions[''].files.includes(TCP), (await settingsLS()).sessions);
   await p.hover('#wsTabs .wstab[data-tip="tcp://127.0.0.1:9000"]');
   await p.click('#wsTabs .wstab[data-tip="tcp://127.0.0.1:9000"] .tx');

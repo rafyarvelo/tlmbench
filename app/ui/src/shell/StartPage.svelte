@@ -2,7 +2,7 @@
      logo in the rail opens it over the tabs, and Esc or any open closes it. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { live } from '../live.svelte';
+  import { live, liveActions } from '../live.svelte';
   import { setSetting, settings } from '../settings.svelte';
   import { actions, ui } from '../ui.svelte';
   import { tabs } from '../tabs.svelte';
@@ -37,8 +37,21 @@
     <div class="acts">
       <button class="btn primary" data-start="folder" onclick={go(actions.openFolder)}>Open folder…</button>
       <button class="btn" data-start="open" onclick={go(actions.open)}>Open recording… <kbd>⌘O</kbd></button>
-      <button class="btn" data-start="live" onclick={go(() => ((live.connect = true), (live.error = '')))}>Connect live source…</button>
+      <button class="btn" data-start="live" onclick={go(() => liveActions.openConnect(false))}>Connect live source…</button>
     </div>
+    {#if live.cards.some((c) => c.recording)}
+      {@const rec = live.cards.find((c) => c.recording)!}
+      <p class="recbanner" id="startRec"><span class="rdot"></span>Recording to <span class="num">{rec.session}</span></p>
+    {/if}
+    <h2>Connections</h2>
+    {#each settings.savedConnections as c (c.id)}
+      <div class="rec conn" data-conn={c.id}>
+        <button class="connopen" data-tip="Open the Connect dialog with this connection" onclick={go(() => liveActions.openConnect(false, c))}>{@html ICON.live}<span class="nm">{c.name}</span><span class="dir muted">{c.kind === 'playback' ? 'File playback' : c.kind === 'serial' ? 'Serial port' : c.kind === 'file' ? 'Tail a file' : c.kind.toUpperCase()}</span></button>
+        <button class="ibtn connx" aria-label="Remove {c.name}" data-tip="Remove from the start page" onclick={() => setSetting('savedConnections', settings.savedConnections.filter((x) => x.id !== c.id))}>{@html ICON.close}</button>
+      </div>
+    {:else}
+      <p class="muted none">None saved. Tick "Save this connection" when you connect.</p>
+    {/each}
     <h2>Recent sessions</h2>
     {#each sessions as [key, s] (key)}
       {@const current = key === settings.folder && tabs.list.length > 0}
@@ -160,5 +173,48 @@
     gap: 8px;
     margin-top: 18px;
     font-size: 12px;
+  }
+  .recbanner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    font-size: 12px;
+  }
+  .recbanner .rdot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+  }
+  .conn {
+    display: flex;
+    align-items: center;
+    padding: 0;
+  }
+  .connopen {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .connx {
+    margin-right: 4px;
+    opacity: 0;
+  }
+  .conn:hover .connx,
+  .connx:focus-visible {
+    opacity: 1;
   }
 </style>

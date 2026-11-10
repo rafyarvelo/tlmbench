@@ -1,41 +1,109 @@
-<!-- Connect a live source: a serial port, TCP (the app connects to the device), UDP (it listens) or a growing file
-     (followed from its start), with the frames' descriptor for the first three. It opens a live tab, recording into the Recordings folder. -->
+<!-- Connect a live source: file playback (a recording replayed as if it were arriving now), a serial port, TCP (the app
+     connects to the device), UDP (it listens) or a growing file (followed from its start), with the frames' descriptor
+     for the sockets and a preview of how they decode. It opens a live tab, or adds a source to the session in front,
+     recording into the Recordings folder unless the switch is off. -->
 <script lang="ts">
-  import { live, liveActions } from '../live.svelte';
+  import { live, liveActions, LIVE_SPEEDS } from '../live.svelte';
   import { ICON } from '../icons';
+  import { type ConnectForm, settings } from '../settings.svelte';
   import { actions } from '../ui.svelte';
 
-  type Kind = 'serial' | 'udp' | 'tcp' | 'file';
-  let kind = $state<Kind>('tcp');
+  type Kind = ConnectForm['kind'];
   /** The kinds as the prototype lists them: an icon, the name and what it's for. */
   const KINDS: [Kind, string, string][] = [
+    ['playback', 'File playback', 'Replay a recording (demo)'],
     ['serial', 'Serial port', 'USB or RS-232 adapter'],
     ['udp', 'UDP', 'Datagrams on a port'],
     ['tcp', 'TCP', 'Connect to a server'],
     ['file', 'Tail a file', 'A file still being written'],
   ];
   const KIND_ICON: Record<Kind, string> = {
+    playback: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M10 11v6l5-3z" fill="currentColor"/></svg>',
     serial: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h16l-2 8H6z"/><circle cx="9" cy="12" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="15" cy="12" r=".8" fill="currentColor"/></svg>',
     udp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12.5a10 10 0 0114 0M8 15.5a5.5 5.5 0 018 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg>',
     tcp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 12h8M10 8l-4 4 4 4M14 8l4 4-4 4"/></svg>',
     file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M9 13h6M9 17h4"/></svg>',
   };
-  let port = $state('');
-  let baud = $state('115200');
-  let address = $state('127.0.0.1:9000');
-  let path = $state('');
-  let descriptor = $state('');
-  const endpoint = $derived(
-    kind === 'file' ? `file://${path}` : kind === 'serial' ? `serial://${port}?baud=${baud}` : `${kind}://${address}`,
-  );
-  const ready = $derived(kind === 'file' ? !!path.trim() : !!descriptor.trim() && !!(kind === 'serial' ? port : address).trim());
+  const base = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
-  async function choose(which: 'path' | 'descriptor') {
-    const p = await actions.pickFile(which === 'descriptor' ? ['toml'] : ['csv', 'tsv', 'txt', 'tlm']);
-    if (p) {
-      if (which === 'path') path = p;
-      else descriptor = p;
+  const start: ConnectForm = {
+    kind: 'playback',
+    name: '',
+    record: true,
+    port: '',
+    baud: '115200',
+    address: '127.0.0.1:9000',
+    path: '',
+    descriptor: '',
+    recording: '',
+    speed: 2,
+    startAt: 0,
+    loop: true,
+    ...settings.liveForm,
+    ...live.preset,
+  };
+  let kind = $state<Kind>(start.kind);
+  let name = $state(start.name);
+  let nameEdited = $state(!!live.preset?.name);
+  let record = $state(start.record);
+  let port = $state(start.port);
+  let baud = $state(start.baud);
+  let address = $state(start.address);
+  let path = $state(start.path);
+  let descriptor = $state(start.descriptor);
+  let recording = $state(start.recording);
+  let speed = $state(start.speed);
+  let startAt = $state(start.startAt);
+  let loop = $state(start.loop);
+  let save = $state(false);
+  const fromSaved = !!live.preset?.id;
+  /** Where it opens: a new live tab, or as another source of a session (the tab's key). */
+  let target = $state<number | null>(live.addTo);
+  const adding = $derived(target != null);
+
+  const endpoint = $derived(
+    kind === 'playback'
+      ? `replay://${recording}?speed=${speed}&start=${startAt}&loop=${loop ? 1 : 0}`
+      : kind === 'file'
+        ? `file://${path}`
+        : kind === 'serial'
+          ? `serial://${port}?baud=${baud}`
+          : `${kind}://${address}`,
+  );
+  const needsDescriptor = $derived(kind === 'serial' || kind === 'udp' || kind === 'tcp');
+  const ready = $derived(
+    kind === 'playback' ? !!recording.trim() : kind === 'file' ? !!path.trim() : !!descriptor.trim() && !!(kind === 'serial' ? port : address).trim(),
+  );
+  const auto = $derived(
+    kind === 'playback' ? (recording ? `${base(recording)} playback` : 'File playback') : kind === 'file' ? base(path) : kind === 'serial' ? base(port) : address,
+  );
+  const shownName = $derived(nameEdited ? name : auto);
+
+  /** How the frames decode, asked of the core once the form says where they come from. */
+  let preview = $state<{ detail: string; channels: [string, string | null][] } | string>('');
+  let previewTimer = 0;
+  $effect(() => {
+    const [ep, d, can] = [endpoint, descriptor, kind === 'playback' ? !!recording : kind === 'file' ? !!path : !!descriptor];
+    clearTimeout(previewTimer);
+    if (!can) {
+      preview = '';
+      return;
     }
+    previewTimer = window.setTimeout(async () => {
+      const r = await liveActions.preview(ep, needsDescriptor ? d : '');
+      if (ep === endpoint) preview = r;
+    }, 250);
+  });
+
+  async function choose(which: 'path' | 'descriptor' | 'recording') {
+    const p = await actions.pickFile(which === 'descriptor' ? ['toml'] : which === 'recording' ? ['tlm', 'csv', 'tsv', 'txt', 'bin'] : ['csv', 'tsv', 'txt', 'tlm']);
+    if (!p) return;
+    if (which === 'path') path = p;
+    else if (which === 'recording') recording = p;
+    else descriptor = p;
+  }
+  function form(): ConnectForm {
+    return { kind, name: shownName, record, port, baud, address, path, descriptor, recording, speed, startAt, loop };
   }
   function key(e: KeyboardEvent) {
     if (e.key === 'Escape') {
@@ -49,15 +117,26 @@
 
 <div class="scrim" role="presentation" onclick={() => (live.connect = false)}></div>
 <div class="dlg livedlg" id="liveDlg" role="dialog" aria-label="Connect a live source">
-  <header><b>Connect a live source</b><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={() => (live.connect = false)}>{@html ICON.close}</button></header>
+  <header><b>{adding ? 'Add a source' : 'Connect a live source'}</b><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={() => (live.connect = false)}>{@html ICON.close}</button></header>
   <div class="lvdlg">
     <div class="lvkinds" role="group" aria-label="Source type">
-      {#each KINDS as [k, name, sub] (k)}
-        <button class="lvkind" data-kind={k} aria-pressed={kind === k} onclick={() => (kind = k)}>{@html KIND_ICON[k]}<b>{name}</b><small>{sub}</small></button>
+      {#each KINDS as [k, label, sub] (k)}
+        <button class="lvkind" data-kind={k} aria-pressed={kind === k} onclick={() => (kind = k)}>{@html KIND_ICON[k]}<b>{label}</b><small>{sub}</small></button>
       {/each}
     </div>
     <div class="lvform">
-      {#if kind === 'file'}
+      <label class="lvf"><span>Name</span><input class="sel" id="lvName" value={shownName} oninput={(e) => ((name = e.currentTarget.value), (nameEdited = true))} spellcheck="false" autocomplete="off" /></label>
+      {#if kind === 'playback'}
+        <label class="lvf"><span>Recording</span><div class="lvpick"><input class="sel" id="lvRecording" bind:value={recording} placeholder="/path/to/recording.csv" spellcheck="false" autocomplete="off" /><button class="tbtn" onclick={() => choose('recording')}>Choose…</button></div></label>
+        <div class="lvrow">
+          <label class="lvf"><span>Speed</span><select class="sel" id="lvSpeed" bind:value={speed}>
+              {#each LIVE_SPEEDS as v (v)}<option value={v}>{v === 1 ? '1× (real time)' : `${v}×`}</option>{/each}
+            </select></label>
+          <label class="lvf"><span>Start at (seconds)</span><input class="sel" id="lvStart" type="number" min="0" step="any" bind:value={startAt} /></label>
+        </div>
+        <label class="lvchk"><input type="checkbox" id="lvLoop" bind:checked={loop} />Loop when the recording ends</label>
+        <p class="lvnote">Plays the recording back as if it were arriving now, through the same pipeline a serial or UDP source uses. Pausing it is a real pause. Good for demos and for testing rules, checks and layouts without hardware.</p>
+      {:else if kind === 'file'}
         <label class="lvf"><span>File</span><div class="lvpick"><input class="sel" id="lvPath" bind:value={path} placeholder="/path/to/log.csv" spellcheck="false" autocomplete="off" /><button class="tbtn" onclick={() => choose('path')}>Choose…</button></div><small>Follows a file another program is still writing, like tail -f. Recorded from its start; the file is only read.</small></label>
       {:else if kind === 'serial'}
         <label class="lvf"><span>Port</span><input class="sel" id="lvPort" bind:value={port} placeholder="/dev/tty.usbserial-1 or COM3" spellcheck="false" autocomplete="off" /></label>
@@ -69,14 +148,34 @@
         <label class="lvf"><span>{kind === 'tcp' ? 'Connect to' : 'Listen on'}</span><input class="sel" id="lvAddr" bind:value={address} placeholder="host:port" spellcheck="false" autocomplete="off" /></label>
         {@render desc()}
       {/if}
+      {#if preview}
+        <div class="lvprev" id="lvPreview">
+          {#if typeof preview === 'string'}<span class="muted">{preview}</span>
+          {:else}<b>Decodes as</b><span class="muted">{preview.detail}</span>
+            <div class="lvchips">{#each preview.channels as [c, u] (c)}<code>{c}{u ? ` [${u}]` : ''}</code>{/each}</div>{/if}
+        </div>
+      {/if}
+      {#if live.cards.length}
+        <label class="lvf"><span>Open in</span><select class="sel" id="lvTarget" value={target == null ? '' : String(target)} onchange={(e) => (target = e.currentTarget.value === '' ? null : Number(e.currentTarget.value))}>
+            <option value="">A new live tab</option>
+            {#each live.cards as c (c.key)}<option value={String(c.key)}>{c.name} (add as a source)</option>{/each}
+          </select><small>Sources in one session share its recording folder and clock.</small></label>
+      {/if}
+      {#if !adding}<label class="lvchk"><input type="checkbox" id="lvRecord" bind:checked={record} />Record while streaming</label>
+        {#if record}<small class="muted lvwhere">Saved to {settings.recordTo || 'the Recordings folder'}. Change it in Settings.</small>{:else}<small class="muted lvwhere">Not kept: the recording goes when the source closes.</small>{/if}{/if}
+      {#if !fromSaved}<label class="lvchk"><input type="checkbox" id="lvSave" bind:checked={save} />Save this connection on the start page</label>{/if}
       {#if live.error}<p class="lverr" id="lvErr">{live.error}</p>{/if}
     </div>
   </div>
   <footer>
-    <span class="muted">Opens in a new live tab, recorded to the Recordings folder</span><span class="spacer"></span>
+    <span class="muted">{adding ? 'Joins this session as another source' : record ? 'Opens in a new live tab, recorded' : 'Opens in a new live tab'}</span><span class="spacer"></span>
     <button class="tbtn" onclick={() => (live.connect = false)}>Cancel</button>
-    <button class="tbtn primary" id="lvConnect" disabled={!ready || live.connecting} onclick={() => liveActions.connect(endpoint, kind === 'file' ? '' : descriptor)}
-      >{live.connecting ? 'Connecting…' : 'Connect'}</button
+    <button
+      class="tbtn primary"
+      id="lvConnect"
+      disabled={!ready || live.connecting}
+      onclick={() => ((live.addTo = target), liveActions.connect({ endpoint, descriptor: needsDescriptor ? descriptor : '', name: shownName, record: adding ? true : record }, save, form()))}
+      >{live.connecting ? 'Connecting…' : adding ? 'Add source' : 'Connect'}</button
     >
   </footer>
 </div>
@@ -215,6 +314,43 @@
   }
   .lvpick .sel {
     flex: 1;
+  }
+  .lvrow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .lvchk {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .lvnote,
+  .lvwhere {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 11.5px;
+  }
+  .lvprev {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .lvchips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .lvchips code {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--raised);
+    font: 11px var(--font-ui);
   }
   .lverr {
     margin: 0;

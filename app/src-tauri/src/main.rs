@@ -950,6 +950,8 @@ struct LiveState {
     name: String,
     /// Whether the session is being kept.
     recording: bool,
+    /// The source was stopped (by hand): its recording is complete.
+    stopped: bool,
     health: tlmbench_live::Health,
     trigger: tlmbench_store::trigger::Status,
 }
@@ -967,6 +969,7 @@ fn live_state(file: u32, files: State<'_, Files>) -> Result<LiveState, String> {
         session: l.session.display().to_string(),
         name: l.name.clone(),
         recording: l.keep,
+        stopped: l.source.lock().unwrap().is_none(),
         health: l.health(),
         trigger: l.follow.read().unwrap().trigger_status(),
     })

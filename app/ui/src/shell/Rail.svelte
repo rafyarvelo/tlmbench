@@ -1,7 +1,7 @@
 <!-- The icon rail: a rail icon opens its view in the left sidebar (again hides it); Measure docks on the right. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { live } from '../live.svelte';
+  import { live, liveActions } from '../live.svelte';
   import { GROUP_OF, type LeftPanel, leftView, setSetting, settings } from '../settings.svelte';
 
   type Group = Exclude<LeftPanel, ''>;
@@ -32,8 +32,8 @@
       live.connect = false;
       actions.showTab(liveTab.key);
     } else {
-      live.connect = !live.connect;
-      live.error = '';
+      if (live.connect) live.connect = false;
+      else liveActions.openConnect(false);
     }
   }
   function measure() {
