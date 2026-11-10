@@ -204,7 +204,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Descriptor form on an unclaimed binary file (preview, Find frames, TOML) | v1 | ✓ | ✓ | |
 | Layouts by channel name in app data; Save, Save as, Revert, Delete | v1 | ✓ | ✓ | |
 | Shared views in `.tlmbench/views/`; Share with this folder; Export file | v1 | ✓ | ✓ | |
-| Share dialog (what gets written, read-only folders) | v1 | ✓ | ✗ | 5.7 |
+| Share dialog (what gets written, read-only folders) | v1 | ✓ | ✓ (one dialog for every kind: Share, Use the folder's or Leave per row; Export… for a read-only folder; the prototype previews the TOML, the app lists the objects) | 5.7 |
 | Layouts sidebar | v1 | ✓ | ✓ | |
 | Built-in starter layouts (what a file opens with) | v1 | ✓ | ✓ (starter charts, charts and tables, one table, values, nothing: the prototype lists no built-in layouts) | |
 | Session restore (tabs, files, time range, cursors), per folder | v1 | ✓ | ✓ (a session per folder, Reset session in Settings) | |
@@ -232,7 +232,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Events: name, start, duration, category, source; per recording in the cache | v1 | ✓ | ✗ | 5.2 |
 | Events panel: list, add from cursors, inline edit, filters, grouping | v1 | ✓ | ✓ | 5.2 |
-| Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ◐ (Settings: add, rename, recolour, Charts, delete; sharing waits) | 5.2, 5.7 |
+| Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ✓ (the folder's win a shared id) | 5.2, 5.7 |
 | Value labels (enums) on channels | v1 | ✓ | ✓ (tiles, tables, chips and Measure show the text; expressions name them; axis ticks per value wait) | 5.2 |
 | Channel limits (warn, alarm) with sensible defaults | v1 | ✓ | ✓ | 5.2 |
 | Rules: an expression held for a minimum time, marking events | v1 | ✓ | ✓ (core engine, the editor's Rule rows, rule events in Events) | 5.3 |
@@ -254,10 +254,10 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Pairs and groups by name; Separate / Join; sizes S, M, L, 2×2 | v1 | ✓ | ✓ | 5.4 |
 | Min/max in view marks | v1 | ✓ | ✓ (from the core's exact statistics, so they wait for the pyramid) | 5.4 |
 | Widgets update in place (typed updates, 100 widgets in < 2 ms) | v1 | ✓ (string patching) | ◐ (fields patched in place: 2.2 ms median for 100 in the headless browser; the release app's measurement and the half-per-frame turns past 4 ms are left) | 5.4 |
-| Declarative SVG widgets with a live preview and sanitising | v1 | ✓ | ✓ (kept in settings until Share, 5.7) | 5.4 |
-| Code widgets (sandboxed iframe, trust prompt) | v1 | ✓ | ◐ (inline `build`/`update` code, a frame served by the `tlmwidget` scheme with a policy of its own, the trust prompt per folder; the folder with `widget.toml` and inputs by role wait for Share, 5.7, and the scheme is untested in the real webviews) | 5.4 |
+| Declarative SVG widgets with a live preview and sanitising | v1 | ✓ | ✓ (shared as `widgets/<name>/`) | 5.4, 5.7 |
+| Code widgets (sandboxed iframe, trust prompt) | v1 | ✓ | ◐ (inline `build`/`update` code, a frame served by the `tlmwidget` scheme with a policy of its own, the trust prompt per folder; a folder with `widget.toml` is shared and read; inputs by role are not built, and the scheme is untested in the real webviews) | 5.4 |
 | XY plot: X channel, time colouring, 1:1, Alt-drag to time, local zoom | v1 | ✓ | ✓ (pairs by sample: channels of a file share their times) | 5.4 |
-| Icons for categories and toolbar recipe buttons | v1 | ◐ | ✗ | 5.7 |
+| Icons for categories and toolbar recipe buttons | v1 | ◐ | ◐ (`.tlmbench/icons/` is read and written by the core and Share; nothing in the app uses an icon yet: see follow-ups) | 5.7 |
 
 ## 13. Several files and alignment
 
@@ -279,8 +279,8 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Multiple windows sharing one core; tabs between windows; Link time view | v1 | ✗ | ✗ | 5.8 |
 | Daemon with clients over a socket; browser tabs; per-session token | v1 | ✗ | ✗ | 5.8 |
-| `.tlmbench/` for every object (events, checks, categories, recipes, profiles, decoders, widgets, icons, time maps) | v1 | ◐ (views, events, checks, categories) | ◐ (views only) | 5.7 |
-| `tlmbench config export`; nearest `.tlmbench/` or `--config` | v1 | n/a | ✗ | 5.7 |
+| `.tlmbench/` for every object (events, checks, categories, recipes, profiles, decoders, widgets, icons, time maps) | v1 | ◐ (views, events, checks, categories) | ✓ (views, events, check sets, categories, recipes, profiles, decoders, widgets, icons, time maps) | 5.7 |
+| `tlmbench config export`; `tlmbench validate`; nearest `.tlmbench/` or `--config` | v1 | n/a | ✓ (CLI and app; Python bindings are 5.10) | 5.7 |
 | CLI: info, build, query, record, convert | v1 | n/a | ✓ | |
 | CLI: `check` with JUnit, CSV, JSON, HTML reports | v1 | n/a | ✓ (the HTML report's cells don't link to an exported view until 5.10) | 5.3 |
 | CLI: `export html` | v1 | n/a | ✗ | 5.10 |

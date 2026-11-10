@@ -339,3 +339,56 @@ not yet per file pair in the cache.
   clock); Same clock is the primary's map applied unchanged (files on one wall clock); Offset is seconds after the
   primary's start, on top of Align starts; Add to tab picks Same clock when the files' own times overlap, else Align
   starts; Keep and Undo show the result drawn first rather than an overlay of both.
+
+## Left from step 5.7 (shared configuration)
+
+How it works now: `tlmbench_store::config` turns the cache (recipes, check sets, decoders, time maps are already files in
+the shared formats; profiles are JSON there and TOML shared) and the app's settings (categories, widgets, layouts,
+passed in from the UI) into items, compares them with a folder's `.tlmbench/`, and writes either way. The app reads the
+nearest `.tlmbench/` besides its cache (`config_use`): recipes, check sets, import profiles, decoders, events,
+categories and widgets. The app mirrors its settings-held objects into the cache (`own.json`) so `tlmbench config export`
+can write them too.
+
+- **Python bindings** read the nearest `.tlmbench/` or `--config` when they exist (5.10); the CLI does it now for recipes,
+  check sets, decoders and import profiles (`inspect` and `check --sets-from-profile` find the folder's shared profile
+  when the cache has none; `--profile x.toml` takes a shared profile file). Opening a CSV with `--derived` or `convert`
+  still applies only a profile given with `--profile`: the CLI never picked one up from the cache.
+- **Icons:** `.tlmbench/icons/` is read, compared and written by the core and Share, and a category carries an optional
+  `icon` name in `categories.toml`, but nothing in the app creates or shows an icon (the design has them for categories,
+  widget menus and toolbar buttons that run a recipe or layout). The toolbar buttons need the toolbar to take
+  user items.
+- **Widgets:** `widget.toml` holds name, kind (`svg` or `code`), entry, icon, angle and who shared it. Inputs by role
+  (a pitch/roll pair) and parameters are not in the format yet. A widget read from the folder is not in settings until
+  Use the folder's takes it (it is listed and runs from the folder; code asks once per folder).
+- **Events:** the folder's events show read-only (source `shared`); Use the folder's copies them into your own so you can
+  edit them. Share merges by id and keeps the folder's events you lack. Deleting an event you shared doesn't remove it from
+  the folder's file (a person edits the file, or deletes it in git). The CLI's `config export` writes events only for the
+  recordings the app had open the last time it saved (`own.json`). "Offer to update the references when a recording is
+  renamed": events are matched by identity, then by name, and Share writes the current name and identity; there is no
+  separate prompt.
+- **Conflicts:** a row that differs from the folder's has no base to tell who changed it, so Differs waits for a choice
+  (Share mine, Use the folder's, Leave). A three-way view of two edits to one object is a git merge of the small file.
+- **Profiles:** a profile file is named from the first header names and a short key (`time-price-volume-3f2a9c.toml`);
+  profiles carry no name of their own yet, so the dialog lists them by header. A profile's recipes and starter layout
+  (4.3, 5.1) are not part of the file.
+- **Decoders:** the app cache's `decoders/` shares through the same dialog; the descriptor form's own Share… still
+  writes to the file's folder. Descriptors found in the folder's `.tlmbench/decoders/` now come from the nearest one
+  above a file, not only the file's own folder.
+- **Time maps:** kept per pair in the cache as soon as an alignment changes (`timemap_save`, debounced) and found when
+  a file is added to a tab (`timemap_find`: yours, then the folder's; by identity, else by relative paths). A shared view
+  carries the same alignment in its `files`; the time map file is the pair's own record. Several tabs aligning the same
+  pair differently overwrite one another (the last one wins).
+- **Read-only check:** a folder is called read-only from its permission bits; a share that fails for another reason
+  (a network share that refuses writes) turns the dialog into Export… after the failure.
+- **Not verified:** the dialog in the real app on a read-only network share; `just app-parity` (a parity scene for the
+  Share dialog is not added: the dialog's rows come from the core, the fake core's rows differ).
+- **Design to absorb:** the Share dialog lists objects by kind with Only yours, Differs, Only in the folder and Same;
+  new objects are shared by default, the folder's own are taken by default, what differs waits for a choice. The app
+  reads the folder's recipes, sets, profiles, decoders and events besides its own and **yours win a name** (a recipe you
+  edited from the folder's stays yours; Share makes the folder's the same), while the folder's **categories** win an id.
+  A layout compares equal to the shared view when its panes match (the view's `by`, `files` and `view` are kept when
+  the layout is written over it). A shared view's `files` carry each other file's alignment (`align`: method, seconds,
+  channel, locked, knots, pairs); the knots are the map, the method says how to make it again. Time maps are
+  `.tlmbench/timemaps/<primary>--<file>.toml` with `primary`, `file`, their identities, `method`, `knots` and
+  `pairs`. `tlmbench validate <folder>` lints every file and every expression in recipes and checks; `--config` replaces
+  the nearest `.tlmbench/` (repeatable, later wins).

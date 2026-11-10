@@ -105,7 +105,7 @@ v1 is the whole design in [`docs/design.md`](docs/design.md), built in five gate
 | 2. Scale | ✓ gate passes | 10 GB first paint under 1 s |
 | 3. Live | ✓ gate passes | 4M samples/s with no drops |
 | 4. Formats + polish | ✓ done | formats complete |
-| 5. Workbench | in progress: derived channels, events, rules and checks, widgets, live, and several files with alignment are in; next shared `.tlmbench/` config, multiple windows, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
+| 5. Workbench | in progress: derived channels, events, rules and checks, widgets, live, several files with alignment and the shared `.tlmbench/` configuration are in; next multiple windows, plugins, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
 
 [`docs/roadmap.md`](docs/roadmap.md) orders the remaining steps and [`docs/feature-matrix.md`](docs/feature-matrix.md) shows
 each feature in the design, the prototype and the app.
