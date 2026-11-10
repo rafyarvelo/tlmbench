@@ -689,6 +689,11 @@ impl Session {
         &self.dir
     }
 
+    /// How many sources have been added.
+    pub fn sources(&self) -> usize {
+        self.sources.len()
+    }
+
     /// Starts recording `endpoint` into the session as its next `source-N` (see [`Source::start`]).
     pub fn add_source(
         &mut self,

@@ -45,6 +45,15 @@ struct Files {
 }
 
 impl Files {
+    /// The file as opened (before derived channels join it), or a live source's as of its last refresh: what events
+    /// and checks are kept against.
+    fn base(&self, id: u32) -> Result<Arc<StoreOpened>, String> {
+        if let Some(o) = self.bases.lock().unwrap().get(&id) {
+            return Ok(o.clone());
+        }
+        self.get(id)
+    }
+
     /// The file's recording, or a live source's as of its last refresh.
     fn get(&self, id: u32) -> Result<Arc<StoreOpened>, String> {
         if let Some(o) = self.open.lock().unwrap().get(&id) {
@@ -62,6 +71,12 @@ struct LiveEntry {
     follow: RwLock<Arc<tlmbench_store::Live>>,
     part: AtomicUsize,
     session: std::path::PathBuf,
+    /// What the Sources panel calls it.
+    name: String,
+    /// The session it records into (shared by the sources added to it) and its place there.
+    recording: Arc<Mutex<tlmbench_live::Session>>,
+    /// Whether the session is kept: one that isn't recorded lives in the cache and goes with its last source.
+    keep: bool,
     /// The last health while the source ran (kept once it stops).
     last: Mutex<tlmbench_live::Health>,
     closed: AtomicBool,
@@ -488,7 +503,7 @@ async fn adjust_apply(
 /// The events you added to an open file (kept in the app cache under the file's identity), in start order.
 #[tauri::command]
 async fn events_list(file: u32, files: State<'_, Files>) -> Result<Vec<tlmbench_store::events::Event>, String> {
-    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let base = files.base(file)?;
     let root = files.store.root().to_owned();
     spawn_blocking(move || tlmbench_store::events::list(&root, base.identity()).map_err(|e| e.to_string()))
         .await
@@ -502,7 +517,7 @@ async fn event_save(
     event: tlmbench_store::events::Event,
     files: State<'_, Files>,
 ) -> Result<Vec<tlmbench_store::events::Event>, String> {
-    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let base = files.base(file)?;
     let root = files.store.root().to_owned();
     spawn_blocking(move || tlmbench_store::events::save(&root, base.identity(), event).map_err(|e| e.to_string()))
         .await
@@ -516,7 +531,7 @@ async fn event_delete(
     id: String,
     files: State<'_, Files>,
 ) -> Result<Vec<tlmbench_store::events::Event>, String> {
-    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let base = files.base(file)?;
     let root = files.store.root().to_owned();
     spawn_blocking(move || tlmbench_store::events::delete(&root, base.identity(), &id).map_err(|e| e.to_string()))
         .await
@@ -611,7 +626,8 @@ struct CheckRun {
 /// Runs sets (by name) on an open file, or reads the results kept for its contents and the sets' versions.
 #[tauri::command]
 async fn checks_run(file: u32, sets: Vec<String>, files: State<'_, Files>) -> Result<Vec<CheckRun>, String> {
-    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let base = files.base(file)?;
+    let live = files.live.lock().unwrap().contains_key(&file);
     let store = files.store.clone();
     spawn_blocking(move || -> Result<Vec<CheckRun>, String> {
         let library = tlmbench_store::checks::Sets::new(store.root());
@@ -619,7 +635,12 @@ async fn checks_run(file: u32, sets: Vec<String>, files: State<'_, Files>) -> Re
         sets.iter()
             .filter_map(|n| library.get(n))
             .map(|set| {
-                let result = store.run_checks(&base, &set, &recipes).map_err(|e| e.to_string())?;
+                // a recording that grows is checked afresh each time, and not kept
+                let result = if live {
+                    store.run_checks_live(&base, &set, &recipes)
+                } else {
+                    store.run_checks(&base, &set, &recipes).map_err(|e| e.to_string())?
+                };
                 let events = tlmbench_store::checks::events_of(&set, &result);
                 Ok(CheckRun {
                     set: set.name,
@@ -685,7 +706,7 @@ async fn check_preview(
     check: tlmbench_store::checks::Check,
     files: State<'_, Files>,
 ) -> Result<tlmbench_store::checks::Outcome, String> {
-    let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
+    let base = files.base(file)?;
     let store = files.store.clone();
     spawn_blocking(move || {
         let recipes = tlmbench_store::Library::new(store.root()).list();
@@ -779,30 +800,77 @@ fn close(file: u32, files: State<'_, Files>) {
         if let Some(s) = l.source.lock().unwrap().take() {
             *l.last.lock().unwrap() = s.stop();
         }
+        // a session that isn't recorded goes with its last source
+        if !l.keep && Arc::strong_count(&l.recording) == 1 {
+            let dir = l.session.clone();
+            let live = l.follow.read().unwrap().clone();
+            std::thread::spawn(move || {
+                drop(live);
+                let _ = std::fs::remove_dir_all(dir);
+            });
+        }
     }
 }
 
 /// How often a live source's file is read again (new samples folded into its pyramid).
 const LIVE_REFRESH: Duration = Duration::from_millis(50);
 
-/// Connects a live source (`tcp://`, `udp://` or `file://`; sockets need the frames' descriptor, a TOML file) into
-/// a new session in the Recordings folder, and returns it opened like a file once its first samples are recorded.
+/// How a live source is connected.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveArgs {
+    endpoint: String,
+    descriptor: Option<String>,
+    /// What the Sources panel and the tab call it (the endpoint when empty).
+    name: Option<String>,
+    /// Keep the recording (the default). Off: it lives in the app cache and is removed when the source closes.
+    record: Option<bool>,
+    /// Where recordings are kept (the setting; empty is the default folder).
+    dir: Option<String>,
+    /// Another live file whose session this source joins, as its next source.
+    add_to: Option<u32>,
+}
+
+/// Connects a live source (`tcp://`, `udp://`, `serial://`, `file://` or `replay://`; sockets need the frames'
+/// descriptor, a TOML file) into a new session in the Recordings folder (or the one of `addTo`), and returns it opened
+/// like a file once its first samples are recorded.
 #[tauri::command]
-async fn live_connect(endpoint: String, descriptor: Option<String>, files: State<'_, Files>) -> Result<Opened, String> {
+async fn live_connect(args: LiveArgs, files: State<'_, Files>) -> Result<Opened, String> {
     let store = files.store.clone();
+    let shared = match args.add_to {
+        Some(id) => {
+            let l = files.live.lock().unwrap().get(&id).cloned().ok_or("that session is not open")?;
+            Some((l.recording.clone(), l.keep))
+        }
+        None => None,
+    };
     let entry = spawn_blocking(move || -> Result<LiveEntry, String> {
-        let endpoint: tlmbench_live::Endpoint = endpoint.parse()?;
-        let desc = match descriptor.filter(|d| !d.is_empty()) {
+        let endpoint: tlmbench_live::Endpoint = args.endpoint.parse()?;
+        let desc = match args.descriptor.filter(|d| !d.is_empty()) {
             Some(p) => {
                 let text = std::fs::read_to_string(&p).map_err(|e| format!("{p}: {e}"))?;
                 Some(tlmbench_decode_descriptor(&text).map_err(|e| format!("{p}: {e}"))?)
             }
             None => None,
         };
-        let mut session =
-            tlmbench_live::Session::create(&tlmbench_live::recordings_dir()).map_err(|e| e.to_string())?;
-        let source =
-            session.add_source(endpoint.clone(), desc.as_ref(), &Default::default()).map_err(|e| e.to_string())?;
+        let keep = shared.as_ref().map_or(args.record.unwrap_or(true), |s| s.1);
+        let recording = match shared {
+            Some((r, _)) => r,
+            None => {
+                let root = match (keep, args.dir.filter(|d| !d.trim().is_empty())) {
+                    (true, Some(d)) => std::path::PathBuf::from(d),
+                    (true, None) => tlmbench_live::recordings_dir(),
+                    (false, _) => store.root().join("live-sessions"),
+                };
+                Arc::new(Mutex::new(tlmbench_live::Session::create(&root).map_err(|e| e.to_string())?))
+            }
+        };
+        let (source, index, session) = {
+            let mut session = recording.lock().unwrap();
+            let source =
+                session.add_source(endpoint.clone(), desc.as_ref(), &Default::default()).map_err(|e| e.to_string())?;
+            (source, session.sources() - 1, session.dir().to_owned())
+        };
         // the recording opens once it holds a sample
         let started = Instant::now();
         while source.records_written() == 0 {
@@ -817,13 +885,17 @@ async fn live_connect(endpoint: String, descriptor: Option<String>, files: State
         }
         let files_now = source.files();
         let live = store.open_live(files_now.last().expect("a record was written")).map_err(|e| e.to_string())?;
-        let _ = session.update(0, &source);
+        let _ = recording.lock().unwrap().update(index, &source);
+        let name = args.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| endpoint.to_string());
         Ok(LiveEntry {
             last: Mutex::new(source.health()),
             source: Mutex::new(Some(source)),
             follow: RwLock::new(Arc::new(live)),
             part: AtomicUsize::new(files_now.len()),
-            session: session.dir().to_owned(),
+            session,
+            name,
+            recording,
+            keep,
             closed: AtomicBool::new(false),
         })
     })
@@ -842,8 +914,14 @@ async fn live_connect(endpoint: String, descriptor: Option<String>, files: State
                 && parts.len() > follower.part.load(Ordering::Relaxed)
                 && let Some(Ok(next)) = parts.last().map(|p| store.open_live(p))
             {
+                // the trigger carries over to the new part
+                let status = follower.follow.read().unwrap().trigger_status();
                 *follower.follow.write().unwrap() = Arc::new(next);
                 follower.part.store(parts.len(), Ordering::Relaxed);
+                if let (true, Some(spec)) = (status.armed, status.spec) {
+                    let recipes = tlmbench_store::Library::new(store.root()).list();
+                    let _ = follower.follow.read().unwrap().arm_trigger(spec, &recipes);
+                }
             }
             let live = follower.follow.read().unwrap().clone();
             let _ = live.refresh();
@@ -869,7 +947,11 @@ struct LiveState {
     part: usize,
     info: RecordingInfo,
     session: String,
+    name: String,
+    /// Whether the session is being kept.
+    recording: bool,
     health: tlmbench_live::Health,
+    trigger: tlmbench_store::trigger::Status,
 }
 
 #[tauri::command]
@@ -883,7 +965,91 @@ fn live_state(file: u32, files: State<'_, Files>) -> Result<LiveState, String> {
         part: l.part.load(Ordering::Relaxed),
         info,
         session: l.session.display().to_string(),
+        name: l.name.clone(),
+        recording: l.keep,
         health: l.health(),
+        trigger: l.follow.read().unwrap().trigger_status(),
+    })
+}
+
+/// Pauses or resumes a live source: a replay stops in time; a device keeps sending and the pause leaves a gap.
+#[tauri::command]
+fn live_pause(file: u32, paused: bool, files: State<'_, Files>) -> Result<(), String> {
+    let l = files.live.lock().unwrap().get(&file).cloned().ok_or("that source is not open")?;
+    if let Some(s) = l.source.lock().unwrap().as_ref() {
+        s.set_paused(paused);
+    }
+    Ok(())
+}
+
+/// Arms a trigger on a live source (`None` stops it); the status is in [`live_state`].
+#[tauri::command]
+fn live_trigger(
+    file: u32,
+    spec: Option<tlmbench_store::trigger::Spec>,
+    files: State<'_, Files>,
+) -> Result<tlmbench_store::trigger::Status, String> {
+    let l = files.live.lock().unwrap().get(&file).cloned().ok_or("that source is not open")?;
+    let live = l.follow.read().unwrap().clone();
+    match spec {
+        Some(spec) => {
+            let recipes = tlmbench_store::Library::new(files.store.root()).list();
+            live.arm_trigger(spec, &recipes)?;
+        }
+        None => live.disarm_trigger(),
+    }
+    Ok(live.trigger_status())
+}
+
+/// What a live source would record, before it connects: a descriptor's frames, or a file's channels.
+#[derive(Serialize)]
+struct LivePreview {
+    /// How the frames are laid out (`16 bytes a frame, 1000 Hz`), or the file's format.
+    detail: String,
+    channels: Vec<(String, Option<String>)>,
+}
+
+#[tauri::command]
+async fn live_preview(endpoint: String, descriptor: Option<String>) -> Result<LivePreview, String> {
+    spawn_blocking(move || -> Result<LivePreview, String> {
+        use tlmbench_decode::descriptor::TimeSpec;
+        let ep: tlmbench_live::Endpoint = endpoint.parse().unwrap_or(tlmbench_live::Endpoint::Tcp(String::new()));
+        match (&ep, descriptor.filter(|d| !d.is_empty())) {
+            (tlmbench_live::Endpoint::Replay(r), _) => preview_file(&r.path),
+            (tlmbench_live::Endpoint::File(p), _) => preview_file(p),
+            (_, Some(p)) => {
+                let text = std::fs::read_to_string(&p).map_err(|e| format!("{p}: {e}"))?;
+                let d = tlmbench_decode_descriptor(&text).map_err(|e| format!("{p}: {e}"))?;
+                d.validate().map_err(|e| format!("{p}: {e}"))?;
+                let (time, time_field) = match &d.time {
+                    TimeSpec::Rate { rate_hz, .. } => (format!("{rate_hz} Hz"), None),
+                    TimeSpec::Field { field, .. } => (format!("time from {field}"), Some(field.clone())),
+                    TimeSpec::Index => ("numbered".to_string(), None),
+                };
+                Ok(LivePreview {
+                    detail: format!("{} bytes a frame, {time}", d.record_size),
+                    channels: d
+                        .fields
+                        .iter()
+                        .filter(|f| Some(&f.name) != time_field.as_ref() && Some(&f.name) != d.sequence.as_ref())
+                        .map(|f| (f.name.clone(), f.unit.clone()))
+                        .collect(),
+                })
+            }
+            _ => Err("Choose the frames' descriptor to see how they decode".into()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn preview_file(path: &Path) -> Result<LivePreview, String> {
+    let opts = tlmbench_decode::OpenOptions::default();
+    let rec = tlmbench_decode::open(path, &opts).map_err(|e| e.to_string())?;
+    let info = rec.info();
+    Ok(LivePreview {
+        detail: format!("{}, {} samples", info.format, info.samples),
+        channels: info.channels.iter().map(|c| (c.name.clone(), c.unit.clone())).collect(),
     })
 }
 
@@ -2168,6 +2334,9 @@ fn main() {
             live_connect,
             live_state,
             live_stop,
+            live_pause,
+            live_trigger,
+            live_preview,
             echo,
             launch,
             gate_report,

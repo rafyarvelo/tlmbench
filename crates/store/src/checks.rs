@@ -784,6 +784,17 @@ impl Store {
 }
 
 impl Store {
+    /// Runs `set` on a recording that is still growing (a live snapshot): not cached, since the recording's contents
+    /// are different the next time. The app asks every couple of seconds; each run reads the whole recording so far.
+    pub fn run_checks_live(&self, live: &Opened, set: &CheckSet, recipes: &[Recipe]) -> SetResult {
+        let rec = live.recording();
+        let shared = self.expr_env.read().unwrap().clone();
+        let env = RecEnv::new(rec).with_labels(shared.labels).with_limits(shared.limits);
+        run_set(&env, set, rec.info().t_first.unwrap_or(0), recipes)
+    }
+}
+
+impl Store {
     /// One row on an opened recording, not kept: the editor's live preview.
     pub fn check_one(&self, base: &Opened, k: &Check, recipes: &[Recipe]) -> Outcome {
         let rec = base.recording();
