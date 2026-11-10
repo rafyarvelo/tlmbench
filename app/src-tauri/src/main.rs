@@ -528,9 +528,8 @@ async fn group_set(
     }
     let g = Arc::new(Group::new(parts, ids));
     let id = group.unwrap_or_else(|| files.next.fetch_add(1, Ordering::Relaxed) + 1);
-    if let Some(old) = files.groups.lock().unwrap().insert(id, g.clone()) {
-        old.cancel();
-    }
+    // the files it held stay open (and building): only closing one stops its build
+    files.groups.lock().unwrap().insert(id, g.clone());
     let out = group_out(id, &g);
     if out.status != Status::Built {
         let g = g.clone();
