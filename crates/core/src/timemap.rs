@@ -169,6 +169,7 @@ pub fn from_pairs(pairs: &[(Timestamp, Timestamp)], piecewise: bool) -> Result<E
 }
 
 /// A series of `(time_ns, value)` on an even grid of `step_ns` from `start_ns`, for correlation.
+#[derive(Clone, Debug)]
 pub struct Grid {
     pub start_ns: Timestamp,
     pub step_ns: i64,

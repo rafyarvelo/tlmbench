@@ -26,6 +26,7 @@ mod chunks;
 mod derived;
 mod error;
 pub mod events;
+pub mod group;
 mod joined;
 mod live;
 mod pyr;
