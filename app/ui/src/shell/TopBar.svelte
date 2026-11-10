@@ -317,6 +317,8 @@
           <button class="mi" role="menuitem" data-ws="delete" onclick={() => tabAct(() => actions.deleteWs(menuTab!.ws!))}><span class="nm">Delete layout</span></button>
         {/if}
         {#if !menuTab?.live}<div class="msep"></div>{/if}
+        <button class="mi" role="menuitem" data-ws="newwin" onclick={() => tabAct((k) => actions.moveToWindow(k))}><span class="nm">Move to new window</span></button>
+        {#if menuTab?.live}<button class="mi" role="menuitem" data-ws="showwin" data-tip="The source keeps recording once and shows in both windows" onclick={() => tabAct((k) => actions.moveToWindow(k, true))}><span class="nm">Show in new window</span></button>{/if}
         <button class="mi" role="menuitem" onclick={() => tabAct(actions.closeTab)}><span class="nm">Close tab</span></button>
       <button class="mi" role="menuitem" disabled={tabs.list.length < 2} onclick={() => tabAct(actions.closeOtherTabs)}
         ><span class="nm">Close other tabs</span></button

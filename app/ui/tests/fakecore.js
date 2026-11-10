@@ -272,6 +272,8 @@
   // ---------- IPC ----------
 
   const fake = {
+    /** Windows the app opened (name, what they open with, where). */
+    windows: [],
     cache: [{ bytes: 900 * 2 ** 20, open: false }, { bytes: 300 * 2 ** 20, open: false }, { bytes: 64 * 2 ** 20, open: true }],
     files: {},
     launch: null,
@@ -398,6 +400,12 @@
         o.r.built = o.r.done >= o.r.samples;
         send(o.progress, { done: o.r.done, total: o.r.samples, builtUntil: o.r.done ? String(timeAt(o.r, o.r.done - 1)) : null, error: null });
       }
+    },
+    /** Another window saved these shared settings (the event the core sends the others). */
+    otherWindowSaved(settings) {
+      const text = JSON.stringify(settings);
+      fake.sharedSettings = text;
+      emit('settings-changed', { from: 'win-2', text });
     },
     drop(paths) {
       for (const ev of ['tauri://drag-enter', 'tauri://drag-drop']) emit(ev, { paths, position: { x: 200, y: 200 } });
@@ -1122,6 +1130,8 @@
       return { detail: '16 bytes a frame, 1000 Hz', channels: spec.channels.map((c) => [c, null]) };
     },
     'plugin:dialog|open': ({ options }) => (options?.directory ? fake.pickFolder : fake.pick),
+    // ask() is a confirm message: it answers with the label of the button pressed
+    'plugin:dialog|message': ({ message, buttons }) => ((fake.asked = message), (fake.answer ?? true) ? (buttons?.OkCancelCustom?.[0] ?? 'Yes') : (buttons?.OkCancelCustom?.[1] ?? 'No')),
     'plugin:dialog|save': () => fake.savePick,
     config_use({ folder }) {
       fake.cfgCalls.push({ cmd: 'use', folder });
@@ -1234,6 +1244,25 @@
     usage() {
       const now = performance.now() / 1000;
       return { memory: 412 * 2 ** 20, chunks: 96 * 2 ** 20, chunkBudget: 2 * 2 ** 30, cpuSeconds: now * 0.25 };
+    },
+    // the settings every window shares (null before the first save); a save reaches the other windows as an event
+    settings_get: () => fake.sharedSettings ?? null,
+    settings_save({ text }) {
+      fake.sharedSettings = text;
+      return null;
+    },
+    // windows: a new one is recorded (with what it opens), the first asks for nothing
+    window_new({ handoff, frame, hold }) {
+      const label = `win-${fake.windows.length + 2}`;
+      fake.windows.push({ label, handoff, frame, hold });
+      return label;
+    },
+    holders: () => fake.holdersOf ?? [],
+    window_take: () => fake.handoff ?? null,
+    window_frame: () => fake.frame ?? { x: 10, y: 20, w: 1200, h: 760 },
+    window_place({ frame }) {
+      fake.placed = frame;
+      return null;
     },
     'plugin:window|set_title'({ value }) {
       fake.title = value;

@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::{Channel, Response};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tlmbench_core::gaps::DEFAULT_FACTOR;
 use tlmbench_core::table::{self, Col, Filter, SortKey};
 use tlmbench_core::timemap::TimeMap;
@@ -35,6 +35,12 @@ use tlmbench_store::{Opened as StoreOpened, Precision, Request, Status, Store};
 struct Files {
     store: Store,
     next: AtomicU32,
+    /// Which windows use each open file, group or live source (by id): closing in one window releases only its hold.
+    holds: Holds,
+    /// What a window made by moving a tab opens with, by the window's label (taken once, by that window).
+    handoffs: Mutex<HashMap<String, serde_json::Value>>,
+    /// The number the next window's label takes (`win-2`, `win-3`, …).
+    next_window: AtomicU32,
     open: Mutex<HashMap<u32, Arc<StoreOpened>>>,
     /// A file with derived channels shows them joined to its recording: the recording alone, to join again when the
     /// recipes change.
@@ -46,6 +52,44 @@ struct Files {
     queries: Mutex<HashMap<u32, Arc<RowQuery>>>,
     /// Running queries' cancel flags, by token.
     cancels: Mutex<HashMap<u32, Arc<AtomicBool>>>,
+}
+
+/// Windows holding each id. An id nobody holds is closed at once.
+#[derive(Default)]
+struct Holds(Mutex<HashMap<u32, std::collections::BTreeSet<String>>>);
+
+impl Holds {
+    fn add(&self, id: u32, window: &str) {
+        self.0.lock().unwrap().entry(id).or_default().insert(window.to_string());
+    }
+
+    /// Drops the window's hold; true when nobody holds the id any more (it is to be closed).
+    fn release(&self, id: u32, window: &str) -> bool {
+        let mut m = self.0.lock().unwrap();
+        let Some(set) = m.get_mut(&id) else { return true };
+        set.remove(window);
+        if set.is_empty() {
+            m.remove(&id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Every id the window holds.
+    fn of(&self, window: &str) -> Vec<u32> {
+        self.0.lock().unwrap().iter().filter(|(_, w)| w.contains(window)).map(|(i, _)| *i).collect()
+    }
+
+    /// The other windows holding the id.
+    fn others(&self, id: u32, window: &str) -> Vec<String> {
+        self.0
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|s| s.iter().filter(|w| *w != window).cloned().collect())
+            .unwrap_or_default()
+    }
 }
 
 impl Files {
@@ -431,6 +475,7 @@ async fn open(
     exclude: Option<Vec<String>>,
     adjust: Option<Vec<AdjustIn>>,
     progress: Channel<Progress>,
+    window: tauri::Window,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
     let store = files.store.clone();
@@ -455,6 +500,7 @@ async fn open(
     let info = shown.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
     let status = shown.status();
+    files.holds.add(id, window.label());
     files.open.lock().unwrap().insert(id, shown.clone());
     files.bases.lock().unwrap().insert(id, base);
     if status != Status::Built {
@@ -539,6 +585,7 @@ async fn group_set(
     group: Option<u32>,
     members: Vec<MemberIn>,
     progress: Channel<Progress>,
+    window: tauri::Window,
     files: State<'_, Files>,
 ) -> Result<GroupOpened, String> {
     if members.is_empty() {
@@ -554,6 +601,7 @@ async fn group_set(
     let g = Arc::new(Group::new(parts, ids));
     let id = group.unwrap_or_else(|| files.next.fetch_add(1, Ordering::Relaxed) + 1);
     // the files it held stay open (and building): only closing one stops its build
+    files.holds.add(id, window.label());
     files.groups.lock().unwrap().insert(id, g.clone());
     let out = group_out(id, &g);
     if out.status != Status::Built {
@@ -1083,8 +1131,128 @@ async fn spectrum(
     .map_err(|e| e.to_string())
 }
 
+/// A window stops using a file, group or source: it closes when no window holds it.
 #[tauri::command]
-fn close(file: u32, files: State<'_, Files>) {
+fn close(file: u32, window: tauri::Window, files: State<'_, Files>) {
+    if files.holds.release(file, window.label()) {
+        close_now(file, &files);
+    }
+}
+
+/// Another window starts using an open file, group or live source (a tab moved or shown there too).
+#[tauri::command]
+fn hold(file: u32, window: tauri::Window, files: State<'_, Files>) -> Result<(), String> {
+    let known = files.open.lock().unwrap().contains_key(&file)
+        || files.groups.lock().unwrap().contains_key(&file)
+        || files.live.lock().unwrap().contains_key(&file);
+    if !known {
+        return Err("that file is not open".into());
+    }
+    files.holds.add(file, window.label());
+    Ok(())
+}
+
+/// The other windows using a file (a live source stopped in one window asks before stopping everywhere).
+#[tauri::command]
+fn holders(file: u32, window: tauri::Window, files: State<'_, Files>) -> Vec<String> {
+    files.holds.others(file, window.label())
+}
+
+/// Where the settings shared by every window are kept.
+fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json"))
+}
+
+/// The settings every window shares, as the last window saved them (none before the first save).
+#[tauri::command]
+fn settings_get(app: AppHandle) -> Option<String> {
+    std::fs::read_to_string(settings_path(&app).ok()?).ok()
+}
+
+/// Saves the shared settings and tells the other windows, which apply them at once.
+#[tauri::command]
+fn settings_save(text: String, window: tauri::Window, app: AppHandle) -> Result<(), String> {
+    let path = settings_path(&app)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    let _ = app.emit("settings-changed", serde_json::json!({ "from": window.label(), "text": text }));
+    Ok(())
+}
+
+/// A window's place on the screen, in logical pixels.
+#[derive(Serialize, Deserialize, Clone, Copy)]
+struct Frame {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+}
+
+/// Opens a window (`win-2`, …) showing what `handoff` carries (a tab moved from another window, or a saved window),
+/// and returns its name. The new window asks for the handoff once it has started (`window_take`).
+#[tauri::command]
+async fn window_new(
+    handoff: Option<serde_json::Value>,
+    frame: Option<Frame>,
+    hold: Option<Vec<u32>>,
+    app: AppHandle,
+    files: State<'_, Files>,
+) -> Result<String, String> {
+    let label = format!("win-{}", files.next_window.fetch_add(1, Ordering::Relaxed));
+    // held from the start, so the window that hands a live source over can let go of it at once
+    for id in hold.unwrap_or_default() {
+        files.holds.add(id, &label);
+    }
+    if let Some(h) = handoff {
+        files.handoffs.lock().unwrap().insert(label.clone(), h);
+    }
+    let mut b = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+        .title("TelemetryBench")
+        .inner_size(1200.0, 760.0)
+        .min_inner_size(480.0, 320.0);
+    if let Some(f) = frame {
+        b = b.inner_size(f.w, f.h).position(f.x, f.y);
+    }
+    b.build().map_err(|e| e.to_string())?;
+    Ok(label)
+}
+
+/// What this window was opened with, once.
+#[tauri::command]
+fn window_take(window: tauri::Window, files: State<'_, Files>) -> Option<serde_json::Value> {
+    files.handoffs.lock().unwrap().remove(window.label())
+}
+
+/// Where this window is.
+#[tauri::command]
+fn window_frame(window: tauri::Window) -> Option<Frame> {
+    let scale = window.scale_factor().ok()?;
+    let pos = window.outer_position().ok()?.to_logical::<f64>(scale);
+    let size = window.inner_size().ok()?.to_logical::<f64>(scale);
+    Some(Frame { x: pos.x, y: pos.y, w: size.width, h: size.height })
+}
+
+/// Puts this window back where it was.
+#[tauri::command]
+fn window_place(frame: Frame, window: tauri::Window) {
+    let _ = window.set_size(tauri::LogicalSize::new(frame.w, frame.h));
+    let _ = window.set_position(tauri::LogicalPosition::new(frame.x, frame.y));
+}
+
+/// A window closed: it lets go of everything it held.
+fn release_window(label: &str, files: &Files) {
+    for id in files.holds.of(label) {
+        if files.holds.release(id, label) {
+            close_now(id, files);
+        }
+    }
+}
+
+fn close_now(file: u32, files: &Files) {
     if let Some(g) = files.groups.lock().unwrap().remove(&file) {
         g.cancel();
     }
@@ -1132,7 +1300,7 @@ struct LiveArgs {
 /// descriptor, a TOML file) into a new session in the Recordings folder (or the one of `addTo`), and returns it opened
 /// like a file once its first samples are recorded.
 #[tauri::command]
-async fn live_connect(args: LiveArgs, files: State<'_, Files>) -> Result<Opened, String> {
+async fn live_connect(args: LiveArgs, window: tauri::Window, files: State<'_, Files>) -> Result<Opened, String> {
     let store = files.store.clone();
     let shared = match args.add_to {
         Some(id) => {
@@ -1201,6 +1369,7 @@ async fn live_connect(args: LiveArgs, files: State<'_, Files>) -> Result<Opened,
     .map_err(|e| e.to_string())??;
     let entry = Arc::new(entry);
     let id = files.next.fetch_add(1, Ordering::Relaxed) + 1;
+    files.holds.add(id, window.label());
     files.live.lock().unwrap().insert(id, entry.clone());
     // follows the file as it grows (and a tailed file into its next part), until the tab closes
     let store = files.store.clone();
@@ -3017,9 +3186,19 @@ fn main() {
     tauri::Builder::default()
         .register_uri_scheme_protocol("tlmwidget", widget_host)
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|w, ev| {
+            if let tauri::WindowEvent::Destroyed = ev
+                && let Some(files) = w.try_state::<Files>()
+            {
+                release_window(w.label(), &files);
+            }
+        })
         .manage(Files {
             store: Store::new(None),
             next: AtomicU32::new(0),
+            holds: Holds::default(),
+            handoffs: Mutex::default(),
+            next_window: AtomicU32::new(2),
             open: Mutex::default(),
             bases: Mutex::default(),
             live: Mutex::default(),
@@ -3071,6 +3250,14 @@ fn main() {
             cache_clear,
             cache_reveal,
             close,
+            hold,
+            holders,
+            window_new,
+            window_take,
+            window_frame,
+            window_place,
+            settings_get,
+            settings_save,
             view,
             values_at,
             widgets_frame,
@@ -3114,6 +3301,23 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_closes_with_its_last_window() {
+        let h = Holds::default();
+        h.add(1, "a");
+        h.add(1, "b");
+        assert_eq!(h.others(1, "a"), vec!["b".to_string()]);
+        assert!(!h.release(1, "a"), "b still holds it");
+        assert!(h.release(1, "b"), "the last hold closes it");
+        assert!(h.release(9, "a"), "an id nobody holds closes at once");
+        h.add(2, "a");
+        h.add(3, "a");
+        h.add(3, "b");
+        let mut of = h.of("a");
+        of.sort();
+        assert_eq!(of, vec![2, 3]);
+    }
 
     #[test]
     fn query_rows_follow_the_sorted_list() {

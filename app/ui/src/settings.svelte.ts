@@ -1,6 +1,10 @@
 // Settings: everything configurable, saved in the app's local storage as it changes (CLAUDE.md: production-like).
 // Components and app.ts read `settings` directly; changes go through `setSetting` so they are saved and applied.
 
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+
 import type { TimeFormat } from './axes';
 import type { Limits } from './display.svelte';
 import type { Pane } from './stack.svelte';
@@ -102,6 +106,14 @@ export interface Session {
   /** Tabs with several files, by the primary's path: the others in slot order with their alignment (the knots reproduce it exactly). */
   groups?: Record<string, { path: string; method: string; seconds: number; channel?: string; locked: boolean; knots: [string, string][]; pairs: [number, number][] }[]>;
   at?: number;
+}
+
+/** A window as it was when last seen: where it was, and for a window other than the first its folder and tabs. Reopening
+ *  the app restores each one. */
+export interface WindowSaved {
+  folder: string;
+  session?: Session;
+  frame?: { x: number; y: number; w: number; h: number };
 }
 
 export interface Settings {
@@ -211,6 +223,8 @@ export interface Settings {
   /** A session per folder ('' for none, owner Nov 7): its tabs, open files, and each file's time range and cursors,
    *  restored when the folder opens and listed under Recent sessions on the start page. */
   sessions: Record<string, Session>;
+  /** The windows open, by name (`main`, `win-2`, …). */
+  windows: Record<string, WindowSaved>;
   /** Where live sessions are recorded ('' is the default folder in the app's data folder). */
   recordTo: string;
   /** Connections saved from the Connect dialog, listed on the start page. */
@@ -290,6 +304,7 @@ export const DEFAULTS: Settings = {
   folder: '',
   exExpanded: [],
   sessions: {},
+  windows: {},
   recordTo: '',
   savedConnections: [],
   liveForm: {},
@@ -301,9 +316,35 @@ export const DEFAULTS: Settings = {
 
 const KEY = 'tlmbench.settings';
 
+/** The shared settings as last saved or received (to send only real changes). */
+let sharedText = '';
+
+/** What each window keeps for itself (layout, not settings): the sidebars shown, their widths and the Explorer's state.
+ *  Everything else is shared by every window and applies to all of them at once. */
+export const WINDOW_KEYS: (keyof Settings)[] = ['leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'leftPanel', 'measureOpen', 'exExpanded'];
+
+/** This window's name (`main`, then `win-2`, …). */
+function windowLabel(): string {
+  try {
+    return getCurrentWindow().label;
+  } catch {
+    return 'main';
+  }
+}
+export const WINDOW = windowLabel();
+const WINDOW_KEY = `${KEY}.window.${WINDOW}`;
+
+function parse(text: string | null): Record<string, unknown> {
+  try {
+    return JSON.parse(text ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
 function load(): Settings {
   try {
-    const s: Settings = { ...structuredClone(DEFAULTS), ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+    const s: Settings = { ...structuredClone(DEFAULTS), ...parse(localStorage.getItem(KEY)), ...parse(localStorage.getItem(WINDOW_KEY)) };
     // settings saved before a panel existed: it joins the left sidebar, after Explorer
     const L = s.panelLayout;
     if (L && !L.left.includes('layouts') && !L.right.includes('layouts')) L.left.splice(Math.min(1, L.left.length), 0, 'layouts');
@@ -318,6 +359,7 @@ function load(): Settings {
 }
 
 export const settings: Settings = $state(load());
+sharedText = JSON.stringify(sharedPart(structuredClone($state.snapshot(settings)) as unknown as Record<string, unknown>));
 
 const listeners = new Set<(key: keyof Settings) => void>();
 
@@ -343,12 +385,51 @@ export interface ChannelDisplay {
   missing?: { vals?: number[]; lo?: number; hi?: number; when?: string };
 }
 
+function sharedPart(all: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(all)) if (!(WINDOW_KEYS as string[]).includes(k)) out[k] = all[k];
+  return out;
+}
+
 export function saveSettings(): void {
+  const all = $state.snapshot(settings) as unknown as Record<string, unknown>;
+  const shared = JSON.stringify(sharedPart(all));
   try {
-    localStorage.setItem(KEY, JSON.stringify($state.snapshot(settings)));
+    localStorage.setItem(KEY, shared);
+    localStorage.setItem(WINDOW_KEY, JSON.stringify(Object.fromEntries(WINDOW_KEYS.map((k) => [k, all[k]]))));
   } catch {
     /* private mode: settings last this session */
   }
+  if (shared !== sharedText) {
+    sharedText = shared;
+    // the core keeps them for the next start and tells the other windows
+    invoke('settings_save', { text: shared }).catch(() => {});
+  }
+}
+
+/** Applies settings another window saved. */
+export function applyShared(text: string): void {
+  if (text === sharedText) return;
+  sharedText = text;
+  const incoming = parse(text);
+  try {
+    localStorage.setItem(KEY, text);
+  } catch {
+    /* private mode */
+  }
+  for (const key of Object.keys(incoming) as (keyof Settings)[]) {
+    if ((WINDOW_KEYS as string[]).includes(key)) continue;
+    if (JSON.stringify($state.snapshot(settings[key])) === JSON.stringify(incoming[key])) continue;
+    (settings as unknown as Record<string, unknown>)[key] = incoming[key];
+    listeners.forEach((f) => f(key));
+  }
+}
+
+/** Follows the other windows' changes to the shared settings. */
+export function followOtherWindows(): void {
+  listen<{ from: string; text: string }>('settings-changed', (e) => {
+    if (e.payload.from !== WINDOW) applyShared(e.payload.text);
+  }).catch(() => {});
 }
 
 export function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): void {
@@ -358,7 +439,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

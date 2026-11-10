@@ -10,7 +10,8 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { mount, tick, unmount } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { ask, open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
 import { type AxesStyle, drawAxes, duration, fileTime, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3, runGate4 } from './gate';
@@ -21,7 +22,7 @@ const ENVELOPE_ALPHA = 0.16;
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
-import { applyTheme, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings } from './settings.svelte';
+import { applyTheme, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
@@ -57,7 +58,7 @@ import { derive, type DerivedInfo, manager, quoteName, type Recipe, recipes, TEM
 import { SvgContext, svg } from './svgctx';
 import type { CustomWidget } from './widgets';
 import { cfg, choices, defaultPick, type Problem, rowKey, share as shareDlg, type ShareRow } from './share.svelte';
-import { tabs } from './tabs.svelte';
+import { tabs, type TabInfo } from './tabs.svelte';
 import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 import { slotsUsed, fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
@@ -1732,6 +1733,38 @@ const isReplay = (endpoint: string) => endpoint.startsWith('replay://');
 const baseName = (p: string) => p.replace(/\?.*$/, '').split(/[\\/]/).pop() || p;
 
 /** Connects a live source and opens it in a tab of its own, following now (from a live tab, it joins that session). */
+/** A tab for a live source (its id and span as the core has them), not yet in front. */
+function addLiveTab(id: number, info: RecordingInfo, range: [string, string], name: string, endpoint: string): number {
+  const key = nextTab++;
+  const file: OpenFile = { id, info, first: BigInt(range[0]), last: BigInt(range[1]), derived: [], missing: [], adjustKey: '' };
+  tabData.set(key, {
+    file,
+    building: null,
+    panes: startPanes(info.channels.length, settings.fileOpenNew),
+    sel: 0,
+    t0: file.last - 30_000_000_000n,
+    t1: file.last + 1n,
+    A: null,
+    B: null,
+    history: [],
+    future: [],
+    exactMs: 0,
+    play: null,
+    live: { following: true, win: 30, health: null },
+  });
+  tabs.list.push({ key, path: endpoint, name, live: true });
+  return key;
+}
+
+/** Shows a live source another window has open (the core holds it once; this window follows it too). */
+async function adoptLive(src: { id: number; name: string; endpoint: string }): Promise<void> {
+  const st = await invoke<LiveState>('live_state', { file: src.id });
+  if (!st.range) return;
+  const key = addLiveTab(src.id, st.info, st.range, src.name, src.endpoint);
+  await showTab(key);
+  void pollLive();
+}
+
 async function openLive(a: ConnectArgs, save: boolean, form: ConnectForm): Promise<void> {
   live.connecting = true;
   live.error = '';
@@ -1753,25 +1786,8 @@ async function openLive(a: ConnectArgs, save: boolean, form: ConnectForm): Promi
       void pollLive();
       return;
     }
-    const key = nextTab++;
-    const file: OpenFile = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: [], missing: [], adjustKey: '' };
-    tabData.set(key, {
-      file,
-      building: null,
-      panes: startPanes(o.info.channels.length, settings.fileOpenNew),
-      sel: 0,
-      t0: file.last - 30_000_000_000n,
-      t1: file.last + 1n,
-      A: null,
-      B: null,
-      history: [],
-      future: [],
-      exactMs: 0,
-      play: null,
-      live: { following: true, win: 30, health: null },
-    });
     const name = a.name || baseName(a.endpoint);
-    tabs.list.push({ key, path: a.endpoint, name, live: true });
+    const key = addLiveTab(o.id, o.info, o.range, name, a.endpoint);
     live.connect = false;
     if (save) setSetting('savedConnections', [...settings.savedConnections, { ...form, id: 's' + Date.now().toString(36) }]);
     setSetting('liveForm', form);
@@ -1981,6 +1997,9 @@ Object.assign(liveActions, {
   stop: async (key?: number, file?: number) => {
     const f = key == null ? state.file : fileOf(key);
     if (!f) return;
+    // a source other windows show stops there too: ask first
+    const others = await invoke<string[]>('holders', { file: file ?? liveId(f) }).catch(() => []);
+    if (others.length && !(await ask(`This source is also shown in ${others.length === 1 ? 'another window' : `${others.length} other windows`}. Stopping it stops it there too.`, { title: 'Stop the source?', okLabel: 'Stop', cancelLabel: 'Keep it running' }))) return;
     const h = await invoke<Health>('live_stop', { file: file ?? liveId(f) });
     if (f === state.file && (file == null || file === liveId(f))) {
       live.health = h;
@@ -2071,15 +2090,12 @@ function scheduleSessionSave(): void {
   sessionTimer = window.setTimeout(saveSession, 400);
 }
 
-/** The folder's session (its tabs, open files, each file's view and cursors), to reopen with the folder. */
-function saveSession(): void {
-  if (sessionBusy) return;
-  clearTimeout(sessionTimer);
-  const front = frontTab();
+/** The session of these tabs (their files, each file's view and cursors, workspaces and aligned groups); `front` is the
+ *  one in front. */
+function sessionOf(kept: TabInfo[], front: TabInfo | undefined): Session {
   const active = front?.path ?? null;
-  const files = [...new Set(tabs.list.filter((t) => !t.live).map((t) => t.path))];
+  const files = [...new Set(kept.map((t) => t.path))];
   const session: Session = { files, active: active && files.includes(active) ? active : null };
-  const kept = tabs.list.filter((t) => !t.live);
   const ws = kept.flatMap((t, at) => (t.ws ? [{ path: t.path, name: t.ws, at, ...(t.shared ? { shared: t.shared } : {}) }] : []));
   if (ws.length) session.ws = ws;
   if (front?.ws) session.activeWs = front.ws;
@@ -2099,7 +2115,68 @@ function saveSession(): void {
   }
   if (Object.keys(groups).length) session.groups = groups;
   session.at = Date.now();
-  setSetting('sessions', { ...settings.sessions, [settings.folder]: session });
+  return session;
+}
+
+/** The folder's session (its tabs, open files, each file's view and cursors), to reopen with the folder. */
+function saveSession(): void {
+  if (sessionBusy) return;
+  clearTimeout(sessionTimer);
+  const session = sessionOf(tabs.list.filter((t) => !t.live), frontTab());
+  // the first window's tabs are the folder's session; another window's go with the window
+  if (WINDOW === 'main') setSetting('sessions', { ...settings.sessions, [settings.folder]: session });
+  void saveWindow(session);
+}
+
+/** Remembers where this window is, and for a window other than the first what it shows (see `WindowSaved`). */
+async function saveWindow(session?: Session): Promise<void> {
+  const frame = await invoke<WindowSaved['frame'] | null>('window_frame').catch(() => null);
+  const prev = settings.windows[WINDOW];
+  const entry: WindowSaved = {
+    folder: settings.folder,
+    ...(WINDOW !== 'main' ? { session: session ?? prev?.session } : {}),
+    ...((frame ?? prev?.frame) ? { frame: frame ?? prev?.frame } : {}),
+  };
+  if (JSON.stringify(entry) !== JSON.stringify(prev)) setSetting('windows', { ...settings.windows, [WINDOW]: entry });
+}
+
+let frameTimer = 0;
+/** Opens the windows the last run had besides the first, and keeps this window's place saved. */
+async function restoreWindows(): Promise<void> {
+  const here = getCurrentWindow();
+  const later = () => {
+    clearTimeout(frameTimer);
+    frameTimer = window.setTimeout(() => void saveWindow(), 400);
+  };
+  if (WINDOW === 'main') {
+    const saved = settings.windows;
+    const frame = saved.main?.frame;
+    if (frame) await invoke('window_place', { frame }).catch(() => {});
+    const others = Object.entries(saved).filter(([k]) => k !== 'main');
+    // they save themselves again under their new names
+    setSetting('windows', saved.main ? { main: saved.main } : {});
+    for (const [, w] of others) await invoke('window_new', { handoff: { session: w.session, folder: w.folder }, frame: w.frame ?? null });
+  } else {
+    // a window the user closes is forgotten; quitting the app keeps every window for the next run
+    void here.listen('tauri://close-requested', () => setSetting('windows', Object.fromEntries(Object.entries(settings.windows).filter(([k]) => k !== WINDOW))));
+  }
+  void here.listen('tauri://move', later);
+  void here.listen('tauri://resize', later);
+}
+
+/** Shows a tab in a new window and closes it here: the new window opens the same file at the same view. */
+async function moveTabToWindow(key: number, keep = false): Promise<void> {
+  const t = tabs.list.find((x) => x.key === key);
+  if (!t) return;
+  if (t.live) {
+    // a live source stays in the core: the new window holds it from the start, and this one lets go if it is moving
+    const f = fileOf(key);
+    if (!f || f.members) return;
+    await invoke('window_new', { handoff: { live: { id: liveId(f), name: t.name, endpoint: t.path } }, hold: [liveId(f)] });
+  } else {
+    await invoke('window_new', { handoff: { session: sessionOf([t], t), folder: settings.folder } });
+  }
+  if (!keep) await closeTab(key);
 }
 
 /** Opens a session's tabs (and `front`, a file asked for, in front), each file at its view with its cursors. */
@@ -4726,6 +4803,7 @@ Object.assign(actions, {
       await closeTab(key);
       if (t && !t.ws && !t.live) note(`Closed ${t.name}.`, () => void openPath(t.path));
     })(),
+  moveToWindow: (key: number, keep = false) => void moveTabToWindow(key, keep),
   closePath: (path: string) =>
     void (async () => {
       for (const t of tabs.list.filter((t) => t.path === path)) await closeTab(t.key);
@@ -4979,6 +5057,12 @@ export const gateApi = {
   },
 };
 
+/** Settings as the tests set and read them. */
+(window as unknown as { __tlmSettings: unknown }).__tlmSettings = {
+  get: (k: keyof typeof settings) => JSON.parse(JSON.stringify(settings[k] ?? null)),
+  set: (k: keyof typeof settings, v: never) => setSetting(k, v),
+};
+
 /** What the UI tests read (app/ui/tests): the view, cursors and build state, as plain values. */
 (window as unknown as { __tlmApp: unknown }).__tlmApp = {
   view: () => ({ t0: String(state.t0), t1: String(state.t1), back: state.history.length }),
@@ -5019,8 +5103,13 @@ else if (launch.gate === '1' && launch.file) {
   await openPath(launch.file);
   await runGate(gateApi);
 } else {
-  // the folder's session from when the app last closed, then a file it was asked to open (in front)
-  await restoreSession(settings.sessions[settings.folder], launch.file);
+  // the folder's session from when the app last closed, then a file it was asked to open (in front); a window made
+  // by moving a tab opens what it was handed
+  await restoreWindows();
+  const handoff = WINDOW === 'main' ? null : await invoke<{ session?: Session; folder?: string; live?: { id: number; name: string; endpoint: string } } | null>('window_take');
+  if (WINDOW === 'main') await restoreSession(settings.sessions[settings.folder], launch.file);
+  else if (handoff?.live) await adoptLive(handoff.live);
+  else if (handoff?.session) await restoreSession(handoff.session);
   ui.note = '';
   if (settings.showStart && !launch.file && tabs.list.length) ui.start = true;
 }

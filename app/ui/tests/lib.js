@@ -83,7 +83,7 @@ export async function run(name, body, opts = {}) {
       paneCount: () => p.locator('#stack section.pane').count(),
       /** The centre of pane `i`'s plot, at fraction `fx` across it. */
       plotAt: (i, fx = 0.5) => p.evaluate(([i, fx]) => { const r = document.querySelectorAll('#stack section.pane .plot')[i].getBoundingClientRect(); return { x: r.left + 60 + (r.width - 76) * fx, y: r.top + r.height / 2 }; }, [i, fx]),
-      settingsLS: () => p.evaluate(() => JSON.parse(localStorage.getItem('tlmbench.settings') || '{}')),
+      settingsLS: () => p.evaluate(() => ({ ...JSON.parse(localStorage.getItem('tlmbench.settings') || '{}'), ...JSON.parse(localStorage.getItem('tlmbench.settings.window.main') || '{}') })),
       wait: (ms) => p.waitForTimeout(ms),
       // poll a page condition until it's true (or the time runs out); returns its last value
       until: async (fn, arg, ms = 5000) => {

@@ -123,6 +123,8 @@ export const actions = {
   showTab: (_key: number) => {},
   closeTab: (_key: number) => {},
   closeOtherTabs: (_key: number) => {},
+  /** Shows a tab in a new window and closes it here. */
+  moveToWindow: (_key: number, _keep?: boolean) => {},
   /** Closes a file: every tab showing it. */
   closePath: (_path: string) => {},
   /** Closes the folder's tabs and forgets its saved session. */
