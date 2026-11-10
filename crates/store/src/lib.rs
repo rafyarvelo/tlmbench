@@ -24,6 +24,7 @@ mod adjust;
 pub mod align;
 pub mod checks;
 mod chunks;
+pub mod config;
 mod derived;
 mod error;
 pub mod events;

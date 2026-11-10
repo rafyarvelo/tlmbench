@@ -690,11 +690,33 @@ pub struct Known {
     pub descriptor: Descriptor,
 }
 
-/// The descriptors in `dir`'s `.tlmbench/decoders/` and then in the app cache's `decoders/` (`cache_root`), each in
-/// name order. A file that doesn't parse is skipped.
+static CONFIG_DIRS: std::sync::RwLock<Vec<std::path::PathBuf>> = std::sync::RwLock::new(Vec::new());
+
+/// Sets the `.tlmbench/` folders decoders are read from instead of the nearest one (`--config`; later folders win).
+/// An empty list goes back to the nearest `.tlmbench/` above the file.
+pub fn set_config_dirs(dirs: Vec<std::path::PathBuf>) {
+    *CONFIG_DIRS.write().unwrap() = dirs;
+}
+
+/// The `decoders/` folders to look in for a file in `dir`, best first: the `--config` ones (last given first), or the
+/// nearest `.tlmbench/` at or above `dir`.
+fn shared_decoder_dirs(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let config = CONFIG_DIRS.read().unwrap();
+    if !config.is_empty() {
+        return config.iter().rev().map(|d| d.join("decoders")).collect();
+    }
+    let abs = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_owned());
+    abs.ancestors().map(|d| d.join(".tlmbench")).find(|d| d.is_dir()).map(|d| d.join("decoders")).into_iter().collect()
+}
+
+/// The descriptors in the shared `.tlmbench/decoders/` for files in `dir` (the nearest one above, or `--config`) and
+/// then in the app cache's `decoders/` (`cache_root`), each in name order. A file that doesn't parse is skipped.
 pub fn known(dir: &std::path::Path, cache_root: &std::path::Path) -> Vec<Known> {
     let mut out = Vec::new();
-    for (folder, shared) in [(dir.join(".tlmbench").join("decoders"), true), (cache_root.join("decoders"), false)] {
+    let mut folders: Vec<(std::path::PathBuf, bool)> =
+        shared_decoder_dirs(dir).into_iter().map(|d| (d, true)).collect();
+    folders.push((cache_root.join("decoders"), false));
+    for (folder, shared) in folders {
         let Ok(rd) = std::fs::read_dir(&folder) else { continue };
         let mut files: Vec<_> =
             rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();

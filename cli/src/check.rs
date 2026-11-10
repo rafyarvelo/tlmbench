@@ -125,9 +125,12 @@ fn load_sets(args: &Args, first: &Path) -> Result<Vec<CheckSet>, Fail> {
             }
         }
     }
-    let abs = std::fs::canonicalize(first).unwrap_or_else(|_| first.to_owned());
-    if let Some(dir) = abs.ancestors().skip(1).map(|d| d.join(".tlmbench").join("checks")).find(|d| d.is_dir()) {
-        add(&mut found, Sets::in_dir(&dir));
+    // --config folders (the last given wins), else the nearest `.tlmbench/`
+    for dir in tlmbench_store::config::dirs_for(first, &args.common.config).iter().rev() {
+        let checks = dir.join("checks");
+        if checks.is_dir() {
+            add(&mut found, Sets::in_dir(&checks));
+        }
     }
     add(&mut found, Sets::new(&tlmbench_decode::cache::cache_root(args.common.cache.as_deref())));
     Ok(found)

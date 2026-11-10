@@ -337,6 +337,15 @@ fn parse_time(s: &str) -> Result<i64, String> {
 }
 
 /// The saved import profile for a CSV file's header, if there is exactly one (the app applies it on every open).
+/// The saved profile for a header, yours first, else the one the folder's `.tlmbench/profiles/` shares.
+fn find_profile(root: &Path, header: &[String]) -> tlmbench_decode::profile::Found {
+    let mut found = tlmbench_decode::profile::find(root, header);
+    if found.exact.is_none() {
+        found.exact = tlmbench_store::config::shared_profile(&tlmbench_store::config::overlay(), header);
+    }
+    found
+}
+
 fn saved_profile(root: &Path, path: &Path) -> Option<ImportProfile> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     if !matches!(ext.as_str(), "csv" | "tsv" | "txt") {
@@ -344,7 +353,7 @@ fn saved_profile(root: &Path, path: &Path) -> Option<ImportProfile> {
     }
     let i = tlmbench_decode::csv::inspect_file(path).ok()?;
     let header: Vec<String> = i.columns.into_iter().map(|c| c.source).collect();
-    tlmbench_decode::profile::find(root, &header).exact
+    find_profile(root, &header).exact
 }
 
 /// What the import dialog needs about one file: its columns and first rows as the core reads them, and the saved
@@ -373,7 +382,7 @@ async fn import_inspect(paths: Vec<String>, files: State<'_, Files>) -> Result<V
                 match tlmbench_decode::csv::inspect_file(p) {
                     Ok(i) => {
                         let header: Vec<String> = i.columns.iter().map(|c| c.source.clone()).collect();
-                        let found = tlmbench_decode::profile::find(&root, &header);
+                        let found = find_profile(&root, &header);
                         Inspected { path, inspection: Some(i), error: None, found }
                     }
                     Err(e) => {
@@ -750,28 +759,59 @@ async fn adjust_apply(
     Ok(Opened { id: file, info, range, status, derived, skipped, missing })
 }
 
-/// The events you added to an open file (kept in the app cache under the file's identity), in start order.
+/// Yours, then the events the folder's `.tlmbench/events/` shares for this recording that you don't have (read-only,
+/// source `shared`).
+fn with_shared(
+    mut mine: Vec<tlmbench_store::events::Event>,
+    path: &str,
+    identity: &str,
+) -> Vec<tlmbench_store::events::Event> {
+    let dirs = tlmbench_store::config::overlay();
+    if let Some(parent) = dirs.first().and_then(|d| d.parent()) {
+        let name =
+            Path::new(path).strip_prefix(parent).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+        for e in tlmbench_store::config::shared_events(&dirs, identity, &name) {
+            if !mine.iter().any(|m| m.id == e.id) {
+                mine.push(e);
+            }
+        }
+        mine.sort_by_key(|e| e.start.parse::<i64>().unwrap_or(0));
+    }
+    mine
+}
+
+/// The events you added to an open file (kept in the app cache under the file's identity), in start order, and the
+/// ones the folder shares.
 #[tauri::command]
 async fn events_list(file: u32, files: State<'_, Files>) -> Result<Vec<tlmbench_store::events::Event>, String> {
     let base = files.base(file)?;
     let root = files.store.root().to_owned();
-    spawn_blocking(move || tlmbench_store::events::list(&root, base.identity()).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| e.to_string())?
+    spawn_blocking(move || {
+        let mine = tlmbench_store::events::list(&root, base.identity()).map_err(|e| e.to_string())?;
+        Ok(with_shared(mine, &base.recording().info().path.to_string_lossy(), base.identity()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Adds an event or replaces the one with its id; the events now.
 #[tauri::command]
 async fn event_save(
     file: u32,
-    event: tlmbench_store::events::Event,
+    mut event: tlmbench_store::events::Event,
     files: State<'_, Files>,
 ) -> Result<Vec<tlmbench_store::events::Event>, String> {
     let base = files.base(file)?;
     let root = files.store.root().to_owned();
-    spawn_blocking(move || tlmbench_store::events::save(&root, base.identity(), event).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| e.to_string())?
+    if event.by.is_none() && event.source == "user" {
+        event.by = user_name();
+    }
+    spawn_blocking(move || {
+        let mine = tlmbench_store::events::save(&root, base.identity(), event).map_err(|e| e.to_string())?;
+        Ok(with_shared(mine, &base.recording().info().path.to_string_lossy(), base.identity()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Removes an event; the events now.
@@ -783,9 +823,12 @@ async fn event_delete(
 ) -> Result<Vec<tlmbench_store::events::Event>, String> {
     let base = files.base(file)?;
     let root = files.store.root().to_owned();
-    spawn_blocking(move || tlmbench_store::events::delete(&root, base.identity(), &id).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| e.to_string())?
+    spawn_blocking(move || {
+        let mine = tlmbench_store::events::delete(&root, base.identity(), &id).map_err(|e| e.to_string())?;
+        Ok(with_shared(mine, &base.recording().info().path.to_string_lossy(), base.identity()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Missing samples of the given channels between two times (the cursors, or the view).
@@ -2177,6 +2220,374 @@ async fn share_view(folder: String, file: String, mut view: serde_json::Value) -
     .map_err(|e| e.to_string())?
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Shared configuration: the folder's `.tlmbench/` (Share…, Use the folder's, Export…)
+
+/// The `.tlmbench/` of the folder Explorer shows.
+fn tlm_dir(folder: &str) -> std::path::PathBuf {
+    Path::new(folder).join(".tlmbench")
+}
+
+/// Fills in the identity of each recording the UI named by its open file's id.
+fn resolve_own(own: &mut tlmbench_store::config::Own, files: &Files) {
+    for r in &mut own.recordings {
+        if let (true, Some(id)) = (r.identity.is_empty(), r.file) {
+            if let Ok(b) = files.base(id) {
+                r.identity = b.identity().to_owned();
+            }
+        }
+    }
+}
+
+/// What `config_use` tells the UI about the folder it was pointed at.
+#[derive(Serialize)]
+struct ConfigFolder {
+    /// The `.tlmbench/` read alongside the cache: the nearest one at or above the folder.
+    dir: Option<String>,
+    /// Its categories, widgets and icons (the app's settings own those).
+    from: tlmbench_store::config::FromFolder,
+    /// Names of the recipes and check sets it holds, so the lists can mark them as shared.
+    recipes: Vec<String>,
+    checks: Vec<String>,
+    /// Files in it that don't read, with why.
+    problems: Vec<tlmbench_store::config::Problem>,
+}
+
+/// Points the app at a folder's shared configuration: recipes, check sets, import profiles, decoders and events of
+/// the nearest `.tlmbench/` are read besides the cache from now on (yours win a name). Only reads.
+#[tauri::command]
+async fn config_use(folder: Option<String>) -> Result<ConfigFolder, String> {
+    spawn_blocking(move || {
+        let dir =
+            folder.as_deref().filter(|f| !f.is_empty()).and_then(|f| tlmbench_store::config::nearest(Path::new(f)));
+        tlmbench_store::config::set_overlay(dir.iter().cloned().collect());
+        tlmbench_decode::descriptor::set_config_dirs(Vec::new());
+        let Some(d) = dir else {
+            return ConfigFolder {
+                dir: None,
+                from: Default::default(),
+                recipes: vec![],
+                checks: vec![],
+                problems: vec![],
+            };
+        };
+        let dirs = std::slice::from_ref(&d);
+        ConfigFolder {
+            dir: Some(d.display().to_string()),
+            from: tlmbench_store::config::from_folder(&d),
+            recipes: tlmbench_store::config::shared_recipes(dirs).into_iter().map(|r| r.name).collect(),
+            checks: tlmbench_store::config::shared_sets(dirs).into_iter().map(|s| s.name).collect(),
+            problems: tlmbench_store::config::validate(&d),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The Share dialog's rows: every object you have against the folder's `.tlmbench/`.
+#[derive(Serialize)]
+struct ConfigScan {
+    rows: Vec<tlmbench_store::config::Row>,
+    problems: Vec<tlmbench_store::config::Problem>,
+    /// False when the folder looks read-only: the dialog offers Export instead of Share.
+    writable: bool,
+    /// The folder is a git repository, so Share can offer a `.gitignore` line for the recordings.
+    git: bool,
+}
+
+#[tauri::command]
+async fn config_scan(
+    folder: String,
+    mut own: tlmbench_store::config::Own,
+    files: State<'_, Files>,
+) -> Result<ConfigScan, String> {
+    resolve_own(&mut own, &files);
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        let dir = tlm_dir(&folder);
+        let (theirs, problems) = tlmbench_store::config::read_folder(&dir);
+        let mine = tlmbench_store::config::cache_items(&root, &own);
+        let _ = tlmbench_store::config::save_mirror(&root, &own);
+        ConfigScan {
+            rows: tlmbench_store::config::compare(&mine, &theirs),
+            problems,
+            writable: tlmbench_store::config::writable(&dir),
+            git: Path::new(&folder).join(".git").exists(),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Keeps the app's own settings (categories, widgets, icons, layouts, open recordings) in the cache root, where
+/// `tlmbench config export` finds them.
+#[tauri::command]
+async fn config_mirror(mut own: tlmbench_store::config::Own, files: State<'_, Files>) -> Result<(), String> {
+    resolve_own(&mut own, &files);
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || tlmbench_store::config::save_mirror(&root, &own).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// A row key as the dialog sends it: `kind:path`.
+fn wanted(keys: &[String], i: &tlmbench_store::config::Item) -> bool {
+    let k = format!(
+        "{}:{}",
+        serde_json::to_value(i.kind).ok().and_then(|v| v.as_str().map(str::to_owned)).unwrap_or_default(),
+        i.key()
+    );
+    keys.contains(&k)
+}
+
+/// Share…: writes the chosen objects to the folder's `.tlmbench/` (only what changed; events merge by id), the one
+/// write into a folder besides exports, and only when asked. Returns the files written.
+#[tauri::command]
+async fn config_share(
+    folder: String,
+    mut own: tlmbench_store::config::Own,
+    keys: Vec<String>,
+    files: State<'_, Files>,
+) -> Result<Vec<String>, String> {
+    resolve_own(&mut own, &files);
+    let root = files.store.root().to_owned();
+    let by = user_name();
+    spawn_blocking(move || {
+        let mut own = own;
+        for v in &mut own.views {
+            if let (Some(o), Some(by)) = (v.view.as_object_mut(), &by) {
+                o.entry("by").or_insert_with(|| by.clone().into());
+            }
+        }
+        for w in &mut own.widgets {
+            if w.by.is_none() {
+                w.by = by.clone();
+            }
+        }
+        let items: Vec<_> =
+            tlmbench_store::config::cache_items(&root, &own).into_iter().filter(|i| wanted(&keys, i)).collect();
+        let dir = tlm_dir(&folder);
+        tlmbench_store::config::share(&dir, &items).map_err(|e| format!("can't write to {}: {e}", dir.display()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// What Use the folder's brings back: the objects the app's settings own.
+#[derive(Serialize)]
+struct Pulled {
+    from: tlmbench_store::config::FromFolder,
+    views: Vec<tlmbench_store::config::View>,
+    /// The keys taken.
+    taken: Vec<String>,
+}
+
+/// Use the folder's: copies the chosen objects of the folder's `.tlmbench/` into the cache (recipes, check sets,
+/// import profiles, decoders, time maps, events) and returns the ones the settings own (categories, widgets, icons,
+/// layouts) for the UI to take. Reads the folder, writes only the app cache.
+#[tauri::command]
+async fn config_pull(
+    folder: String,
+    mut own: tlmbench_store::config::Own,
+    keys: Vec<String>,
+    files: State<'_, Files>,
+) -> Result<Pulled, String> {
+    resolve_own(&mut own, &files);
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        let dir = tlm_dir(&folder);
+        let (theirs, _) = tlmbench_store::config::read_folder(&dir);
+        let chosen: Vec<_> = theirs.into_iter().filter(|i| wanted(&keys, i)).collect();
+        let taken = tlmbench_store::config::pull(&root, &chosen, &own).map_err(|e| e.to_string())?;
+        let mut from = tlmbench_store::config::from_folder(&dir);
+        let has = |kind, key_ends: &dyn Fn(&str) -> bool| chosen.iter().any(|i| i.kind == kind && key_ends(&i.key()));
+        if !has(tlmbench_store::config::Kind::Categories, &|_| true) {
+            from.categories.clear();
+        }
+        from.widgets
+            .retain(|w| has(tlmbench_store::config::Kind::Widgets, &|k| k.rsplit('/').next() == Some(w.id.as_str())));
+        from.icons.retain(|i| has(tlmbench_store::config::Kind::Icons, &|k| k == format!("icons/{}.svg", i.name)));
+        let views = chosen
+            .iter()
+            .filter(|i| i.kind == tlmbench_store::config::Kind::Views)
+            .filter_map(|i| {
+                let file = i.files[0].0.rsplit('/').next()?.to_owned();
+                Some(tlmbench_store::config::View { file, view: serde_json::from_slice(&i.files[0].1).ok()? })
+            })
+            .collect();
+        Ok(Pulled { from, views, taken })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Export…: everything you have, as a `.tlmbench/` folder at `out` (a read-only folder can't be shared to; the same
+/// as `tlmbench config export`).
+#[tauri::command]
+async fn config_export(
+    out: String,
+    mut own: tlmbench_store::config::Own,
+    files: State<'_, Files>,
+) -> Result<Vec<String>, String> {
+    resolve_own(&mut own, &files);
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || tlmbench_store::config::export(&root, &own, Path::new(&out)).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Share's `.gitignore` line for recordings: adds `*.csv`-style patterns for the folder's recording files to the
+/// folder's `.gitignore` (creating it), unless they are in it. Only when asked, only in a git repository.
+#[tauri::command]
+async fn config_gitignore(folder: String, lines: Vec<String>) -> Result<Vec<String>, String> {
+    spawn_blocking(move || {
+        let path = Path::new(&folder).join(".gitignore");
+        if !Path::new(&folder).join(".git").exists() {
+            return Err("that folder isn't a git repository".to_owned());
+        }
+        let old = std::fs::read_to_string(&path).unwrap_or_default();
+        let add: Vec<String> =
+            lines.into_iter().filter(|l| !l.trim().is_empty() && !old.lines().any(|o| o.trim() == l.trim())).collect();
+        if !add.is_empty() {
+            let mut text = old;
+            if !text.is_empty() && !text.ends_with('\n') {
+                text.push('\n');
+            }
+            text.push_str(&add.join("\n"));
+            text.push('\n');
+            std::fs::write(&path, text).map_err(|e| format!("can't write {}: {e}", path.display()))?;
+        }
+        Ok(add)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// A file's alignment as the UI keeps it, with the open files it is between.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TimeMapIn {
+    /// The folder Explorer shows (names are relative to it) and the two files' ids.
+    folder: String,
+    primary: u32,
+    file: u32,
+    method: String,
+    #[serde(default)]
+    seconds: f64,
+    #[serde(default)]
+    channel: String,
+    #[serde(default)]
+    locked: bool,
+    /// `[t_file, t_shared]` in nanoseconds as decimal strings.
+    #[serde(default)]
+    knots: Vec<[String; 2]>,
+    #[serde(default)]
+    pairs: Vec<[f64; 2]>,
+}
+
+/// A file's name for a time map: relative to the folder with `/`, else the path.
+fn rel_name(folder: &str, path: &Path) -> String {
+    match path.strip_prefix(folder) {
+        Ok(r) if !folder.is_empty() => r.to_string_lossy().replace('\\', "/"),
+        _ => path.to_string_lossy().into_owned(),
+    }
+}
+
+/// The alignment of a file against its tab's primary, kept per pair in the app cache (`timemaps/`) in the form
+/// Share writes, so the pair opens aligned the next time.
+#[tauri::command]
+async fn timemap_save(map: TimeMapIn, files: State<'_, Files>) -> Result<(), String> {
+    let (a, b) = (files.base(map.primary)?, files.base(map.file)?);
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        let knots = map
+            .knots
+            .iter()
+            .map(|[f, s]| {
+                Ok([f.parse::<i64>().map_err(|e| e.to_string())?, s.parse::<i64>().map_err(|e| e.to_string())?])
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let t = tlmbench_store::config::TimeMapFile {
+            schema: tlmbench_store::config::SCHEMA,
+            primary: rel_name(&map.folder, &a.recording().info().path),
+            file: rel_name(&map.folder, &b.recording().info().path),
+            primary_id: a.identity().to_owned(),
+            file_id: b.identity().to_owned(),
+            method: map.method,
+            seconds: map.seconds,
+            channel: map.channel,
+            locked: map.locked,
+            knots,
+            pairs: map.pairs,
+        };
+        let dir = root.join("timemaps");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let path = dir.join(t.file_name());
+        let text = tlmbench_store::config::timemap_to_toml(&t);
+        if std::fs::read_to_string(&path).is_ok_and(|old| old == text) {
+            return Ok(());
+        }
+        std::fs::write(&path, text).map_err(|e| format!("can't write {}: {e}", path.display()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The saved alignment for a pair, as the UI keeps it.
+#[derive(Serialize)]
+struct SavedMap {
+    method: String,
+    seconds: f64,
+    channel: String,
+    locked: bool,
+    knots: Vec<[String; 2]>,
+    pairs: Vec<[f64; 2]>,
+}
+
+/// The saved alignment for two open files: yours first, then the folder's `.tlmbench/timemaps/`; matched by the
+/// files' identities, else by their paths relative to the folder.
+#[tauri::command]
+async fn timemap_find(
+    folder: String,
+    primary: u32,
+    file: u32,
+    files: State<'_, Files>,
+) -> Result<Option<SavedMap>, String> {
+    let (a, b) = (files.base(primary)?, files.base(file)?);
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || {
+        let (pn, fnm) = (rel_name(&folder, &a.recording().info().path), rel_name(&folder, &b.recording().info().path));
+        let mut dirs = vec![root.join("timemaps")];
+        dirs.extend(tlmbench_store::config::overlay().into_iter().map(|d| d.join("timemaps")));
+        for d in dirs {
+            let Ok(rd) = std::fs::read_dir(&d) else { continue };
+            let mut maps: Vec<_> = rd
+                .flatten()
+                .filter_map(|e| {
+                    tlmbench_store::config::timemap_from_toml(&std::fs::read_to_string(e.path()).ok()?).ok()
+                })
+                .collect();
+            maps.sort_by_key(|m| m.file_name());
+            let by_id = |m: &tlmbench_store::config::TimeMapFile| {
+                !m.primary_id.is_empty() && m.primary_id == a.identity() && m.file_id == b.identity()
+            };
+            if let Some(m) = maps.into_iter().find(|m| by_id(m) || (m.primary == pn && m.file == fnm)) {
+                return Ok(Some(SavedMap {
+                    method: m.method,
+                    seconds: m.seconds,
+                    channel: m.channel,
+                    locked: m.locked,
+                    knots: m.knots.iter().map(|k| [k[0].to_string(), k[1].to_string()]).collect(),
+                    pairs: m.pairs,
+                }));
+            }
+        }
+        Ok(None)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// What Export data… writes: the open file's samples in a time span, as the CLI's `convert` writes them.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -2618,6 +3029,15 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open,
+            config_use,
+            config_scan,
+            config_mirror,
+            config_share,
+            config_pull,
+            config_export,
+            config_gitignore,
+            timemap_save,
+            timemap_find,
             group_set,
             group_map,
             group_state,

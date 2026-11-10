@@ -14,6 +14,8 @@ use crate::{Error, Result};
 #[derive(Clone, Debug)]
 pub struct Library {
     dir: PathBuf,
+    /// Also lists the recipes of the shared `.tlmbench/` folder the app has open (a name you have wins).
+    overlay: bool,
 }
 
 /// A file name for a recipe: its name's letters and digits, lower case, joined by dashes.
@@ -26,7 +28,7 @@ fn slug(name: &str) -> String {
 impl Library {
     /// The library under the cache root `root`.
     pub fn new(root: &Path) -> Self {
-        Self { dir: root.join("recipes") }
+        Self { dir: root.join("recipes"), overlay: true }
     }
 
     fn files(&self) -> Vec<PathBuf> {
@@ -50,6 +52,13 @@ impl Library {
             .filter_map(|t| tlmbench_expr::recipe::from_toml(&t).ok())
             .flatten()
             .collect();
+        if self.overlay {
+            for r in crate::config::shared_recipes(&crate::config::overlay()) {
+                if !out.iter().any(|o| o.name == r.name) {
+                    out.push(r);
+                }
+            }
+        }
         out.sort_by_key(|r| r.name.to_lowercase());
         out.dedup_by(|a, b| a.name == b.name);
         out

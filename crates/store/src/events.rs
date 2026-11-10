@@ -28,6 +28,9 @@ pub struct Event {
     /// Channels it concerns, by name.
     #[serde(default)]
     pub channels: Vec<String>,
+    /// Who added it (the account name), shown with the event and kept when it is shared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
 
 fn user() -> String {

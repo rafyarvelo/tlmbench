@@ -42,6 +42,10 @@ struct Common {
     /// Cache folder (default: $TLMBENCH_CACHE, else the OS cache dir)
     #[arg(long, global = true)]
     cache: Option<PathBuf>,
+    /// A `.tlmbench/` folder to read the shared configuration from instead of the nearest one above each input
+    /// (repeat; later ones win): recipes, check sets, decoders and import profiles
+    #[arg(long, global = true)]
+    config: Vec<PathBuf>,
     /// Add the derived channels of the recipes marked automatic (from --recipes, else the nearest `.tlmbench/recipes`
     /// above the file) as channels of the recording
     #[arg(long, global = true)]
@@ -144,6 +148,19 @@ enum Command {
     /// Run check sets on recordings and report: exit 0 all pass, 1 a check failed, 2 a file or check couldn't run, 3 a
     /// configuration error (the highest applies)
     Check(check::Args),
+    /// Lint a `.tlmbench/` folder (the nearest one above the current directory by default): every file that doesn't
+    /// read, and recipes and checks whose expressions don't parse. Exit 0 clean, 3 problems
+    Validate {
+        /// The `.tlmbench/` folder, or the folder that holds one
+        dir: Option<PathBuf>,
+    },
+    /// Work with the shared configuration
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+        #[command(flatten)]
+        common: Common,
+    },
     /// Record a live source into a new session folder until it ends (or --seconds pass); prints its stream health
     Record {
         /// tcp://host:port (connects to it), udp://host:port (listens on it), serial://port?baud=rate (a serial port,
@@ -297,6 +314,19 @@ enum Query {
     },
 }
 
+#[derive(Subcommand, Debug)]
+enum ConfigAction {
+    /// Write the app cache's shared kinds to a `.tlmbench/` folder, so CI uses exactly what you tested with: recipes,
+    /// check sets, import profiles, decoders and time maps, and (as the app last saved them, `own.json` in the cache)
+    /// event categories, widgets, icons, layouts and the events of the recordings it had open. Only changed files are
+    /// written
+    Export {
+        /// The folder to write (it becomes a `.tlmbench/`; created if missing)
+        #[arg(long)]
+        out: PathBuf,
+    },
+}
+
 /// A failure and its exit code.
 struct Fail(u8, String);
 
@@ -338,6 +368,8 @@ fn main() -> ExitCode {
             convert(&files, &c, jobs, &common)
         }
         Command::Check(a) => check::run(a),
+        Command::Validate { dir } => validate(dir),
+        Command::Config { action, common } => config(action, &common),
         Command::Record { endpoint, descriptor, out, seconds, idle_end, ring_mb, json } => {
             record(endpoint, descriptor.as_deref(), out, seconds, idle_end, ring_mb, json)
         }
@@ -349,6 +381,53 @@ fn main() -> ExitCode {
                 eprintln!("tlmbench: {msg}");
             }
             ExitCode::from(code)
+        }
+    }
+}
+
+/// `tlmbench validate`.
+fn validate(dir: Option<PathBuf>) -> Result<(), Fail> {
+    let here = dir.unwrap_or_else(|| PathBuf::from("."));
+    let folder = if here.file_name().is_some_and(|n| n == ".tlmbench") {
+        here.clone()
+    } else if here.join(".tlmbench").is_dir() {
+        here.join(".tlmbench")
+    } else {
+        tlmbench_store::config::nearest(&here)
+            .ok_or_else(|| Fail(3, format!("{}: no .tlmbench/ folder", here.display())))?
+    };
+    let problems = tlmbench_store::config::validate(&folder);
+    for p in &problems {
+        eprintln!("{}/{}: {}", folder.display(), p.path, p.why);
+    }
+    if problems.is_empty() {
+        println!("{}: ok", folder.display());
+        Ok(())
+    } else {
+        Err(Fail(
+            3,
+            format!("{} problem{} in {}", problems.len(), if problems.len() == 1 { "" } else { "s" }, folder.display()),
+        ))
+    }
+}
+
+/// `tlmbench config export`.
+fn config(action: ConfigAction, common: &Common) -> Result<(), Fail> {
+    match action {
+        ConfigAction::Export { out } => {
+            let root = tlmbench_decode::cache::cache_root(common.cache.as_deref());
+            let own = tlmbench_store::config::load_mirror(&root);
+            let written = tlmbench_store::config::export(&root, &own, &out)?;
+            for w in &written {
+                println!("{}", out.join(w).display());
+            }
+            eprintln!(
+                "{} file{} written to {}",
+                written.len(),
+                if written.len() == 1 { "" } else { "s" },
+                out.display()
+            );
+            Ok(())
         }
     }
 }
@@ -365,6 +444,7 @@ fn inspect(file: &std::path::Path, common: &Common) -> Result<(), Fail> {
 }
 
 fn store(common: &Common) -> Store {
+    tlmbench_decode::descriptor::set_config_dirs(common.config.clone());
     Store::new(common.cache.as_deref()).with_profile(common.profile.as_deref().map(load_profile))
 }
 
@@ -1027,8 +1107,12 @@ fn recipe_library(
         let mut files = Vec::new();
         let mut roots = common.recipes.clone();
         if roots.is_empty() {
-            let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
-            roots.extend(abs.ancestors().skip(1).map(|d| d.join(".tlmbench").join("recipes")).find(|d| d.is_dir()));
+            roots.extend(
+                tlmbench_store::config::dirs_for(path, &common.config)
+                    .iter()
+                    .map(|d| d.join("recipes"))
+                    .filter(|d| d.is_dir()),
+            );
         }
         for r in &roots {
             if r.is_dir() {

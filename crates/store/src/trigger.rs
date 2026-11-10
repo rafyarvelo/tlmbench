@@ -218,6 +218,7 @@ impl Trigger {
                 category: TRIGGER_CATEGORY.into(),
                 source: "rule".into(),
                 channels: expr_channels(&self.expr),
+                by: None,
             });
             if !self.spec.repeat {
                 self.armed = false;

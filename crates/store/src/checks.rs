@@ -611,6 +611,7 @@ pub fn events_of(set: &CheckSet, res: &SetResult) -> Vec<Event> {
                 category: if rule { k.category.clone().unwrap_or_default() } else { CHECK_CATEGORY.into() },
                 source: if rule { "rule" } else { "check" }.into(),
                 channels: o.channels.clone(),
+                by: None,
             });
         }
     }
@@ -625,6 +626,8 @@ pub fn events_of(set: &CheckSet, res: &SetResult) -> Vec<Event> {
 #[derive(Clone, Debug)]
 pub struct Sets {
     dir: PathBuf,
+    /// Also lists the sets of the shared `.tlmbench/` folder the app has open (a name you have wins).
+    overlay: bool,
 }
 
 fn slug(name: &str) -> String {
@@ -636,12 +639,12 @@ fn slug(name: &str) -> String {
 impl Sets {
     /// The sets under the cache root `root`.
     pub fn new(root: &Path) -> Self {
-        Self { dir: root.join("checks") }
+        Self { dir: root.join("checks"), overlay: true }
     }
 
     /// Sets kept in an arbitrary folder (`.tlmbench/checks/`, or a folder given to the CLI).
     pub fn in_dir(dir: &Path) -> Self {
-        Self { dir: dir.to_owned() }
+        Self { dir: dir.to_owned(), overlay: false }
     }
 
     fn files(&self) -> Vec<PathBuf> {
@@ -660,6 +663,13 @@ impl Sets {
     pub fn list(&self) -> Vec<CheckSet> {
         let mut v: Vec<CheckSet> =
             self.files().iter().filter_map(|f| fs::read_to_string(f).ok()).filter_map(|t| from_toml(&t).ok()).collect();
+        if self.overlay {
+            for s in crate::config::shared_sets(&crate::config::overlay()) {
+                if !v.iter().any(|o| o.name == s.name) {
+                    v.push(s);
+                }
+            }
+        }
         v.sort_by_key(|s| s.name.to_lowercase());
         v.dedup_by(|a, b| a.name == b.name);
         v
