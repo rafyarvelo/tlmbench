@@ -1274,6 +1274,12 @@
       fake.sent = { to, tab, hold };
       return null;
     },
+    // Browser access: off until asked; the address carries a token
+    browser_access({ on }) {
+      if (on === true) fake.browserUrl = 'http://127.0.0.1:50123/?token=0123456789abcdef0123456789abcdef';
+      if (on === false) fake.browserUrl = null;
+      return fake.browserUrl ?? null;
+    },
     holders: () => fake.holdersOf ?? [],
     window_take: () => fake.handoff ?? null,
     window_frame: () => fake.frame ?? { x: 10, y: 20, w: 1200, h: 760 },

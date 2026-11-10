@@ -41,6 +41,15 @@ About 9–10 GB at first: toolchains ~3–4 GB, `target/` ~5 GB (it grows; `just
 
 Recipes for code that doesn't exist yet (no Cargo workspace, no `app/`, no `python/`) say so and skip.
 
+## The daemon and browser access
+
+`target/debug/tlmbench-app --daemon [--port N] [--ui app/ui/dist] [--token T] [--once]` runs the core with no window and
+prints the page's address (`http://127.0.0.1:PORT/?token=…`); open it in a browser on the same computer. It uses the
+app's settings and cache. The desktop app serves the same with Settings › Browser access, or `--browser`. `t_browser`
+(`app/ui`, `node tests/t_browser.js`) runs the UI in Chromium against the real daemon and needs the app built first
+(`cargo build -p tlmbench-app`, and `npm run build` in `app/ui`); with `TLMBENCH_GUI=1` it starts the desktop app
+instead (it opens its window). It keeps its settings and cache under a temporary `HOME`.
+
 ## Pinned versions
 
 | What | Where |

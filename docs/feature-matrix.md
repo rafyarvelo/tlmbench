@@ -278,7 +278,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
 | Multiple windows sharing one core; tabs between windows; Link time view | v1 | ✗ | ✓ (5.8a: Move to new window, drag a tab out or onto another strip, live sources shown in two windows, Link time view and cursors, windows restored) | 5.8 |
-| Daemon with clients over a socket; browser tabs; per-session token | v1 | ✗ | ✗ (5.8b) | 5.8 |
+| Daemon with clients over a socket; browser tabs; per-session token | v1 | ✗ | ✓ (`tlmbench-app --daemon`; Settings › Browser access) | 5.8 |
 | `.tlmbench/` for every object (events, checks, categories, recipes, profiles, decoders, widgets, icons, time maps) | v1 | ◐ (views, events, checks, categories) | ✓ (views, events, check sets, categories, recipes, profiles, decoders, widgets, icons, time maps) | 5.7 |
 | `tlmbench config export`; `tlmbench validate`; nearest `.tlmbench/` or `--config` | v1 | n/a | ✓ (CLI and app; Python bindings are 5.10) | 5.7 |
 | CLI: info, build, query, record, convert | v1 | n/a | ✓ | |

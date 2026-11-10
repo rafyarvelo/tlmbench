@@ -467,7 +467,7 @@ async fn packet_parts(path: String, files: State<'_, Files>) -> Result<Vec<Strin
 /// Opens a file with the recipes and adjustments it should have (one IPC argument each, as the UI sends them).
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-async fn open(
+async fn open<R: tauri::Runtime>(
     path: String,
     profile: Option<ImportProfile>,
     part: Option<String>,
@@ -475,7 +475,7 @@ async fn open(
     exclude: Option<Vec<String>>,
     adjust: Option<Vec<AdjustIn>>,
     progress: Channel<Progress>,
-    window: tauri::Window,
+    window: tauri::Window<R>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
     let store = files.store.clone();
@@ -581,11 +581,11 @@ fn group_out(id: u32, g: &Group) -> GroupOpened {
 /// id when it is given (the same id, so the tab's panes stay), else a new one. The members stay open under their own
 /// ids. Channels are numbered slot after slot.
 #[tauri::command]
-async fn group_set(
+async fn group_set<R: tauri::Runtime>(
     group: Option<u32>,
     members: Vec<MemberIn>,
     progress: Channel<Progress>,
-    window: tauri::Window,
+    window: tauri::Window<R>,
     files: State<'_, Files>,
 ) -> Result<GroupOpened, String> {
     if members.is_empty() {
@@ -1133,7 +1133,7 @@ async fn spectrum(
 
 /// A window stops using a file, group or source: it closes when no window holds it.
 #[tauri::command]
-fn close(file: u32, window: tauri::Window, files: State<'_, Files>) {
+fn close<R: tauri::Runtime>(file: u32, window: tauri::Window<R>, files: State<'_, Files>) {
     if files.holds.release(file, window.label()) {
         close_now(file, &files);
     }
@@ -1141,7 +1141,7 @@ fn close(file: u32, window: tauri::Window, files: State<'_, Files>) {
 
 /// Another window starts using an open file, group or live source (a tab moved or shown there too).
 #[tauri::command]
-fn hold(file: u32, window: tauri::Window, files: State<'_, Files>) -> Result<(), String> {
+fn hold<R: tauri::Runtime>(file: u32, window: tauri::Window<R>, files: State<'_, Files>) -> Result<(), String> {
     let known = files.open.lock().unwrap().contains_key(&file)
         || files.groups.lock().unwrap().contains_key(&file)
         || files.live.lock().unwrap().contains_key(&file);
@@ -1154,24 +1154,24 @@ fn hold(file: u32, window: tauri::Window, files: State<'_, Files>) -> Result<(),
 
 /// The other windows using a file (a live source stopped in one window asks before stopping everywhere).
 #[tauri::command]
-fn holders(file: u32, window: tauri::Window, files: State<'_, Files>) -> Vec<String> {
+fn holders<R: tauri::Runtime>(file: u32, window: tauri::Window<R>, files: State<'_, Files>) -> Vec<String> {
     files.holds.others(file, window.label())
 }
 
 /// Where the settings shared by every window are kept.
-fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+fn settings_path<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<std::path::PathBuf, String> {
     Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json"))
 }
 
 /// The settings every window shares, as the last window saved them (none before the first save).
 #[tauri::command]
-fn settings_get(app: AppHandle) -> Option<String> {
+fn settings_get<R: tauri::Runtime>(app: AppHandle<R>) -> Option<String> {
     std::fs::read_to_string(settings_path(&app).ok()?).ok()
 }
 
 /// Saves the shared settings and tells the other windows, which apply them at once.
 #[tauri::command]
-fn settings_save(text: String, window: tauri::Window, app: AppHandle) -> Result<(), String> {
+fn settings_save<R: tauri::Runtime>(text: String, window: tauri::Window<R>, app: AppHandle<R>) -> Result<(), String> {
     let path = settings_path(&app)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -1195,11 +1195,11 @@ struct Frame {
 /// Opens a window (`win-2`, …) showing what `handoff` carries (a tab moved from another window, or a saved window),
 /// and returns its name. The new window asks for the handoff once it has started (`window_take`).
 #[tauri::command]
-async fn window_new(
+async fn window_new<R: tauri::Runtime>(
     handoff: Option<serde_json::Value>,
     frame: Option<Frame>,
     hold: Option<Vec<u32>>,
-    app: AppHandle,
+    app: AppHandle<R>,
     files: State<'_, Files>,
 ) -> Result<String, String> {
     let label = format!("win-{}", files.next_window.fetch_add(1, Ordering::Relaxed));
@@ -1223,13 +1223,13 @@ async fn window_new(
 
 /// What this window was opened with, once.
 #[tauri::command]
-fn window_take(window: tauri::Window, files: State<'_, Files>) -> Option<serde_json::Value> {
+fn window_take<R: tauri::Runtime>(window: tauri::Window<R>, files: State<'_, Files>) -> Option<serde_json::Value> {
     files.handoffs.lock().unwrap().remove(window.label())
 }
 
 /// Where this window is.
 #[tauri::command]
-fn window_frame(window: tauri::Window) -> Option<Frame> {
+fn window_frame<R: tauri::Runtime>(window: tauri::Window<R>) -> Option<Frame> {
     let scale = window.scale_factor().ok()?;
     let pos = window.outer_position().ok()?.to_logical::<f64>(scale);
     let size = window.inner_size().ok()?.to_logical::<f64>(scale);
@@ -1238,14 +1238,14 @@ fn window_frame(window: tauri::Window) -> Option<Frame> {
 
 /// Puts this window back where it was.
 #[tauri::command]
-fn window_place(frame: Frame, window: tauri::Window) {
+fn window_place<R: tauri::Runtime>(frame: Frame, window: tauri::Window<R>) {
     let _ = window.set_size(tauri::LogicalSize::new(frame.w, frame.h));
     let _ = window.set_position(tauri::LogicalPosition::new(frame.x, frame.y));
 }
 
 /// The other window whose tab strip is under a screen point (logical pixels), if any: a dragged tab dropped there joins it.
 #[tauri::command]
-fn window_at(x: f64, y: f64, window: tauri::Window, app: AppHandle) -> Option<String> {
+fn window_at<R: tauri::Runtime>(x: f64, y: f64, window: tauri::Window<R>, app: AppHandle<R>) -> Option<String> {
     // the title bar and the strip: the top of the window
     const STRIP: f64 = 84.0;
     app.webview_windows().into_iter().find_map(|(label, w)| {
@@ -1261,11 +1261,11 @@ fn window_at(x: f64, y: f64, window: tauri::Window, app: AppHandle) -> Option<St
 
 /// Hands a tab to another window, which holds what it needs from now on (`hold`: live sources).
 #[tauri::command]
-fn tab_send(
+fn tab_send<R: tauri::Runtime>(
     to: String,
     tab: serde_json::Value,
     hold: Option<Vec<u32>>,
-    app: AppHandle,
+    app: AppHandle<R>,
     files: State<'_, Files>,
 ) -> Result<(), String> {
     for id in hold.unwrap_or_default() {
@@ -1276,7 +1276,7 @@ fn tab_send(
 
 /// A window with Link time view on tells the other windows its time view (and cursors); those with it on follow.
 #[tauri::command]
-fn link_send(view: serde_json::Value, window: tauri::Window, app: AppHandle) {
+fn link_send<R: tauri::Runtime>(view: serde_json::Value, window: tauri::Window<R>, app: AppHandle<R>) {
     let _ = app.emit("view-linked", serde_json::json!({ "from": window.label(), "view": view }));
 }
 
@@ -1337,7 +1337,11 @@ struct LiveArgs {
 /// descriptor, a TOML file) into a new session in the Recordings folder (or the one of `addTo`), and returns it opened
 /// like a file once its first samples are recorded.
 #[tauri::command]
-async fn live_connect(args: LiveArgs, window: tauri::Window, files: State<'_, Files>) -> Result<Opened, String> {
+async fn live_connect<R: tauri::Runtime>(
+    args: LiveArgs,
+    window: tauri::Window<R>,
+    files: State<'_, Files>,
+) -> Result<Opened, String> {
     let store = files.store.clone();
     let shared = match args.add_to {
         Some(id) => {
@@ -1821,14 +1825,14 @@ struct QueryDone {
 /// out as `table-progress` events `{ token, done }` (0..1); `table_cancel` stops it.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-async fn table_query(
+async fn table_query<R: tauri::Runtime>(
     file: u32,
     span: Span,
     filters: Vec<ColSpec>,
     sort: Vec<ColSpec>,
     token: u32,
     drop_token: Option<u32>,
-    app: AppHandle,
+    app: AppHandle<R>,
     files: State<'_, Files>,
 ) -> Result<QueryDone, String> {
     let o = files.get(file)?;
@@ -1980,12 +1984,12 @@ fn table_marks(
 /// Apply to charts: leaves the rows the filters don't pass out of every chart, statistic and value of the file
 /// (`owner` names the table; a new call replaces its last). Always over the whole file. `table_unmask` takes it back.
 #[tauri::command]
-async fn table_mask(
+async fn table_mask<R: tauri::Runtime>(
     file: u32,
     owner: u32,
     filters: Vec<ColSpec>,
     token: u32,
-    app: AppHandle,
+    app: AppHandle<R>,
     files: State<'_, Files>,
 ) -> Result<QueryDone, String> {
     let o = files.get(file)?;
@@ -3192,7 +3196,7 @@ fn gate_manifest(path: String) -> Result<serde_json::Value, String> {
 
 /// Prints the gate report and quits: exit code 0 when it passed, 1 when not.
 #[tauri::command]
-fn gate_report(report: serde_json::Value, app: AppHandle) {
+fn gate_report<R: tauri::Runtime>(report: serde_json::Value, app: AppHandle<R>) {
     println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
     let pass = report.get("pass").and_then(serde_json::Value::as_bool).unwrap_or(false);
     app.exit(if pass { 0 } else { 1 });
@@ -3219,31 +3223,10 @@ fn widget_host(
         .expect("a fixed response")
 }
 
-fn main() {
-    tauri::Builder::default()
-        .register_uri_scheme_protocol("tlmwidget", widget_host)
-        .plugin(tauri_plugin_dialog::init())
-        .on_window_event(|w, ev| {
-            if let tauri::WindowEvent::Destroyed = ev
-                && let Some(files) = w.try_state::<Files>()
-            {
-                release_window(w.label(), &files);
-            }
-        })
-        .manage(Files {
-            store: Store::new(None),
-            next: AtomicU32::new(0),
-            holds: Holds::default(),
-            handoffs: Mutex::default(),
-            next_window: AtomicU32::new(2),
-            open: Mutex::default(),
-            bases: Mutex::default(),
-            live: Mutex::default(),
-            groups: Mutex::default(),
-            queries: Mutex::default(),
-            cancels: Mutex::default(),
-        })
-        .invoke_handler(tauri::generate_handler![
+/// Every command the UI calls, for the app's runtime and the daemon's.
+macro_rules! commands {
+    () => {
+        tauri::generate_handler![
             open,
             config_use,
             config_scan,
@@ -3332,8 +3315,57 @@ fn main() {
             echo,
             launch,
             gate_report,
-            gate_manifest
-        ])
+            gate_manifest,
+            daemon::browser_access
+        ]
+    };
+}
+
+fn new_files() -> Files {
+    Files {
+        store: Store::new(None),
+        next: AtomicU32::new(0),
+        holds: Holds::default(),
+        handoffs: Mutex::default(),
+        next_window: AtomicU32::new(2),
+        open: Mutex::default(),
+        bases: Mutex::default(),
+        live: Mutex::default(),
+        groups: Mutex::default(),
+        queries: Mutex::default(),
+        cancels: Mutex::default(),
+    }
+}
+
+mod daemon;
+
+fn main() {
+    if let Some(args) = daemon::Args::from_env() {
+        return daemon::run(args);
+    }
+    let clients = Arc::new(daemon::Clients::default());
+    tauri::Builder::default()
+        .register_uri_scheme_protocol("tlmwidget", widget_host)
+        .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|w, ev| {
+            if let tauri::WindowEvent::Destroyed = ev
+                && let Some(files) = w.try_state::<Files>()
+            {
+                release_window(w.label(), &files);
+            }
+        })
+        .manage(new_files())
+        .manage(daemon::Browser::new(clients.clone()))
+        .setup(|app| {
+            // `--browser`: browser access from the start, its address printed
+            if std::env::args().any(|a| a == "--browser") {
+                let url = daemon::browser_access(Some(true), app.handle().clone(), app.state::<daemon::Browser>());
+                println!("{}", url.ok().flatten().unwrap_or_default());
+            }
+            Ok(())
+        })
+        .channel_interceptor(daemon::interceptor(clients))
+        .invoke_handler(commands!())
         .run(tauri::generate_context!())
         .expect("TelemetryBench failed to start");
 }

@@ -3,6 +3,9 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+// in a browser tab the commands go to the daemon (the app's own window has Tauri's IPC)
+if (!('__TAURI_INTERNALS__' in window)) await (await import('./browser')).installBrowserCore();
+
 try {
   const text = await invoke<string | null>('settings_get');
   if (text) localStorage.setItem('tlmbench.settings', text);

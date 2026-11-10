@@ -41,7 +41,7 @@ run('windows', async ({ p, check, settingsLS, until, wait, fake }) => {
   await p.keyboard.press('ControlOrMeta+o');
   await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'bench run.csv');
   await wait(500);
-  const before = await p.evaluate(() => [...document.querySelectorAll('#wsTabs .wstab')].map((n) => n.textContent + (n.getAttribute('aria-selected') === 'true' ? '*' : '')).join('|'));
+  const tabsBefore = await p.evaluate(() => [...document.querySelectorAll('#wsTabs .wstab')].map((n) => n.textContent + (n.getAttribute('aria-selected') === 'true' ? '*' : '')).join('|'));
   await p.click('#wsTabs .wstab[aria-selected=true]', { button: 'right' });
   check('the tab menu offers Move to new window', await until(() => !!document.querySelector('[data-ws=newwin]')));
   await p.click('[data-ws=newwin]');
@@ -49,7 +49,7 @@ run('windows', async ({ p, check, settingsLS, until, wait, fake }) => {
   const w = await fake(() => window.__tlmFake.windows[0]);
   check('with that file open at its view', w.handoff.session.files.join() === B && w.handoff.session.active === B, JSON.stringify(w.handoff));
   await wait(400);
-  check('and the tab is gone here, the other stays', await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].map((n) => n.textContent).join() === 'flight.tlm'), before + ' => ' + (await p.evaluate(() => [...document.querySelectorAll('#wsTabs .wstab')].map((n) => n.textContent).join('|'))));
+  check('and the tab is gone here, the other stays', await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].map((n) => n.textContent).join() === 'flight.tlm'), tabsBefore + ' => ' + (await p.evaluate(() => [...document.querySelectorAll('#wsTabs .wstab')].map((n) => n.textContent).join('|'))));
   check('the window is remembered with the first one’s place', (await settingsLS()).windows?.main?.frame?.w === 1200);
 
   // Link time view: off, nothing is sent and nothing followed; on, this window's view goes out and another's comes in
@@ -74,4 +74,12 @@ run('windows', async ({ p, check, settingsLS, until, wait, fake }) => {
   await p.click('[data-more=linkcursors]');
   await fake((v) => window.__tlmFake.otherWindowView(v), { t0: v0.t0, t1: v0.t1, cursors: { A: String(mid), B: null } });
   check('and follow when linked', await until((a) => window.__tlmApp.cursors().A === a, String(mid)));
+
+  // Browser access (Settings): off at first; on shows the address with its token
+  await p.evaluate(() => window.__tlmSettings.set('leftPanel', 'settings'));
+  check('Browser access is off at first', await until(() => !!document.getElementById('browserOn')) && !(await p.isChecked('#browserOn')) && !(await p.$('#browserUrl')));
+  await p.click('#browserOn');
+  check('turning it on shows the address and a token', await until(() => /^http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]{32}$/.test(document.getElementById('browserUrl')?.textContent ?? '')));
+  await p.click('#browserOn');
+  check('turning it off takes it away', await until(() => !document.getElementById('browserUrl')));
 }, { files: { [A]: {}, [B]: {} } });

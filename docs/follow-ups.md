@@ -393,16 +393,23 @@ can write them too.
   `pairs`. `tlmbench validate <folder>` lints every file and every expression in recipes and checks; `--config` replaces
   the nearest `.tlmbench/` (repeatable, later wins).
 
-## Left from step 5.8a (multiple windows)
+## Left from step 5.8 (multiple windows and the daemon)
 
 How it works now: every window is a Tauri window of the one process, so they share the core directly; the core counts
 which windows hold each id (`Holds`) and a window that closes lets go of its ids. The settings every window shares are a
 file in the app config folder that the core writes and announces; the UI reads it before the settings module loads.
 Windows other than the first take their tabs from a handoff the core keeps until the window asks for it.
 
-- **Daemon and socket (5.8b):** not started. The same commands over a local socket and WebSocket, a per-session token,
-  browser tabs, the daemon exiting with its last window unless started standalone. The Tauri commands are tied to
-  `State<Files>`, so the commands need a transport-neutral layer first.
+- **Daemon:** done as the same handlers on a headless runtime (no transport-neutral layer was needed). A standalone
+  daemon keeps running (`--once` ends it with its last client). What's still missing in a browser tab: file dialogs (a
+  path is typed into a prompt; the files are on the daemon's machine), Move to new window works (a new tab attaches to
+  the window the daemon made) but dragging a tab between browser tabs does not, `window_frame` and window placement
+  do nothing, and the widget code host (`tlmwidget://`) is not served, so code widgets don't run in a browser tab.
+  A browser tab is for this computer (loopback only); remote access means a tunnel the user sets up.
+- **Daemon socket kinds:** the design also says a Unix socket for local clients; only the WebSocket exists (the
+  frames are the same format either way).
+- **Browser access is per run:** off at each start; the token changes each time it is turned on. `--browser` turns it
+  on at launch and prints the address.
 - **Live tabs with several sources** can't be moved or shown in another window yet (the group is made in the window that
   made it); a single-source live tab can.
 - **Window geometry** is saved as the window's place in logical pixels with its folder; a monitor that is gone puts the
