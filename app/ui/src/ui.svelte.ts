@@ -131,6 +131,8 @@ export const actions = {
   openPaths: (_paths: string[]) => {},
   /** Several files in one tab: add a file to the tab in front, close one of them, make one the primary. */
   addToTab: (_path: string) => {},
+  /** Open together: the first file in a tab, the others on its timeline. */
+  openTogether: (_paths: string[]) => {},
   closeSlot: (_slot: number) => {},
   makePrimary: (_slot: number) => {},
   /** A file's alignment: choose a method (with its parameters), nudge it, lock it, add a sync point from cursors A and B. */

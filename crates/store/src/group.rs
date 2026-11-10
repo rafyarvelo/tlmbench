@@ -10,6 +10,8 @@ use tlmbench_core::pyramid::Stats;
 use tlmbench_core::timemap::TimeMap;
 use tlmbench_core::{RecordingInfo, Timestamp, Viewport};
 
+use crate::widgets::{Frame, WidgetOut, WidgetReq};
+use crate::xy::{Xy, XyReq};
 use crate::{Opened, Precision, Request, Status, View};
 
 /// One file of a group.
@@ -238,6 +240,106 @@ impl Group {
             }
         }
         out.into_iter().collect()
+    }
+
+    /// Every widget's answer at the shared time `t`: each file answers its own widgets (through its map), the frame is
+    /// the first file's sample.
+    pub fn widgets_frame(&self, t: Timestamp, view: (Timestamp, Timestamp), reqs: &[WidgetReq]) -> Option<Frame> {
+        let mut out: Vec<WidgetOut> = vec![WidgetOut::default(); reqs.len()];
+        let mut head: Option<(usize, Timestamp)> = None;
+        for (si, slot) in self.slots.iter().enumerate() {
+            let (mut at, mut sub) = (Vec::new(), Vec::new());
+            for (k, r) in reqs.iter().enumerate() {
+                if let Some((s, local)) = self.route(r.channel)
+                    && s == si
+                {
+                    at.push(k);
+                    sub.push(WidgetReq { channel: local, ..*r });
+                }
+            }
+            if at.is_empty() {
+                continue;
+            }
+            let m = slot.map();
+            let f = slot.opened.widgets_frame(m.inverse(t), (m.inverse(view.0), m.inverse(view.1)), &sub)?;
+            head.get_or_insert((f.index, m.apply(f.t)));
+            for (k, mut w) in at.into_iter().zip(f.widgets) {
+                w.run_start = w.run_start.map(|t| m.apply(t));
+                out[k] = w;
+            }
+        }
+        head.map(|(index, t)| Frame { index, t, widgets: out })
+    }
+
+    /// An XY plot of channels of one file (pairing is by sample, so they share their times); `None` when the
+    /// channels are in different files.
+    pub fn xy_points(&self, q: &XyReq) -> Option<Xy> {
+        let (sx, lx) = self.route(q.x)?;
+        let mut ys = Vec::with_capacity(q.ys.len());
+        for &y in &q.ys {
+            let (s, l) = self.route(y)?;
+            if s != sx {
+                return None;
+            }
+            ys.push(l);
+        }
+        let slot = &self.slots[sx];
+        let m = slot.map();
+        let sub = XyReq {
+            x: lx,
+            ys,
+            t0: m.inverse(q.t0),
+            t1: m.inverse(q.t1),
+            rect: q.rect,
+            grid: q.grid,
+            max_points: q.max_points,
+        };
+        let mut r = slot.opened.xy_points(&sub);
+        for s in &mut r.series {
+            s.channel += slot.first;
+            s.t.iter_mut().for_each(|t| *t = m.apply(*t));
+        }
+        Some(r)
+    }
+
+    /// A column of another file read at the rows' shared times: each row shows the file's last sample at or before
+    /// its time (NaN before the file's first), so a slower channel is held between its samples. Rows may be in any order.
+    pub fn held_column(&self, channel: usize, times: &[Timestamp]) -> Vec<f64> {
+        let nan = vec![f64::NAN; times.len()];
+        let Some((si, local)) = self.route(channel) else { return nan };
+        let slot = &self.slots[si];
+        let (m, rec) = (slot.map(), slot.opened.recording());
+        let (scale, offset) = rec.scale_offset(local);
+        let at: Vec<Option<usize>> =
+            times.iter().map(|&t| rec.lower_bound(m.inverse(t).saturating_add(1)).checked_sub(1)).collect();
+        let (Some(lo), Some(hi)) = (at.iter().flatten().min().copied(), at.iter().flatten().max().copied()) else {
+            return nan;
+        };
+        if hi - lo < (1 << 20) {
+            let v = rec.read(local, lo, hi + 1).to_f64(scale, offset);
+            at.iter().map(|i| i.map_or(f64::NAN, |i| v[i - lo])).collect()
+        } else {
+            at.iter().map(|i| i.map_or(f64::NAN, |i| rec.read(local, i, i + 1).to_f64(scale, offset)[0])).collect()
+        }
+    }
+
+    /// The channels of every file but the primary, as an expression over the primary's samples may name them
+    /// (`Close·2`): each read through the file's map.
+    pub fn foreign(&self) -> Vec<crate::Foreign> {
+        self.slots
+            .iter()
+            .enumerate()
+            .skip(1)
+            .flat_map(|(i, s)| {
+                let map = s.map();
+                s.opened.recording().info().channels.iter().enumerate().map(move |(k, c)| crate::Foreign {
+                    name: format!("{}·{}", c.name, i + 1),
+                    opened: s.opened.clone(),
+                    channel: k,
+                    map: map.clone(),
+                })
+            })
+            .collect()
     }
 
     /// Building: the files' progress together (each file's samples weigh the same as its share of the total).

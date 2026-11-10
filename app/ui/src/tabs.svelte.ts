@@ -16,6 +16,8 @@ export interface TabInfo {
   shared?: string;
   /** An imported (CSV) file's data rate as text (Explorer's chip; a click shows its import settings). */
   rate?: string;
+  /** A Compare runs tab: named `a vs b`. */
+  compare?: boolean;
   /** Its panes differ from the layout as saved. */
   dirty?: boolean;
 }

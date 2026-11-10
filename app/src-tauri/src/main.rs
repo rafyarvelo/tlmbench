@@ -233,12 +233,13 @@ fn with_derived(
     base: &Arc<StoreOpened>,
     attached: &[String],
     exclude: &[String],
+    foreign: &[tlmbench_store::Foreign],
 ) -> Result<Shown, String> {
     let (recipes, mut skipped) = pick_recipes(store, attached, exclude);
     if recipes.is_empty() {
         return Ok((base.clone(), Vec::new(), skipped));
     }
-    let d = store.open_derived(base, &recipes).map_err(|e| e.to_string())?;
+    let d = store.open_derived_cross(base, &recipes, foreign).map_err(|e| e.to_string())?;
     // an automatic recipe that needs channels the file lacks just doesn't apply; one the user attached is reported
     skipped.extend(
         d.skipped
@@ -420,7 +421,7 @@ async fn open(
             .open_part(Path::new(&path), None, part.as_deref())
             .map_err(|e| e.to_string())?;
         let base = Arc::new(base);
-        let (shown, derived, skipped) = with_derived(&store, &base, &attached, &exclude)?;
+        let (shown, derived, skipped) = with_derived(&store, &base, &attached, &exclude, &[])?;
         Ok((base, shown, derived, skipped))
     })
     .await
@@ -607,6 +608,8 @@ async fn derive_apply(
     file: u32,
     recipes: Vec<String>,
     exclude: Vec<String>,
+    // the tab's group, when the file is the primary of several: recipes may read the other files' channels
+    group: Option<u32>,
     progress: Channel<Progress>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
@@ -639,8 +642,10 @@ async fn derive_apply(
     let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
     let store = files.store.clone();
     let b = base.clone();
-    let (shown, derived, skipped) =
-        spawn_blocking(move || with_derived(&store, &b, &recipes, &exclude)).await.map_err(|e| e.to_string())??;
+    let foreign = group.and_then(|g| files.group(g)).map_or_else(Vec::new, |g| g.foreign());
+    let (shown, derived, skipped) = spawn_blocking(move || with_derived(&store, &b, &recipes, &exclude, &foreign))
+        .await
+        .map_err(|e| e.to_string())??;
     let info = shown.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
     let status = shown.status();
@@ -704,7 +709,7 @@ async fn adjust_apply(
             .open_part(&info.path, None, info.part.as_deref())
             .map_err(|e| e.to_string())?;
         let base = Arc::new(base);
-        let (shown, derived, skipped) = with_derived(&store, &base, &recipes, &exclude)?;
+        let (shown, derived, skipped) = with_derived(&store, &base, &recipes, &exclude, &[])?;
         Ok((base, shown, derived, skipped))
     })
     .await
@@ -957,7 +962,8 @@ struct CheckReply {
 #[tauri::command]
 async fn derive_check(file: u32, expr: String, files: State<'_, Files>) -> Result<CheckReply, String> {
     let o = files.get(file)?;
-    spawn_blocking(move || match tlmbench_store::check(o.recording(), &expr) {
+    let foreign = files.group(file).map_or_else(Vec::new, |g| g.foreign());
+    spawn_blocking(move || match tlmbench_store::check_cross(o.recording(), &expr, &foreign) {
         Ok(p) => CheckReply { preview: Some(p), error: None },
         Err(e) => CheckReply { preview: None, error: Some(CheckError { msg: e.msg, at: e.at }) },
     })
@@ -1466,11 +1472,12 @@ async fn rows(
     files: State<'_, Files>,
 ) -> Result<Response, String> {
     let o = files.get(file)?;
+    let g = files.group(file);
     if let Some(token) = query {
         let q = files.queries.lock().unwrap().get(&token).cloned().ok_or("that query is gone")?;
         let bytes = spawn_blocking(move || {
             let channels: Vec<usize> = channels.into_iter().map(|c| c as usize).collect();
-            encode_query_rows(o.recording(), &channels, &q, offset, limit)
+            encode_query_rows(o.recording(), g.as_deref(), &channels, &q, offset, limit)
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -1479,7 +1486,7 @@ async fn rows(
     let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
     let bytes = spawn_blocking(move || {
         let channels: Vec<usize> = channels.into_iter().map(|c| c as usize).collect();
-        encode_rows(o.recording(), &channels, t0, t1, offset, limit)
+        encode_rows(o.recording(), g.as_deref(), &channels, t0, t1, offset, limit)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -1504,6 +1511,17 @@ struct ColSpec {
     expr: String,
     #[serde(default)]
     desc: bool,
+}
+
+/// Sorting and filtering read the first file's samples: a column of another file in the tab can't be used for them
+/// (it shows, held between its samples, but has no row of its own).
+fn own_col(o: &StoreOpened, c: Col) -> Result<Col, String> {
+    match c {
+        Col::Channel(n) if n >= o.recording().info().channels.len() => {
+            Err("Sort and filter work on the columns of file 1; other files' columns show beside them".into())
+        }
+        c => Ok(c),
+    }
 }
 
 fn col_of(s: &str) -> Result<Col, String> {
@@ -1547,12 +1565,12 @@ async fn table_query(
     let mut fs = Vec::new();
     for f in &filters {
         if let Some(p) = Filter::parse(&f.expr)? {
-            fs.push((col_of(&f.col)?, p));
+            fs.push((own_col(&o, col_of(&f.col)?)?, p));
         }
     }
     let sort = sort
         .iter()
-        .map(|k| Ok(SortKey { col: col_of(&k.col)?, descending: k.desc }))
+        .map(|k| Ok(SortKey { col: own_col(&o, col_of(&k.col)?)?, descending: k.desc }))
         .collect::<Result<Vec<_>, String>>()?;
     let stop = Arc::new(AtomicBool::new(false));
     files.cancels.lock().unwrap().insert(token, stop.clone());
@@ -1703,7 +1721,7 @@ async fn table_mask(
     let mut fs = Vec::new();
     for f in &filters {
         if let Some(p) = Filter::parse(&f.expr)? {
-            fs.push((col_of(&f.col)?, p));
+            fs.push((own_col(&o, col_of(&f.col)?)?, p));
         }
     }
     if fs.is_empty() {
@@ -1761,12 +1779,14 @@ fn filter_check(expr: String) -> Option<String> {
 /// sample index (u64) between the times and the values. Runs of consecutive rows are read together.
 fn encode_query_rows(
     rec: &dyn tlmbench_core::Recording,
+    group: Option<&Group>,
     channels: &[usize],
     q: &RowQuery,
     offset: u64,
     limit: u32,
 ) -> Vec<u8> {
-    let n = rec.info().channels.len();
+    let own = rec.info().channels.len();
+    let n = group.map_or(own, |g| g.info().channels.len());
     let chans: Vec<usize> = channels.iter().copied().filter(|&c| c < n).collect();
     let start = (offset as usize).min(q.ids.len());
     let end = start + (q.ids.len() - start).min(limit as usize).min(MAX_ROWS);
@@ -1785,10 +1805,20 @@ fn encode_query_rows(
         times.extend(rec.read_times(a, b));
         index.extend((a..b).map(|i| i as u64));
         for (col, &c) in cols.iter_mut().zip(&chans) {
-            let (scale, off) = rec.scale_offset(c);
-            col.extend(rec.read(c, a, b).to_f64(scale, off));
+            if c < own {
+                let (scale, off) = rec.scale_offset(c);
+                col.extend(rec.read(c, a, b).to_f64(scale, off));
+            }
         }
         at = e;
+    }
+    // another file's columns follow the rows' times, held between their samples
+    if let Some(g) = group {
+        for (col, &c) in cols.iter_mut().zip(&chans) {
+            if c >= own {
+                *col = g.held_column(c, &times);
+            }
+        }
     }
     let mut out = Vec::with_capacity(32 + 8 * k * (2 + chans.len()));
     out.extend_from_slice(b"TLMR");
@@ -1806,13 +1836,15 @@ fn encode_query_rows(
 /// A `rows` reply (see [`rows`]); channels past the recording's are left out.
 fn encode_rows(
     rec: &dyn tlmbench_core::Recording,
+    group: Option<&Group>,
     channels: &[usize],
     t0: i64,
     t1: i64,
     offset: u64,
     limit: u32,
 ) -> Vec<u8> {
-    let n = rec.info().channels.len();
+    let own = rec.info().channels.len();
+    let n = group.map_or(own, |g| g.info().channels.len());
     let chans: Vec<usize> = channels.iter().copied().filter(|&c| c < n).collect();
     let a = rec.lower_bound(t0);
     let b = rec.lower_bound(t1).max(a);
@@ -1826,12 +1858,19 @@ fn encode_rows(
     out.extend_from_slice(&((b - a) as u64).to_le_bytes());
     out.extend_from_slice(&(k as u32).to_le_bytes());
     out.extend_from_slice(&0u32.to_le_bytes());
-    for t in rec.read_times(start, end) {
+    let times = rec.read_times(start, end);
+    for t in &times {
         out.extend_from_slice(&t.to_le_bytes());
     }
     for &c in &chans {
-        let (scale, off) = rec.scale_offset(c);
-        for v in rec.read(c, start, end).to_f64(scale, off) {
+        let values = match group {
+            Some(g) if c >= own => g.held_column(c, &times),
+            _ => {
+                let (scale, off) = rec.scale_offset(c);
+                rec.read(c, start, end).to_f64(scale, off)
+            }
+        };
+        for v in values {
             out.extend_from_slice(&v.to_le_bytes());
         }
     }
@@ -1902,9 +1941,10 @@ async fn widgets_frame(
     files: State<'_, Files>,
 ) -> Result<Option<WidgetsFrame>, String> {
     let o = files.get(file)?;
+    let g = files.group(file);
     let (t, v0, v1) = (parse_time(&t)?, parse_time(&view.t0)?, parse_time(&view.t1)?);
     spawn_blocking(move || {
-        let n = o.recording().info().channels.len();
+        let n = g.as_ref().map_or_else(|| o.recording().info().channels.len(), |g| g.info().channels.len());
         let reqs: Vec<tlmbench_store::widgets::WidgetReq> = widgets
             .iter()
             .map(|w| tlmbench_store::widgets::WidgetReq {
@@ -1914,7 +1954,11 @@ async fn widgets_frame(
                 trace: w.trace.min(600),
             })
             .collect();
-        o.widgets_frame(t, (v0, v1), &reqs).map(|f| WidgetsFrame {
+        let frame = match &g {
+            Some(g) => g.widgets_frame(t, (v0, v1), &reqs),
+            None => o.widgets_frame(t, (v0, v1), &reqs),
+        };
+        frame.map(|f| WidgetsFrame {
             index: f.index as u64,
             t: f.t.to_string(),
             widgets: f
@@ -1952,9 +1996,10 @@ struct XyAsk {
 #[tauri::command]
 async fn xy_points(file: u32, span: Span, ask: XyAsk, files: State<'_, Files>) -> Result<Response, String> {
     let o = files.get(file)?;
+    let g = files.group(file);
     let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
     let bytes = spawn_blocking(move || {
-        let n = o.recording().info().channels.len() as u32;
+        let n = g.as_ref().map_or_else(|| o.recording().info().channels.len(), |g| g.info().channels.len()) as u32;
         let ok = |c: &u32| *c < n;
         let q = tlmbench_store::xy::XyReq {
             x: ask.x.min(n.saturating_sub(1)) as usize,
@@ -1965,7 +2010,10 @@ async fn xy_points(file: u32, span: Span, ask: XyAsk, files: State<'_, Files>) -
             grid: ask.grid,
             max_points: ask.max_points.unwrap_or(100_000) as usize,
         };
-        let r = o.xy_points(&q);
+        let r = match &g {
+            Some(g) => g.xy_points(&q).ok_or_else(|| "An XY plot pairs channels of one file".to_string())?,
+            None => o.xy_points(&q),
+        };
         let mut out = Vec::with_capacity(48 + r.series.iter().map(|s| 8 + 24 * s.x.len()).sum::<usize>());
         out.extend_from_slice(b"TLMX");
         out.extend_from_slice(&(r.series.len() as u32).to_le_bytes());
@@ -1981,10 +2029,10 @@ async fn xy_points(file: u32, span: Span, ask: XyAsk, files: State<'_, Files>) -
             s.x.iter().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
             s.y.iter().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
         }
-        out
+        Ok::<_, String>(out)
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())??;
     Ok(Response::new(bytes))
 }
 
@@ -2634,7 +2682,7 @@ mod tests {
         let rec = tlmbench_decode::open(&path, &opts).unwrap();
         // rows 2..8 of the file, ids as offsets from 2: (b descending) then the ones 3, 4, 5 are consecutive
         let q = RowQuery { first: 2, ids: vec![5, 0, 1, 2, 3], hits: Vec::new() };
-        let out = encode_query_rows(rec.as_ref(), &[1], &q, 1, 10);
+        let out = encode_query_rows(rec.as_ref(), None, &[1], &q, 1, 10);
         let u32_at = |o: usize| u32::from_le_bytes(out[o..o + 4].try_into().unwrap());
         let u64_at = |o: usize| u64::from_le_bytes(out[o..o + 8].try_into().unwrap());
         assert_eq!((u64_at(16), u32_at(24), u32_at(28)), (5, 4, 1), "total, rows returned, indexed");
@@ -2665,7 +2713,7 @@ mod tests {
         let rec = tlmbench_decode::open(&path, &opts).unwrap();
         let t = |i: usize| rec.time_at(i);
         // samples 2..8 are in view; rows 1..4 of them, channel 9 doesn't exist
-        let out = encode_rows(rec.as_ref(), &[1, 9], t(2), t(8), 1, 3);
+        let out = encode_rows(rec.as_ref(), None, &[1, 9], t(2), t(8), 1, 3);
         let u32_at = |o: usize| u32::from_le_bytes(out[o..o + 4].try_into().unwrap());
         let u64_at = |o: usize| u64::from_le_bytes(out[o..o + 8].try_into().unwrap());
         assert_eq!(&out[..4], b"TLMR");
@@ -2675,7 +2723,7 @@ mod tests {
         let b: Vec<f64> = (0..3).map(|k| f64::from_bits(u64_at(56 + 8 * k))).collect();
         assert_eq!(b, vec![1.5, 2.0, 2.5]);
         // past the end: no rows, the count still given
-        let out = encode_rows(rec.as_ref(), &[0], t(2), t(8), 100, 10);
+        let out = encode_rows(rec.as_ref(), None, &[0], t(2), t(8), 100, 10);
         assert_eq!((u64::from_le_bytes(out[16..24].try_into().unwrap()), out.len()), (6, 32));
     }
 }
@@ -2710,7 +2758,7 @@ mod derive_tests {
         lib.save(&recipe("Bad", "nope + 1", false), None).unwrap();
         let base = Arc::new(store.open(&path, None).unwrap());
 
-        let (shown, derived, skipped) = with_derived(&store, &base, &[], &[]).unwrap();
+        let (shown, derived, skipped) = with_derived(&store, &base, &[], &[], &[]).unwrap();
         let names: Vec<&str> = shown.recording().info().channels.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["v", "i", "Power"]);
         assert_eq!(
@@ -2720,7 +2768,7 @@ mod derive_tests {
         assert!(skipped.is_empty());
 
         let (shown, derived, skipped) =
-            with_derived(&store, &base, &["Half".into(), "Bad".into(), "Gone".into()], &[]).unwrap();
+            with_derived(&store, &base, &["Half".into(), "Bad".into(), "Gone".into()], &[], &[]).unwrap();
         assert_eq!(shown.recording().info().channels.len(), 4);
         assert_eq!(
             derived.iter().map(|d| (d.name.as_str(), d.channel)).collect::<Vec<_>>(),
@@ -2739,14 +2787,14 @@ mod derive_tests {
         assert_eq!(shown.recording().value_at(3, 1, &Default::default()), 22.0);
 
         // an automatic recipe can be left out of one file
-        let (shown, derived, _) = with_derived(&store, &base, &[], &["Power".into()]).unwrap();
+        let (shown, derived, _) = with_derived(&store, &base, &[], &["Power".into()], &[]).unwrap();
         assert!(derived.is_empty() && Arc::ptr_eq(&shown, &base));
 
         // with no recipes the file is just the recording
         for r in ["Power", "Needs gps", "Half", "Bad"] {
             lib.delete(r).unwrap();
         }
-        let (plain, derived, _) = with_derived(&store, &base, &[], &[]).unwrap();
+        let (plain, derived, _) = with_derived(&store, &base, &[], &[], &[]).unwrap();
         assert!(Arc::ptr_eq(&plain, &base) && derived.is_empty());
     }
 }

@@ -2038,6 +2038,12 @@ function saveSession(): void {
     views[t.path] = { t0: String(d.t0), t1: String(d.t1), ...(d.A != null ? { A: String(d.A) } : {}), ...(d.B != null ? { B: String(d.B) } : {}) };
   }
   if (Object.keys(views).length) session.views = views;
+  const groups: NonNullable<Session['groups']> = {};
+  for (const t of kept) {
+    const ms = t.ws ? undefined : fileOf(t.key)?.members;
+    if (ms && ms.length > 1) groups[t.path] = ms.slice(1).map((m) => ({ path: m.path, method: m.align.method, seconds: m.align.seconds, ...(m.align.channel ? { channel: m.align.channel } : {}), locked: m.align.locked, knots: m.knots, pairs: m.align.pairs }));
+  }
+  if (Object.keys(groups).length) session.groups = groups;
   session.at = Date.now();
   setSetting('sessions', { ...settings.sessions, [settings.folder]: session });
 }
@@ -2058,6 +2064,7 @@ async function restoreSession(s: Session | undefined, front: string | null = nul
     };
     for (const f of files) {
       await openPath(f);
+      for (const m of s?.groups?.[f] ?? []) await addToTab(m.path, m);
       at(f);
     }
     if (ws?.some((w) => w.shared)) await loadShared().catch(() => {});
@@ -3052,6 +3059,7 @@ let renamed: Record<string, string> = {};
 
 /** Asks the core to show `file` with the recipes it should have now, and fits the panes to the new channel list. */
 async function reapply(file: OpenFile, reopen = false): Promise<void> {
+  if (file.members) return reapplyGroup(file, reopen);
   const path = file.info.path;
   const have = new Set(recipes.list.map((r) => r.name));
   // the channels as they stand keep their order (and their numbers); what was added to this file follows
@@ -3102,6 +3110,39 @@ async function reapply(file: OpenFile, reopen = false): Promise<void> {
     void refreshMeasure();
     void requestResting();
   }
+}
+
+/** A tab with several files: the recipes apply to its primary, and may read the other files' channels (`"Close·2"`). */
+async function reapplyGroup(file: OpenFile, reopen: boolean): Promise<void> {
+  const ms = file.members!;
+  const prim = ms[0];
+  if (reopen) return void note('Scale, offset and missing values change with the file on its own: close the others to adjust it.');
+  const path = prim.path;
+  const have = new Set(recipes.list.map((r) => r.name));
+  const att = settings.fileRecipes[path] ?? [];
+  const off = settings.fileRecipesOff[path] ?? [];
+  const kept = prim.derived.filter((d) => !off.includes(d.name) && (d.automatic || att.includes(d.name))).map((d) => d.name);
+  const wanted = dedupe([...kept.map((n) => renamed[n] ?? n), ...att]).filter((n) => have.has(n));
+  const beforeNames = prim.info.channels.map((c) => c.name);
+  const before = ms.map((m) => ({ id: m.id, first: m.first, count: m.count }));
+  const progress = new Channel<Progress>();
+  progress.onmessage = (p) => onProgress(file.id, p);
+  let o: Opened;
+  try {
+    o = await invoke<Opened>('derive_apply', { file: prim.id, recipes: wanted, exclude: settings.fileRecipesOff[path] ?? [], group: file.id, progress });
+  } catch (e) {
+    editor.error = String(e);
+    return;
+  }
+  prim.info = o.info;
+  prim.derived = o.derived ?? [];
+  prim.missing = o.missing ?? [];
+  for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
+  const after = o.info.channels.map((c) => c.name);
+  await groupApply(file, ms, before, (n) => {
+    const k = after.indexOf(renamed[beforeNames[n]] ?? beforeNames[n]);
+    return k < 0 ? undefined : k;
+  });
 }
 
 /** A pane's channel numbers (and the table state keyed by them) under a new numbering; `to` is undefined for a gone channel. */
@@ -3181,9 +3222,9 @@ async function openMember(path: string): Promise<Member> {
 }
 
 /** Shows the tab's files as `order` (slot order): the core regroups them, and the panes follow their channels to their new numbers. */
-async function groupApply(f: OpenFile, order: Member[]): Promise<void> {
+async function groupApply(f: OpenFile, order: Member[], before?: { id: number; first: number; count: number }[], primaryTo?: (n: number) => number | undefined): Promise<void> {
   // where each file's channels were, before the numbers change
-  const old = membersOf(f).map((m) => ({ id: m.id, first: m.first, count: m.count }));
+  const old = before ?? membersOf(f).map((m) => ({ id: m.id, first: m.first, count: m.count }));
   const had = !!f.members;
   let gid: number | null = had ? f.id : null;
   let early: Progress | null = null;
@@ -3195,7 +3236,10 @@ async function groupApply(f: OpenFile, order: Member[]): Promise<void> {
   const to = (n: number): number | undefined => {
     const m = old.find((m) => n >= m.first && n < m.first + m.count);
     const k = m ? order.findIndex((o) => o.id === m.id) : -1;
-    return m && k >= 0 ? g.slots[k].first + (n - m.first) : undefined;
+    if (!m || k < 0) return undefined;
+    // the primary's own channels may have been renamed or gone (its recipes changed): they follow by name
+    const local = primaryTo && k === 0 && m.id === old[0].id ? primaryTo(n - m.first) : n - m.first;
+    return local == null ? undefined : g.slots[k].first + local;
   };
   order.forEach((m, i) => {
     m.first = g.slots[i].first;
@@ -3214,7 +3258,7 @@ async function groupApply(f: OpenFile, order: Member[]): Promise<void> {
     if (t.key !== tabs.active) d.panes.forEach((p) => remapPane(p, to));
     // the tab is named for its primary
     t.path = f.info.path;
-    t.name = tabName(f.info.path, f.info.part);
+    if (!t.compare) t.name = tabName(f.info.path, f.info.part);
   }
   if (state.file === f) {
     stack.panes.forEach((p) => remapPane(p, to));
@@ -3241,7 +3285,7 @@ function closeMembers(file: OpenFile): void {
 /** Whether two files' own times overlap: logged on one clock, most likely. */
 const overlaps = (a: [bigint, bigint], b: [bigint, bigint]) => a[0] <= b[1] && b[0] <= a[1];
 
-async function addToTab(path: string): Promise<void> {
+async function addToTab(path: string, saved?: NonNullable<Session['groups']>[string][number]): Promise<void> {
   const f = state.file;
   if (!f || live.on) return void note('Files join a live tab as sources: use + Add source on its strip.');
   const have = membersOf(f);
@@ -3249,12 +3293,69 @@ async function addToTab(path: string): Promise<void> {
   try {
     const m = await openMember(path);
     const order = [...have, m];
+    if (saved) {
+      // a session's file comes back with the alignment it had, knots and all
+      m.knots = saved.knots;
+      m.align = { ...m.align, method: saved.method as AlignMethod, seconds: saved.seconds, channel: saved.channel, locked: saved.locked, pairs: saved.pairs, ...mapFacts(saved.knots, m.own[0]) };
+      await groupApply(f, order);
+      publishSlots(f);
+      return;
+    }
     await groupApply(f, order);
     // files logged in one session share a clock; separate runs line up at their starts
     await alignSet(order.length, overlaps(order[0].own, m.own) ? 'clock' : 'starts');
   } catch (e) {
     note(`Couldn't add ${nameOf(path)}: ${e}`);
   }
+}
+
+/** Open together: the first file in a tab of its own, the others on its timeline (slots 2, 3, …). */
+async function openTogether(paths: string[]): Promise<void> {
+  const [first, ...rest] = paths;
+  if (!first) return;
+  await openPath(first);
+  const t = tabs.list.find((x) => x.path === first && !x.ws && !x.live);
+  if (t) await showTab(t.key);
+  for (const p of rest) await addToTab(p);
+}
+
+/** The first channel of up to four groups the two files share, a pane each with both files' channel (the names the files have in common). */
+function compareLayout(f: OpenFile): Pane[] {
+  const [a, b] = f.members!;
+  const mine = new Map(b.info.channels.map((c, k) => [c.name, k] as const));
+  const common = a.info.channels.map((c, k) => ({ k, name: c.name })).filter((c) => mine.has(c.name) && !a.derived.some((d) => d.channel === c.k));
+  const groups = groupChannels(a.path, a.info.channels);
+  const picks: number[] = [];
+  for (const g of groups) {
+    const c = common.find((c) => g.chs.includes(c.k));
+    if (c && picks.length < 4) picks.push(c.k);
+  }
+  for (const c of common) if (picks.length < 4 && !picks.includes(c.k)) picks.push(c.k);
+  return picks.map((k) => ({ channels: [k, b.first + mine.get(a.info.channels[k].name)!] }));
+}
+
+/** Compare runs: both files in one tab with starts aligned and a pane per channel they share; two files with no channel in common just open together. */
+async function compareRuns(a: string, b: string): Promise<void> {
+  await openTogether([a]);
+  const f = state.file;
+  if (!f || f.info.path !== a) return;
+  await addToTab(b);
+  if (!f.members || f.members.length < 2) return;
+  await alignSet(2, 'starts');
+  const panes = compareLayout(f);
+  if (!panes.length) return void note(`${nameOf(a)} and ${nameOf(b)} have no channel in common: they are open together.`);
+  stack.panes = panes;
+  stack.sel = 0;
+  normalize();
+  const t = tabs.list.find((x) => x.key === tabs.active);
+  if (t) {
+    t.name = `${shortOf(a)} vs ${shortOf(b)}`;
+    t.compare = true;
+  }
+  await tick();
+  renderPanes();
+  state.ovStale = true;
+  void requestView('exact');
 }
 
 async function closeSlot(slot: number): Promise<void> {
@@ -4328,6 +4429,8 @@ Object.assign(actions, {
       for (const t of [...tabs.list].filter((t) => t.path !== p)) await closeTab(t.key);
     })(),
   addToTab: (p: string) => void addToTab(p),
+  openTogether: (ps: string[]) => void openTogether(ps),
+  compare: (a: string, b: string) => void compareRuns(a, b),
   closeSlot: (n: number) => void closeSlot(n),
   makePrimary: (n: number) => void makePrimary(n),
   alignSet: (n: number, m: AlignMethod, a?: { seconds?: number; channel?: string }) => void alignSet(n, m, a),

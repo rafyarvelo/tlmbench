@@ -137,3 +137,45 @@ fn windowed_correlation_recovers_offset_and_drift_to_a_sample() {
         assert!((have - want).abs() < 1.5e6, "{own}: off by {} ms", (have - want) / 1e6);
     }
 }
+
+#[test]
+fn a_recipe_reads_another_files_channel_through_its_time_map() {
+    use tlmbench_expr::Recipe;
+    use tlmbench_store::Foreign;
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pb) = (dir.path().join("a.tlm"), dir.path().join("b.tlm"));
+    write(&pa, 20_000, 1.0, 0.0);
+    // b is the same signal logged 2.5 s ahead on its own clock, at 1 kHz too
+    write(&pb, 20_000, 1.0, 2.5);
+    let store = Store::new(Some(&dir.path().join("cache")));
+    let a = store.open(&pa, None).unwrap();
+    let b = Arc::new(store.open(&pb, None).unwrap());
+    let map = TimeMap::offset(2_500_000_000);
+    let foreign = [Foreign { name: "a·2".into(), opened: b, channel: 0, map }];
+    let recipe = |name: &str, expr: &str| Recipe {
+        name: name.into(),
+        expr: expr.into(),
+        unit: None,
+        category: None,
+        decimals: None,
+        automatic: false,
+    };
+    let d = store
+        .open_derived_cross(&a, &[recipe("Diff", "a - \"a·2\""), recipe("Unknown", "a - \"a·3\"")], &foreign)
+        .unwrap();
+    assert_eq!(d.names, ["Diff"], "a name no file has is skipped");
+    let o = d.opened.unwrap();
+    let diff = o.recording().read(0, 3000, 17_000).to_f64(1.0, 0.0);
+    // the same signal at the same shared moments: nothing left but float rounding
+    assert!(diff.iter().all(|x| x.abs() < 1e-3), "worst {}", diff.iter().fold(0.0f64, |m, x| m.max(x.abs())));
+    // a wrong map shows: shifted by 50 ms the difference is large
+    let off = [Foreign {
+        name: "a·2".into(),
+        opened: Arc::new(store.open(&pb, None).unwrap()),
+        channel: 0,
+        map: TimeMap::offset(2_450_000_000),
+    }];
+    let d = store.open_derived_cross(&a, &[recipe("Diff", "a - \"a·2\"")], &off).unwrap();
+    let diff = d.opened.unwrap().recording().read(0, 3000, 17_000).to_f64(1.0, 0.0);
+    assert!(diff.iter().any(|x| x.abs() > 0.1), "a different map gives a different channel (and its own cache entry)");
+}

@@ -166,13 +166,13 @@
     const w = (adjust ?? []).find((a) => /bad/.test(a.when ?? ''));
     if (w) throw `Missing when: There's no channel called bad (at 0)`;
   }
-  function applyRecipes(r, attached, exclude = []) {
+  function applyRecipes(r, attached, exclude = [], extra = []) {
     const named = [...new Set(attached)].map((n) => fake.recipes.find((x) => x.name === n)).filter(Boolean);
     const picked = named.concat(fake.recipes.filter((x) => x.automatic && !exclude.includes(x.name) && !named.includes(x)));
     const skipped = attached.filter((n) => !fake.recipes.some((x) => x.name === n)).map((name) => ({ name, why: 'There is no recipe with that name' }));
     const derived = [];
     for (const x of picked) {
-      const missing = exprNames(x.expr).find((n) => !r.base.some((c) => c.name === n) && !fake.recipes.some((y) => y.name === n));
+      const missing = exprNames(x.expr).find((n) => !r.base.some((c) => c.name === n) && !extra.includes(n) && !fake.recipes.some((y) => y.name === n));
       if (missing) {
         if (attached.includes(x.name)) skipped.push({ name: x.name, why: `There's no channel called ${missing}` });
         continue;
@@ -681,13 +681,15 @@
       if (!o) throw 'that file is not open';
       return channels.filter((c) => (o.r.missing ?? []).some((m) => m.channel === c)).map((c) => ({ channel: c, count: 3, ns: 3e6 }));
     },
-    derive_apply({ file, recipes, exclude, progress }) {
+    derive_apply({ file, recipes, exclude, group, progress }) {
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
       const r = o.r;
       r.chans = r.base.slice();
-      const { derived, skipped } = applyRecipes(r, recipes, exclude ?? []);
-      fake.derivedApplied.push({ file, recipes, exclude });
+      // the other files of the tab: their channels by the names the tab gives them
+      const extra = (fake.open.get(group)?.group?.members ?? []).slice(1).flatMap((m, i) => fake.open.get(m.file).r.chans.map((c) => `${c.name}·${i + 2}`));
+      const { derived, skipped } = applyRecipes(r, recipes, exclude ?? [], extra);
+      fake.derivedApplied.push({ file, recipes, exclude, group });
       const info = { path: r.path, format: 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
       return { id: file, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: { state: 'built' }, derived, skipped, missing: r.missing ?? [] };
     },

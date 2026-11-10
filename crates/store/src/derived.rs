@@ -9,6 +9,7 @@ use std::ops::Range;
 use std::path::Path;
 
 use rayon::prelude::*;
+use tlmbench_core::timemap::TimeMap;
 use tlmbench_core::{Recording, TimeSource};
 use tlmbench_decode::cache::{DerivedChannel, DerivedSpec, DerivedTime};
 use tlmbench_expr::recipe::{self, Recipe, Resolved};
@@ -58,13 +59,61 @@ pub struct RecEnv<'a> {
     t_first: i64,
     labels: HashMap<(String, String), f64>,
     limits: HashMap<(String, bool), (Option<f64>, Option<f64>)>,
+    /// Channels of other files in the tab, by the name the tab gives them (`Close·2`).
+    foreign: HashMap<&'a str, &'a Foreign>,
+}
+
+/// A channel of another file of a tab, read through the file's time map onto this recording's timeline.
+#[derive(Debug)]
+pub struct Foreign {
+    /// What the tab calls it: `Close·2`.
+    pub name: String,
+    pub opened: Arc<Opened>,
+    /// The channel's number in its own file.
+    pub channel: usize,
+    /// The file's clock to the tab's timeline.
+    pub map: TimeMap,
 }
 
 impl<'a> RecEnv<'a> {
     pub fn new(rec: &'a dyn Recording) -> Self {
         let info = rec.info();
         let idx = info.channels.iter().enumerate().map(|(i, c)| (c.name.as_str(), i)).collect();
-        Self { rec, idx, t_first: info.t_first.unwrap_or(0), labels: HashMap::new(), limits: HashMap::new() }
+        Self {
+            rec,
+            idx,
+            t_first: info.t_first.unwrap_or(0),
+            labels: HashMap::new(),
+            limits: HashMap::new(),
+            foreign: HashMap::new(),
+        }
+    }
+
+    /// Channels of the tab's other files, to be named in expressions. Each is held at its last sample (or
+    /// interpolated by `interp`) onto the samples of this recording.
+    pub fn with_foreign(mut self, foreign: &'a [Foreign]) -> Self {
+        self.foreign = foreign.iter().map(|f| (f.name.as_str(), f)).collect();
+        self
+    }
+
+    /// Another file's channel over the shared times of samples `a..b` of this recording: from the last sample at or
+    /// before the first, to one past the last (for interpolation).
+    fn read_foreign(&self, f: &Foreign, a: usize, b: usize) -> Series {
+        let rec = f.opened.recording();
+        let n = rec.info().samples;
+        if a >= b || n == 0 {
+            return Series::new(Vec::new(), Grid::Stamps(Vec::new().into()));
+        }
+        let (ta, tb) = (self.rec.time_at(a), self.rec.time_at(b - 1));
+        let lo = rec.lower_bound(f.map.inverse(ta).saturating_add(1)).saturating_sub(1);
+        let hi = (rec.lower_bound(f.map.inverse(tb).saturating_add(1)) + 1).min(n).max(lo + 1);
+        let (scale, offset) = rec.scale_offset(f.channel);
+        let v = rec.read(f.channel, lo, hi).to_f64(scale, offset);
+        let t: Vec<f64> =
+            rec.read_times(lo, hi).iter().map(|&t| (f.map.apply(t) - self.t_first) as f64 / 1e9).collect();
+        let mut s = Series::new(v, Grid::Stamps(t.into()));
+        s.ch = Some(f.name.clone());
+        s
     }
 
     /// Value labels (`channel`, `text`) → stored number, for `state == 'flight'`.
@@ -86,9 +135,12 @@ impl Env for RecEnv<'_> {
     }
 
     fn read(&self, name: &str, r: Range<usize>) -> Option<Series> {
-        let c = *self.idx.get(name)?;
         let info = self.rec.info();
         let (a, b) = (r.start.min(info.samples), r.end.min(info.samples));
+        if let Some(f) = self.foreign.get(name) {
+            return Some(self.read_foreign(f, a, b));
+        }
+        let c = *self.idx.get(name)?;
         let (scale, offset) = self.rec.scale_offset(c);
         let v = self.rec.read(c, a, b).to_f64(scale, offset);
         let grid = match &info.time {
@@ -134,7 +186,12 @@ impl Store {
     /// Computes `recipes` over `base` (those whose channels it has) into a recording of their own. The result is cached
     /// by the recording and the recipes, so reopening costs nothing; change a recipe and only its entry is rebuilt.
     pub fn open_derived(&self, base: &Opened, recipes: &[Recipe]) -> Result<Derived> {
-        self.open_derived_with(base, recipes, |e| e)
+        self.open_derived_with(base, recipes, |e| e, &[])
+    }
+
+    /// [`Store::open_derived`] where the recipes may also read channels of the tab's other files (`foreign`).
+    pub fn open_derived_cross(&self, base: &Opened, recipes: &[Recipe], foreign: &[Foreign]) -> Result<Derived> {
+        self.open_derived_with(base, recipes, |e| e.with_foreign(foreign), foreign)
     }
 
     /// [`Store::open_derived`] with the environment adjusted (value labels and limits for the recipes that use them).
@@ -143,10 +200,12 @@ impl Store {
         base: &'a Opened,
         recipes: &[Recipe],
         env: impl FnOnce(RecEnv<'a>) -> RecEnv<'a>,
+        foreign: &[Foreign],
     ) -> Result<Derived> {
         let rec = base.recording();
         let info = rec.info();
-        let has: std::collections::HashSet<&str> = info.channels.iter().map(|c| c.name.as_str()).collect();
+        let has: std::collections::HashSet<&str> =
+            info.channels.iter().map(|c| c.name.as_str()).chain(foreign.iter().map(|f| f.name.as_str())).collect();
         let (ok, skipped) = recipe::resolve(recipes, &|n| has.contains(n));
         if ok.is_empty() {
             return Ok(Derived { opened: None, names: Vec::new(), skipped });
@@ -157,6 +216,16 @@ impl Store {
         let mut h = blake3::Hasher::new();
         h.update(base.fingerprint().as_bytes());
         h.update(&rec.layout_id());
+        // other files' channels and where they sit on this timeline are part of what is computed
+        for f in foreign {
+            h.update(f.name.as_bytes());
+            h.update(f.opened.fingerprint().as_bytes());
+            h.update(&(f.channel as u64).to_le_bytes());
+            for &(a, b) in &f.map.knots {
+                h.update(&a.to_le_bytes());
+                h.update(&b.to_le_bytes());
+            }
+        }
         for r in &ok {
             h.update(r.key().as_bytes());
             // a recipe that names a label or a limit depends on them too

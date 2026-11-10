@@ -58,9 +58,9 @@ use tlmbench_decode::OpenOptions;
 use tlmbench_decode::profile::ImportProfile;
 
 pub use crate::adjust::Adjust;
-pub use crate::derived::{Derived, ExprEnv, RecEnv};
+pub use crate::derived::{Derived, ExprEnv, Foreign, RecEnv};
 use crate::pyr::Loaded;
-pub use crate::recipes::{Library, PREVIEW_SAMPLES, Preview, check};
+pub use crate::recipes::{Library, PREVIEW_SAMPLES, Preview, check, check_cross};
 
 /// The cache's size limits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

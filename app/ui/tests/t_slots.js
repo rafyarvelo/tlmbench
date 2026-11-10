@@ -9,6 +9,8 @@ const B = `${DIR}/gps.tlm`;
 const files = {
   [A]: {},
   [B]: { channels: ['lat', 'lon', 'accel_x'], units: ['deg', 'deg', 'g'], samples: 20000, rate: 100 },
+  [`${DIR}/bench.tlm`]: { channels: ['volts', 'amps'], units: ['V', 'A'], samples: 5000, rate: 50 },
+  [`${DIR}/scope.tlm`]: { channels: ['ch1'], units: ['V'], samples: 5000, rate: 50, relative: true },
 };
 
 run(
@@ -94,6 +96,25 @@ run(
     await p.click('#explorer .row.slot[data-slot="2"] [data-closeslot]');
     check('Close this file leaves one', await until(() => document.querySelectorAll('#explorer .row.slot').length === 0));
     check('and the channels of that file leave the panes', !(await app('panes')).flat().some((c) => c >= 3), await app('panes'));
+
+    // Compare runs: two picked files, starts aligned, a pane per channel both have
+    const sel = async (a, b) => {
+      await p.click(`#explorer .row.file[data-path="${a}"]`);
+      await p.click(`#explorer .row.file[data-path="${b}"]`, { modifiers: ['ControlOrMeta'] });
+    };
+    await sel(A, B);
+    check('two picked files offer Compare and Open together', (await visible('[data-fsel="compare"]')) && (await visible('[data-fsel="together"]')));
+    await p.click('[data-fsel="compare"]');
+    check('the compare tab is named for both', await until(() => /flight vs gps/i.test(document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent ?? '')), await text('#wsTabs [aria-selected=true] .nm'));
+    check('starts are aligned', await until(() => window.__tlmFake.aligns.at(-1)?.method.method === 'starts'));
+    check('one pane pairs the shared channel of both files', (await until(() => window.__tlmApp.panes().length === 1)) && JSON.stringify(await app('panes')) === '[[0,8]]', await app('panes'));
+
+    // Open together: the first is the primary, the others follow on its timeline
+    const C = `${DIR}/bench.tlm`;
+    await sel(C, `${DIR}/scope.tlm`);
+    await p.click('[data-fsel="together"]');
+    check('Open together: one tab, two slots', await until(() => /^bench/.test(document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent ?? '') && document.querySelectorAll('#explorer .row.slot').length === 2));
+    check('separate runs line up at their starts', /starts aligned/.test(await text('#explorer .row.slot[data-slot="2"] [data-asum]')) || /same clock/.test(await text('#explorer .row.slot[data-slot="2"] [data-asum]')));
   },
   { files, launch: null },
 );

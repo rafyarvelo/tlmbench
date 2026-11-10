@@ -213,6 +213,7 @@
     { label: 'Open only this', data: { fm: 'only' }, disabled: !listedPath(path), run: () => actions.openOnly(path) },
     { label: 'Import settings…', data: { fm: 'import' }, disabled: !/\.(csv|tsv|txt)$/i.test(path), run: () => actions.importAgain(path) },
     { label: 'Format descriptor…', data: { fm: 'descriptor' }, disabled: /\.(csv|tsv|txt|tlm|parquet)$/i.test(path), run: () => actions.descriptorForm(path) },
+    { label: ui.file && ui.path !== path ? `Compare with ${ui.file}` : 'Compare runs', data: { fm: 'compare' }, disabled: !ui.file || ui.path === path || !listedPath(path) || ui.slots.length > 1, run: () => actions.compare(ui.path, path) },
     { label: 'Add to this tab', data: { fm: 'add' }, disabled: !ui.file || inTab(path) || !listedPath(path), run: () => actions.addToTab(path) },
     { label: 'Make primary', data: { fm: 'primary' }, disabled: !slotOf(path) || slotOf(path)!.slot === 1, run: () => actions.makePrimary(slotOf(path)!.slot) },
     { label: 'Alignment and channel prefix…', data: { fm: 'align' }, disabled: !slotOf(path) || slotOf(path)!.slot === 1, run: () => (alignOpen = slotOf(path)!.slot) },
@@ -323,6 +324,8 @@
     <div class="selbar" id="fileSelBar" role="toolbar" aria-label="Selected files">
       <span class="cap">{pickedFiles.length} files</span><span class="spacer"></span>
       <button class="tbtn primary" data-fsel="open" data-tip="Open each in a tab of its own (Enter)" onclick={() => (actions.openPaths(pickedFiles.filter(listedPath)), (pickedFiles = []))}>Open</button>
+      <button class="tbtn" data-fsel="together" data-tip="Show them in one tab on the same timeline: the first is the primary" onclick={() => (actions.openTogether(pickedFiles.filter(listedPath)), (pickedFiles = []))}>Open together</button>
+      {#if pickedFiles.length === 2}<button class="tbtn" data-fsel="compare" data-tip="Compare runs: starts aligned, a pane for each channel both have" onclick={() => (actions.compare(pickedFiles[0], pickedFiles[1]), (pickedFiles = []))}>Compare</button>{/if}
       {#if filesOpen.length}<button class="tbtn" data-fsel="close" onclick={() => (actions.closePaths(filesOpen), (pickedFiles = []))}>Close</button>{/if}
       <button class="ibtn" data-fsel="clear" aria-label="Clear the selection" data-tip="Clear the selection (Esc)" onclick={() => (pickedFiles = [])}>{@html ICON.close}</button>
     </div>

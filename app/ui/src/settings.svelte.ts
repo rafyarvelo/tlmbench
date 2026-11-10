@@ -99,6 +99,8 @@ export interface Session {
   ws?: { path: string; name: string; at: number; shared?: string }[];
   activeWs?: string;
   views?: Record<string, { t0: string; t1: string; A?: string; B?: string }>;
+  /** Tabs with several files, by the primary's path: the others in slot order with their alignment (the knots reproduce it exactly). */
+  groups?: Record<string, { path: string; method: string; seconds: number; channel?: string; locked: boolean; knots: [string, string][]; pairs: [number, number][] }[]>;
   at?: number;
 }
 

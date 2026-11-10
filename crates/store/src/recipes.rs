@@ -178,9 +178,18 @@ impl Env for Head<'_> {
 /// Checks `expr` against `rec`'s channels and summarizes what it gives over the first [`PREVIEW_SAMPLES`] samples.
 /// Errors name the character they point at.
 pub fn check(rec: &dyn Recording, expr: &str) -> std::result::Result<Preview, ExprError> {
+    check_cross(rec, expr, &[])
+}
+
+/// [`check`] where the expression may also read channels of the tab's other files.
+pub fn check_cross(
+    rec: &dyn Recording,
+    expr: &str,
+    foreign: &[crate::Foreign],
+) -> std::result::Result<Preview, ExprError> {
     let tree = tlmbench_expr::parse(expr)?;
     let n = rec.info().samples.min(PREVIEW_SAMPLES);
-    let env = Head { inner: RecEnv::new(rec), n };
+    let env = Head { inner: RecEnv::new(rec).with_foreign(foreign), n };
     let (mut values, mut min, mut max, mut sum) = (0usize, f64::INFINITY, f64::NEG_INFINITY, 0.0);
     let number = tlmbench_expr::run(&tree, &env, tlmbench_expr::CHUNK, &mut |_, s| {
         for &x in s.v.iter().filter(|x| !x.is_nan()) {
