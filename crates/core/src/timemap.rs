@@ -177,27 +177,37 @@ pub struct Grid {
 }
 
 impl Grid {
-    /// Resamples `(t, v)` points (increasing times) onto a grid of `n` points over their span by linear
-    /// interpolation, so two series logged at different rates can be compared.
+    /// `n` points from `t0` by `step_ns` of the series `(times, values)` (increasing times), by linear
+    /// interpolation; outside the series the nearest value holds.
+    pub fn at(times: &[Timestamp], values: &[f64], t0: Timestamp, step_ns: i64, n: usize) -> Grid {
+        let mut out = Vec::with_capacity(n);
+        let mut j = 0;
+        for k in 0..n {
+            let t = t0 + step_ns * k as i64;
+            while j + 2 < times.len() && times[j + 1] < t {
+                j += 1;
+            }
+            out.push(match times.len() {
+                0 => f64::NAN,
+                1 => values[0],
+                _ => {
+                    let (a, b) = (times[j], times[j + 1]);
+                    let u = if b > a { ((t - a) as f64 / (b - a) as f64).clamp(0.0, 1.0) } else { 0.0 };
+                    values[j] + (values[j + 1] - values[j]) * u
+                }
+            });
+        }
+        Grid { start_ns: t0, step_ns, values: out }
+    }
+
+    /// Resamples a series onto `n` points over its span.
     pub fn resample(times: &[Timestamp], values: &[f64], n: usize) -> Option<Grid> {
         if times.len() < 2 || n < 2 || times.len() != values.len() {
             return None;
         }
         let (t0, t1) = (times[0], times[times.len() - 1]);
-        let step = ((t1 - t0) as f64 / (n - 1) as f64).max(1.0);
-        let mut j = 0;
-        let out = (0..n)
-            .map(|k| {
-                let t = t0 as f64 + step * k as f64;
-                while j + 2 < times.len() && (times[j + 1] as f64) < t {
-                    j += 1;
-                }
-                let (a, b) = (times[j] as f64, times[j + 1] as f64);
-                let u = ((t - a) / (b - a)).clamp(0.0, 1.0);
-                values[j] + (values[j + 1] - values[j]) * u
-            })
-            .collect();
-        Some(Grid { start_ns: t0, step_ns: step.round() as i64, values: out })
+        let step = ((t1 - t0) / (n as i64 - 1)).max(1);
+        Some(Grid::at(times, values, t0, step, n))
     }
 }
 

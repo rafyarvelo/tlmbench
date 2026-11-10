@@ -116,3 +116,24 @@ fn a_known_shift_is_found_by_correlation_and_applied() {
     // b's moment own is true own + 2.5, which a's clock calls own + 2.5: the shift is 2.5 s, to within a sample
     assert!((shift - 2_500_000_000).abs() < 1_000_000 * 5, "{shift}"); // a grid step is 5 ms here
 }
+
+#[test]
+fn windowed_correlation_recovers_offset_and_drift_to_a_sample() {
+    use tlmbench_store::align::{Method, estimate};
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pb) = (dir.path().join("a.tlm"), dir.path().join("b.tlm"));
+    write(&pa, 20_000, 1.0, 0.0);
+    write(&pb, 20_000, 1.0002, 1.2345);
+    let store = Store::new(Some(&dir.path().join("cache")));
+    let a = store.open(&pa, None).unwrap();
+    let b = store.open(&pb, None).unwrap();
+    let got =
+        estimate(dir.path(), &a, &TimeMap::identity(), &b, &Method::Xcorr { channel: None, windows: Some(3) }).unwrap();
+    assert!(got.quality > 0.9, "{}", got.quality);
+    assert!(got.note.as_deref().unwrap().starts_with("Matched on a:"), "{:?}", got.note);
+    for own in [0.5, 8.0, 19.5] {
+        let want = (own * 1.0002 + 1.2345) * 1e9;
+        let have = got.map.apply((own * 1e9) as i64) as f64;
+        assert!((have - want).abs() < 1.5e6, "{own}: off by {} ms", (have - want) / 1e6);
+    }
+}

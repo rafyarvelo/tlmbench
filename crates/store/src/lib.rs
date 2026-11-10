@@ -21,6 +21,7 @@
 //! channel of the request at once; views from the pyramid use the chunks already there and read the rest in place.
 
 mod adjust;
+pub mod align;
 pub mod checks;
 mod chunks;
 mod derived;
