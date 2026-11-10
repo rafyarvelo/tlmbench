@@ -7,12 +7,13 @@
   import { untrack } from 'svelte';
   import { groupChannels } from '../groups';
   import { ICON } from '../icons';
-  import { chCss, chName, chUnit } from '../display.svelte';
+  import { chBase, chCss, chName, chUnit } from '../display.svelte';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { addChannels, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui } from '../ui.svelte';
+  import Alignment from './Alignment.svelte';
   import CheckBadge from './CheckBadge.svelte';
   import { failingChannels } from '../checks.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -44,7 +45,10 @@
   const isOpen = (path: string) => path === ui.path;
   /** Channels used by a failing check on the open file. */
   const failing = $derived(ui.path ? failingChannels(ui.path) : new Map());
-  const inTab = (path: string) => tabs.list.some((t) => t.path === path);
+  const inTab = (path: string) => tabs.list.some((t) => t.path === path) || ui.slots.some((s) => s.path === path);
+  const slotOf = (path: string) => ui.slots.find((s) => s.path === path);
+  /** The file whose Alignment is showing (its slot number). */
+  let alignOpen = $state<number | null>(null);
   /** The open files, each with the tab a click brings forward (its file tab, else a layout shown on it). */
   const openFiles = $derived(
     [...new Set(tabs.list.map((t) => t.path))].map((path) => {
@@ -209,7 +213,10 @@
     { label: 'Open only this', data: { fm: 'only' }, disabled: !listedPath(path), run: () => actions.openOnly(path) },
     { label: 'Import settings…', data: { fm: 'import' }, disabled: !/\.(csv|tsv|txt)$/i.test(path), run: () => actions.importAgain(path) },
     { label: 'Format descriptor…', data: { fm: 'descriptor' }, disabled: /\.(csv|tsv|txt|tlm|parquet)$/i.test(path), run: () => actions.descriptorForm(path) },
-    { label: 'Close this file', data: { fm: 'close' }, disabled: !inTab(path), run: () => actions.closePath(path) },
+    { label: 'Add to this tab', data: { fm: 'add' }, disabled: !ui.file || inTab(path) || !listedPath(path), run: () => actions.addToTab(path) },
+    { label: 'Make primary', data: { fm: 'primary' }, disabled: !slotOf(path) || slotOf(path)!.slot === 1, run: () => actions.makePrimary(slotOf(path)!.slot) },
+    { label: 'Alignment and channel prefix…', data: { fm: 'align' }, disabled: !slotOf(path) || slotOf(path)!.slot === 1, run: () => (alignOpen = slotOf(path)!.slot) },
+    { label: 'Close this file', data: { fm: 'close' }, disabled: !inTab(path), run: () => (slotOf(path) ? actions.closeSlot(slotOf(path)!.slot) : actions.closePath(path)) },
     { label: 'Close all files', data: { fm: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
   ];
   const inSel = (ch: number) => stack.panes[stack.sel]?.channels.includes(ch) ?? false;
@@ -400,11 +407,20 @@
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
+      {#if ui.file && !ui.start}<button class="tbtn" data-addtab data-tip="Show it in the tab in front, on the same timeline" onclick={(e) => (e.stopPropagation(), actions.addToTab(path))}>Add to tab</button>{/if}
     {/if}
   </div>
   {#if open && !fileShut(path)}
     <div id="chans" class="chans" role="group">
-      {#if categorised}
+      {#if ui.slots.length > 1}
+        {#each ui.slots as sl (sl.slot)}
+          {@render slotHead(sl, depth + 1)}
+          {#if alignOpen === sl.slot && sl.slot > 1}<Alignment slot={sl} />{/if}
+          {#each ui.channels.slice(sl.first, sl.first + sl.count) as c, k (sl.first + k)}
+            {#if chanMatch(c) || matcher.test(name)}{@render chanRow(sl.first + k, depth + 2)}{/if}
+          {/each}
+        {/each}
+      {:else if categorised}
         {#each groups as g (g.name)}
           {@const shut = settings.exCatClosed.includes(g.name)}
           {@const vis = g.chs.filter((ch) => chanMatch(ui.channels[ch]) || matcher.test(name))}
@@ -432,6 +448,19 @@
   {/if}
 {/snippet}
 
+{#snippet slotHead(sl: (typeof ui.slots)[number], depth: number)}
+  <div class="row slot" role="treeitem" aria-selected="false" tabindex="0" style="--d: {depth}" data-slot={sl.slot} data-tip={sl.path}
+    onclick={() => sl.slot > 1 && (alignOpen = alignOpen === sl.slot ? null : sl.slot)}
+    onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), sl.slot > 1 && (alignOpen = alignOpen === sl.slot ? null : sl.slot))}>
+    <b class="slotn">{sl.slot}</b><span class="nm">{sl.name}</span>
+    {#if sl.slot === 1}<span class="meta" data-primary>primary</span>{:else}<span class="meta" data-asum>{sl.align.locked ? 'locked · ' : ''}{({ starts: 'starts aligned', clock: 'same clock', timesrc: 'time channel', xcorr: 'correlated', events: 'events', sync: 'sync points', manual: 'offset' })[sl.align.method]}</span>{/if}
+    <span class="slotact">
+      {#if sl.slot > 1}<button class="linkbtn" data-makeprimary data-tip="Make this file the primary: file 1 keeps plain channel names and defines time zero" onclick={(e) => (e.stopPropagation(), actions.makePrimary(sl.slot))}>Make primary</button>{/if}
+      <button class="ibtn" data-closeslot aria-label="Close {sl.name}" data-tip="Close this file" onclick={(e) => (e.stopPropagation(), actions.closeSlot(sl.slot))}>{@html ICON.close}</button>
+    </span>
+  </div>
+{/snippet}
+
 {#snippet chanRow(ch: number, depth: number)}
   {@const c = ui.channels[ch]}
   {@const where = elsewhere(ch)}
@@ -453,11 +482,37 @@
     onkeydown={(e) => key(e, { kind: 'chan', ch })}
   >
     <button class="box" role="checkbox" aria-checked={inSel(ch)} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
-    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{chName(ch)}</span>{#if failing.has(c.name)}<span class="chkdot" class:warn={failing.get(c.name) === 'warn'} data-chkdot data-tip="Used by a failing check" aria-label="used by a failing check"></span>{/if}{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.missing && !settings.quietUI}<span class="miss" data-miss={c.missing} data-tip="{c.missing.toLocaleString()} samples are missing in this file" aria-label="{c.missing} missing">⌀ {c.missing.toLocaleString()}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
+    {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{ui.slots.length > 1 ? chBase(ch) : chName(ch)}</span>{#if failing.has(c.name)}<span class="chkdot" class:warn={failing.get(c.name) === 'warn'} data-chkdot data-tip="Used by a failing check" aria-label="used by a failing check"></span>{/if}{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.missing && !settings.quietUI}<span class="miss" data-miss={c.missing} data-tip="{c.missing.toLocaleString()} samples are missing in this file" aria-label="{c.missing} missing">⌀ {c.missing.toLocaleString()}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
   </div>
 {/snippet}
 
 <style>
+  .slot {
+    gap: 6px;
+  }
+  .slotn {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-muted);
+  }
+  .slotact {
+    display: none;
+    margin-left: auto;
+    gap: 6px;
+    align-items: center;
+  }
+  .slot:hover .slotact,
+  .slot:focus-within .slotact {
+    display: inline-flex;
+  }
   .chkdot {
     flex: none;
     width: 6px;

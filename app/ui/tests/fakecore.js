@@ -99,6 +99,44 @@
     const index = time === 'index';
     return { path, chans, samples, rate: index ? 1 : rate, built, done: built ? samples : 0, progress: null, t0: index || relative ? 0n : T0, index };
   }
+  // several files in one tab: a group is a composite recording (channels slot after slot, `·n` on the later files)
+  // whose views, values and stats route to each file through its time map, as the core's `Group` does
+  const kn = (knots) => (knots ?? []).map(([a, b]) => [BigInt(a), BigInt(b)]);
+  function knotsAt(knots, x, back = false) {
+    const k = kn(knots).map(([a, b]) => (back ? [b, a] : [a, b]));
+    if (!k.length) return x;
+    if (k.length === 1) return x - k[0][0] + k[0][1];
+    let i = k.findIndex((p) => p[0] > x);
+    i = i < 0 ? k.length - 1 : Math.max(1, i);
+    return k[i - 1][1] + ((x - k[i - 1][0]) * (k[i][1] - k[i - 1][1])) / (k[i][0] - k[i - 1][0]);
+  }
+  function groupOut(id, o) {
+    const g = o.group;
+    let first = 0;
+    const slots = g.members.map((m) => {
+      const r = fake.open.get(m.file).r;
+      const out = { file: m.file, first, count: r.chans.length, knots: m.knots, own: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))] };
+      first += r.chans.length;
+      return out;
+    });
+    const a = slots.map((s) => knotsAt(s.knots, BigInt(s.own[0])));
+    const b = slots.map((s) => knotsAt(s.knots, BigInt(s.own[1])));
+    const lo = a.reduce((x, y) => (y < x ? y : x));
+    const hi = b.reduce((x, y) => (y > x ? y : x));
+    const p = fake.open.get(g.members[0].file).r;
+    const info = { path: p.path, format: 'tlm', samples: p.samples, time: { kind: 'rate', hz: p.rate }, channels: o.r.chans, skipped: [] };
+    return { id, info, range: [String(lo), String(hi)], status: { state: 'built' }, slots };
+  }
+  function groupRoute(o, ch) {
+    let first = 0;
+    for (let i = 0; i < o.group.members.length; i++) {
+      const m = o.group.members[i];
+      const r = fake.open.get(m.file).r;
+      if (ch < first + r.chans.length) return { m, r, local: ch - first };
+      first += r.chans.length;
+    }
+    return null;
+  }
   // a stand-in for the core's parser: enough to tell a finished expression from a broken one, and which names it reads
   const FNS = new Set(['abs', 'sqrt', 'ln', 'log', 'log10', 'exp', 'pow', 'min', 'max', 'clamp', 'round', 'floor', 'ceil', 'sign', 'sin', 'cos', 'tan', 'delta', 'prev', 'pct_change', 'rate', 'cumsum', 'integral', 'sma', 'ema', 'rolling_std', 'median', 'lowpass', 'highpass', 'bandpass', 'mean', 'std', 'first', 'last', 'count', 'sum', 'if', 'interp', 'pi', 'e']);
   function exprError(expr) {
@@ -283,6 +321,11 @@
     eventSaves: [],
     /** The core's check sets, what each check gets on a file (by check name: { verdict, runs: [[from, to] seconds after the start], worst, value, function, limit, message, channels }), the runs and previews it was asked for. */
     checkSets: [],
+    /** Several files in one tab: each group_set's files, group_map and align_estimate calls, and what a method returns instead of the default (`{ knots, residuals, quality, note, channel }`, or an Error to fail). */
+    groupSets: [],
+    groupMaps: [],
+    aligns: [],
+    alignResults: {},
     checkOutcomes: {},
     checkRuns: [],
     checkPreviews: [],
@@ -729,6 +772,44 @@
       }
       return buf;
     },
+    group_set({ group, members }) {
+      const rs = members.map((m) => fake.open.get(m.file)?.r);
+      if (rs.some((r) => !r)) throw 'that file is not open';
+      const chans = rs.flatMap((r, i) => r.chans.map((c) => ({ ...c, name: i ? `${c.name}·${i + 1}` : c.name })));
+      const comp = Object.assign(Object.create(rs[0]), { chans });
+      const id = group ?? nextFile++;
+      const o = { r: comp, group: { members: members.map((m) => ({ file: m.file, knots: m.knots })) } };
+      fake.open.set(id, o);
+      fake.groupSets.push(members.map((m) => m.file));
+      return groupOut(id, o);
+    },
+    group_map({ group, slot, knots }) {
+      const o = fake.open.get(group);
+      o.group.members[slot].knots = knots;
+      fake.groupMaps.push({ slot, knots });
+      return groupOut(group, o);
+    },
+    align_estimate({ group, slot, method }) {
+      const o = fake.open.get(group);
+      fake.aligns.push({ slot, method });
+      const rf = fake.open.get(o.group.members[0].file).r;
+      const tf = fake.open.get(o.group.members[slot].file).r;
+      const rmap = o.group.members[0].knots;
+      const res = fake.alignResults[method.method];
+      if (res instanceof Error) throw res.message;
+      if (res) return { knots: res.knots, residuals: res.residuals ?? [], quality: res.quality ?? 1, note: res.note ?? null, channel: res.channel ?? null };
+      switch (method.method) {
+        case 'starts': return { knots: [['0', String(knotsAt(rmap, timeAt(rf, 0)) - timeAt(tf, 0))]], residuals: [], quality: 1, note: null, channel: null };
+        case 'clock': return { knots: rmap, residuals: [], quality: 1, note: null, channel: null };
+        case 'manual': return { knots: [['0', String(knotsAt(rmap, timeAt(rf, 0)) - timeAt(tf, 0) + BigInt(Math.round(method.seconds * 1e9)))]], residuals: [], quality: 1, note: null, channel: null };
+        case 'sync': {
+          const p = method.pairs.map(([a, b]) => [BigInt(a), BigInt(b)]);
+          const knots = p.length === 1 ? [['0', String(p[0][1] - p[0][0])]] : [p[0], p[p.length - 1]].map(([a, b]) => [String(a), String(b)]);
+          return { knots, residuals: p.map(([a]) => [String(a), 0]), quality: 1, note: null, channel: null };
+        }
+        default: throw 'No clear match';
+      }
+    },
     close({ file }) {
       fake.open.delete(file);
       return null;
@@ -737,6 +818,20 @@
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
       const r = o.r;
+      if (o.group) {
+        const parts = entries.map((e) => {
+          const traces = e.channels
+            .filter((ch) => ch < r.chans.length)
+            .map((ch) => {
+              const { m, r: pr, local } = groupRoute(o, ch);
+              const vp = { ...e, t0: String(knotsAt(m.knots, BigInt(e.t0), true)), t1: String(knotsAt(m.knots, BigInt(e.t1), true)) };
+              const tr = gaps(pr, vp, reduce(pr, local, vp, pr.done || 0));
+              return { channel: ch, coarse: false, fromPyramid: true, reduceUs: 5, ...tr, t: tr.t.map((t) => knotsAt(m.knots, BigInt(t))) };
+            });
+          return [e.id, encode(generation, e, null, traces)];
+        });
+        return encodeBatch(generation, parts);
+      }
       const cold = !!fake.files[r.path]?.cold;
       const coarse = precision === 'coarse' && cold;
       fake.precisions.push(precision);
@@ -755,6 +850,17 @@
     values_at({ file, channels, t }) {
       const r = fake.open.get(file)?.r;
       if (!r) throw 'that file is not open';
+      const og = fake.open.get(file);
+      if (og.group) {
+        const got = channels.filter((ch) => ch < r.chans.length).map((ch) => {
+          const { m, r: pr, local } = groupRoute(og, ch);
+          const own = knotsAt(m.knots, BigInt(t), true);
+          const i = clampI(pr, Math.round(Number(own - (pr.t0 ?? T0)) / Number(dtNs(pr))));
+          return { channel: ch, index: i, t: String(knotsAt(m.knots, timeAt(pr, i))), value: valueAt(pr, local, i) };
+        });
+        fake.lastValues = Object.fromEntries(got.map((n) => [n.channel, n.value]));
+        return got;
+      }
       const i = clampI(r, Math.round(Number(BigInt(t) - (r.t0 ?? T0)) / Number(dtNs(r))));
       const got = channels.filter((ch) => ch < r.chans.length).map((ch) => ({ channel: ch, index: i, t: String(timeAt(r, i)), value: valueAt(r, ch, i) }));
       fake.lastValues = Object.fromEntries(got.map((n) => [n.channel, n.value]));

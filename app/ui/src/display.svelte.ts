@@ -13,7 +13,20 @@ const info = (ch: number) => ui.channels[ch];
 /** The name shown for channel `ch`: its alias, else its own name. */
 export const chName = (ch: number): string => {
   const c = info(ch);
-  return c ? dispOf(c.name).alias || c.name : String(ch);
+  if (!c) return String(ch);
+  const alias = dispOf(c.name).alias;
+  if (alias) return alias;
+  // with several files in the tab a channel reads `AAPL · Close` (or its numbered name, by a setting)
+  const s = ui.slots.length > 1 ? ui.slots.find((x) => ch >= x.first && ch < x.first + x.count) : undefined;
+  return s && settings.fileLabel === 'name' ? `${s.name} · ${chBase(ch)}` : c.name;
+};
+
+/** A channel's own name in its file (without the `·2` that numbers it in a tab with several files). */
+export const chBase = (ch: number): string => {
+  const c = info(ch);
+  if (!c) return String(ch);
+  const s = ui.slots.length > 1 ? ui.slots.find((x) => ch >= x.first && ch < x.first + x.count) : undefined;
+  return s && s.slot > 1 && c.name.endsWith(`·${s.slot}`) ? c.name.slice(0, -`·${s.slot}`.length) : c.name;
 };
 
 /** The unit shown for channel `ch`: the label set for it, else the recording's. */

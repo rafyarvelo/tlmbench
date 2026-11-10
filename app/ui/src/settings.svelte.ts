@@ -157,6 +157,10 @@ export interface Settings {
   /** Derived channels: the recipes added to one file (by path, in the order they were added), and the automatic ones left out of it. */
   fileRecipes: Record<string, string[]>;
   fileRecipesOff: Record<string, string[]>;
+  /** What a file's channels are called when a tab holds several files (Channel prefix…), by path; none: its name. */
+  filePrefix: Record<string, string>;
+  /** Whether a file in a tab with several shows its short name (`AAPL · Close`) or its slot number (`Close·2`). */
+  fileLabel: 'name' | 'number';
   /** How each channel looks, by channel name (in every file): alias, colour, decimals, unit, line style. */
   chdisp: Record<string, ChannelDisplay>;
   /** Warn and alarm limits by channel name; a channel without an entry has the starting ones for its name, if any. */
@@ -256,6 +260,8 @@ export const DEFAULTS: Settings = {
   exportImage: { format: 'png', what: 'all', scale: 2 },
   fileRecipes: {},
   fileRecipesOff: {},
+  filePrefix: {},
+  fileLabel: 'name',
   chdisp: {},
   limits: {},
   customWidgets: [],
@@ -350,7 +356,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
+const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

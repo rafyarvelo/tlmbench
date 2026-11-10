@@ -56,7 +56,7 @@ import { type ExportContext, exp, FORMATS, img } from './exports.svelte';
 import { derive, type DerivedInfo, manager, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
 import { SvgContext, svg } from './svgctx';
 import { tabs } from './tabs.svelte';
-import { actions, type FolderEntry, ui } from './ui.svelte';
+import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 import { fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
 
@@ -151,7 +151,9 @@ const renderer = new Renderer($<HTMLCanvasElement>('gl'));
 
 /** An open file: its id in the core, what it holds, and its first and last sample times. */
 type MissingInfo = { channel: number; count: number; ns: number };
-type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[]; missing: MissingInfo[]; adjustKey: string };
+type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[]; missing: MissingInfo[]; adjustKey: string; /** The files of a tab that holds several, in slot order (the first is the primary); `id` is then the group's. */ members?: Member[] };
+/** One file of a tab with several. `first`/`count` are its channels' numbers in the tab; `knots` its time map. */
+type Member = { id: number; path: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint] };
 
 /** Explorer's rows for a file's channels: the recording's, then its derived ones (marked ƒ). */
 const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, missing: f.missing.find((m) => m.channel === i)?.count, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
@@ -1600,6 +1602,7 @@ async function showTab(key: number): Promise<void> {
   ui.time = fileTime(d.file.info.time.kind === 'index', d.file.first);
   ui.measureDismissed = false;
   ui.channels = chanRows(d.file);
+  publishSlots(d.file);
   void loadEvents();
   scheduleChecks(0);
   $('empty').hidden = true;
@@ -1991,7 +1994,7 @@ async function closeTab(key: number): Promise<void> {
   const front = key === tabs.active;
   const file = fileOf(key);
   const shared = tabs.list.some((t) => t.key !== key && fileOf(t.key)?.id === file?.id);
-  if (file && !shared) void invoke('close', { file: file.id });
+  if (file && !shared) closeMembers(file);
   tabs.list.splice(i, 1);
   tabData.delete(key);
   wsBase.delete(key);
@@ -3123,6 +3126,279 @@ function remapPane(p: Pane, to: (n: number) => number | undefined): void {
   }
 }
 
+// ---------- Several files in one tab: slots, time maps and alignment ----------
+
+interface SlotOut { file: number; first: number; count: number; knots: [string, string][]; own: [string, string] | null }
+interface GroupOpened { id: number; info: RecordingInfo; range: [string, string] | null; status: Status; slots: SlotOut[] }
+interface AlignOut { knots: [string, string][]; residuals: [string, number][]; quality: number; note: string | null; channel: string | null }
+
+const freshAlign = (): AlignView => ({ method: 'starts', seconds: 0, residuals: [], pairs: [], locked: false, offset: 0, drift: 0 });
+/** A file's short name: its prefix when it has one (Channel prefix…), else its name without the extension. */
+const shortOf = (path: string) => settings.filePrefix[path] || nameOf(path).replace(/\.[^.]*$/, '');
+
+/** The files of a tab: a plain file is one. */
+function membersOf(f: OpenFile): Member[] {
+  return f.members ?? [{ id: f.id, path: f.info.path, info: f.info, first: 0, count: f.info.channels.length, knots: [], derived: f.derived, missing: f.missing, align: freshAlign(), own: [f.first, f.last] }];
+}
+
+/** A time map applied (or inverted) at `x`: knots are `[t_file, t_shared]`; one is an offset, more interpolate and the ends continue. */
+function mapAt(knots: [string, string][], x: bigint, back = false): bigint {
+  const k = knots.map(([a, b]) => (back ? [BigInt(b), BigInt(a)] : [BigInt(a), BigInt(b)]) as [bigint, bigint]);
+  if (!k.length) return x;
+  if (k.length === 1) return x - k[0][0] + k[0][1];
+  let i = k.findIndex((p) => p[0] > x);
+  i = i < 0 ? k.length - 1 : Math.max(1, i);
+  const [a, b] = [k[i - 1], k[i]];
+  return a[1] + ((x - a[0]) * (b[1] - a[1])) / (b[0] - a[0]);
+}
+
+/** What a map says about itself: the offset at the file's start (s) and the drift (ppm). */
+function mapFacts(knots: [string, string][], own: bigint): { offset: number; drift: number } {
+  const offset = Number(mapAt(knots, own) - own) / 1e9;
+  if (knots.length < 2) return { offset, drift: 0 };
+  const [a, b] = [knots[0], knots[knots.length - 1]].map(([x, y]) => [BigInt(x), BigInt(y)]);
+  return { offset, drift: (Number((b[1] - a[1]) - (b[0] - a[0])) / Number(b[0] - a[0])) * 1e6 };
+}
+
+/** Mirrors the tab's files into what the sidebar and the channel names read. */
+function publishSlots(f: OpenFile | null): void {
+  const ms = f?.members;
+  ui.slots = ms && ms.length > 1 ? ms.map((m, i): SlotRow => ({ slot: i + 1, file: m.id, path: m.path, name: shortOf(m.path), first: m.first, count: m.count, align: { ...m.align, residuals: [...m.align.residuals], pairs: [...m.align.pairs] } })) : [];
+}
+
+/** Opens a file to join a tab: its own id in the core, not shown anywhere until the group lists it. */
+async function openMember(path: string): Promise<Member> {
+  const progress = new Channel<Progress>();
+  progress.onmessage = () => {};
+  await syncExprEnv();
+  const o = await invoke<Opened>('open', { path, part: null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], adjust: adjustList(), progress });
+  if (!o.range) {
+    void invoke('close', { file: o.id });
+    throw new Error('it has no samples');
+  }
+  const own: [bigint, bigint] = [BigInt(o.range[0]), BigInt(o.range[1])];
+  return { id: o.id, path: o.info.path, info: o.info, first: 0, count: o.info.channels.length, knots: [], derived: o.derived ?? [], missing: o.missing ?? [], align: freshAlign(), own };
+}
+
+/** Shows the tab's files as `order` (slot order): the core regroups them, and the panes follow their channels to their new numbers. */
+async function groupApply(f: OpenFile, order: Member[]): Promise<void> {
+  // where each file's channels were, before the numbers change
+  const old = membersOf(f).map((m) => ({ id: m.id, first: m.first, count: m.count }));
+  const had = !!f.members;
+  let gid: number | null = had ? f.id : null;
+  let early: Progress | null = null;
+  const progress = new Channel<Progress>();
+  progress.onmessage = (p) => (gid == null ? (early = p) : onProgress(gid, p));
+  const g = await invoke<GroupOpened>('group_set', { group: had ? f.id : null, members: order.map((m) => ({ file: m.id, knots: m.knots })), progress });
+  gid = g.id;
+  if (early) onProgress(gid, early);
+  const to = (n: number): number | undefined => {
+    const m = old.find((m) => n >= m.first && n < m.first + m.count);
+    const k = m ? order.findIndex((o) => o.id === m.id) : -1;
+    return m && k >= 0 ? g.slots[k].first + (n - m.first) : undefined;
+  };
+  order.forEach((m, i) => {
+    m.first = g.slots[i].first;
+    m.count = g.slots[i].count;
+    m.knots = g.slots[i].knots;
+  });
+  f.id = g.id;
+  f.info = g.info;
+  [f.first, f.last] = g.range ? [BigInt(g.range[0]), BigInt(g.range[1])] : [f.first, f.last];
+  f.members = order;
+  f.derived = order.flatMap((m) => m.derived.map((d) => ({ ...d, channel: d.channel + m.first })));
+  f.missing = order.flatMap((m) => m.missing.map((x) => ({ ...x, channel: x.channel + m.first })));
+  for (const t of tabs.list) {
+    const d = tabData.get(t.key);
+    if (d?.file !== f) continue;
+    if (t.key !== tabs.active) d.panes.forEach((p) => remapPane(p, to));
+    // the tab is named for its primary
+    t.path = f.info.path;
+    t.name = tabName(f.info.path, f.info.part);
+  }
+  if (state.file === f) {
+    stack.panes.forEach((p) => remapPane(p, to));
+    state.hover.clear();
+    ui.file = nameOf(f.info.path);
+    ui.path = f.info.path;
+    ui.channels = chanRows(f);
+    publishSlots(f);
+    normalize();
+    await tick();
+    renderPanes();
+    state.ovStale = true;
+    void requestView('exact');
+    void refreshMeasure();
+  }
+}
+
+/** Closes a tab's files too (the group, and each file in it). */
+function closeMembers(file: OpenFile): void {
+  void invoke('close', { file: file.id });
+  for (const m of file.members ?? []) void invoke('close', { file: m.id });
+}
+
+/** Whether two files' own times overlap: logged on one clock, most likely. */
+const overlaps = (a: [bigint, bigint], b: [bigint, bigint]) => a[0] <= b[1] && b[0] <= a[1];
+
+async function addToTab(path: string): Promise<void> {
+  const f = state.file;
+  if (!f || live.on) return void note('Files join a live tab as sources: use + Add source on its strip.');
+  const have = membersOf(f);
+  if (have.some((m) => m.path === path)) return void note(`${nameOf(path)} is in this tab already.`);
+  try {
+    const m = await openMember(path);
+    const order = [...have, m];
+    await groupApply(f, order);
+    // files logged in one session share a clock; separate runs line up at their starts
+    await alignSet(order.length, overlaps(order[0].own, m.own) ? 'clock' : 'starts');
+  } catch (e) {
+    note(`Couldn't add ${nameOf(path)}: ${e}`);
+  }
+}
+
+async function closeSlot(slot: number): Promise<void> {
+  const f = state.file;
+  const ms = f?.members;
+  if (!f || !ms || ms.length < 2 || slot < 1 || slot > ms.length) return;
+  const gone = ms[slot - 1];
+  await groupApply(f, ms.filter((_, i) => i !== slot - 1));
+  void invoke('close', { file: gone.id });
+  // the numbers close up: the others' alignment (measured against the primary) stands, unless the primary went
+  if (slot === 1) for (let i = 1; i < f.members!.length; i++) if (!f.members![i].align.locked) await alignSet(i + 1, f.members![i].align.method === 'manual' ? 'starts' : f.members![i].align.method);
+}
+
+async function makePrimary(slot: number): Promise<void> {
+  const f = state.file;
+  const ms = f?.members;
+  if (!f || !ms || slot < 2 || slot > ms.length) return;
+  const keep = ms.map((m) => ({ id: m.id, method: m.align.method, locked: m.align.locked, knots: m.knots }));
+  const order = [ms[slot - 1], ...ms.filter((_, i) => i !== slot - 1)];
+  for (const x of order) if (!keep.find((k) => k.id === x.id)?.locked) x.knots = [];
+  await groupApply(f, order);
+  // the others are measured again from the new primary
+  for (let i = 1; i < order.length; i++) {
+    const k = keep.find((k) => k.id === order[i].id)!;
+    if (k.locked) continue;
+    const method = order[i].id === ms[0].id ? (overlaps(order[0].own, order[i].own) ? 'clock' : 'starts') : k.method;
+    await alignSet(i + 1, method === 'sync' || method === 'events' ? 'starts' : method);
+  }
+}
+
+/** The request the core wants for a method. */
+function alignRequest(f: OpenFile, m: Member, method: AlignMethod, arg: { seconds?: number; channel?: string } = {}): Record<string, unknown> {
+  switch (method) {
+    case 'manual':
+      return { method, seconds: arg.seconds ?? m.align.seconds };
+    case 'sync':
+      return { method, pairs: m.align.pairs.map(([a, b]) => [String(f.first + BigInt(Math.round(a * 1e9))), String(f.first + BigInt(Math.round(b * 1e9)))]) };
+    case 'xcorr':
+      return { method, channel: arg.channel ?? null, windows: null };
+    case 'timesrc':
+      return { method: 'timesource', channel: arg.channel ?? null };
+    case 'events':
+      return { method, name: arg.channel ?? null };
+    default:
+      return { method };
+  }
+}
+
+/** Methods that fit something: they show their result for a look (Keep or Undo) rather than just applying. */
+const FITS: AlignMethod[] = ['sync', 'events', 'xcorr', 'timesrc'];
+
+/** Lines file `slot` up with the primary by `method`; the result is applied, with a preview to keep or undo for methods that fit. */
+async function alignSet(slot: number, method: AlignMethod, arg: { seconds?: number; channel?: string } = {}): Promise<void> {
+  const f = state.file;
+  const m = f?.members?.[slot - 1];
+  if (!f || !m || slot < 2 || m.align.locked) return;
+  const before = m.knots;
+  try {
+    const a = await invoke<AlignOut>('align_estimate', { group: f.id, slot: slot - 1, method: alignRequest(f, m, method, arg) });
+    const res: [number, number][] = a.residuals.map(([t, r]) => [Number(BigInt(t) - f.first) / 1e9, r / 1e6]);
+    m.align = { ...m.align, method, seconds: method === 'manual' ? (arg.seconds ?? m.align.seconds) : 0, channel: a.channel ?? m.align.channel, note: a.note ?? undefined, quality: FITS.includes(method) ? a.quality : undefined, residuals: res, preview: FITS.includes(method) ? { knots: before } : null };
+    await setMap(f, slot, a.knots);
+  } catch (e) {
+    m.align = { ...m.align, method, note: String(e).replace(/^Error:\s*/, ''), quality: undefined, residuals: [], preview: null };
+    publishSlots(f);
+  }
+}
+
+async function setMap(f: OpenFile, slot: number, knots: [string, string][]): Promise<void> {
+  const m = f.members![slot - 1];
+  const g = await invoke<GroupOpened>('group_map', { group: f.id, slot: slot - 1, knots });
+  m.knots = g.slots[slot - 1].knots;
+  Object.assign(m.align, mapFacts(m.knots, m.own[0]));
+  if (g.range) [f.first, f.last] = [BigInt(g.range[0]), BigInt(g.range[1])];
+  if (state.file !== f) return;
+  publishSlots(f);
+  state.ovStale = true;
+  renderPanes();
+  void requestView('exact');
+  void refreshMeasure();
+}
+
+function alignDiscard(slot: number): void {
+  const f = state.file;
+  const m = f?.members?.[slot - 1];
+  if (!f || !m?.align.preview) return;
+  const back = m.align.preview.knots;
+  m.align = { ...m.align, preview: null, quality: undefined, residuals: [], note: undefined };
+  void setMap(f, slot, back);
+}
+
+function alignApply(slot: number): void {
+  const f = state.file;
+  const m = f?.members?.[slot - 1];
+  if (!m) return;
+  m.align = { ...m.align, preview: null };
+  publishSlots(f);
+}
+
+function alignNudge(slot: number, seconds: number): void {
+  const f = state.file;
+  const m = f?.members?.[slot - 1];
+  if (!f || !m || m.align.locked) return;
+  const d = BigInt(Math.round(seconds * 1e9));
+  const knots: [string, string][] = m.knots.length ? m.knots.map(([a, b]) => [a, String(BigInt(b) + d)]) : [['0', String(d)]];
+  void setMap(f, slot, knots);
+}
+
+function alignLock(slot: number, on: boolean): void {
+  const f = state.file;
+  const m = f?.members?.[slot - 1];
+  if (!m) return;
+  m.align = { ...m.align, locked: on };
+  publishSlots(f);
+}
+
+/** A sync point from the cursors: A is the moment in the primary, B the same moment in this file as drawn now. */
+function alignPair(slot: number): void {
+  const f = state.file;
+  const m = f?.members?.[slot - 1];
+  if (!f || !m || state.A == null || state.B == null) return void note('Place cursor A on a moment in file 1 and cursor B on the same moment in this file.');
+  const own = mapAt(m.knots, state.B, true);
+  m.align = { ...m.align, pairs: [...m.align.pairs, [Number(own - f.first) / 1e9, Number(state.A - f.first) / 1e9]] };
+  void alignSet(slot, 'sync');
+}
+
+function alignPairs(slot: number, pairs: [number, number][]): void {
+  const f = state.file;
+  const m = f?.members?.[slot - 1];
+  if (!f || !m) return;
+  m.align = { ...m.align, pairs };
+  if (pairs.length) void alignSet(slot, 'sync');
+  else publishSlots(f);
+}
+
+function setPrefix(path: string, prefix: string): void {
+  const all = { ...settings.filePrefix };
+  if (prefix.trim()) all[path] = prefix.trim();
+  else delete all[path];
+  setSetting('filePrefix', all);
+  publishSlots(state.file);
+  renderPanes();
+}
+
 /** Every open file shows the library as it is now. */
 async function reapplyAll(): Promise<void> {
   const files = new Set<OpenFile>();
@@ -4051,6 +4327,17 @@ Object.assign(actions, {
       await openPath(p);
       for (const t of [...tabs.list].filter((t) => t.path !== p)) await closeTab(t.key);
     })(),
+  addToTab: (p: string) => void addToTab(p),
+  closeSlot: (n: number) => void closeSlot(n),
+  makePrimary: (n: number) => void makePrimary(n),
+  alignSet: (n: number, m: AlignMethod, a?: { seconds?: number; channel?: string }) => void alignSet(n, m, a),
+  alignApply,
+  alignDiscard,
+  alignNudge,
+  alignLock,
+  alignPair,
+  alignPairs,
+  setPrefix,
   closeFile: () => void closeAll(),
   showTab: (key: number) => void showTab(key),
   closeTab: (key: number) =>

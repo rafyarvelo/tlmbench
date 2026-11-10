@@ -18,7 +18,44 @@ export interface FolderEntry {
   children: FolderEntry[];
 }
 
+/** How a file of a tab lines up with the primary (file 1). */
+export type AlignMethod = 'starts' | 'clock' | 'manual' | 'sync' | 'events' | 'xcorr' | 'timesrc';
+export interface AlignView {
+  method: AlignMethod;
+  /** Manual: seconds after the primary's start. */
+  seconds: number;
+  /** The channel matched on (cross-correlation, time channel). */
+  channel?: string;
+  /** One line from the method (`Matched on accel_x: +1.2 s, r = 0.98`) or why it failed. */
+  note?: string;
+  /** 0..1, for methods that fit something. */
+  quality?: number;
+  /** `[t_file_s, residual_ms]` per matched point. */
+  residuals: [number, number][];
+  /** Sync points: pairs of own time and primary time, in seconds from the timeline's start. */
+  pairs: [number, number][];
+  locked: boolean;
+  /** The offset now, in seconds (the first knot's), and the drift in ppm. */
+  offset: number;
+  drift: number;
+  /** A result waiting to be applied (the overlay preview). */
+  preview?: { knots: [string, string][] } | null;
+}
+/** A file of the tab in front when it has several: its slot (1 is the primary), short name and alignment. */
+export interface SlotRow {
+  slot: number;
+  file: number;
+  path: string;
+  name: string;
+  /** Its first channel in the tab's numbering, and how many it has. */
+  first: number;
+  count: number;
+  align: AlignView;
+}
+
 export const ui = $state({
+  /** The files of the tab in front when it holds several (empty: one file). */
+  slots: [] as SlotRow[],
   /** The open file's name and path ('' when none). */
   file: '',
   /** The folder Explorer lists (null: none open). */
@@ -92,6 +129,22 @@ export const actions = {
   openSession: (_folder: string) => {},
   /** Opens several files, each in a tab of its own (the last in front). */
   openPaths: (_paths: string[]) => {},
+  /** Several files in one tab: add a file to the tab in front, close one of them, make one the primary. */
+  addToTab: (_path: string) => {},
+  closeSlot: (_slot: number) => {},
+  makePrimary: (_slot: number) => {},
+  /** A file's alignment: choose a method (with its parameters), nudge it, lock it, add a sync point from cursors A and B. */
+  alignSet: (_slot: number, _method: AlignMethod, _arg?: { seconds?: number; channel?: string }) => {},
+  alignApply: (_slot: number) => {},
+  alignDiscard: (_slot: number) => {},
+  alignNudge: (_slot: number, _seconds: number) => {},
+  alignLock: (_slot: number, _on: boolean) => {},
+  alignPair: (_slot: number) => {},
+  alignPairs: (_slot: number, _pairs: [number, number][]) => {},
+  /** Channel prefix…: what a file's channels are called in legends and menus ('' for its name). */
+  setPrefix: (_path: string, _prefix: string) => {},
+  /** Compare runs: two files in one tab with a pane per shared channel. */
+  compare: (_a: string, _b: string) => {},
   /** Shows a file's import dialog again (its saved settings first); a recording that isn't a CSV opens as it is. */
   importAgain: (_path: string) => {},
   /** The import dialog: Open / Add to Explorer, and Cancel. */
