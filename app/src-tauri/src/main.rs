@@ -1015,6 +1015,8 @@ fn live_state(file: u32, files: State<'_, Files>) -> Result<LiveState, String> {
     let l = files.live.lock().unwrap().get(&file).cloned().ok_or("that source is not open")?;
     let o = l.opened();
     let info = o.recording().info().clone();
+    // read apart: the guard would otherwise live to the end of the struct, while `health` locks the same mutex
+    let stopped = l.source.lock().unwrap().is_none();
     Ok(LiveState {
         range: info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string())),
         samples: info.samples,
@@ -1023,7 +1025,7 @@ fn live_state(file: u32, files: State<'_, Files>) -> Result<LiveState, String> {
         session: l.session.display().to_string(),
         name: l.name.clone(),
         recording: l.keep,
-        stopped: l.source.lock().unwrap().is_none(),
+        stopped,
         health: l.health(),
         trigger: l.follow.read().unwrap().trigger_status(),
     })

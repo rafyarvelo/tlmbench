@@ -19,8 +19,7 @@ When needed:
 
 ## Left from step 5.5 (Nov 9)
 
-- **Measure first:** `just gate3 app` on the Mac after these changes (the gate drives `api.connect`, whose signature is unchanged; the app's `live_connect` takes
-  its arguments as one struct now), a real Mac run of file playback (`replay://` of a CSV and a .tlm), a trigger and live
+- **Measure first:** `just gate3 app` passes on the Mac with these changes; a real Mac run of file playback (`replay://` of a CSV and a .tlm), a trigger and live
   checks against a real TCP or UDP source, and a look at the faint trace and the Sources cards with a screenshot.
 - **Derived channels on a live file (built; causal filters left):** Derive… on a live tab gives ƒ rows that follow the source
   (`Store::open_live_derived`: each batch of new samples is computed after a warm-up of the samples its windows need,
