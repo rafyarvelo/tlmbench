@@ -189,6 +189,11 @@ export const actions = {
   checkFolderCsv: () => {},
   checkOpenCell: (_path: string, _group: string) => {},
   /** The Recipes manager: open, close, edit / duplicate / delete a recipe, automatic on or off, Export… and Import… text. */
+  /** Share…: the dialog that writes what you pick to the folder's .tlmbench/ (or takes the folder's), and Export…. */
+  shareOpen: () => {},
+  shareClose: () => {},
+  shareApply: () => {},
+  shareExport: () => {},
   recipesOpen: () => {},
   recipesClose: () => {},
   recipeEdit: (_name: string) => {},

@@ -2,9 +2,10 @@
      wrote yourself never asks. The answer is remembered per folder. -->
 <script lang="ts">
   import { settings } from '../settings.svelte';
+  import { cfg } from '../share.svelte';
   import { trust, trustSource } from '../customwidgets.svelte';
 
-  const spec = $derived(trust.id ? settings.customWidgets.find((w) => w.id === trust.id) : null);
+  const spec = $derived(trust.id ? [...cfg.widgets, ...settings.customWidgets].find((w) => w.id === trust.id) : null);
   const close = () => (trust.id = null);
   function key(e: KeyboardEvent) {
     if (e.key !== 'Escape') return;

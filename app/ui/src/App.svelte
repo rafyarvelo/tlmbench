@@ -16,6 +16,7 @@
   import ChannelEditor from './shell/ChannelEditor.svelte';
   import DeriveDialog from './shell/DeriveDialog.svelte';
   import RecipesDialog from './shell/RecipesDialog.svelte';
+  import ShareDialog from './shell/ShareDialog.svelte';
   import WidgetEditor from './shell/WidgetEditor.svelte';
   import SlotPicker from './shell/SlotPicker.svelte';
   import WidgetTrust from './shell/WidgetTrust.svelte';
@@ -132,6 +133,7 @@
 <DeriveDialog />
 <ChannelEditor />
 <RecipesDialog />
+<ShareDialog />
 <WidgetEditor />
 <WidgetTrust />
 <SlotPicker />

@@ -28,13 +28,24 @@ export interface WsPane {
   xyView?: [number, number, number, number];
 }
 
+/** How a shared view's file lines up with the primary: the method and what it found (the knots are the map itself, so the
+ * file opens exactly as it was left; the method says how to make it again). */
+export interface SavedAlign {
+  method: string;
+  seconds: number;
+  channel?: string;
+  locked: boolean;
+  knots: [string, string][];
+  pairs: [number, number][];
+}
+
 export interface Workspace {
   schema: 1;
   name: string;
   /** Who shared it (shared views only). */
   by?: string;
   /** A shared view's files, by path relative to its folder (slot 1 is the primary file). */
-  files?: { path: string; slot: number }[];
+  files?: { path: string; slot: number; align?: SavedAlign }[];
   /** A shared view's time range: seconds from the primary file's first sample. */
   view?: [number, number];
   panes: WsPane[];

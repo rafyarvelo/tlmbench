@@ -27,7 +27,7 @@
     };
     return out.sort((a, b) => at(a.id) - at(b.id));
   });
-  const keyOf = (e: TlmEvent) => (events.group === 'cat' ? catName(e.category) : events.group === 'name' ? e.name : events.group === 'channel' ? (e.channels[0] ?? 'No channel') : events.group === 'source' ? (e.source === 'user' ? 'Added by you' : e.source === 'rule' ? 'From rules' : e.source === 'check' ? 'From checks' : 'From the file') : '');
+  const keyOf = (e: TlmEvent) => (events.group === 'cat' ? catName(e.category) : events.group === 'name' ? e.name : events.group === 'channel' ? (e.channels[0] ?? 'No channel') : events.group === 'source' ? (e.source === 'user' ? 'Added by you' : e.source === 'rule' ? 'From rules' : e.source === 'check' ? 'From checks' : e.source === 'shared' ? 'Shared in the folder' : 'From the file') : '');
   const groups = $derived.by(() => {
     const out: { k: string; items: TlmEvent[] }[] = [];
     for (const e of shown) {
@@ -106,7 +106,7 @@
       <div class="evsum" id="evSum">{shown.length === events.list.length ? `${events.list.length} ${events.list.length === 1 ? 'event' : 'events'}` : `${shown.length} of ${events.list.length} events`}{#if events.auto.length} · {events.mine.length} yours, {events.auto.filter((e) => e.source === 'rule').length} from rules, {events.auto.filter((e) => e.source === 'check').length} from checks{/if}{#if events.checking} · checking rules…{/if}</div>
       {#snippet row(e: TlmEvent)}
         <div class="evitem" class:editing={events.editing === e.id}>
-          <button class="ev" data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? ' · added by you' : e.source === 'rule' ? ' · from a rule' : e.source === 'check' ? ' · a check failed' : ''}" onclick={() => actions.eventShow(e.id)}>
+          <button class="ev" data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? (e.by ? ` · added by ${e.by}` : ' · added by you') : e.source === 'shared' ? ` · shared${e.by ? ` by ${e.by}` : ''}` : e.source === 'rule' ? ' · from a rule' : e.source === 'check' ? ' · a check failed' : ''}" onclick={() => actions.eventShow(e.id)}>
             <i></i><span class="evname">{e.name}</span><span class="evwhen num">{when(e)}<small>{lasts(e)}</small></span>
           </button>
           {#if e.source === 'user'}

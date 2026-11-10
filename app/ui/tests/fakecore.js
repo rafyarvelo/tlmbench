@@ -322,6 +322,17 @@
     /** The core's check sets, what each check gets on a file (by check name: { verdict, runs: [[from, to] seconds after the start], worst, value, function, limit, message, channels }), the runs and previews it was asked for. */
     checkSets: [],
     /** Several files in one tab: each group_set's files, group_map and align_estimate calls, and what a method returns instead of the default (`{ knots, residuals, quality, note, channel }`, or an Error to fail). */
+    /** Shared configuration: the Share dialog's rows (`cfgRows`), what the folder gives (`cfgFrom`: categories and widgets; `cfgPull`: what Use brings back), the commands seen, and the saved time maps. */
+    cfgRows: [],
+    cfgWritable: true,
+    cfgGit: false,
+    cfgProblems: [],
+    cfgFrom: { categories: [], widgets: [] },
+    cfgRecipes: [],
+    cfgChecks: [],
+    cfgPull: { from: { categories: [], widgets: [] }, views: [] },
+    cfgCalls: [],
+    timemaps: [],
     groupSets: [],
     groupMaps: [],
     aligns: [],
@@ -1112,6 +1123,46 @@
     },
     'plugin:dialog|open': ({ options }) => (options?.directory ? fake.pickFolder : fake.pick),
     'plugin:dialog|save': () => fake.savePick,
+    config_use({ folder }) {
+      fake.cfgCalls.push({ cmd: 'use', folder });
+      return { dir: folder ? `${folder}/.tlmbench` : null, from: fake.cfgFrom, recipes: fake.cfgRecipes, checks: fake.cfgChecks, problems: [] };
+    },
+    config_scan({ folder, own }) {
+      fake.cfgCalls.push({ cmd: 'scan', folder, own });
+      return { rows: fake.cfgRows, problems: fake.cfgProblems, writable: fake.cfgWritable, git: fake.cfgGit };
+    },
+    config_mirror({ own }) {
+      fake.cfgCalls.push({ cmd: 'mirror', own });
+      return null;
+    },
+    config_share({ folder, own, keys }) {
+      fake.cfgCalls.push({ cmd: 'share', folder, own, keys });
+      if (fake.readOnly.includes(folder)) throw `can't write to ${folder}/.tlmbench: Read-only file system (os error 30)`;
+      fake.cfgRows = fake.cfgRows.map((r) => (keys.includes(`${r.kind}:${r.key}`) ? { ...r, state: 'same', detail: null } : r));
+      return keys.map((k) => k.slice(k.indexOf(':') + 1));
+    },
+    config_pull({ folder, own, keys }) {
+      fake.cfgCalls.push({ cmd: 'pull', folder, own, keys });
+      fake.cfgRows = fake.cfgRows.map((r) => (keys.includes(`${r.kind}:${r.key}`) ? { ...r, state: 'same', detail: null } : r));
+      return { ...fake.cfgPull, taken: keys };
+    },
+    config_export({ out, own }) {
+      fake.cfgCalls.push({ cmd: 'export', out, own });
+      return ['recipes/power.toml', 'categories.toml'];
+    },
+    config_gitignore({ folder, lines }) {
+      fake.cfgCalls.push({ cmd: 'gitignore', folder, lines });
+      return lines;
+    },
+    timemap_save({ map }) {
+      fake.timemaps = fake.timemaps.filter((m) => !(m.primary === map.primary && m.file === map.file)).concat(map);
+      return null;
+    },
+    timemap_find({ primary, file }) {
+      const p = fake.open.get(primary)?.r.path;
+      const f = fake.open.get(file)?.r.path;
+      return fake.timemapsByPath?.[`${p}|${f}`] ?? null;
+    },
     // shared views: `views` is folder → file name → the view (a string: a file that isn't JSON)
     shared_views({ folder }) {
       const vs = fake.views[folder] ?? {};

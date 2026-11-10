@@ -8,7 +8,8 @@
   import { ICON } from '../icons';
   import { invoke } from '@tauri-apps/api/core';
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
-  import { actions } from '../ui.svelte';
+  import { actions, ui } from '../ui.svelte';
+  import { cfg } from '../share.svelte';
   import { limitText } from '../display.svelte';
 
   interface Row {
@@ -161,6 +162,12 @@
       </div>
     {/each}
     <div class="urow"><span class="muted">Charts mark an event when its category is on and the Events panel shows it.</span><button class="tbtn" id="catAdd" onclick={addCat}>{@html ICON.plus}Add</button></div>
+  </section>
+  <section id="sharedSet">
+    <h3>Shared configuration</h3>
+    <div class="urow"><span id="sharedWhere">{cfg.dir ? 'Reading the folder’s .tlmbench/' : ui.folder ? 'This folder has no .tlmbench/ yet' : 'Open a folder to share with it'}<br /><small class="muted">Recipes, rules, layouts, widgets, categories, profiles, decoders, events and alignments. Yours win a name; the folder’s fill in the rest.</small></span><button class="tbtn" id="setShare" disabled={!ui.folder} onclick={actions.shareOpen}>Share…</button></div>
+    {#if cfg.categories.length}<div class="urow"><span class="muted" id="sharedCats">{cfg.categories.length} event {cfg.categories.length === 1 ? 'category comes' : 'categories come'} from the folder and win a shared id, so a shared view looks the same for everyone.</span></div>{/if}
+    {#each cfg.problems as p (p.path)}<div class="urow"><span style="color: var(--danger)" data-problem>{p.path}: {p.why}</span></div>{/each}
   </section>
   {#if customised.length}
     <section id="chSet"><h3>Channels</h3>

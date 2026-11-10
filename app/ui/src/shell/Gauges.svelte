@@ -10,6 +10,7 @@
   import { type Ctx, type Extra, type GChan, groupKey, HOLD_TYPES, type Layout, layoutOf, LVL_COLOR, memberLabels, MULTI, partRoles, rangeOf, type Reading, targetOf, TYPES, typeName, xyPartner, autoWidget, zonesOf as zonesFor, fr, patch } from '../gauges';
   import { readoutTime } from '../axes';
   import { settings } from '../settings.svelte';
+  import { cfg } from '../share.svelte';
   import { setWidget, stack, type WidgetCfg } from '../stack.svelte';
   import { ui } from '../ui.svelte';
   import { decodeXy } from '../wire';
@@ -22,7 +23,7 @@
   let { i }: { i: number } = $props();
 
   const pane = $derived(stack.panes[i]);
-  const customs = $derived(new Map(settings.customWidgets.map((w) => [w.id, w])));
+  const customs = $derived(new Map([...cfg.widgets, ...settings.customWidgets].map((w) => [w.id, w])));
   const gchan = (ch: number): GChan => ({ ch, name: ui.channels[ch]?.name ?? '', unit: ui.channels[ch]?.unit ?? '', labelled: Object.keys(settings.valueMaps[ui.channels[ch]?.name ?? ''] ?? {}).length });
   const chans = $derived((pane?.channels ?? []).map(gchan));
   const lay = $derived(layoutOf(chans, pane?.widgets));

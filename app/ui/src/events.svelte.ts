@@ -3,6 +3,7 @@
 // read `events.list` (the ones the category filters show) to mark them.
 
 import { type EventCategory, settings } from './settings.svelte';
+import { cfg } from './share.svelte';
 
 export { DEFAULT_CATEGORIES, type EventCategory } from './settings.svelte';
 
@@ -14,6 +15,8 @@ export interface TlmEvent {
   duration: string;
   category: string;
   source: string;
+  /** Who added it (the account name), when known. */
+  by?: string;
   channels: string[];
 }
 
@@ -48,7 +51,11 @@ export function setAuto(list: TlmEvent[]): void {
   events.list = [...events.mine, ...list].sort(byStart);
 }
 
-export const catOf = (id: string): EventCategory | undefined => settings.eventCats.find((c) => c.id === id);
+/** A category by id: the folder's win for shared rules and events, so a shared view looks the same for everyone. */
+export const catOf = (id: string): EventCategory | undefined => {
+  const f = cfg.categories.find((c) => c.id === id);
+  return f ? { id: f.id, name: f.name, color: f.color, chart: f.show_on_charts } : settings.eventCats.find((c) => c.id === id);
+};
 export const catName = (id: string): string => catOf(id)?.name ?? 'Uncategorized';
 export const catColor = (id: string): string => catOf(id)?.color ?? UNCATEGORIZED;
 

@@ -5,6 +5,7 @@
   import { ICON } from '../icons';
   import { actions } from '../ui.svelte';
   import { manager, recipes } from '../derive.svelte';
+  import { cfg } from '../share.svelte';
 
   let paste = $state('');
   function key(e: KeyboardEvent) {
@@ -37,7 +38,7 @@
         <div class="list" id="recList">
           {#each recipes.list as r (r.name)}
             <div class="rrow" data-recipe={r.name}>
-              <div class="main"><b>ƒ {r.name}</b>{#if r.unit}<span class="muted">{r.unit}</span>{/if}<span class="cat">{r.category || 'Derived'}</span></div>
+              <div class="main"><b>ƒ {r.name}</b>{#if r.unit}<span class="muted">{r.unit}</span>{/if}<span class="cat">{r.category || 'Derived'}</span>{#if cfg.recipes.includes(r.name)}<span class="cat" data-tip="The folder's .tlmbench/recipes has a recipe of this name">Shared</span>{/if}</div>
               <code>{r.expr}</code>
               <div class="act">
                 <label class="chk"><input type="checkbox" data-auto checked={r.automatic} onchange={(e) => actions.recipeAuto(r.name, e.currentTarget.checked)} />Any file with these channels</label>

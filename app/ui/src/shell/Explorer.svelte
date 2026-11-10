@@ -355,6 +355,7 @@
       { label: `Import all ${csvFiles.length} file${csvFiles.length === 1 ? '' : 's'}…`, data: { ex: 'import-all' }, disabled: !csvFiles.length, run: () => actions.importAll(csvFiles) },
       { sep: true },
       { label: 'Recipes…', data: { ex: 'recipes-f' }, run: actions.recipesOpen },
+      { label: 'Share…', data: { ex: 'share' }, disabled: !ui.folder, run: actions.shareOpen },
       { sep: true },
       { label: 'Expand all folders', data: { ex: 'expand' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])) },
       { label: 'Collapse all folders', data: { ex: 'collapse' }, disabled: !ui.folder, run: collapseAll },

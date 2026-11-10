@@ -55,6 +55,8 @@ import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfil
 import { type ExportContext, exp, FORMATS, img } from './exports.svelte';
 import { derive, type DerivedInfo, manager, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
 import { SvgContext, svg } from './svgctx';
+import type { CustomWidget } from './widgets';
+import { cfg, choices, defaultPick, type Problem, rowKey, share as shareDlg, type ShareRow } from './share.svelte';
 import { tabs } from './tabs.svelte';
 import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
@@ -2175,6 +2177,7 @@ function storeWs(ws: Workspace, at?: number): void {
   if (i >= 0) settings.workspaces[i] = ws;
   else settings.workspaces.splice(at ?? settings.workspaces.length, 0, ws);
   saveSettings();
+  mirrorConfig();
 }
 
 function nameError(name: string, own?: string): string | null {
@@ -2319,22 +2322,31 @@ async function openShared(file: string): Promise<void> {
     await openPath(path);
     if (state.file?.info.path !== path) return;
   }
+  // the other files join the primary's timeline with the alignment the view was shared with
+  for (const m of (ws.files ?? []).filter((x) => x.slot > 1 && x.align).sort((a, b) => a.slot - b.slot)) {
+    const s = sep(settings.folder);
+    await addToTab(settings.folder.replace(/[\\/]$/, '') + s + m.path.split('/').join(s), { path: m.path, ...m.align! });
+  }
   await openLayout(ws, file);
 }
 
-/** Tab `key`'s layout as a shared view: its file relative to the folder and the time range in view. */
+/** Tab `key`'s layout as a shared view: its files relative to the folder (with the alignment of each file after the
+ * first: method, what it found and the knots, so the view opens exactly as it was left) and the time range in view. */
 function sharedView(name: string): Workspace | string {
   const f = state.file;
   const folder = settings.folder.replace(/[\\/]$/, '');
   if (!f) return 'Open a recording first.';
   const s = sep(folder);
-  if (!folder || !f.info.path.startsWith(folder + s)) return `Share writes into the folder Explorer shows, and ${nameOf(f.info.path)} isn't in it.`;
+  const members = f.members ?? [{ path: f.info.path, align: null as AlignView | null, knots: [] as [string, string][] }];
+  const outside = members.find((m) => !folder || !m.path.startsWith(folder + s));
+  if (outside) return `Share writes into the folder Explorer shows, and ${nameOf(outside.path)} isn't in it.`;
   const secs = (t: bigint) => Number(t - f.first) / 1e9;
-  return {
-    ...toWorkspace(name, stack.panes, channelNames()),
-    files: [{ path: f.info.path.slice(folder.length + 1).split(s).join('/'), slot: 1 }],
-    view: [secs(state.t0), secs(state.t1)],
-  };
+  const files = members.map((m, i) => ({
+    path: m.path.slice(folder.length + 1).split(s).join('/'),
+    slot: i + 1,
+    ...(i > 0 && m.align ? { align: { method: m.align.method, seconds: m.align.seconds, ...(m.align.channel ? { channel: m.align.channel } : {}), locked: m.align.locked, knots: m.knots, pairs: m.align.pairs } } : {}),
+  }));
+  return { ...toWorkspace(name, stack.panes, channelNames()), files, view: [secs(state.t0), secs(state.t1)] };
 }
 
 /** Share…: writes tab `key`'s layout to the folder's `.tlmbench/views/`; a folder that can't be written offers
@@ -2379,6 +2391,159 @@ function exportWs(key: number, name?: string): void {
       note(`Couldn't export "${n}": ${e}`);
     }
   });
+}
+
+// ---------- Shared configuration: Share…, Use the folder's, Export… ----------
+
+/** What the app's settings and open files hold that the folder's `.tlmbench/` can hold too. */
+function ownConfig(): Record<string, unknown> {
+  const folder = settings.folder.replace(/[\\/]$/, '');
+  const s = sep(folder);
+  const rel = (p: string) => (folder && p.startsWith(folder + s) ? p.slice(folder.length + 1).split(s).join('/') : null);
+  // the open files in the folder: their events are shared by name and identity
+  const recordings: { name: string; file: number }[] = [];
+  for (const t of tabs.list) {
+    const f = t.live ? null : fileOf(t.key);
+    for (const m of f ? (f.members ?? [{ id: f.id, path: f.info.path }]) : []) {
+      const name = rel(m.path);
+      if (name && !recordings.some((r) => r.name === name)) recordings.push({ name, file: m.id });
+    }
+  }
+  return {
+    categories: settings.eventCats.map((c) => ({ id: c.id, name: c.name, color: c.color, show_on_charts: c.chart })),
+    widgets: settings.customWidgets.filter((w) => !w.shared).map((w) => ({ id: w.id, name: w.name, icon: w.icon ?? null, svg: w.svg ?? null, angle: w.angle ?? null, code: w.code ?? null, by: w.by ?? null })),
+    icons: [],
+    views: settings.workspaces.map((w) => ({ file: viewFile(w.name), view: plain(w) })),
+    recordings,
+  };
+}
+
+/** Points the core at the folder's nearest `.tlmbench/`: its recipes, check sets, profiles, decoders and events are
+ * read besides yours, and its categories and widgets are used where yours don't say otherwise. */
+async function configUse(): Promise<void> {
+  try {
+    const r = await invoke<{ dir: string | null; from: { categories: typeof cfg.categories; widgets: Record<string, unknown>[] }; recipes: string[]; checks: string[]; problems: Problem[] }>('config_use', { folder: settings.folder || null });
+    Object.assign(cfg, { dir: r.dir, recipes: r.recipes, checks: r.checks, problems: r.problems, categories: r.from.categories });
+    cfg.widgets = r.from.widgets.map((w) => widgetFrom(w, r.dir ?? ''));
+    await Promise.all([refreshRecipes(), loadCheckSets()]);
+    if (state.file) void loadEvents();
+  } catch (e) {
+    note(`Couldn't read the folder's configuration: ${e}`);
+  }
+}
+
+/** A widget the core read from a folder, as the app keeps widgets (code from a folder asks before it runs). */
+function widgetFrom(w: Record<string, unknown>, dir: string): CustomWidget {
+  const out: CustomWidget = { id: `fw_${w.id}`, name: String(w.name), shared: dir };
+  for (const k of ['icon', 'svg', 'code', 'by'] as const) if (typeof w[k] === 'string') out[k] = w[k] as string;
+  if (Array.isArray(w.angle)) out.angle = [Number(w.angle[0]), Number(w.angle[1])];
+  return out;
+}
+
+/** The recording patterns Share asks git to leave out: the file types in the folder that open as recordings. */
+function recordingPatterns(): string[] {
+  const exts = new Set<string>();
+  const walk = (e: FolderEntry | null) => {
+    for (const c of e?.children ?? []) {
+      if (c.dir) walk(c);
+      else if (c.openable !== false && /\.[a-z0-9]+$/i.test(c.name) && c.name !== '.gitignore') exts.add(c.name.slice(c.name.lastIndexOf('.')).toLowerCase());
+    }
+  };
+  walk(ui.folder);
+  return [...exts].sort().map((x) => `*${x}`);
+}
+
+async function shareOpen(): Promise<void> {
+  if (!settings.folder) return void note('Open a folder first: Share writes into the folder Explorer shows.');
+  Object.assign(shareDlg, { open: true, busy: true, error: '', done: '', rows: [], problems: [], pick: {}, showSame: false });
+  await shareScan();
+}
+
+/** Reads the folder against what you have; each row gets its default choice (kept for rows still there). */
+async function shareScan(): Promise<void> {
+  shareDlg.busy = true;
+  try {
+    const r = await invoke<{ rows: ShareRow[]; problems: Problem[]; writable: boolean; git: boolean }>('config_scan', { folder: settings.folder, own: ownConfig() });
+    const was = shareDlg.pick;
+    shareDlg.pick = {};
+    for (const row of r.rows) shareDlg.pick[rowKey(row)] = rowKey(row) in was && choices(row, r.writable).some((c) => c.value === was[rowKey(row)]) ? was[rowKey(row)] : defaultPick(row, r.writable);
+    Object.assign(shareDlg, { rows: r.rows, problems: r.problems, writable: r.writable, git: r.git });
+  } catch (e) {
+    shareDlg.error = `Couldn't read ${settings.folder}: ${e}`;
+  } finally {
+    shareDlg.busy = false;
+  }
+}
+
+/** Apply: writes the rows set to Share, takes the rows set to Use. */
+async function shareApply(): Promise<void> {
+  const keys = (p: string) => shareDlg.rows.filter((r) => shareDlg.pick[rowKey(r)] === p).map(rowKey);
+  const [mine, theirs] = [keys('share'), keys('use')];
+  Object.assign(shareDlg, { busy: true, error: '', done: '' });
+  try {
+    const parts: string[] = [];
+    if (mine.length) {
+      const written = await invoke<string[]>('config_share', { folder: settings.folder, own: ownConfig(), keys: mine });
+      parts.push(written.length ? `Wrote ${written.length} file${written.length === 1 ? '' : 's'} to .tlmbench/` : 'The folder already had what you picked');
+      if (shareDlg.git && shareDlg.ignore && written.length) {
+        const added = await invoke<string[]>('config_gitignore', { folder: settings.folder, lines: recordingPatterns() });
+        if (added.length) parts.push(`added ${added.join(', ')} to .gitignore`);
+      }
+    }
+    if (theirs.length) {
+      const got = await invoke<{ from: { categories: Record<string, unknown>[]; widgets: Record<string, unknown>[] }; views: { file: string; view: Workspace }[]; taken: string[] }>('config_pull', { folder: settings.folder, own: ownConfig(), keys: theirs });
+      await takePulled(got);
+      parts.push(`took ${theirs.length} from the folder`);
+    }
+    shareDlg.done = parts.join('; ') + '.';
+    await configUse();
+    await shareScan();
+  } catch (e) {
+    shareDlg.error = `${e}`;
+    if (mine.length) shareDlg.writable = false;
+  } finally {
+    shareDlg.busy = false;
+  }
+}
+
+/** The settings-owned objects Use the folder's brought back: categories (the folder's win an id), widgets and layouts. */
+async function takePulled(got: { from: { categories: Record<string, unknown>[]; widgets: Record<string, unknown>[] }; views: { file: string; view: Workspace }[] }): Promise<void> {
+  if (got.from.categories.length) {
+    const cats = [...settings.eventCats];
+    for (const c of got.from.categories) {
+      const next = { id: String(c.id), name: String(c.name), color: String(c.color), chart: c.show_on_charts !== false };
+      const i = cats.findIndex((x) => x.id === next.id);
+      if (i >= 0) cats[i] = next;
+      else cats.push(next);
+    }
+    setSetting('eventCats', cats);
+  }
+  if (got.from.widgets.length) {
+    const list = settings.customWidgets.filter((w) => !got.from.widgets.some((n) => `sw_${n.id}` === w.id));
+    setSetting('customWidgets', [...list, ...got.from.widgets.map((w) => ({ ...widgetFrom(w, cfg.dir ?? settings.folder), id: `sw_${w.id}` }))]);
+  }
+  for (const v of got.views) if (isWorkspace(v.view)) storeWs(v.view);
+  await Promise.all([refreshRecipes(), loadCheckSets()]);
+  if (state.file) await loadEvents();
+}
+
+/** Export…: the same files, written to a folder you choose (a read-only folder can't be shared to). */
+async function shareExport(): Promise<void> {
+  const dir = await openDialog({ directory: true, multiple: false, title: 'Choose where to write the .tlmbench folder' });
+  if (typeof dir !== 'string') return;
+  try {
+    const written = await invoke<string[]>('config_export', { out: dir, own: ownConfig() });
+    shareDlg.done = `Wrote ${written.length} file${written.length === 1 ? '' : 's'} to ${dir}. Put the folder next to the recordings as .tlmbench, or use --config.`;
+  } catch (e) {
+    shareDlg.error = `Couldn't export to ${dir}: ${e}`;
+  }
+}
+
+/** Keeps the app's own settings where `tlmbench config export` finds them (when they change). */
+let mirrorTimer = 0;
+function mirrorConfig(): void {
+  clearTimeout(mirrorTimer);
+  mirrorTimer = window.setTimeout(() => void invoke('config_mirror', { own: ownConfig() }).catch(() => {}), 1500);
 }
 
 /** A new, empty layout, opened in a tab. */
@@ -2439,8 +2604,9 @@ async function listFolder(path: string): Promise<void> {
       setSetting('folder', path);
       setSetting('exExpanded', ui.folder.children.filter((c) => c.dir).map((c) => c.path));
     }
-    // the views shared in it count under Explorer's .tlmbench row and fill Layouts
+    // the views shared in it count under Explorer's .tlmbench row and fill Layouts; its other shared objects are read too
     void loadShared().catch(() => (ui.shared = []));
+    void configUse();
   } catch (e) {
     ui.folder = null;
     setSetting('folder', '');
@@ -3275,7 +3441,23 @@ function mapFacts(knots: [string, string][], own: bigint): { offset: number; dri
 /** Mirrors the tab's files into what the sidebar and the channel names read. */
 function publishSlots(f: OpenFile | null): void {
   const ms = f?.members;
+  if (f && ms && ms.length > 1) saveTimemapsSoon(f);
   ui.slots = ms && ms.length > 1 ? ms.map((m, i): SlotRow => ({ slot: i + 1, file: m.id, path: m.path, name: m.name || shortOf(m.path), first: m.first, count: m.count, align: { ...m.align, residuals: [...m.align.residuals], pairs: [...m.align.pairs] } })) : [];
+}
+
+/** Keeps each file's alignment against the primary in the app cache (per pair, by identity), so the pair opens aligned
+ * next time and Share can write it to `.tlmbench/timemaps/`. */
+let timemapTimer = 0;
+function saveTimemapsSoon(f: OpenFile): void {
+  clearTimeout(timemapTimer);
+  timemapTimer = window.setTimeout(() => {
+    const ms = f.members;
+    if (!ms || ms.length < 2 || live.on) return;
+    for (const m of ms.slice(1)) {
+      const map = { folder: settings.folder, primary: ms[0].id, file: m.id, method: m.align.method, seconds: m.align.seconds, channel: m.align.channel ?? '', locked: m.align.locked, knots: m.knots, pairs: m.align.pairs };
+      void invoke('timemap_save', { map }).catch(() => {});
+    }
+  }, 600);
 }
 
 /** Opens a file to join a tab: its own id in the core, not shown anywhere until the group lists it. */
@@ -3373,6 +3555,15 @@ async function addToTab(path: string, saved?: NonNullable<Session['groups']>[str
       return;
     }
     await groupApply(f, order);
+    // a pair aligned before (yours, or the folder's .tlmbench/timemaps) opens as it was left
+    const found = await invoke<NonNullable<Session['groups']>[string][number] | null>('timemap_find', { folder: settings.folder, primary: have[0].id, file: m.id }).catch(() => null);
+    if (found) {
+      m.knots = found.knots;
+      m.align = { ...m.align, method: found.method as AlignMethod, seconds: found.seconds, channel: found.channel || undefined, locked: found.locked, pairs: found.pairs, ...mapFacts(found.knots, m.own[0]) };
+      await groupApply(f, order);
+      publishSlots(f);
+      return;
+    }
     // files logged in one session share a clock; separate runs line up at their starts
     await alignSet(order.length, overlaps(order[0].own, m.own) ? 'clock' : 'starts');
   } catch (e) {
@@ -4576,6 +4767,12 @@ Object.assign(actions, {
     derive.open = false;
   },
   deriveRemove: (ch: number, from: 'file' | 'all') => void deriveRemove(ch, from),
+  shareOpen: () => void shareOpen(),
+  shareClose: () => {
+    shareDlg.open = false;
+  },
+  shareApply: () => void shareApply(),
+  shareExport: () => void shareExport(),
   recipesOpen: () => void recipesOpen(),
   recipesClose: () => {
     manager.open = false;
@@ -4672,6 +4869,7 @@ function applyTimeFormat(): void {
 applyTimeFormat();
 
 onSetting((key) => {
+  if (key === 'eventCats' || key === 'customWidgets' || key === 'workspaces') mirrorConfig();
   if (key === 'timeFormat' || key === 'timeDecimals' || key === 'timeAxis') {
     applyTimeFormat();
     updateRange();
