@@ -152,7 +152,7 @@ export interface Settings {
   showStart: boolean;
   recent: string[];
   /** Where files go after the import dialog: each in a tab, or just into Explorer. */
-  importWhere: 'tabs' | 'none';
+  importWhere: 'tabs' | 'shared' | 'current' | 'none';
   /** Export data…: what was chosen last, and Save the view as an image…. */
   exportData: ExportOpts;
   exportImage: ImageOpts;

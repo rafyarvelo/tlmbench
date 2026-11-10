@@ -40,8 +40,8 @@ run(
     check('the time column is not listed as a channel', rows.join() === 'Speed,temp_in,temp_out,note', rows);
     check('units and types as detected', (await p.inputValue('[data-h=Speed] .impun')) === 'm/s' && (await p.inputValue('[data-h=note] .imptype')) === 'text');
     check('the counts', /3 number · 1 text · 0 skipped/.test(await text('.impmain h4:nth-of-type(2)')), await text('.impmain h4:nth-of-type(2)'));
-    check('Open is ready; Explorer only and Each file in a tab offered; shared/current wait for multi-file tabs',
-      (await p.isEnabled('#impGo')) && (await p.$$eval('#impWhere option', (o) => o.map((x) => x.disabled).join())) === 'false,true,true,false');
+    check('Open is ready; every destination is offered, one tab for all files and the current tab too',
+      (await p.isEnabled('#impGo')) && (await p.$$eval('#impWhere option', (o) => o.map((x) => x.disabled).join())) === 'false,false,false,false');
 
     // choices: a name, a unit, a type, a category, Resample
     await p.fill('[data-h=Speed] .impnm', 'v');
@@ -169,6 +169,21 @@ run(
     check('it goes to Explorer only, nothing else', (await p.inputValue('#impWhere')) === 'none' && /Add to Explorer/.test((await text('#impGo')) ?? ''));
     await p.keyboard.press('Escape');
     check('cancelling opened nothing', (await tabs()).length === tabsBefore);
+
+    // All files in one new tab: the first is the primary, the other joins its timeline
+    await fake(() => {
+      const f = window.__tlmFake;
+      for (const k of ['/data/h1.csv', '/data/h2.csv']) {
+        f.csv(k, ['when', 'x', 'y'], { unit: 's', rate: 10 });
+        f.files[k] = {};
+      }
+      f.drop(['/data/h1.csv', '/data/h2.csv']);
+    });
+    await until(() => !!document.querySelector('#importDlg'));
+    await p.selectOption('#impWhere', 'shared');
+    check('the dialog says how they are shown', /same timeline/.test(await text('#importDlg footer')), await text('#importDlg footer'));
+    await p.click('#impGo');
+    check('they open in one tab as two slots', (await until(() => window.__tlmFake.groupSets.length === 1 && window.__tlmFake.groupSets[0].length === 2)) && (await tabs()).includes('h1.csv') && !(await tabs()).includes('h2.csv'), await tabs());
 
     // a file that isn't a CSV has no import settings
     await p.click('#explorer .row.file[data-path$="flight.tlm"]', { button: 'right' });

@@ -58,7 +58,7 @@ import { SvgContext, svg } from './svgctx';
 import { tabs } from './tabs.svelte';
 import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
-import { fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
+import { slotsUsed, fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
 
 interface ChannelInfo {
   name: string;
@@ -153,7 +153,7 @@ const renderer = new Renderer($<HTMLCanvasElement>('gl'));
 type MissingInfo = { channel: number; count: number; ns: number };
 type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[]; missing: MissingInfo[]; adjustKey: string; /** The files of a tab that holds several, in slot order (the first is the primary); `id` is then the group's. */ members?: Member[] };
 /** One file of a tab with several. `first`/`count` are its channels' numbers in the tab; `knots` its time map. */
-type Member = { id: number; path: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint] };
+type Member = { id: number; path: string; /** What the sidebar calls it when not its file name (a live source's name). */ name?: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint] };
 
 /** Explorer's rows for a file's channels: the recording's, then its derived ones (marked ƒ). */
 const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, missing: f.missing.find((m) => m.channel === i)?.count, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
@@ -1363,7 +1363,19 @@ function updateChips(): void {
   if (JSON.stringify(values) !== JSON.stringify(stack.values)) stack.values = values;
   if (JSON.stringify(levels) !== JSON.stringify(stack.levels)) stack.levels = levels;
   const hit = state.hoverT != null ? eventAt(state.hoverT) : null;
-  ui.pointer = state.hoverT != null ? `pointer ${readoutTime(state.hoverT, Number(state.t1 - state.t0))}${hit ? ` · ${hit.name}` : ''}` : '';
+  // over another file's channel that sits off its own clock, the readout gives both: `file 2 … (own clock …)`
+  let own = '';
+  const ms = state.file?.members;
+  if (ms && ms.length > 1 && state.hoverT != null) {
+    for (const ch of state.hover.keys()) {
+      const m = ms.find((m) => ch >= m.first && ch < m.first + m.count);
+      if (!m || m === ms[0] || !m.knots.length) continue;
+      const o = mapAt(m.knots, state.hoverT, true);
+      if (o !== state.hoverT) own = ` · ${m.name || shortOf(m.path)} own clock ${readoutTime(o, Number(state.t1 - state.t0))}`;
+      break;
+    }
+  }
+  ui.pointer = state.hoverT != null ? `pointer ${readoutTime(state.hoverT, Number(state.t1 - state.t0))}${own}${hit ? ` · ${hit.name}` : ''}` : '';
 }
 
 function saveLayout(): void {
@@ -1722,11 +1734,23 @@ async function openLive(a: ConnectArgs, save: boolean, form: ConnectForm): Promi
   live.connecting = true;
   live.error = '';
   try {
-    const addTo = live.addTo != null ? (fileOf(live.addTo)?.id ?? null) : null;
+    const target = live.addTo != null ? fileOf(live.addTo) : null;
+    const addTo = target ? liveId(target) : null;
     const o = await invoke<Opened>('live_connect', {
       args: { endpoint: a.endpoint, descriptor: a.descriptor || null, name: a.name || null, record: a.record, dir: settings.recordTo || null, addTo },
     });
     if (!o.range) throw new Error('no samples yet');
+    // a source added to a live tab joins it as the next slot, on the session's clock
+    if (target && target === state.file) {
+      const have = membersOf(target);
+      have[0].name ||= tabs.list.find((t) => t.key === tabs.active)?.name;
+      const m: Member = { id: o.id, path: o.info.path, name: a.name || baseName(a.endpoint), info: o.info, first: 0, count: o.info.channels.length, knots: [], derived: [], missing: [], align: { ...freshAlign(), method: 'clock' }, own: [BigInt(o.range[0]), BigInt(o.range[1])] };
+      await groupApply(target, [...have, m]);
+      live.connect = false;
+      setSetting('liveForm', form);
+      void pollLive();
+      return;
+    }
     const key = nextTab++;
     const file: OpenFile = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: [], missing: [], adjustKey: '' };
     tabData.set(key, {
@@ -1779,17 +1803,36 @@ let lastLiveChecks = 0;
 const liveChecked = new Set<number>();
 let traceAt = 0;
 
+/** A live tab's first source: the id the live commands (state, pause, stop, trigger) take. */
+const liveId = (f: OpenFile) => f.members?.[0].id ?? f.id;
+
 /** Asks the source in front how far it has recorded (the view follows that). */
 async function pollLive(): Promise<void> {
   const f = state.file;
   if (!live.on || !f) return;
   try {
-    const st = await invoke<LiveState>('live_state', { file: f.id });
+    const st = await invoke<LiveState>('live_state', { file: liveId(f) });
     if (state.file !== f || !st.range) return;
-    if (st.info.channels.length !== f.info.channels.length) ui.channels = st.info.channels.map((c) => ({ name: c.name, unit: c.unit, category: c.category }));
-    f.info = st.info;
-    f.first = BigInt(st.range[0]);
-    f.last = BigInt(st.range[1]);
+    let info = st.info;
+    let range = st.range;
+    // a tab of several sources: the channels and span are the group's
+    if (f.members) {
+      const g = await invoke<GroupOpened>('group_state', { group: f.id });
+      if (state.file !== f || !g.range) return;
+      info = g.info;
+      range = g.range;
+      g.slots.forEach((s, i) => {
+        const m = f.members![i];
+        if (m) [m.first, m.count] = [s.first, s.count];
+      });
+    }
+    if (info.channels.length !== f.info.channels.length) {
+      f.info = info;
+      ui.channels = chanRows(f);
+    }
+    f.info = info;
+    f.first = BigInt(range[0]);
+    f.last = BigInt(range[1]);
     livePolledAt = performance.now();
     live.recorded = Number(f.last - f.first) / 1e9;
     live.health = st.health;
@@ -1869,13 +1912,16 @@ async function pollCards(): Promise<void> {
     if (live.cards.length) live.cards = [];
     return;
   }
+  // a card for each source: a tab of several has one apiece
+  const sources = liveTabs.flatMap((t) => {
+    const f = fileOf(t.key);
+    return f ? membersOf(f).map((m, i) => ({ t, id: m.id, primary: i === 0, name: m.name })) : [];
+  });
   const cards = await Promise.all(
-    liveTabs.map(async (t): Promise<SourceCard | null> => {
-      const f = fileOf(t.key);
-      if (!f) return null;
+    sources.map(async ({ t, id, primary, name }): Promise<SourceCard | null> => {
       try {
-        const st = await invoke<LiveState>('live_state', { file: f.id });
-        return { key: t.key, name: st.name || t.name, endpoint: st.health.endpoint, health: st.health, stopped: st.stopped, replay: isReplay(st.health.endpoint), session: st.session, recording: st.recording };
+        const st = await invoke<LiveState>('live_state', { file: id });
+        return { key: t.key, file: id, primary, name: name || st.name || t.name, endpoint: st.health.endpoint, health: st.health, stopped: st.stopped, replay: isReplay(st.health.endpoint), session: st.session, recording: st.recording };
       } catch {
         return null;
       }
@@ -1930,23 +1976,23 @@ Object.assign(liveActions, {
     liveDriving = false;
     live.back = Math.max(0, Number(f.last - end) / 1e9);
   },
-  stop: async (key?: number) => {
+  stop: async (key?: number, file?: number) => {
     const f = key == null ? state.file : fileOf(key);
     if (!f) return;
-    const h = await invoke<Health>('live_stop', { file: f.id });
-    if (f === state.file) {
+    const h = await invoke<Health>('live_stop', { file: file ?? liveId(f) });
+    if (f === state.file && (file == null || file === liveId(f))) {
       live.health = h;
       live.stopped = true;
     }
     void pollCards();
   },
-  pause: async (key?: number) => {
+  pause: async (key?: number, file?: number) => {
     const k = key ?? tabs.active;
     const f = fileOf(k);
-    const card = live.cards.find((c) => c.key === k);
+    const card = live.cards.find((c) => c.key === k && (file == null ? c.primary : c.file === file));
     if (!f) return;
     const paused = card ? card.health.paused : !!live.health?.paused;
-    await invoke('live_pause', { file: f.id, paused: !paused });
+    await invoke('live_pause', { file: file ?? liveId(f), paused: !paused });
     void pollLive();
     void pollCards();
   },
@@ -1963,13 +2009,19 @@ Object.assign(liveActions, {
     set.check.push(row);
     checks.editor = { set, was: checks.sets.some((s) => s.name === EVENT_RULES) ? EVENT_RULES : null, focus: set.check.length - 1, cats: false };
   },
-  remove: (key: number) => void closeTab(key),
+  remove: (key: number, file?: number) => {
+    const f = fileOf(key);
+    const slot = f?.members && file != null ? f.members.findIndex((m) => m.id === file) : -1;
+    // one source of a tab of several leaves it; the last one closes the tab
+    if (slot > 0 && key === tabs.active) void closeSlot(slot + 1);
+    else void closeTab(key);
+  },
   show: (key: number) => void showTab(key),
   trigger: async (spec: TriggerForm | null): Promise<string | null> => {
     const f = state.file;
     if (!f) return null;
     try {
-      const T = await invoke<TriggerStatus>('live_trigger', { file: f.id, spec });
+      const T = await invoke<TriggerStatus>('live_trigger', { file: liveId(f), spec });
       live.trigger = T;
       trigHandled.set(f.id, T.last);
       if (spec) liveActions.jump();
@@ -2195,11 +2247,28 @@ async function openWs(name: string): Promise<void> {
   if (ws) await openLayout(ws);
 }
 
+/** The layout the slot picker is asking files for. */
+let pendingLayout: { ws: Workspace; shared?: string } | null = null;
+
 /** Shows `ws` in a new tab on the file in front; a shared view's (`shared`) also sets its time range. */
-async function openLayout(ws: Workspace, shared?: string): Promise<void> {
+async function openLayout(ws: Workspace, shared?: string, picked = false): Promise<void> {
   const f = state.file;
   if (!f || live.on) {
     note(`Open a recording first: "${ws.name}" shows on the file in front.`);
+    return;
+  }
+  // the layout names files the tab doesn't have (`accel_x·2`): ask which ones fill the empty slots first
+  const have = membersOf(f).length;
+  const used = slotsUsed(ws);
+  if (used > have && !picked) {
+    const pick: Record<number, string> = {};
+    for (const k of Array.from({ length: used - have }, (_, i) => have + 1 + i)) {
+      // a shared view lists its files by path in its folder
+      const sf = ws.files?.find((x) => x.slot === k);
+      if (sf && settings.folder) pick[k] = `${settings.folder}${sep(settings.folder)}${sf.path}`;
+    }
+    pendingLayout = { ws, shared };
+    ui.slotPick = { name: ws.name, need: Array.from({ length: used - have }, (_, i) => have + 1 + i), pick };
     return;
   }
   stashTab();
@@ -2499,6 +2568,8 @@ async function importGo(): Promise<void> {
   }
   for (const p of direct) await openPath(p);
   if (where === 'tabs') for (const p of paths) await openPath(p);
+  else if (where === 'shared' || (where === 'current' && !state.file)) await openTogether(paths);
+  else if (where === 'current') for (const p of paths) await addToTab(p);
   else {
     // Explorer only: the settings are kept and nothing opens. The files show in Explorer when they are in its folder
     // (their own folder is listed when no folder or tab is open); otherwise the settings are saved for their next open.
@@ -3204,7 +3275,7 @@ function mapFacts(knots: [string, string][], own: bigint): { offset: number; dri
 /** Mirrors the tab's files into what the sidebar and the channel names read. */
 function publishSlots(f: OpenFile | null): void {
   const ms = f?.members;
-  ui.slots = ms && ms.length > 1 ? ms.map((m, i): SlotRow => ({ slot: i + 1, file: m.id, path: m.path, name: shortOf(m.path), first: m.first, count: m.count, align: { ...m.align, residuals: [...m.align.residuals], pairs: [...m.align.pairs] } })) : [];
+  ui.slots = ms && ms.length > 1 ? ms.map((m, i): SlotRow => ({ slot: i + 1, file: m.id, path: m.path, name: m.name || shortOf(m.path), first: m.first, count: m.count, align: { ...m.align, residuals: [...m.align.residuals], pairs: [...m.align.pairs] } })) : [];
 }
 
 /** Opens a file to join a tab: its own id in the core, not shown anywhere until the group lists it. */
@@ -4429,6 +4500,21 @@ Object.assign(actions, {
       for (const t of [...tabs.list].filter((t) => t.path !== p)) await closeTab(t.key);
     })(),
   addToTab: (p: string) => void addToTab(p),
+  slotPickCancel: () => {
+    ui.slotPick = null;
+    pendingLayout = null;
+  },
+  slotPickGo: () =>
+    void (async () => {
+      const sp = ui.slotPick;
+      const pend = pendingLayout;
+      ui.slotPick = null;
+      pendingLayout = null;
+      if (!sp || !pend) return;
+      // the chosen files join in slot order (a gap can't be skipped: later ones take the next number and the layout's names for them stay out)
+      for (const k of sp.need) if (sp.pick[k]) await addToTab(sp.pick[k]);
+      await openLayout(pend.ws, pend.shared, true);
+    })(),
   openTogether: (ps: string[]) => void openTogether(ps),
   compare: (a: string, b: string) => void compareRuns(a, b),
   closeSlot: (n: number) => void closeSlot(n),
@@ -4684,7 +4770,7 @@ export const gateApi = {
   liveHealth: () => live.health as LiveHealth | null,
   stopLive: async () => {
     const f = state.file;
-    return f ? invoke<LiveHealth>('live_stop', { file: f.id }) : null;
+    return f ? invoke<LiveHealth>('live_stop', { file: liveId(f) }) : null;
   },
   /** Resolves when the pyramid is built. */
   built(): Promise<void> {

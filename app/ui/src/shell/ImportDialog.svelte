@@ -48,14 +48,16 @@
       actions.importCancel();
     }
   }
-  const WHERE: [Where | 'shared' | 'current', string, boolean][] = [
+  const WHERE: [Where, string, boolean][] = [
     ['tabs', 'Each file in its own tab', true],
-    ['shared', 'All files in one new tab', false],
-    ['current', 'Add to the current tab', false],
+    ['shared', 'All files in one new tab', true],
+    ['current', 'Add to the current tab', true],
     ['none', 'No tabs: just add them to Explorer', true],
   ];
   const WHERE_NOTE: Record<Where, string> = {
     tabs: 'Each file opens in its own tab, as if opened on its own',
+    shared: 'The first file is the primary; the others join its tab on the same timeline',
+    current: 'The files join the tab in front, on its timeline',
     none: 'The settings are kept; the files show in Explorer without opening',
   };
 </script>

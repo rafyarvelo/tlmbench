@@ -319,9 +319,6 @@ rebuilds nothing. Channels are numbered slot after slot (`accel_x·2`); the UI s
 Settings `fileLabel`) and the prefix you set. The app keeps the maps in the session (`Session.groups`, with the knots),
 not yet per file pair in the cache.
 
-- **Live Add source as slots.** A live tab's sources are still tabs of their own. A `Group` holds fixed `Opened`s and a
-  live source's snapshot changes with each refresh, so its members need to re-read the newest snapshot per query.
-  The strip's "N sources" and the Sources cards still count live tabs.
 - **Tables.** A table with another file's columns shows them held between their samples (rows are file 1's). Sort,
   filter, Apply to charts and the filter's hit stepping work on file 1's columns only: the core says so. Dimming the
   held values and flagging gaps (4.3) is not built. A table of file 2's columns alone shows file 1's rows.
@@ -331,15 +328,14 @@ not yet per file pair in the cache.
 - **Alignment.** Event matching pairs the events you added by name and order (rule events are not offered). Cross-correlation
   and Time channel pick a channel both files name alike (Automatic: the first); the declared time-source channel of a
   file (`gps_tow`) is not detected, and a time channel is read as seconds. Sync points come from cursors A and B (no
-  click-in-both-files picker yet). The residuals plot has no axes. The hover readout of both clocks (`own clock …`) is not built.
+  click-in-both-files picker yet). The residuals plot has no axes.
 - **Sharing.** Time maps are not written to `.tlmbench/timemaps/` (5.7). A shared layout does not carry the method and knots.
 - **Recipes across files.** Names are `"Close·2"` (quoted); a file's prefix names (`MS Close`) and `2:accel_x` do not
   resolve, and an automatic recipe does not reach other files' channels. Derived channels of a non-primary file are
   listed but their recipes can only be edited in a tab of that file.
-- **The + menu** does not say what a layout needs ("needs file 2") or offer a slot picker; "Add to the current tab" in
-  the import dialog stays disabled (use Add to tab); the packet types of one file are still a tab each.
+- **Packet types** of one file are still a tab each (they could be slots of one tab).
+- **Live sources as slots:** a tab of live sources is a group whose members are re-read from the newest snapshot on every query (`Files::group`); each source keeps its own card, health, pause and stop, the strip's readouts follow the first, Remove closes one source and the last closes the tab. Triggers, live checks and live derived channels act on the first source.
 - **Design to absorb:** a group's primary always has the identity map (Make primary resets the others to starts or
   clock); Same clock is the primary's map applied unchanged (files on one wall clock); Offset is seconds after the
   primary's start, on top of Align starts; Add to tab picks Same clock when the files' own times overlap, else Align
   starts; Keep and Undo show the result drawn first rather than an overlay of both.
-- **Not run:** `just gate3 app` and `just app-parity` after the new Tauri commands (see the working notes).

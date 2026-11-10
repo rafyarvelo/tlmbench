@@ -65,15 +65,14 @@ run(
     check('Add source opens the dialog for joining the session', /Add a source/.test(await text('#liveDlg header')) && !(await p.$('#lvRecord')) && /Joins this session/.test(await text('#liveDlg footer')));
     await p.fill('#lvRecording', REC);
     await p.click('#lvConnect');
-    check('the second source opens', await until(() => document.querySelectorAll('#wsTabs .wstab[data-tip^="replay://"]').length === 2));
+    check('the second source joins the tab as a slot, not a tab of its own', (await until(() => window.__tlmFake.groupSets.length === 1)) && (await p.$$eval('#wsTabs .wstab[data-tip^="replay://"]', (t) => t.length)) === 1, await fake(() => window.__tlmFake.groupSets));
     const c1 = (await connects())[1];
     check('it joins the first one\'s session', typeof c1.addTo === 'number' && c1.endpoint.startsWith('replay://'), c1);
-    await p.click('#lvSrcBtn');
+    if (!(await p.$('#lvSources'))) await p.click('#lvSrcBtn');
     check('the strip counts two sources, with a card each', (await until(() => /2 sources/.test(document.getElementById('lvSrcBtn')?.textContent ?? ''))) && (await p.$$('#lvSources [data-card]')).length === 2);
-    check('Remove closes a source\'s tab', await (async () => {
-      const before = await p.$$eval('#wsTabs .wstab[data-tip^="replay://"]', (t) => t.length);
+    check('Remove closes the source, not the tab', await (async () => {
       await p.click('#lvSources [data-card]:last-child [data-sremove]');
-      return until((n) => document.querySelectorAll('#wsTabs .wstab[data-tip^="replay://"]').length < n, before);
+      return (await until(() => document.querySelectorAll('#lvSources [data-card]').length === 1)) && (await p.$$eval('#wsTabs .wstab[data-tip^="replay://"]', (t) => t.length)) === 1;
     })());
 
     // the start page: the saved connection, and the banner that a session is being recorded

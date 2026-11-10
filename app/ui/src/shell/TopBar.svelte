@@ -11,6 +11,11 @@
   import { actions, ui } from '../ui.svelte';
   import CheckBadge from './CheckBadge.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
+  import { slotsUsed, type Workspace } from '../workspaces';
+
+  /** Files a layout names that the tab in front doesn't have yet (its `accel_x·2` needs file 2). */
+  const have = $derived(Math.max(1, ui.slots.length));
+  const needs = (w: Workspace) => Math.max(0, slotsUsed(w) - have);
 
   const ALL: ['chart' | 'table' | 'both', string, string, string][] = [
     ['chart', 'Charts', ICON.vchart, 'Show every pane as a chart'],
@@ -344,7 +349,7 @@
               onclick={() => {
                 addMenu = null;
                 actions.openWs(w.name);
-              }}>{@html ICON.layout}<span class="nm">{w.name}</span><span class="hint">{open ? 'open in a tab' : `${w.panes.length} ${w.panes.length === 1 ? 'pane' : 'panes'}`}</span></button
+              }}>{@html ICON.layout}<span class="nm">{w.name}</span><span class="hint" class:need={!open && needs(w) > 0} data-needs={!open && needs(w) > 0 ? needs(w) : undefined}>{open ? 'open in a tab' : needs(w) > 0 ? `needs ${needs(w) === 1 ? 'file ' + (have + 1) : needs(w) + ' files'}` : `${w.panes.length} ${w.panes.length === 1 ? 'pane' : 'panes'}`}</span></button
             >
             <button class="lydel" data-wsdel={w.name} aria-label="Delete layout {w.name}" data-tip="Delete this layout (you can undo)" onclick={() => actions.deleteWs(w.name)}
               >{@html ICON.trash}</button

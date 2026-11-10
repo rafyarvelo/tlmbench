@@ -54,6 +54,8 @@ export interface SlotRow {
 }
 
 export const ui = $state({
+  /** A layout that names files this tab doesn't have (`accel_x·2` needs file 2): the picker asks for them first. */
+  slotPick: null as null | { name: string; need: number[]; pick: Record<number, string> },
   /** The files of the tab in front when it holds several (empty: one file). */
   slots: [] as SlotRow[],
   /** The open file's name and path ('' when none). */
@@ -145,6 +147,9 @@ export const actions = {
   alignPairs: (_slot: number, _pairs: [number, number][]) => {},
   /** Channel prefix…: what a file's channels are called in legends and menus ('' for its name). */
   setPrefix: (_path: string, _prefix: string) => {},
+  /** The slot picker: Open layout with the files chosen (an empty choice leaves that file out), or Cancel. */
+  slotPickGo: () => {},
+  slotPickCancel: () => {},
   /** Compare runs: two files in one tab with a pane per shared channel. */
   compare: (_a: string, _b: string) => {},
   /** Shows a file's import dialog again (its saved settings first); a recording that isn't a CSV opens as it is. */

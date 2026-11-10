@@ -15,7 +15,7 @@ const files = {
 
 run(
   'slots',
-  async ({ p, check, text, visible, fake, until }) => {
+  async ({ p, check, text, visible, fake, until, plotAt }) => {
     const app = (f) => p.evaluate((f) => window.__tlmApp[f](), f);
     const calls = (k) => fake((k) => window.__tlmFake[k], k);
     await fake((d) => (window.__tlmFake.pickFolder = d), DIR);
@@ -55,6 +55,10 @@ run(
     const after = (await calls('groupMaps')).at(-1).knots;
     check('nudge moves the map by the step (10 ms)', BigInt(after[0][1]) - BigInt(before[0][1]) === 10_000_000n, [before, after]);
 
+    const c = await plotAt(0);
+    await p.mouse.move(c.x, c.y);
+    check('the pointer readout gives both clocks over the shifted file\'s channel', await until(() => /gps own clock/.test(document.getElementById('hoverTxt')?.textContent ?? '')), await text('#hoverTxt'));
+    await p.mouse.move(5, 5);
     await fake(() => (window.__tlmFake.alignResults.xcorr = { knots: [['0', '-3330000000']], residuals: [['1000000000', 0.4], ['5000000000', -0.3], ['9000000000', 0.2]], quality: 0.97, note: 'Matched on accel_x: −3.33 s, r = 0.97', channel: 'accel_x' }));
     await p.selectOption('[data-falign="2"]', 'xcorr');
     check('Cross-correlation names the channel, offset and r', await until(() => /Matched on accel_x: −3\.33 s, r = 0\.97/.test(document.querySelector('.align .anote')?.textContent ?? '')));

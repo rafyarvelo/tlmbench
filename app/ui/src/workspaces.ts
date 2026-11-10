@@ -118,3 +118,19 @@ export function isWorkspace(ws: unknown): ws is Workspace {
   const w = ws as Workspace;
   return !!w && typeof w.name === 'string' && Array.isArray(w.panes) && w.panes.every((p) => Array.isArray(p?.channels) && p.channels.every((c) => typeof c === 'string'));
 }
+
+/** The most files a layout needs: the highest `·n` on a channel it names (file 1, the primary, when none does). */
+export function slotsUsed(ws: Workspace): number {
+  let n = 1;
+  const see = (name: string | undefined) => {
+    const m = name ? /·(\d+)$/.exec(name) : null;
+    if (m) n = Math.max(n, +m[1]);
+  };
+  for (const p of ws.panes) {
+    p.channels?.forEach(see);
+    see(p.x);
+    p.hide?.forEach(see);
+    Object.keys(p.widgets ?? {}).forEach(see);
+  }
+  return n;
+}

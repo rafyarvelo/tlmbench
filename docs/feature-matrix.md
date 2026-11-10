@@ -69,7 +69,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ✓ | |
 | Tab menu actions: Save layout, Save as, Revert, Share, Export file, Delete, Close… | v1 | ✓ | ✓ | |
 | + menu: empty layout, your layouts, shared in this folder | v1 | ✓ | ✓ | |
-| + menu: what each layout needs ("needs file 2"), slot picker | v1 | ✓ | ✗ (layouts that name a slot with no file are not offered a slot picker yet) | follow-ups |
+| + menu: what each layout needs ("needs file 2"), slot picker | v1 | ✓ | ✓ (a layout that names `lat·2` says it needs file 2; opening it asks which recording fills the slot) | |
 | Time range (click to change the format), span in words | v1 | ✓ | ✓ | |
 | Mouse modes, Clear, Back, Fit, Play back, Lock | v1 | ✓ | ✓ | |
 | All panes as charts, tables or both (top bar) | v1 | ✓ | ✓ built (`t_allmodes`; panes of values keep their view) | 4.2 |
@@ -189,7 +189,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Sources panel: a card per source with health, Pause/Resume/Stop/Remove | v1 | ✓ | ✓ (a card per live tab) | |
 | Connect dialog: the prototype's two-column layout, kinds, forms | v1 | ✓ | ✓ | |
 | Connect dialog: name, record switch, decode preview, save the connection | v1 | ✓ | ✓ | |
-| + Add source to a session; several sources on one clock | v1 | ✓ | ◐ (Add source joins the session folder and opens in its own tab; sources as slots of one tab are not built: a live source's snapshot changes with every refresh) | follow-ups |
+| + Add source to a session; several sources on one clock | v1 | ✓ | ✓ (the source joins the live tab as the next slot on the session's clock, with a card each) | |
 | Trigger (level or edge, pre/post, single or repeat) | v1 | ✓ | ✓ (in the core, on ingest; "Make a rule…" gives the same crossing as a rule) | |
 | Session scrubber track with a faint overview trace | v1 | ✓ | ✓ | |
 | Rules and checks running live | v1 | ✓ | ✓ (every 2 s over what is recorded) | |
@@ -199,7 +199,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
-| CSV import dialog (time column, rate, columns, types, categories) | v1 | ✓ | ◐ (built; Panes and the prefix rule are not; "Add to the current tab" stays disabled: use Add to tab) | follow-ups |
+| CSV import dialog (time column, rate, columns, types, categories) | v1 | ✓ | ◐ (built, with All files in one new tab and Add to the current tab; the Panes and prefix-rule sections are not) | follow-ups |
 | Import profiles keyed by the header (with recipes and a layout) | v1 | ✓ | ◐ (core and app: names, units, types, categories, time, rate, kept in the app cache; recipes and layout wait for 5.1) | 4.3, 5.1 |
 | Descriptor form on an unclaimed binary file (preview, Find frames, TOML) | v1 | ✓ | ✓ | |
 | Layouts by channel name in app data; Save, Save as, Revert, Delete | v1 | ✓ | ✓ | |
@@ -270,7 +270,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Time maps with knots; Sync points, Event matching | v1 | ✗ | ✓ (sync points from cursors A and B; event matching pairs the events you added) | |
 | Cross-correlation, time-source channels (GPS, PPS) | v1 | ◐ | ✓ (windowed, so drift is followed; a time channel both files record) | |
 | WASM alignment estimators | v1 | ✗ | ✗ | 5.9 |
-| Alignment section: residuals, quality, preview, nudge, lock | v1 | ◐ | ✓ (the preview is the result drawn, with Keep or Undo; the readout of both clocks is not built) | |
+| Alignment section: residuals, quality, preview, nudge, lock | v1 | ◐ | ✓ (the preview is the result drawn, with Keep or Undo; the pointer readout adds the file's own clock) | |
 | Open together, Compare runs | v1 | ✓ | ✓ | |
 
 ## 14. Windows, sharing config, CLI and beyond the app

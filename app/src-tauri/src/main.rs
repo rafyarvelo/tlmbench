@@ -51,7 +51,19 @@ struct Files {
 impl Files {
     /// The group a tab shows, if it has several files.
     fn group(&self, id: u32) -> Option<Arc<Group>> {
-        self.groups.lock().unwrap().get(&id).cloned()
+        let g = self.groups.lock().unwrap().get(&id).cloned()?;
+        // a live source's recording is a new snapshot after every refresh: the group is made again from the newest ones
+        // (same files, same maps), so a tab of live sources grows with them
+        let live = self.live.lock().unwrap();
+        if !g.file_ids().iter().any(|i| live.contains_key(i)) {
+            return Some(g);
+        }
+        drop(live);
+        let parts: Option<Vec<_>> =
+            g.files().into_iter().zip(g.file_ids()).map(|((_, m), &i)| self.get(i).ok().map(|o| (o, m))).collect();
+        let fresh = Arc::new(Group::new(parts?, g.file_ids().to_vec()));
+        self.groups.lock().unwrap().insert(id, fresh.clone());
+        Some(fresh)
     }
 
     /// The file as opened (before derived channels join it), or a live source's as of its last refresh: what events
@@ -59,6 +71,10 @@ impl Files {
     fn base(&self, id: u32) -> Result<Arc<StoreOpened>, String> {
         if let Some(o) = self.bases.lock().unwrap().get(&id) {
             return Ok(o.clone());
+        }
+        // a tab of several files: events and checks are kept against its primary
+        if let Some(g) = self.groups.lock().unwrap().get(&id).cloned() {
+            return self.base(g.file_ids()[0]);
         }
         // a live source's events are kept against the recording itself, not its derived channels' join
         let live = self.live.lock().unwrap().get(&id).cloned();
@@ -71,7 +87,7 @@ impl Files {
             return Ok(o.clone());
         }
         // commands that don't know several files act on the primary's
-        if let Some(g) = self.groups.lock().unwrap().get(&id) {
+        if let Some(g) = self.group(id) {
             return Ok(g.primary().clone());
         }
         let live = self.live.lock().unwrap().get(&id).cloned();
@@ -522,7 +538,7 @@ async fn group_set(
     let mut parts = Vec::new();
     let mut ids = Vec::new();
     for m in &members {
-        let o = files.open.lock().unwrap().get(&m.file).cloned().ok_or("that file is not open")?;
+        let o = files.get(m.file).map_err(|_| "that file is not open".to_string())?;
         parts.push((o, knots_in(&m.knots)?));
         ids.push(m.file);
     }
@@ -543,6 +559,13 @@ async fn group_set(
         });
     }
     Ok(out)
+}
+
+/// The tab's files as they are now: a tab of live sources grows with them.
+#[tauri::command]
+fn group_state(group: u32, files: State<'_, Files>) -> Result<GroupOpened, String> {
+    let g = files.group(group).ok_or("that tab has one file")?;
+    Ok(group_out(group, &g))
 }
 
 /// Replaces one file's time map in a group (a nudge, a method's result): nothing is rebuilt.
@@ -2597,6 +2620,7 @@ fn main() {
             open,
             group_set,
             group_map,
+            group_state,
             align_estimate,
             derive_apply,
             recipes_list,

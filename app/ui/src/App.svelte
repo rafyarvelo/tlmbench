@@ -17,6 +17,7 @@
   import DeriveDialog from './shell/DeriveDialog.svelte';
   import RecipesDialog from './shell/RecipesDialog.svelte';
   import WidgetEditor from './shell/WidgetEditor.svelte';
+  import SlotPicker from './shell/SlotPicker.svelte';
   import WidgetTrust from './shell/WidgetTrust.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
   import CheckEditor from './shell/CheckEditor.svelte';
@@ -133,6 +134,7 @@
 <RecipesDialog />
 <WidgetEditor />
 <WidgetTrust />
+<SlotPicker />
 <CheckEditor />
 <FolderRun />
 

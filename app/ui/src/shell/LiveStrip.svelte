@@ -114,15 +114,15 @@
 </div>
 {#if live.sources && h}
   <div class="lvsrc" id="lvSources" role="region" aria-label="Sources">
-    {#each live.cards as c (c.key)}
+    {#each live.cards as c (c.file)}
       {@const cs = cardState(c)}
-      {@const mine = c.key === front}
+      {@const mine = c.key === front && c.primary}
       <div class="lvcard" class:front={mine} data-card={c.key} data-state={cs}>
         <div class="lvch">
           <b class="lvcn">{c.name}</b><span class="lvcs" data-state={cs}>{cardWord[cs]}</span><span class="spacer"></span>
-          {#if cs === 'streaming' || cs === 'paused'}<button class="lw" data-spause={c.key} onclick={() => liveActions.pause(c.key)}>{cs === 'paused' ? 'Resume' : 'Pause'}</button>{/if}
-          {#if cs === 'streaming' || cs === 'paused'}<button class="lw" data-sstop={c.key} id={mine ? 'lvStop' : undefined} onclick={() => liveActions.stop(c.key)}>Stop</button>{/if}
-          <button class="lw" data-sremove={c.key} onclick={() => liveActions.remove(c.key)}>Remove</button>
+          {#if cs === 'streaming' || cs === 'paused'}<button class="lw" data-spause={c.key} onclick={() => liveActions.pause(c.key, c.file)}>{cs === 'paused' ? 'Resume' : 'Pause'}</button>{/if}
+          {#if cs === 'streaming' || cs === 'paused'}<button class="lw" data-sstop={c.key} id={mine ? 'lvStop' : undefined} onclick={() => liveActions.stop(c.key, c.file)}>Stop</button>{/if}
+          <button class="lw" data-sremove={c.key} onclick={() => liveActions.remove(c.key, c.file)}>Remove</button>
         </div>
         <div class="kv">
           <span>Source</span><span class="num file" data-tip={c.endpoint}>{c.endpoint}</span>

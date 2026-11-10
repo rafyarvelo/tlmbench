@@ -785,6 +785,9 @@
       fake.groupSets.push(members.map((m) => m.file));
       return groupOut(id, o);
     },
+    group_state({ group }) {
+      return groupOut(group, fake.open.get(group));
+    },
     group_map({ group, slot, knots }) {
       const o = fake.open.get(group);
       o.group.members[slot].knots = knots;

@@ -40,7 +40,11 @@ export interface TriggerStatus {
 
 /** One source of the session, as its card shows it. */
 export interface SourceCard {
+  /** The tab's key; `file` is the source's own id in the core (a tab of several sources has a card for each). */
   key: number;
+  file: number;
+  /** The first source of its tab (the one the strip's readouts follow). */
+  primary: boolean;
   name: string;
   endpoint: string;
   health: Health;
@@ -117,11 +121,11 @@ export const liveActions = {
   setWindow: (_s: number) => {},
   jump: () => {},
   scrub: (_fraction: number) => {},
-  stop: (_key?: number) => {},
+  stop: (_key?: number, _file?: number) => {},
   /** Pauses or resumes a source (the one in front when no key). */
-  pause: (_key?: number) => {},
+  pause: (_key?: number, _file?: number) => {},
   /** Closes a source's tab. */
-  remove: (_key: number) => {},
+  remove: (_key: number, _file?: number) => {},
   /** Starts an event rule that marks the armed trigger's crossings in any recording. */
   makeRule: () => {},
   /** Opens a source's tab. */

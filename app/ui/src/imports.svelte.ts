@@ -43,7 +43,7 @@ export interface Inspected {
 
 export type RateMode = 'recorded' | 'fixed' | 'assume' | 'samples';
 export type Kind = 'number' | 'text' | 'skip';
-export type Where = 'tabs' | 'none';
+export type Where = 'tabs' | 'shared' | 'current' | 'none';
 
 export interface Col {
   source: string;
