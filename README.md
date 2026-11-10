@@ -13,9 +13,13 @@ learns about a file lives in its own cache, so a read-only network share works a
 | --- | --- | --- |
 | ![Cursors A and B on three panes, with Measure open on the right](docs/images/app-cursors.png) | ![The same view in the light theme](docs/images/app-light.png) | ![The ⋯ menu: View, All panes and Window groups](docs/images/app-more-menu.png) |
 
-| Connect a live source | A live tab |
+| Two files in one tab | Connect a live source |
 | --- | --- |
-| ![The Connect dialog on file playback: name, recording, speed, a preview of the channels, the record switch](docs/images/app-connect.png) | ![A live tab following a replayed recording, with the Sources panel's card and the trigger button](docs/images/app-live.png) |
+| ![Two recordings on one timeline: slots 1 and 2 in Explorer, channels read as file · channel, and file 2's Alignment section with a cross-correlation result](docs/images/app-slots.png) | ![The Connect dialog on file playback: name, recording, speed, a preview of the channels, the record switch](docs/images/app-connect.png) |
+
+| A live tab |
+| --- |
+| ![A live tab following a replayed recording, with the Sources panel's card and the trigger button](docs/images/app-live.png) |
 
 ## Why it's fast, and why you can trust what it draws
 
@@ -60,6 +64,14 @@ app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in t
   dropped, and can pause, stop and add sources. A trigger on any channel or expression freezes a window around a
   crossing and marks it as an event; rules and checks run on the live file every couple of seconds; derived
   channels follow it. The session records to a folder you choose (never beside the data) and reopens like any file.
+- **Several files:** put recordings on one timeline in one tab (Add to tab, Open together, or Compare runs for two
+  runs with starts aligned and a pane per shared channel). Each file takes a numbered slot (`accel_x·2`, shown as
+  `gps · lat`); Make primary and Channel prefix… are on a file's right-click menu. The Alignment section lines a file up
+  with the primary by Align starts, Same clock, an Offset, Sync points (from cursors A and B), Event matching, windowed
+  Cross-correlation (offset and clock drift) or a time channel both files record; it shows the fit, lets you Keep or
+  Undo a result, nudge it and lock it. Nothing is rewritten: each file keeps its own pyramid and a time map is applied
+  when a view is asked for. Derived channels can read the other files' channels (`"Close·2"`), tables show another
+  file's columns held between its samples, and a session brings the files back with their alignment.
 - **Analysis:** tables with sort and filter, XY plots, Gauges and widgets of your own, derived channels (expressions
   and recipes), channel display, limits and value labels, events, and rules and checks (also `tlmbench check` in CI).
 - **Formats:** CSV (delimiter, units and time column detected) and Parquet (typed columns), each converted once to
@@ -93,7 +105,7 @@ v1 is the whole design in [`docs/design.md`](docs/design.md), built in five gate
 | 2. Scale | ✓ gate passes | 10 GB first paint under 1 s |
 | 3. Live | ✓ gate passes | 4M samples/s with no drops |
 | 4. Formats + polish | ✓ done | formats complete |
-| 5. Workbench | in progress: derived channels, events, rules and checks, widgets and live are in; next several files and alignment, shared `.tlmbench/` config, multiple windows, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
+| 5. Workbench | in progress: derived channels, events, rules and checks, widgets, live, and several files with alignment are in; next shared `.tlmbench/` config, multiple windows, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
 
 [`docs/roadmap.md`](docs/roadmap.md) orders the remaining steps and [`docs/feature-matrix.md`](docs/feature-matrix.md) shows
 each feature in the design, the prototype and the app.

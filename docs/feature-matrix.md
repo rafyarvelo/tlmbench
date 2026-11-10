@@ -24,7 +24,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | `.tlm` reference format (descriptor in the header) | v1 | sim | ✓ | |
 | Fixed-width binary with a separate descriptor | v1 | sim | ✓ (the descriptor form picks or writes one; Save to the app cache, Share to the folder) | |
 | Packet files: sync, length, checksum, zstd/lz4/gzip, cached index | v1 | sim | ✓ (opened through the descriptor form, compressed payloads previewed by the core) | |
-| Packet types: one recording per type (`flight.bin · gps`) | v1 | ✗ | ◐ (core, CLI and app, a tab per type until several recordings share a tab, 5.6) | 5.6 |
+| Packet types: one recording per type (`flight.bin · gps`) | v1 | ✗ | ◐ (core, CLI and app, a tab per type; putting the types of one file in one tab as slots is not built) | follow-ups |
 | Packets without a length field | v1 | ✓ | ✓ | |
 | Descriptor `files = [...]` name patterns | v1 | ✓ | ◐ (core and CLI find descriptors in `.tlmbench/decoders/` and the app cache's `decoders/`; the app's open path uses it) | 4.3 |
 | Bitfields in descriptors | v1 | ✗ | ✓ (core, CLI and the form's Bits column) | |
@@ -66,10 +66,10 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Rail: Explorer, Measure, Live, Settings | v1 | ✓ | ✓ | |
 | Rail: Events, Rules & checks, Layouts | v1 | ✓ | ✓ | 5.3 |
 | Tabs: file and workspace tabs, drag to reorder, keys, Undo on close | v1 | ✓ | ✓ | |
-| Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ✓ (one file per tab until 5.6) | 5.6 |
+| Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ✓ | |
 | Tab menu actions: Save layout, Save as, Revert, Share, Export file, Delete, Close… | v1 | ✓ | ✓ | |
 | + menu: empty layout, your layouts, shared in this folder | v1 | ✓ | ✓ | |
-| + menu: what each layout needs ("needs file 2"), slot picker | v1 | ✓ | ✗ | 5.6 |
+| + menu: what each layout needs ("needs file 2"), slot picker | v1 | ✓ | ✗ (layouts that name a slot with no file are not offered a slot picker yet) | follow-ups |
 | Time range (click to change the format), span in words | v1 | ✓ | ✓ | |
 | Mouse modes, Clear, Back, Fit, Play back, Lock | v1 | ✓ | ✓ | |
 | All panes as charts, tables or both (top bar) | v1 | ✓ | ✓ built (`t_allmodes`; panes of values keep their view) | 4.2 |
@@ -89,7 +89,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Start page: open folder, open recording, connect, recent recordings | v1 | ✓ | ✓ | |
 | Start page: recent sessions (one per folder), saved connections, layouts | v1 | ✓ | ◐ (sessions per folder, saved connections and the recording banner; no layouts) | 5.5 |
 | Window title follows the tab | — | ✓ | ✓ |  |
-| Drop a file on the window | v1 | ✓ | ◐ (a CSV without a saved profile asks first; several files in one tab wait for 5.6) | 4.3 |
+| Drop a file on the window | v1 | ✓ | ◐ (a CSV without a saved profile asks first; each dropped file opens in its own tab: Open together puts them in one) | |
 | Settings: Basic and All, ⓘ explanations, Reset, Reset UI layout | v1 | ✓ | ✓ (rows for later steps' features come with them) |  |
 | Settings: time formats Samples and Wall clock | v1 | ✓ | ✓ |  |
 | Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ◐ (recipes in Explorer's ⋯ and folder menus; Channels list done; event categories wait) | 5.2 |
@@ -113,11 +113,11 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Multi-select, selection bar (Add, Chart, Table, Remove, Derive…) | v1 | ✓ | ✓ | |
 | Drag channels to panes | v1 | ✓ | ✓ | |
 | File right-click: Open, Open only this, Close | v1 | ✓ | ✓ | |
-| File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ◐ (Format descriptor…; the rest wait for 5.6) | 5.6 |
+| File right-click: descriptor, Make primary, Compare, channel prefix | v1 | ✓ | ✓ (Compare with…, Add to this tab, Make primary, Alignment and channel prefix…) | |
 | Channel right-click: category, gap factor | v1 | ✓ | ✓ | |
 | Channel right-click: display and limits, Derive…, Mark when…, Add check… | v1 | ✓ | ✓ | 5.2, 5.3 |
 | Badges: ƒ derived, ⌀ missing count, ✓/✗ checks, red dots | v1 | ✓ | ✓ (a ✓ / ! / ✗ badge on tabs and Explorer files, a dot on failing channels in Explorer and on chips, a dot on the rail button) | 5.3 |
-| Data rate shown on imported files; "primary" with several open | v1 | ✓ | ◐ (the rate chip on an open CSV's row, a click shows its import settings; primary waits for 5.6) | 4.3, 5.6 |
+| Data rate shown on imported files; "primary" with several open | v1 | ✓ | ✓ | |
 | Import a local folder (browser snapshot in the prototype) | v1 | ✓ | ✓ (Open folder reads the disk; Import all in the folder menu) | |
 
 ## 5. Pane stack and charts
@@ -189,7 +189,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Sources panel: a card per source with health, Pause/Resume/Stop/Remove | v1 | ✓ | ✓ (a card per live tab) | |
 | Connect dialog: the prototype's two-column layout, kinds, forms | v1 | ✓ | ✓ | |
 | Connect dialog: name, record switch, decode preview, save the connection | v1 | ✓ | ✓ | |
-| + Add source to a session; several sources on one clock | v1 | ✓ | ◐ (Add source joins the session folder and opens in its own tab; one tab with `·2` channels is 5.6) | 5.6 |
+| + Add source to a session; several sources on one clock | v1 | ✓ | ◐ (Add source joins the session folder and opens in its own tab; sources as slots of one tab are not built: a live source's snapshot changes with every refresh) | follow-ups |
 | Trigger (level or edge, pre/post, single or repeat) | v1 | ✓ | ✓ (in the core, on ingest; "Make a rule…" gives the same crossing as a rule) | |
 | Session scrubber track with a faint overview trace | v1 | ✓ | ✓ | |
 | Rules and checks running live | v1 | ✓ | ✓ (every 2 s over what is recorded) | |
@@ -199,7 +199,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
-| CSV import dialog (time column, rate, columns, types, categories) | v1 | ✓ | ◐ (built; Panes, prefix and derived channels wait for 5.1 and 5.6, one tab for several files for 5.6) | 4.3 |
+| CSV import dialog (time column, rate, columns, types, categories) | v1 | ✓ | ◐ (built; Panes and the prefix rule are not; "Add to the current tab" stays disabled: use Add to tab) | follow-ups |
 | Import profiles keyed by the header (with recipes and a layout) | v1 | ✓ | ◐ (core and app: names, units, types, categories, time, rate, kept in the app cache; recipes and layout wait for 5.1) | 4.3, 5.1 |
 | Descriptor form on an unclaimed binary file (preview, Find frames, TOML) | v1 | ✓ | ✓ | |
 | Layouts by channel name in app data; Save, Save as, Revert, Delete | v1 | ✓ | ✓ | |
@@ -219,7 +219,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ✓ (labels and limits come from settings) | |
 | Math, sample-to-sample, rolling, one-number functions | v1 | ✓ | ✓ (a core test per function) | |
 | Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ◐ (core and CLI; live data gets element-wise and windowed recipes; the causal form of the filters is left, see `docs/follow-ups.md`) | 5.1 |
-| Cross-file inputs (`interp`) | v1 | ✓ | ✗ | 5.6 |
+| Cross-file inputs (`interp`) | v1 | ✓ | ◐ (`"Close·2"` by the tab's names; a file's prefix names and automatic recipes across files are not built) | |
 | Derive… dialog: checks as you type, preview, where it applies | v1 | ✓ | ✓ (this file, any file with the channels; a profile's waits for the profiles tab) | |
 | A − B, A ÷ B, A × B, A + B with two selected | v1 | ✓ | ✓ | |
 | Recipes library; Recipes and profiles manager; TOML import/export | v1 | ✓ | ◐ (the library in the app cache, the Recipes manager with TOML export and import; the import-profiles tab and Share to `.tlmbench/recipes/` wait) | 5.1 |
@@ -264,14 +264,14 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
 | Several files open at once in Explorer | v1 | ✓ | ✓ | |
-| Several files in one tab, numbered slots (`accel_x·2`), short names | v1 | ✓ | ✗ (a tab shows one file) | 5.6 |
-| Make primary, Channel prefix… | v1 | ✓ | ✗ | 5.6 |
-| Align starts, Same clock, Manual offset | v1 | ✓ | ✗ | 5.6 |
-| Time maps with knots; Sync points, Event matching | v1 | ✗ | ✗ | 5.6 |
-| Cross-correlation, time-source channels (GPS, PPS) | v1 | ◐ | ✗ | 5.6 |
+| Several files in one tab, numbered slots (`accel_x·2`), short names | v1 | ✓ | ✓ | |
+| Make primary, Channel prefix… | v1 | ✓ | ✓ | |
+| Align starts, Same clock, Manual offset | v1 | ✓ | ✓ | |
+| Time maps with knots; Sync points, Event matching | v1 | ✗ | ✓ (sync points from cursors A and B; event matching pairs the events you added) | |
+| Cross-correlation, time-source channels (GPS, PPS) | v1 | ◐ | ✓ (windowed, so drift is followed; a time channel both files record) | |
 | WASM alignment estimators | v1 | ✗ | ✗ | 5.9 |
-| Alignment section: residuals, quality, preview, nudge, lock | v1 | ◐ | ✗ | 5.6 |
-| Open together, Compare runs | v1 | ✓ | ✗ | 5.6 |
+| Alignment section: residuals, quality, preview, nudge, lock | v1 | ◐ | ✓ (the preview is the result drawn, with Keep or Undo; the readout of both clocks is not built) | |
+| Open together, Compare runs | v1 | ✓ | ✓ | |
 
 ## 14. Windows, sharing config, CLI and beyond the app
 

@@ -54,3 +54,26 @@ for (const scheme of ['dark', 'light']) {
   await b.close();
   server.close();
 }
+
+// several files in one tab: slots in Explorer and file 2's Alignment section after a cross-correlation
+{
+  const gps = { channels: ['lat', 'lon', 'accel_x'], units: ['deg', 'deg', 'g'], samples: 60000, rate: 100 };
+  const two = { '/data/runs/flight.tlm': { samples: 600000, rate: 1000 }, '/data/runs/gps.tlm': gps };
+  const { b, p, server } = await open({ files: two, launch: null, viewport: { width: 1440, height: 760 }, wait: 800 });
+  await p.evaluate(() => (window.__tlmFake.pickFolder = '/data/runs'));
+  await p.click('#exFolder');
+  await p.dblclick('#explorer .row.file[data-path$="flight.tlm"]');
+  await p.waitForTimeout(800);
+  await p.click('#explorer .row.file[data-path$="gps.tlm"]');
+  await p.click('#explorer .row.file.sel [data-addtab]');
+  await p.waitForTimeout(800);
+  await p.click('#explorer .row.chan[data-ch="6"] .box');
+  await p.evaluate(() => (window.__tlmFake.alignResults.xcorr = { knots: [['0', '-3330000000']], residuals: [['1000000000', 420000], ['9000000000', -310000], ['17000000000', 150000], ['25000000000', -90000]], quality: 0.97, note: 'Matched on accel_x: −3.33 s, r = 0.97', channel: 'accel_x' }));
+  await p.click('#explorer .row.slot[data-slot="2"]');
+  await p.selectOption('[data-falign="2"]', 'xcorr');
+  await p.waitForTimeout(900);
+  await p.mouse.move(5, 740);
+  await shot(p, 'app-slots.png');
+  await b.close();
+  server.close();
+}

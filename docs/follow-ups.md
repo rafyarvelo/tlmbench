@@ -310,3 +310,36 @@ The app's UI port of the prototype's shell is done except these (rows in `docs/p
   reorder it or move it alone, selecting several files in Explorer, the status bar's memory and load figures.
 - Phase 4 and 5 rows that touch the shell (the `.tlmbench` entry, the Layouts sidebar, Export in ⋯, the tab menu's
   header and status, event markers) stay with their phases.
+
+## Left from step 5.6 (several files and alignment)
+
+How it works now: a tab's files are a store `Group`, one `Opened` per file with its own pyramid and a time map (knots)
+to the tab's timeline. Queries go through the inverse and answers come back through the map, so changing an alignment
+rebuilds nothing. Channels are numbered slot after slot (`accel_x·2`); the UI shows a file's short name (`gps · lat`,
+Settings `fileLabel`) and the prefix you set. The app keeps the maps in the session (`Session.groups`, with the knots),
+not yet per file pair in the cache.
+
+- **Live Add source as slots.** A live tab's sources are still tabs of their own. A `Group` holds fixed `Opened`s and a
+  live source's snapshot changes with each refresh, so its members need to re-read the newest snapshot per query.
+  The strip's "N sources" and the Sources cards still count live tabs.
+- **Tables.** A table with another file's columns shows them held between their samples (rows are file 1's). Sort,
+  filter, Apply to charts and the filter's hit stepping work on file 1's columns only: the core says so. Dimming the
+  held values and flagging gaps (4.3) is not built. A table of file 2's columns alone shows file 1's rows.
+- **XY** needs both channels in one file (it says so); an XY across files needs interpolation.
+- **Events, checks, rules, the spectrum and Adjust** (scale, offset, missing) act on the primary only. Events of other
+  files are not read through their maps yet (the design: events are stored in a file's own clock and read through the map).
+- **Alignment.** Event matching pairs the events you added by name and order (rule events are not offered). Cross-correlation
+  and Time channel pick a channel both files name alike (Automatic: the first); the declared time-source channel of a
+  file (`gps_tow`) is not detected, and a time channel is read as seconds. Sync points come from cursors A and B (no
+  click-in-both-files picker yet). The residuals plot has no axes. The hover readout of both clocks (`own clock …`) is not built.
+- **Sharing.** Time maps are not written to `.tlmbench/timemaps/` (5.7). A shared layout does not carry the method and knots.
+- **Recipes across files.** Names are `"Close·2"` (quoted); a file's prefix names (`MS Close`) and `2:accel_x` do not
+  resolve, and an automatic recipe does not reach other files' channels. Derived channels of a non-primary file are
+  listed but their recipes can only be edited in a tab of that file.
+- **The + menu** does not say what a layout needs ("needs file 2") or offer a slot picker; "Add to the current tab" in
+  the import dialog stays disabled (use Add to tab); the packet types of one file are still a tab each.
+- **Design to absorb:** a group's primary always has the identity map (Make primary resets the others to starts or
+  clock); Same clock is the primary's map applied unchanged (files on one wall clock); Offset is seconds after the
+  primary's start, on top of Align starts; Add to tab picks Same clock when the files' own times overlap, else Align
+  starts; Keep and Undo show the result drawn first rather than an overlay of both.
+- **Not run:** `just gate3 app` and `just app-parity` after the new Tauri commands (see the working notes).

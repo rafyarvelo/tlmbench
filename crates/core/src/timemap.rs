@@ -14,6 +14,9 @@ pub struct TimeMap {
     pub knots: Vec<(Timestamp, Timestamp)>,
 }
 
+/// One side of a knot: the file's time or the shared one.
+type Side = fn(&(Timestamp, Timestamp)) -> Timestamp;
+
 /// Why a list of knots is not a time map.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MapError {
@@ -86,8 +89,7 @@ impl TimeMap {
 
     fn through(&self, x: Timestamp, back: bool) -> Timestamp {
         let k = &self.knots;
-        let (from, to): (fn(&(i64, i64)) -> i64, fn(&(i64, i64)) -> i64) =
-            if back { (|p| p.1, |p| p.0) } else { (|p| p.0, |p| p.1) };
+        let (from, to): (Side, Side) = if back { (|p| p.1, |p| p.0) } else { (|p| p.0, |p| p.1) };
         match k.len() {
             0 => x,
             1 => x - from(&k[0]) + to(&k[0]),
