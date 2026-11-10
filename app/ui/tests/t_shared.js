@@ -42,7 +42,7 @@ run(
     const v = await app('view');
     check('its time range', v.t0 === String(T0 + 10000000000n) && v.t1 === String(T0 + 20000000000n), v);
     await tabMenu();
-    check('read-only: no Save layout or Delete', (await menuItems()).join() === 'saveas,revert,share,export', await menuItems());
+    check('read-only: no Save layout or Delete', (await menuItems()).join() === 'saveas,revert,share,export,newwin', await menuItems());
     check('Update shared copy', /Update shared copy/.test(await p.$eval('.tabmenu [data-ws="share"]', (e) => e.textContent)));
     await p.keyboard.press('Escape');
 

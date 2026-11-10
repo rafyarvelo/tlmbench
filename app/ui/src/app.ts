@@ -467,6 +467,15 @@ function locked(): boolean {
   return true;
 }
 
+/** Link time view: tells the other windows that link too where this one's view and cursors are. */
+let linkApplying = false;
+function linkSend(): void {
+  const f = state.file;
+  if (!settings.linkView || linkApplying || !f) return;
+  const cursors = settings.linkCursors ? { A: state.A == null ? null : String(state.A), B: state.B == null ? null : String(state.B) } : null;
+  void invoke('link_send', { view: { t0: String(state.t0), t1: String(state.t1), cursors } }).catch(() => {});
+}
+
 function setView(t0: bigint, t1: bigint, remember = false): void {
   const f = state.file;
   if (!f) return;
@@ -490,6 +499,7 @@ function setView(t0: bigint, t1: bigint, remember = false): void {
   if (t0 + span > hi) t0 = hi - span;
   state.t0 = t0;
   state.t1 = t0 + span;
+  linkSend();
   // any view you choose stops following the playhead (it keeps going); Follow brings it back
   if (play.open && play.follow && !playDriving) play.follow = false;
   // and in a live tab, stops following now; Jump to live comes back
@@ -2140,6 +2150,26 @@ async function saveWindow(session?: Session): Promise<void> {
   if (JSON.stringify(entry) !== JSON.stringify(prev)) setSetting('windows', { ...settings.windows, [WINDOW]: entry });
 }
 
+/** Follows the windows that link their time view with this one (when this one links too and isn't locked). */
+function followLinkedWindows(): void {
+  void getCurrentWindow().listen<{ from: string; view: { t0: string; t1: string; cursors: { A: string | null; B: string | null } | null } }>('view-linked', (e) => {
+    const { from, view } = e.payload;
+    if (from === WINDOW || !settings.linkView || settings.locked || !state.file) return;
+    linkApplying = true;
+    try {
+      setView(BigInt(view.t0), BigInt(view.t1));
+      if (view.cursors && settings.linkCursors) {
+        state.A = view.cursors.A == null ? null : BigInt(view.cursors.A);
+        state.B = view.cursors.B == null ? null : BigInt(view.cursors.B);
+        scheduleDraw();
+        void refreshMeasure();
+      }
+    } finally {
+      linkApplying = false;
+    }
+  });
+}
+
 let frameTimer = 0;
 /** Opens the windows the last run had besides the first, and keeps this window's place saved. */
 async function restoreWindows(): Promise<void> {
@@ -2164,19 +2194,41 @@ async function restoreWindows(): Promise<void> {
   void here.listen('tauri://resize', later);
 }
 
-/** Shows a tab in a new window and closes it here: the new window opens the same file at the same view. */
-async function moveTabToWindow(key: number, keep = false): Promise<void> {
-  const t = tabs.list.find((x) => x.key === key);
-  if (!t) return;
+/** What a tab is, to show in another window: a live source by its id (held there from the start), or a file by its
+ *  session (path, view, aligned files). */
+function tabHandoff(t: TabInfo): { tab: { session?: Session; folder?: string; live?: { id: number; name: string; endpoint: string } }; hold: number[] } | null {
   if (t.live) {
-    // a live source stays in the core: the new window holds it from the start, and this one lets go if it is moving
-    const f = fileOf(key);
-    if (!f || f.members) return;
-    await invoke('window_new', { handoff: { live: { id: liveId(f), name: t.name, endpoint: t.path } }, hold: [liveId(f)] });
-  } else {
-    await invoke('window_new', { handoff: { session: sessionOf([t], t), folder: settings.folder } });
+    const f = fileOf(t.key);
+    if (!f || f.members) return null;
+    return { tab: { live: { id: liveId(f), name: t.name, endpoint: t.path } }, hold: [liveId(f)] };
   }
+  return { tab: { session: sessionOf([t], t), folder: settings.folder }, hold: [] };
+}
+
+/** Shows a tab in a window of its own (or `to`, another window, or a new one at `frame`) and, unless `keep`, closes it
+ *  here. */
+async function moveTabToWindow(key: number, keep = false, to?: string | null, frame?: { x: number; y: number; w: number; h: number }): Promise<void> {
+  const t = tabs.list.find((x) => x.key === key);
+  const h = t && tabHandoff(t);
+  if (!t || !h) return;
+  if (to) await invoke('tab_send', { to, tab: h.tab, hold: h.hold });
+  else await invoke('window_new', { handoff: h.tab, frame: frame ?? null, hold: h.hold });
   if (!keep) await closeTab(key);
+}
+
+/** A tab dragged out of the strip and let go at a screen point: it joins the window whose strip is there, or opens a
+ *  window of its own. */
+async function dropTabAt(key: number, x: number, y: number): Promise<void> {
+  const to = await invoke<string | null>('window_at', { x, y }).catch(() => null);
+  await moveTabToWindow(key, false, to, to ? undefined : { x: Math.max(0, x - 120), y: Math.max(0, y - 20), w: 1000, h: 700 });
+}
+
+/** A tab another window handed over. */
+function followIncomingTabs(): void {
+  void getCurrentWindow().listen<{ session?: Session; live?: { id: number; name: string; endpoint: string } }>('tab-incoming', (e) => {
+    if (e.payload.live) void adoptLive(e.payload.live);
+    else if (e.payload.session) void restoreSession(e.payload.session);
+  });
 }
 
 /** Opens a session's tabs (and `front`, a file asked for, in front), each file at its view with its cursors. */
@@ -4222,6 +4274,7 @@ function nearCursor(r: Rect, x: number): 'A' | 'B' | null {
 function placeCursor(which: 'A' | 'B', t: bigint): void {
   if (settings.locked && !settings.lockCursors) return void locked();
   state[which] = t;
+  linkSend();
   scheduleDraw();
   void refreshMeasure();
   if (which === 'A' && state.hoverT == null) void requestResting();
@@ -4653,6 +4706,7 @@ document.addEventListener('pointerdown', (e) => {
 
 function clearCursors(): void {
   state.A = state.B = null;
+  linkSend();
   ui.measureDismissed = false;
   scheduleDraw();
   void refreshMeasure();
@@ -4804,6 +4858,7 @@ Object.assign(actions, {
       if (t && !t.ws && !t.live) note(`Closed ${t.name}.`, () => void openPath(t.path));
     })(),
   moveToWindow: (key: number, keep = false) => void moveTabToWindow(key, keep),
+  dropTab: (key: number, x: number, y: number) => void dropTabAt(key, x, y),
   closePath: (path: string) =>
     void (async () => {
       for (const t of tabs.list.filter((t) => t.path === path)) await closeTab(t.key);
@@ -5106,6 +5161,8 @@ else if (launch.gate === '1' && launch.file) {
   // the folder's session from when the app last closed, then a file it was asked to open (in front); a window made
   // by moving a tab opens what it was handed
   await restoreWindows();
+  followLinkedWindows();
+  followIncomingTabs();
   const handoff = WINDOW === 'main' ? null : await invoke<{ session?: Session; folder?: string; live?: { id: number; name: string; endpoint: string } } | null>('window_take');
   if (WINDOW === 'main') await restoreSession(settings.sessions[settings.folder], launch.file);
   else if (handoff?.live) await adoptLive(handoff.live);

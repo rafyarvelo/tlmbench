@@ -72,6 +72,10 @@ app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in t
   Undo a result, nudge it and lock it. Nothing is rewritten: each file keeps its own pyramid and a time map is applied
   when a view is asked for. Derived channels can read the other files' channels (`"Close·2"`), tables show another
   file's columns held between its samples, and a session brings the files back with their alignment.
+- **Windows:** several windows on one core. Move a tab to a new window from its menu, or drag it out of the strip (or
+  onto another window's strip); a live source can show in two windows from one ingest; Link time view (and cursors)
+  keeps windows on one flight in step. Settings apply to every window at once, while sidebar layout is per window, and
+  the windows come back on the next start. (The standalone daemon and browser tabs are still to come.)
 - **Analysis:** tables with sort and filter, XY plots, Gauges and widgets of your own, derived channels (expressions
   and recipes), channel display, limits and value labels, events, and rules and checks (also `tlmbench check` in CI).
 - **Formats:** CSV (delimiter, units and time column detected) and Parquet (typed columns), each converted once to
@@ -105,7 +109,7 @@ v1 is the whole design in [`docs/design.md`](docs/design.md), built in five gate
 | 2. Scale | ✓ gate passes | 10 GB first paint under 1 s |
 | 3. Live | ✓ gate passes | 4M samples/s with no drops |
 | 4. Formats + polish | ✓ done | formats complete |
-| 5. Workbench | in progress: derived channels, events, rules and checks, widgets, live, several files with alignment and the shared `.tlmbench/` configuration are in; next multiple windows, plugins, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
+| 5. Workbench | in progress: derived channels, events, rules and checks, widgets, live, several files with alignment and the shared `.tlmbench/` configuration are in; multiple windows (the standalone daemon is next), plugins, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
 
 [`docs/roadmap.md`](docs/roadmap.md) orders the remaining steps and [`docs/feature-matrix.md`](docs/feature-matrix.md) shows
 each feature in the design, the prototype and the app.

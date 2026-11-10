@@ -407,6 +407,13 @@
       fake.sharedSettings = text;
       emit('settings-changed', { from: 'win-2', text });
     },
+    /** Another window with Link time view on moved its view. */
+    otherWindowTab(tab) {
+      emit('tab-incoming', tab);
+    },
+    otherWindowView(view) {
+      emit('view-linked', { from: 'win-2', view });
+    },
     drop(paths) {
       for (const ev of ['tauri://drag-enter', 'tauri://drag-drop']) emit(ev, { paths, position: { x: 200, y: 200 } });
     },
@@ -1256,6 +1263,16 @@
       const label = `win-${fake.windows.length + 2}`;
       fake.windows.push({ label, handoff, frame, hold });
       return label;
+    },
+    link_send({ view }) {
+      fake.linkSent = view;
+      return null;
+    },
+    // the window whose strip is under a point (none unless a test says), and a tab handed to it
+    window_at: () => fake.windowAt ?? null,
+    tab_send({ to, tab, hold }) {
+      fake.sent = { to, tab, hold };
+      return null;
     },
     holders: () => fake.holdersOf ?? [],
     window_take: () => fake.handoff ?? null,

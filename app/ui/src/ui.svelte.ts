@@ -125,6 +125,8 @@ export const actions = {
   closeOtherTabs: (_key: number) => {},
   /** Shows a tab in a new window and closes it here. */
   moveToWindow: (_key: number, _keep?: boolean) => {},
+  /** A tab dragged out of the strip, let go at a screen point (logical pixels). */
+  dropTab: (_key: number, _x: number, _y: number) => {},
   /** Closes a file: every tab showing it. */
   closePath: (_path: string) => {},
   /** Closes the folder's tabs and forgets its saved session. */

@@ -17,6 +17,7 @@ run('menus', async ({ p, check, until, wait }) => {
   await p.keyboard.press('ArrowDown');
   await p.keyboard.press('ArrowDown');
   await p.keyboard.press('ArrowDown');
+  await p.keyboard.press('ArrowDown');
   check('↓ skips disabled items', /^Overview above the panes/.test(await focused()), await focused());
   await p.keyboard.press('End');
   check('End goes to the last', (await focused()) === 'Settings…', await focused());

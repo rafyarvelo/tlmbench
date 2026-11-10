@@ -1243,6 +1243,43 @@ fn window_place(frame: Frame, window: tauri::Window) {
     let _ = window.set_position(tauri::LogicalPosition::new(frame.x, frame.y));
 }
 
+/// The other window whose tab strip is under a screen point (logical pixels), if any: a dragged tab dropped there joins it.
+#[tauri::command]
+fn window_at(x: f64, y: f64, window: tauri::Window, app: AppHandle) -> Option<String> {
+    // the title bar and the strip: the top of the window
+    const STRIP: f64 = 84.0;
+    app.webview_windows().into_iter().find_map(|(label, w)| {
+        if label == window.label() {
+            return None;
+        }
+        let scale = w.scale_factor().ok()?;
+        let pos = w.outer_position().ok()?.to_logical::<f64>(scale);
+        let size = w.outer_size().ok()?.to_logical::<f64>(scale);
+        (x >= pos.x && x <= pos.x + size.width && y >= pos.y && y <= pos.y + STRIP).then_some(label)
+    })
+}
+
+/// Hands a tab to another window, which holds what it needs from now on (`hold`: live sources).
+#[tauri::command]
+fn tab_send(
+    to: String,
+    tab: serde_json::Value,
+    hold: Option<Vec<u32>>,
+    app: AppHandle,
+    files: State<'_, Files>,
+) -> Result<(), String> {
+    for id in hold.unwrap_or_default() {
+        files.holds.add(id, &to);
+    }
+    app.emit_to(to, "tab-incoming", tab).map_err(|e| e.to_string())
+}
+
+/// A window with Link time view on tells the other windows its time view (and cursors); those with it on follow.
+#[tauri::command]
+fn link_send(view: serde_json::Value, window: tauri::Window, app: AppHandle) {
+    let _ = app.emit("view-linked", serde_json::json!({ "from": window.label(), "view": view }));
+}
+
 /// A window closed: it lets go of everything it held.
 fn release_window(label: &str, files: &Files) {
     for id in files.holds.of(label) {
@@ -3256,6 +3293,9 @@ fn main() {
             window_take,
             window_frame,
             window_place,
+            link_send,
+            window_at,
+            tab_send,
             settings_get,
             settings_save,
             view,

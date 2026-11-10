@@ -99,6 +99,8 @@
     { heading: 'View' },
     { label: 'Event markers', kbd: 'E', checked: settings.eventsOn, run: () => setSetting('eventsOn', !settings.eventsOn) },
     { label: 'Lock the time view', kbd: 'L', checked: settings.locked, run: () => setSetting('locked', !settings.locked) },
+    { label: 'Link time view with other windows', checked: settings.linkView, data: { more: 'linkview' }, tip: 'This window follows the other windows that link too, and they follow it', run: () => setSetting('linkView', !settings.linkView) },
+    { label: 'Link cursors too', checked: settings.linkCursors, data: { more: 'linkcursors' }, disabled: !settings.linkView, run: () => setSetting('linkCursors', !settings.linkCursors) },
     { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
     { label: 'Overview above the panes', checked: settings.overviewTop, run: () => setSetting('overviewTop', !settings.overviewTop) },
     { heading: 'All panes' },
@@ -175,7 +177,13 @@
           dragTab = null;
           actions.saveSession();
         }}
-        ondragend={() => (dragTab = null)}
+        ondragend={(e) => {
+          // let go away from the strip (outside the window, or below the bar): the tab leaves for another window
+          const away = e.clientY < 0 || e.clientY > 56 || e.clientX < 0 || e.clientX > innerWidth;
+          const cancelled = e.screenX === 0 && e.screenY === 0;
+          if (dragTab != null && e.dataTransfer?.dropEffect === 'none' && away && !cancelled) actions.dropTab(t.key, e.screenX, e.screenY);
+          dragTab = null;
+        }}
       >
         {@html t.ws ? ICON.layout : ICON.file}<span class="nm">{t.name}</span><CheckBadge path={t.path} />{#if t.live}<span class="livedot" data-live-tab aria-label="live"></span>{/if}{#if t.dirty}<span class="dirty" data-dirty aria-label="unsaved changes" data-tip="Unsaved changes: Save layout (⌘S) or Revert changes in the tab menu"></span>{/if}
         <span

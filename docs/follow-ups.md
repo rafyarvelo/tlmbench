@@ -392,3 +392,26 @@ can write them too.
   `.tlmbench/timemaps/<primary>--<file>.toml` with `primary`, `file`, their identities, `method`, `knots` and
   `pairs`. `tlmbench validate <folder>` lints every file and every expression in recipes and checks; `--config` replaces
   the nearest `.tlmbench/` (repeatable, later wins).
+
+## Left from step 5.8a (multiple windows)
+
+How it works now: every window is a Tauri window of the one process, so they share the core directly; the core counts
+which windows hold each id (`Holds`) and a window that closes lets go of its ids. The settings every window shares are a
+file in the app config folder that the core writes and announces; the UI reads it before the settings module loads.
+Windows other than the first take their tabs from a handoff the core keeps until the window asks for it.
+
+- **Daemon and socket (5.8b):** not started. The same commands over a local socket and WebSocket, a per-session token,
+  browser tabs, the daemon exiting with its last window unless started standalone. The Tauri commands are tied to
+  `State<Files>`, so the commands need a transport-neutral layer first.
+- **Live tabs with several sources** can't be moved or shown in another window yet (the group is made in the window that
+  made it); a single-source live tab can.
+- **Window geometry** is saved as the window's place in logical pixels with its folder; a monitor that is gone puts the
+  window where the OS decides. Moves and resizes are saved after 400 ms.
+- **Link time view** links every window that has it on (no choosing between pairs); the view is clamped to each window's
+  own recording, so two windows with different files follow only as far as each recording reaches.
+- **Per-window folder:** the folder shown in Explorer is a shared setting, so a window opened later starts from the last
+  folder chosen anywhere; each window's tabs are its own.
+- **Same setting changed in two windows at once:** the last save wins as a whole object; the events keep the windows in
+  step, so it only shows if two windows change different settings within a few milliseconds.
+- **Design notes to absorb:** the daemon's lifetime in the desktop app is the process (closing the last window quits);
+  the drag of a tab onto another window's strip finds the window by the screen position of its top 84 px.

@@ -139,6 +139,10 @@ export interface Settings {
   overviewTop: boolean;
   leftPanel: LeftPanel;
   /** Sidebar widths in px (dragged at their inner edge), sidebar panels collapsed (by name), and Explorer and Measure traded sides. */
+  /** This window follows the time view of the other windows that link too (one flight over two monitors), and sends its own. */
+  linkView: boolean;
+  /** And the cursors A and B. */
+  linkCursors: boolean;
   leftWidth: number;
   measureWidth: number;
   panelsClosed: string[];
@@ -255,6 +259,8 @@ export const DEFAULTS: Settings = {
   showHints: true,
   overviewTop: false,
   leftPanel: 'explorer',
+  linkView: false,
+  linkCursors: false,
   leftWidth: 300,
   measureWidth: 260,
   panelsClosed: [],
@@ -321,7 +327,7 @@ let sharedText = '';
 
 /** What each window keeps for itself (layout, not settings): the sidebars shown, their widths and the Explorer's state.
  *  Everything else is shared by every window and applies to all of them at once. */
-export const WINDOW_KEYS: (keyof Settings)[] = ['leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'leftPanel', 'measureOpen', 'exExpanded'];
+export const WINDOW_KEYS: (keyof Settings)[] = ['linkView', 'linkCursors', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'leftPanel', 'measureOpen', 'exExpanded'];
 
 /** This window's name (`main`, then `win-2`, …). */
 function windowLabel(): string {
@@ -439,7 +445,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
+const KEEP: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
