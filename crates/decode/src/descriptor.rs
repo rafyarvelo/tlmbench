@@ -705,7 +705,9 @@ fn shared_decoder_dirs(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     if !config.is_empty() {
         return config.iter().rev().map(|d| d.join("decoders")).collect();
     }
-    let abs = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_owned());
+    // paths are kept as given (a canonical one would differ on macOS: /var is /private/var)
+    let abs =
+        if dir.is_absolute() { dir.to_owned() } else { std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_owned()) };
     abs.ancestors().map(|d| d.join(".tlmbench")).find(|d| d.is_dir()).map(|d| d.join("decoders")).into_iter().collect()
 }
 

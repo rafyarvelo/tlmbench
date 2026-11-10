@@ -150,7 +150,11 @@ fn profile_sets(path: &Path, common: &Common) -> Vec<String> {
     let Ok(i) = tlmbench_decode::csv::inspect_file(path) else { return Vec::new() };
     let header: Vec<String> = i.columns.iter().map(|c| c.source.clone()).collect();
     let root = tlmbench_decode::cache::cache_root(common.cache.as_deref());
-    tlmbench_decode::profile::find(&root, &header).exact.map(|p| p.check_sets).unwrap_or_default()
+    let found = tlmbench_decode::profile::find(&root, &header).exact;
+    let found = found.or_else(|| {
+        tlmbench_store::config::shared_profile(&tlmbench_store::config::dirs_for(path, &common.config), &header)
+    });
+    found.map(|p| p.check_sets).unwrap_or_default()
 }
 
 pub fn run(args: Args) -> Result<(), Fail> {

@@ -251,7 +251,7 @@ fn the_folders_recipes_sets_events_and_profiles_fill_in_behind_yours() {
         tlmbench_store::checks::Sets::in_dir(&cache.path().join("none")).list().is_empty(),
         "a plain folder doesn't overlay"
     );
-    let shared = config::shared_events(&[dir.clone()], "aaaa", "");
+    let shared = config::shared_events(std::slice::from_ref(&dir), "aaaa", "");
     assert_eq!((shared.len(), shared[0].source.as_str()), (1, "shared"));
     assert_eq!(config::shared_events(&[dir], "zzzz", "a.csv").len(), 1, "found by name when the identity changed");
     config::set_overlay(vec![]);

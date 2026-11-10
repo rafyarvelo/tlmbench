@@ -388,14 +388,11 @@ fn name_of(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
+/// Makes a file's text canonical: its name to a person and its bytes.
+type Canon = dyn Fn(&str) -> std::result::Result<(String, Vec<u8>), String>;
+
 /// One TOML kind: every file in `dir/<sub>` made canonical by `canon` (name, bytes), or the problems.
-fn read_dir_items(
-    dir: &Path,
-    kind: Kind,
-    ext: &str,
-    canon: &dyn Fn(&str) -> std::result::Result<(String, Vec<u8>), String>,
-    problems: &mut Vec<Problem>,
-) -> Vec<Item> {
+fn read_dir_items(dir: &Path, kind: Kind, ext: &str, canon: &Canon, problems: &mut Vec<Problem>) -> Vec<Item> {
     let mut out = Vec::new();
     for p in files_in(&dir.join(kind.path()), ext) {
         let rel = format!("{}/{}", kind.path(), name_of(&p));
@@ -574,10 +571,9 @@ pub fn from_folder(dir: &Path) -> FromFolder {
     if let Ok(f) = fs::read_to_string(dir.join("categories.toml"))
         .map_err(|e| e.to_string())
         .and_then(|t| toml::from_str::<CategoryFile>(&t).map_err(|e| e.to_string()))
+        && f.schema == SCHEMA
     {
-        if f.schema == SCHEMA {
-            out.categories = f.categories;
-        }
+        out.categories = f.categories;
     }
     if let Ok(rd) = fs::read_dir(dir.join("widgets")) {
         let mut dirs: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
@@ -649,7 +645,7 @@ pub fn cache_items(root: &Path, own: &Own) -> Vec<Item> {
         let name = v.view.get("name").and_then(|n| n.as_str()).unwrap_or("view").to_owned();
         items.push(Item { kind: Kind::Views, name, files: vec![(format!("views/{}", v.file), json_of(&v.view))] });
     }
-    items.sort_by(|a, b| (a.kind, a.key()).cmp(&(b.kind, b.key())));
+    items.sort_by_key(|i| (i.kind, i.key()));
     items
 }
 

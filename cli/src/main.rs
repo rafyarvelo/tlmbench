@@ -36,7 +36,8 @@ struct Common {
     /// The packet type to read, for a packet file with several (default: all in `info` and `convert`)
     #[arg(long = "type", global = true)]
     part: Option<String>,
-    /// Import profile (JSON) for CSV files: names, units, types, the time column and the rate
+    /// Import profile (JSON from the app cache, or TOML from `.tlmbench/profiles/`) for CSV files: names, units, types,
+    /// the time column and the rate
     #[arg(long, global = true)]
     profile: Option<PathBuf>,
     /// Cache folder (default: $TLMBENCH_CACHE, else the OS cache dir)
@@ -436,7 +437,12 @@ fn inspect(file: &std::path::Path, common: &Common) -> Result<(), Fail> {
     let i = tlmbench_decode::csv::inspect_file(file).map_err(tlmbench_store::Error::from)?;
     let root = tlmbench_decode::cache::cache_root(common.cache.as_deref());
     let header: Vec<String> = i.columns.iter().map(|c| c.source.clone()).collect();
-    let found = tlmbench_decode::profile::find(&root, &header);
+    let mut found = tlmbench_decode::profile::find(&root, &header);
+    if found.exact.is_none() {
+        // the nearest `.tlmbench/profiles/` (or --config) shares one for this header
+        found.exact =
+            tlmbench_store::config::shared_profile(&tlmbench_store::config::dirs_for(file, &common.config), &header);
+    }
     let mut v = serde_json::to_value(&i).expect("inspections serialize");
     v["profile"] = serde_json::to_value(&found).expect("profiles serialize");
     println!("{}", serde_json::to_string_pretty(&v).expect("json prints"));
@@ -455,6 +461,11 @@ fn load_profile(path: &std::path::Path) -> tlmbench_decode::profile::ImportProfi
         std::process::exit(3)
     };
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| fail(e.to_string()));
+    // a profile shared in `.tlmbench/profiles/` is TOML, the app cache's is JSON
+    if path.extension().is_some_and(|x| x == "toml") {
+        return tlmbench_store::config::profile_from_toml(&text)
+            .unwrap_or_else(|e| fail(format!("not an import profile: {e}")));
+    }
     serde_json::from_str(&text).unwrap_or_else(|e| fail(format!("not an import profile: {e}")))
 }
 

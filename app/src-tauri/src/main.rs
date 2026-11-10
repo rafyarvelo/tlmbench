@@ -2231,10 +2231,10 @@ fn tlm_dir(folder: &str) -> std::path::PathBuf {
 /// Fills in the identity of each recording the UI named by its open file's id.
 fn resolve_own(own: &mut tlmbench_store::config::Own, files: &Files) {
     for r in &mut own.recordings {
-        if let (true, Some(id)) = (r.identity.is_empty(), r.file) {
-            if let Ok(b) = files.base(id) {
-                r.identity = b.identity().to_owned();
-            }
+        if let (true, Some(id)) = (r.identity.is_empty(), r.file)
+            && let Ok(b) = files.base(id)
+        {
+            r.identity = b.identity().to_owned();
         }
     }
 }
