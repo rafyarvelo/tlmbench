@@ -17,6 +17,46 @@ When needed:
   100 GB serves `convert`'s flat-memory claim. Neither suits CI runners (about 14 GB free); run them on the Mac.
 - Add those folders to `ro_commands` coverage, mounted read-only (`hdiutil` image or a read-only external volume).
 
+## Left from step 5.5 (Nov 9)
+
+- **Measure first:** `just gate3 app` on the Mac after these changes (the gate drives `api.connect`, whose signature is unchanged; the app's `live_connect` takes
+  its arguments as one struct now), a real Mac run of file playback (`replay://` of a CSV and a .tlm), a trigger and live
+  checks against a real TCP or UDP source, and a look at the faint trace and the Sources cards with a screenshot.
+- **Derived channels on a live file (left, owner to decide):** the prototype's live test derives a channel on a live
+  file and sees it grow. In the app a trigger or a check can read any expression over a live file, but Derive… on a
+  live tab (a ƒ row that keeps growing) is not built: `derive_apply` works on files that are open whole, and a derived
+  entry that grows needs the same incremental fold the pyramid has (`Live::refresh`), with `eval_warm` over each new
+  chunk. The same goes for the causal (one-pass) filters live data needs, since `lowpass` and the others are zero-phase
+  with a read margin: a trigger on a filtered channel is refused for now. Recommendation: build both together, as a
+  derived `Live` that follows its base, in the next live-related step.
+- **Add source:** it joins the session's folder (`source-2.tlm` next to `source-1.tlm`) and opens in a tab of its own, with
+  its own clock from its own first sample; one tab holding several live files with `·2` channels and one session clock
+  is 5.6 (numbered slots and time maps). Until then "N sources" counts live tabs and the cards list every live tab,
+  not the sources of one session.
+- **Triggers:** only on the file of the tab in front (one trigger per live file); not in the CLI or Python yet (a
+  `tlmbench record --trigger` that follows its own recording with `Live::refresh` is the natural place); an expression
+  that needs the whole recording (running totals, filters that start at the beginning, one-number functions) is
+  refused; a crossing between the last sample before arming and the first after is not seen; the window uses the
+  recording's average rate for time windows (`rolling_mean(x, 50ms)`), so a live source with big gaps warms up a
+  little short; the trigger's events are kept in the cache against the live file's key and go with the session.
+- **Live checks:** each run reads the whole recording so far (about every 2 s), so a long session costs more each
+  time; running them over the changed tail only (rules and sample checks are streams; summary checks and `When`
+  scopes need the whole) is the next step. The interval is fixed at 2 s, not a setting. Checks flicker the "checking"
+  state every run.
+- **Pause:** a device's pause lets frames go by (they are not read), so the recording has a gap, as designed; a tailed
+  file's pause loses the rows written meanwhile too.
+- **Connect dialog:** the forms are the app's (a port or address, a descriptor file); the prototype's framing, timestamp
+  source, multicast group, reconnect and poll interval are not built (the core has no such options yet); the preview shows
+  fields from the descriptor, not decoded values from the stream; "Start at" is a number of seconds, not the prototype's
+  list of suggested starts.
+- **Start page:** saved connections have no rename or edit (open one, change it, save again as new); no layouts list yet.
+- **Design notes for `docs/design.md`:** triggers run in the core on ingest, over the new samples with a warm-up for
+  windowed expressions, and write an event each time (category Trigger, source rule); "Make a rule…" is the same crossing
+  as `prev(x) < L && x >= L`, so it also marks a recorded file; File playback is the endpoint `replay://`; pausing
+  a replay is a real pause while a device's leaves a gap; a recording that isn't kept goes to the cache's `live-sessions/`
+  and is removed with its source; `Settings › Record live sessions to` sets the folder; checks on a live file run
+  afresh about every 2 s and aren't cached.
+
 ## Left from step 5.4 (Nov 9)
 
 - **Measure first:** the budget of 100 widgets in under 2 ms a frame, in the release app on the Mac (the headless

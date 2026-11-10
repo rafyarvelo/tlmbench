@@ -34,6 +34,8 @@ export interface TriggerStatus {
   pending: boolean;
   error: string | null;
   spec: (Omit<TriggerForm, 'channel'> & { channel: string }) | null;
+  /** The same crossing as an event rule's condition. */
+  rule: string | null;
 }
 
 /** One source of the session, as its card shows it. */
@@ -120,6 +122,8 @@ export const liveActions = {
   pause: (_key?: number) => {},
   /** Closes a source's tab. */
   remove: (_key: number) => {},
+  /** Starts an event rule that marks the armed trigger's crossings in any recording. */
+  makeRule: () => {},
   /** Opens a source's tab. */
   show: (_key: number) => {},
   /** Arms a trigger, or stops it (null); returns why it couldn't. */

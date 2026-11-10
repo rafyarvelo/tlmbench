@@ -61,6 +61,12 @@ run(
     await p.click('#lvFollow');
     check('Follow returns to live', (await text('#lvFollow')) === 'Following');
 
+    // the same trigger as an event rule, to mark crossings in a recorded file
+    await p.click('#lvTrig');
+    await p.click('.trigpop [data-tgrule]');
+    check('Make a rule… opens the rule editor with the crossing as its condition', await until(() => /prev\(rpm\) < 1500 && rpm >= 1500/.test(document.querySelector('.ckdlg, #checkEditor, [role=dialog]')?.innerText ?? '') || [...document.querySelectorAll('input,textarea')].some((i) => /prev\(rpm\) < 1500/.test(i.value))), await text('[role=dialog]'));
+    await p.keyboard.press('Escape');
+
     // repeat: fires again and shows the latest
     await p.click('#lvTrig');
     check('the popover opens with what is armed', (await p.inputValue('.trigpop [data-tg="ch"]')) === 'rpm' && (await p.inputValue('.trigpop [data-tg="level"]')) === '1500');

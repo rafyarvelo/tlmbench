@@ -29,7 +29,7 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   check('a refused connection says so', await until(() => /connection refused/.test(document.getElementById('lvErr')?.textContent ?? '')), await text('#lvErr'));
   await p.fill('#lvAddr', '127.0.0.1:9000');
   await p.click('#lvConnect');
-  check('connecting opens a live tab', await until(() => document.querySelector('#wsTabs [aria-selected=true]')?.dataset.tip === '127.0.0.1:9000') && !(await p.isVisible('#liveDlg')));
+  check('connecting opens a live tab', await until(() => document.querySelector('#wsTabs [aria-selected=true]')?.dataset.tip === 'tcp://127.0.0.1:9000') && !(await p.isVisible('#liveDlg')));
   check('a pulsing dot on the live tab and on the rail', (await p.$$('[data-live-tab]')).length === 1 && (await p.$$('[data-live-dot]')).length === 1);
   check('the live strip: LIVE, the session\'s name and the time recorded', (await text('#lvBadge')) === 'LIVE' && (await text('#lvSession')) === '127.0.0.1:9000' && /REC 4\d\.\d+ s/.test(await text('#lvRec')), await text('#liveStrip'));
   check('no overview in a live tab', !(await p.$('.overview')));

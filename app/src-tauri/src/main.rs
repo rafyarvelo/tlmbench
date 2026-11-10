@@ -1027,6 +1027,9 @@ async fn live_preview(endpoint: String, descriptor: Option<String>) -> Result<Li
                 let (time, time_field) = match &d.time {
                     TimeSpec::Rate { rate_hz, .. } => (format!("{rate_hz} Hz"), None),
                     TimeSpec::Field { field, .. } => (format!("time from {field}"), Some(field.clone())),
+                    TimeSpec::Counter { field, clock_hz, .. } => {
+                        (format!("{field} counting at {clock_hz} Hz"), Some(field.clone()))
+                    }
                     TimeSpec::Index => ("numbered".to_string(), None),
                 };
                 Ok(LivePreview {

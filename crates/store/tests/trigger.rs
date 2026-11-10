@@ -140,3 +140,29 @@ fn what_cant_be_computed_in_a_window_is_refused() {
     assert!(e.contains("nothing"), "{e}");
     assert!(!live.trigger_status().armed);
 }
+
+#[test]
+fn the_same_trigger_as_a_rule_marks_the_crossings_in_a_recorded_file() {
+    use tlmbench_store::checks::{Check, Kind as CheckKind};
+    let dir = tempfile::tempdir().unwrap();
+    let (store, live, path) = live(dir.path());
+    live.arm_trigger(spec("a", Kind::Rise, 0.0, true), &[]).unwrap();
+    append(&path, 100, 2800);
+    live.refresh().unwrap();
+    let fired: Vec<i64> = events_of(&store, &live).iter().map(at).collect();
+    assert_eq!(fired.len(), 4, "{fired:?}");
+    // the rule the trigger offers, run on the recording as it now stands
+    let rule = live.trigger_status().rule.expect("armed: it has a rule");
+    assert_eq!(rule, "prev(\"a\") < 0 && \"a\" >= 0");
+    let row = Check {
+        name: "t".into(),
+        kind: CheckKind::Rule,
+        group: "g".into(),
+        expect: rule,
+        enabled: true,
+        ..Check::default()
+    };
+    let out = store.check_one(&live.opened(), &row, &[]);
+    let marked: Vec<i64> = out.runs.iter().map(|r| r.start / 1_000_000).collect();
+    assert_eq!(marked, fired, "the rule and the live trigger find the same crossings");
+}

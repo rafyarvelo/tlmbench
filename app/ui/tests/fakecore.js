@@ -962,7 +962,7 @@
         const ev = { id: `trigger:${last}`, name: `Trigger: ${T.spec.channel} ${{ rise: 'rises through', fall: 'falls through', above: 'goes above', below: 'goes below' }[T.spec.kind]} ${T.spec.level}`, start: String(last), duration: '0', category: 'trigger', source: 'rule', channels: [T.spec.channel] };
         fake.events[o.r.path] = [...(fake.events[o.r.path] ?? []), ev];
       }
-      const trigger = T ? { armed: T.armed, count: T.count, last: T.last, pending: T.last != null && BigInt(T.last) + BigInt(Math.round(T.spec.post * 1e9)) > last, error: null, spec: T.spec } : { armed: false, count: 0, last: null, pending: false, error: null, spec: null };
+      const trigger = T ? { armed: T.armed, count: T.count, last: T.last, pending: T.last != null && BigInt(T.last) + BigInt(Math.round(T.spec.post * 1e9)) > last, error: null, spec: T.spec, rule: `prev(${T.spec.channel}) < ${T.spec.level} && ${T.spec.channel} >= ${T.spec.level}` } : { armed: false, count: 0, last: null, pending: false, error: null, spec: null, rule: null };
       return { range: [String(timeAt(o.r, 0)), String(last)], samples: o.r.samples, part: 1, info: o.info(), session: '/rec/session-1', name: L.name, recording: L.recording, stopped: L.stopped(), health: L.health(), trigger };
     },
     live_stop({ file }) {
@@ -986,7 +986,7 @@
         L.trigger = { spec, armed: true, count: 0, last: null, nextAt: Date.now() + (fake.triggerAfter ?? 1000) };
       }
       const T = L.trigger;
-      return T ? { armed: T.armed, count: T.count, last: T.last, pending: false, error: null, spec: T.spec } : { armed: false, count: 0, last: null, pending: false, error: null, spec: null };
+      return T ? { armed: T.armed, count: T.count, last: T.last, pending: false, error: null, spec: T.spec, rule: `prev(${T.spec.channel}) < ${T.spec.level} && ${T.spec.channel} >= ${T.spec.level}` } : { armed: false, count: 0, last: null, pending: false, error: null, spec: null, rule: null };
     },
     live_preview({ endpoint, descriptor }) {
       const path = endpoint.replace(/^(replay|file):\/\//, '').replace(/\?.*$/, '');

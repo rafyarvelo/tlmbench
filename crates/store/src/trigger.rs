@@ -72,6 +72,22 @@ pub struct Status {
     /// Why it can't run, when it can't.
     pub error: Option<String>,
     pub spec: Option<Spec>,
+    /// The same crossing as an event rule's condition (the design's "reuse the rule engine"): put in a rule, it marks
+    /// each crossing in a recorded file the way the trigger does live.
+    pub rule: Option<String>,
+}
+
+impl Spec {
+    /// The crossing as an expression over `x` (the channel as an expression): true at each sample that crosses.
+    pub fn rule(&self, x: &str) -> String {
+        let l = fmt_level(self.level);
+        match self.kind {
+            Kind::Rise => format!("prev({x}) < {l} && {x} >= {l}"),
+            Kind::Fall => format!("prev({x}) > {l} && {x} <= {l}"),
+            Kind::Above => format!("prev({x}) <= {l} && {x} > {l}"),
+            Kind::Below => format!("prev({x}) >= {l} && {x} < {l}"),
+        }
+    }
 }
 
 /// An armed trigger: what it evaluates and how far it has looked.
@@ -89,6 +105,8 @@ pub(crate) struct Trigger {
     error: Option<String>,
     armed: bool,
     label: String,
+    /// The channel as an expression: its quoted name, or what was typed.
+    source: String,
 }
 
 impl Trigger {
@@ -106,6 +124,7 @@ impl Trigger {
                 .into());
         }
         let label = spec.channel.clone();
+        let source = if named { text.clone() } else { format!("({text})") };
         Ok(Trigger {
             seen: rec.info().samples,
             prev: None,
@@ -117,6 +136,7 @@ impl Trigger {
             spec,
             expr,
             label,
+            source,
         })
     }
 
@@ -134,6 +154,7 @@ impl Trigger {
             pending: self.last.is_some_and(|t| t + post > t_last),
             error: self.error.clone(),
             spec: Some(self.spec.clone()),
+            rule: Some(self.spec.rule(&self.source)),
         }
     }
 

@@ -104,7 +104,7 @@
         <div class="trow"><span>Then</span><select class="sel" data-tg="repeat" value={tf.repeat ? '1' : '0'} onchange={(e) => (tf.repeat = e.currentTarget.value === '1')}><option value="0">Stop after one</option><option value="1">Repeat</option></select></div>
         {#if trigErr || T?.error}<p class="trerr" id="lvTrigErr">{trigErr || T?.error}</p>{/if}
         <p class="hint">{T?.count ? `Fired ${T.count}×. ` : ''}Each trigger adds an event in the Trigger category. Follow goes back to live.</p>
-        <div class="trbtns">{#if T?.armed}<button class="tbtn" data-tgoff onclick={off}>Turn off</button>{/if}<button class="tbtn primary" data-tgarm onclick={arm}>{T?.armed ? 'Update' : 'Arm'}</button></div>
+        <div class="trbtns">{#if T?.rule}<button class="tbtn" data-tgrule data-tip="The same crossing as an event rule: it marks each crossing in a recorded file the way the trigger does live" onclick={() => ((trigOpen = false), liveActions.makeRule())}>Make a rule…</button>{/if}{#if T?.armed}<button class="tbtn" data-tgoff onclick={off}>Turn off</button>{/if}<button class="tbtn primary" data-tgarm onclick={arm}>{T?.armed ? 'Update' : 'Arm'}</button></div>
       </div>
     {/if}
   </span>

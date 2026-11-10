@@ -87,13 +87,13 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | View lock with its settings (layout, cursors, table sort) | v1 | ✓ | ✓ built (`t_tablelock`) | 4.2 |
 | Status bar: query and draw times, drawing level | v1 | ✓ | ✓ (and the core's memory, the chunk cache's share, CPU load) |  |
 | Start page: open folder, open recording, connect, recent recordings | v1 | ✓ | ✓ | |
-| Start page: recent sessions (one per folder), saved connections, layouts | v1 | ✓ | ◐ (sessions per folder; no saved connections or layouts) | 5.5 |
+| Start page: recent sessions (one per folder), saved connections, layouts | v1 | ✓ | ◐ (sessions per folder, saved connections and the recording banner; no layouts) | 5.5 |
 | Window title follows the tab | — | ✓ | ✓ |  |
 | Drop a file on the window | v1 | ✓ | ◐ (a CSV without a saved profile asks first; several files in one tab wait for 5.6) | 4.3 |
 | Settings: Basic and All, ⓘ explanations, Reset, Reset UI layout | v1 | ✓ | ✓ (rows for later steps' features come with them) |  |
 | Settings: time formats Samples and Wall clock | v1 | ✓ | ✓ |  |
 | Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ◐ (recipes in Explorer's ⋯ and folder menus; Channels list done; event categories wait) | 5.2 |
-| Settings: Record live sessions to | v1 | ✓ | ✗ | 5.5 |
+| Settings: Record live sessions to | v1 | ✓ | ✓ | |
 | Sidebars: collapse, move, resize, swap sides | v1 | ✓ | ✓ | |
 | Drag a sidebar panel to reorder it | v1 | ✓ | ✓ (and to the other sidebar) |  |
 
@@ -182,18 +182,18 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Loop between A and B; per-tab playhead restored paused | v1 | ✓ | ✓ | |
 | Stop at events (any or chosen categories) | v1 | ✓ | ◐ (nothing, any, or one category; several at once wait) | 5.2 |
 | Live sources: serial, UDP, TCP, tail a growing file | v1 | sim | ✓ | |
-| Live source: file playback (demo, testing without hardware) | v1 | ✓ | ✗ | 5.5 |
+| Live source: file playback (demo, testing without hardware) | v1 | ✓ | ✓ (`replay://`) | |
 | Ring buffer ingest, auto-recording to a session folder | v1 | n/a | ✓ | |
 | Live tab is a file tab whose files grow; every view works | v1 | ✓ | ✓ | |
-| Live strip: badge, REC time, scrubber, presets, Following, Sources | v1 | ✓ | ◐ (no session name, PAUSED/STOPPED) | 5.5 |
-| Sources panel: a card per source with health, Pause/Resume/Stop/Remove | v1 | ✓ | ◐ | 5.5 |
-| Connect dialog: the prototype's two-column layout, kinds, forms | v1 | ✓ | ◐ (the layout, kinds and copy; its new fields are 5.5) | 5.5 |
-| Connect dialog: name, record switch, decode preview, save the connection | v1 | ✓ | ✗ | 5.5 |
-| + Add source to a session; several sources on one clock | v1 | ✓ | ◐ (core yes; no Add source) | 5.5 |
-| Trigger (level or edge, pre/post, single or repeat) | v1 | ✓ | ✗ | 5.5 |
-| Session scrubber track with a faint overview trace | v1 | ✓ | ✗ | 5.5 |
-| Rules and checks running live | v1 | ✓ | ✗ | 5.5 |
-| Backpressure: "dropping samples" warning with counts | v1 | ✓ | ◐ | 5.5 |
+| Live strip: badge, REC time, scrubber, presets, Following, Sources | v1 | ✓ | ✓ (session name, PAUSED / STOPPED / ENDED) | |
+| Sources panel: a card per source with health, Pause/Resume/Stop/Remove | v1 | ✓ | ✓ (a card per live tab) | |
+| Connect dialog: the prototype's two-column layout, kinds, forms | v1 | ✓ | ✓ | |
+| Connect dialog: name, record switch, decode preview, save the connection | v1 | ✓ | ✓ | |
+| + Add source to a session; several sources on one clock | v1 | ✓ | ◐ (Add source joins the session folder and opens in its own tab; one tab with `·2` channels is 5.6) | 5.6 |
+| Trigger (level or edge, pre/post, single or repeat) | v1 | ✓ | ✓ (in the core, on ingest; "Make a rule…" gives the same crossing as a rule) | |
+| Session scrubber track with a faint overview trace | v1 | ✓ | ✓ | |
+| Rules and checks running live | v1 | ✓ | ✓ (every 2 s over what is recorded) | |
+| Backpressure: "dropping samples" warning with counts | v1 | ✓ | ✓ | |
 
 ## 9. Files, workspaces, sharing and export
 
@@ -218,7 +218,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ✓ (labels and limits come from settings) | |
 | Math, sample-to-sample, rolling, one-number functions | v1 | ✓ | ✓ (a core test per function) | |
-| Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ◐ (core and CLI; causal filters for live data wait for 5.5) | 5.1 |
+| Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ◐ (core and CLI; the causal form for live data is left from 5.5, see `docs/follow-ups.md`) | 5.1 |
 | Cross-file inputs (`interp`) | v1 | ✓ | ✗ | 5.6 |
 | Derive… dialog: checks as you type, preview, where it applies | v1 | ✓ | ✓ (this file, any file with the channels; a profile's waits for the profiles tab) | |
 | A − B, A ÷ B, A × B, A + B with two selected | v1 | ✓ | ✓ | |

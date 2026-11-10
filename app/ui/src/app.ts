@@ -1945,6 +1945,19 @@ Object.assign(liveActions, {
     void pollLive();
     void pollCards();
   },
+  makeRule: () => {
+    const T = live.trigger;
+    if (!T?.spec || !T.rule) return;
+    const phrase = { rise: 'rises through', fall: 'falls through', above: 'goes above', below: 'goes below' }[T.spec.kind];
+    const row = newCheck(true, 'Triggers');
+    row.name = `Trigger: ${T.spec.channel} ${phrase} ${T.spec.level}`;
+    row.expect = T.rule;
+    row.category = 'trigger';
+    const set = structuredClone(plain(checks.sets.find((s) => s.name === EVENT_RULES) ?? { ...newSet(EVENT_RULES), runs_on_any_file: true }));
+    set.runs_on_any_file = true;
+    set.check.push(row);
+    checks.editor = { set, was: checks.sets.some((s) => s.name === EVENT_RULES) ? EVENT_RULES : null, focus: set.check.length - 1, cats: false };
+  },
   remove: (key: number) => void closeTab(key),
   show: (key: number) => void showTab(key),
   trigger: async (spec: TriggerForm | null): Promise<string | null> => {
