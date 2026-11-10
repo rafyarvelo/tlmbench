@@ -912,6 +912,7 @@
       if (!spec) throw `couldn't connect to ${endpoint}: connection refused`;
       if (!replay && !endpoint.startsWith('file://') && !descriptor) throw `${endpoint} needs a descriptor for its frames`;
       const r = recording(endpoint, { ...spec, samples: 1 });
+      r.base = r.chans.slice();
       const t0 = Date.now() - (spec.already ?? 1) * 1000;
       let stopped = null;
       let pausedAt = null;

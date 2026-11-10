@@ -89,7 +89,7 @@ pub(crate) struct Loaded {
     pub gaps: GapIndex,
     /// A recording that grows (see `live`): each channel's levels in files of their own, level 4 first, used up to
     /// `lens`. Empty for a recording's cache entry, whose levels share one file.
-    pub growing: Vec<Vec<Mmap>>,
+    pub growing: Vec<std::sync::Arc<Vec<Mmap>>>,
 }
 
 impl Loaded {
@@ -214,6 +214,21 @@ impl Loaded {
     /// Two finished pyramids of recordings with the same samples, side by side: `a`'s channels, then `b`'s. `None` when
     /// either isn't finished.
     pub fn concat(a: &Loaded, b: &Loaded) -> Result<Option<Loaded>> {
+        // two growing recordings with the same samples: their levels side by side
+        if a.offsets.is_empty() || b.offsets.is_empty() {
+            if !(a.offsets.is_empty() && b.offsets.is_empty()) {
+                return Ok(None);
+            }
+            if a.lens != b.lens || a.done != b.done {
+                return Ok(None);
+            }
+            return Ok(Some(Loaded::growing(
+                a.growing.iter().chain(&b.growing).cloned().collect(),
+                a.lens.clone(),
+                a.done,
+                a.gaps.clone(),
+            )));
+        }
         if !(a.complete && b.complete) || !a.growing.is_empty() || !b.growing.is_empty() || a.lens != b.lens {
             return Ok(None);
         }
@@ -245,7 +260,7 @@ impl Loaded {
 
     /// A growing recording's pyramid: `maps[channel][level]` holds at least `lens[level]` summaries, and `done`
     /// samples are summarized (the rest are read raw). Complete in the sense that every sample can be answered.
-    pub fn growing(maps: Vec<Vec<Mmap>>, lens: Vec<usize>, done: usize, gaps: GapIndex) -> Loaded {
+    pub fn growing(maps: Vec<std::sync::Arc<Vec<Mmap>>>, lens: Vec<usize>, done: usize, gaps: GapIndex) -> Loaded {
         let usable = lens.len();
         Loaded {
             maps: Vec::new(),

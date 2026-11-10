@@ -166,3 +166,55 @@ fn the_same_trigger_as_a_rule_marks_the_crossings_in_a_recorded_file() {
     let marked: Vec<i64> = out.runs.iter().map(|r| r.start / 1_000_000).collect();
     assert_eq!(marked, fired, "the rule and the live trigger find the same crossings");
 }
+
+#[test]
+fn derived_channels_follow_a_live_recording() {
+    use std::sync::Arc;
+    use tlmbench_expr::Recipe;
+    let dir = tempfile::tempdir().unwrap();
+    let (store, live, path) = live(dir.path());
+    let recipe = |name: &str, expr: &str| Recipe {
+        name: name.into(),
+        expr: expr.into(),
+        unit: None,
+        category: None,
+        decimals: None,
+        automatic: false,
+    };
+    let recipes = [
+        recipe("double", "a * 2"),
+        recipe("avg", "rolling_mean(a, 20)"),
+        recipe("total", "cumsum(a)"),
+        recipe("nope", "zzz + 1"),
+    ];
+    let d = store.open_live_derived(Arc::new(live), &recipes).unwrap();
+    assert_eq!(d.names, ["double", "avg"]);
+    let why: Vec<&str> = d.skipped.iter().map(|(n, _)| n.as_str()).collect();
+    assert!(why.contains(&"total") && why.contains(&"nope"), "{:?}", d.skipped);
+    for (from, to) in [(100, 700), (700, 701), (701, 5000)] {
+        append(&path, from, to);
+        assert!(d.live.refresh().unwrap());
+        let o = d.live.opened();
+        let rec = o.recording();
+        assert_eq!(rec.info().channels.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["a", "double", "avg"]);
+        assert_eq!(rec.info().samples, to);
+        let a = rec.read(0, 0, to).to_f64(1.0, 0.0);
+        let double = rec.read(1, 0, to).to_f64(1.0, 0.0);
+        assert!(a.iter().zip(&double).all(|(x, y)| (x * 2.0 - y).abs() < 1e-9));
+        // the mean of the last 20 samples, once there are 20
+        let avg = rec.read(2, 0, to).to_f64(1.0, 0.0);
+        let i = to - 1;
+        let want = a[i - 19..=i].iter().sum::<f64>() / 20.0;
+        assert!((avg[i] - want).abs() < 1e-6, "{} vs {want}", avg[i]);
+    }
+    // views through the joined recording work like any file's
+    let o = d.live.opened();
+    let t1 = o.recording().info().t_last.unwrap() + 1;
+    let v = o.view(
+        1,
+        tlmbench_core::Viewport { t0: 0, t1, width_px: 200, raw_max: 0 },
+        4.0,
+        tlmbench_store::Precision::Exact,
+    );
+    assert!(!v.trace.y.is_empty());
+}

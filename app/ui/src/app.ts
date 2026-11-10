@@ -1792,6 +1792,8 @@ async function pollLive(): Promise<void> {
     live.health = st.health;
     live.session = st.session;
     live.name = st.name;
+    // Explorer names the source as the session does, not by its file
+    if (st.name && ui.file !== st.name) ui.file = st.name;
     live.recording = st.recording;
     live.stopped = st.stopped;
     live.replay = isReplay(st.health.endpoint);
@@ -3126,7 +3128,7 @@ async function reapplyAll(): Promise<void> {
   const files = new Set<OpenFile>();
   for (const t of tabs.list) {
     const f = fileOf(t.key);
-    if (f && !t.live) files.add(f);
+    if (f) files.add(f);
   }
   for (const f of files) await reapply(f);
 }

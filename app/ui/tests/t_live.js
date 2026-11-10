@@ -35,6 +35,16 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   check('no overview in a live tab', !(await p.$('.overview')));
   check('every channel drawn', await until(() => window.__tlmApp.drawn().every((d) => d && d.length)));
 
+  // Derive… works on a live tab: the derived channel is a ƒ row that follows the source
+  await p.click('#explorer .row.chan[data-ch="0"] .nm');
+  await p.click('#explorer .row.chan[data-ch="1"] .nm', { modifiers: ['ControlOrMeta'] });
+  await p.click('#selBar [data-sel="derive"]');
+  await until(() => !!document.querySelector('#deriveDlg'));
+  await p.selectOption('#deriveDlg [data-r="tpl"]', 'prod');
+  check('a live file can be derived on', await until(() => /samples/.test(document.querySelector('#recStat')?.textContent ?? '')), await text('#recStat'));
+  await p.click('#deriveDlg [data-ok]');
+  check('the derived channel is a ƒ row on the live file', await until(() => document.querySelectorAll('#explorer .row.chan[data-derived]').length >= 1), await text('#explorer'));
+
   // following now: the view's end moves with the recording, over the window
   const v1 = await app('view');
   await wait(600);

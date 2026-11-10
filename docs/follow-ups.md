@@ -22,13 +22,14 @@ When needed:
 - **Measure first:** `just gate3 app` on the Mac after these changes (the gate drives `api.connect`, whose signature is unchanged; the app's `live_connect` takes
   its arguments as one struct now), a real Mac run of file playback (`replay://` of a CSV and a .tlm), a trigger and live
   checks against a real TCP or UDP source, and a look at the faint trace and the Sources cards with a screenshot.
-- **Derived channels on a live file (left, owner to decide):** the prototype's live test derives a channel on a live
-  file and sees it grow. In the app a trigger or a check can read any expression over a live file, but Derive… on a
-  live tab (a ƒ row that keeps growing) is not built: `derive_apply` works on files that are open whole, and a derived
-  entry that grows needs the same incremental fold the pyramid has (`Live::refresh`), with `eval_warm` over each new
-  chunk. The same goes for the causal (one-pass) filters live data needs, since `lowpass` and the others are zero-phase
-  with a read margin: a trigger on a filtered channel is refused for now. Recommendation: build both together, as a
-  derived `Live` that follows its base, in the next live-related step.
+- **Derived channels on a live file (built; causal filters left):** Derive… on a live tab gives ƒ rows that follow the source
+  (`Store::open_live_derived`: each batch of new samples is computed after a warm-up of the samples its windows need,
+  appended to a recording of its own that is followed as it grows, and joined to the live one; the growing pyramids join
+  side by side). What can't be rebuilt from a bounded look-back is skipped with the reason: running totals, one-number
+  functions and the zero-phase filters (`lowpass`, `highpass`, `bandpass`). A causal (one-pass) form of the filters for
+  live data, which carries state from one batch to the next, is not built; a trigger on a filtered channel is refused
+  for the same reason. The derived part is recomputed from the start when the source's recording rotates into a new
+  part (the derived channels go until Derive… is applied again). Automatic recipes are not applied when a source connects.
 - **Add source:** it joins the session's folder (`source-2.tlm` next to `source-1.tlm`) and opens in a tab of its own, with
   its own clock from its own first sample; one tab holding several live files with `·2` channels and one session clock
   is 5.6 (numbered slots and time maps). Until then "N sources" counts live tabs and the cards list every live tab,

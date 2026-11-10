@@ -36,3 +36,21 @@ for (const scheme of ['dark', 'light']) {
   await b.close();
   server.close();
 }
+
+// live: the Connect dialog on file playback, and a live tab with its Sources card
+{
+  const { b, p, server } = await open({ files, viewport: { width: 1440, height: 760 }, launch: null, wait: 800 });
+  await p.click('[data-rail="live"]');
+  await p.fill('#lvRecording', '/data/flight.tlm');
+  await p.fill('#lvName', 'Bench demo');
+  await p.waitForTimeout(500);
+  await shot(p, 'app-connect.png');
+  await p.click('#lvConnect');
+  await p.waitForTimeout(3500);
+  await p.click('#lvSrcBtn');
+  await p.mouse.move(5, 740);
+  await p.waitForTimeout(800);
+  await shot(p, 'app-live.png');
+  await b.close();
+  server.close();
+}

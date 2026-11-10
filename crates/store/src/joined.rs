@@ -102,10 +102,14 @@ impl Recording for Joined {
         self.base.recording().time_index()
     }
     fn decode_chunks(&self, channels: &[usize], chunks: Range<usize>) -> Vec<Vec<Chunk>> {
-        // derived channels are plain arrays: only the recording's own are ever chunked
-        let own: Vec<usize> = channels.iter().copied().filter(|&c| c < self.n).collect();
-        assert!(own.len() == channels.len(), "derived channels aren't chunked");
-        self.base.recording().decode_chunks(&own, chunks)
+        // each part decodes its own channels (a derived part of a live recording is a .tlm, whose fields are chunked)
+        let (mut own, mut der) = (Vec::new(), Vec::new());
+        for &c in channels {
+            if c < self.n { own.push(c) } else { der.push(c - self.n) }
+        }
+        let mut a = self.base.recording().decode_chunks(&own, chunks.clone()).into_iter();
+        let mut b = self.derived.recording().decode_chunks(&der, chunks).into_iter();
+        channels.iter().map(|&c| if c < self.n { a.next() } else { b.next() }.expect("one per channel")).collect()
     }
     fn time_at(&self, i: usize) -> Timestamp {
         self.base.recording().time_at(i)

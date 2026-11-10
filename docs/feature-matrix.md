@@ -218,7 +218,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | --- | --- | --- | --- | --- |
 | Expression language: arithmetic, comparisons, `if`, quoted names, `a\|b`, labels | v1 | ✓ | ✓ (labels and limits come from settings) | |
 | Math, sample-to-sample, rolling, one-number functions | v1 | ✓ | ✓ (a core test per function) | |
-| Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ◐ (core and CLI; the causal form for live data is left from 5.5, see `docs/follow-ups.md`) | 5.1 |
+| Filters (moving average, Butterworth low/high/band-pass, median) | v1 | ✓ | ◐ (core and CLI; live data gets element-wise and windowed recipes; the causal form of the filters is left, see `docs/follow-ups.md`) | 5.1 |
 | Cross-file inputs (`interp`) | v1 | ✓ | ✗ | 5.6 |
 | Derive… dialog: checks as you type, preview, where it applies | v1 | ✓ | ✓ (this file, any file with the channels; a profile's waits for the profiles tab) | |
 | A − B, A ÷ B, A × B, A + B with two selected | v1 | ✓ | ✓ | |

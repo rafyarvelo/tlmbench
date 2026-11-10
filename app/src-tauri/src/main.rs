@@ -51,7 +51,9 @@ impl Files {
         if let Some(o) = self.bases.lock().unwrap().get(&id) {
             return Ok(o.clone());
         }
-        self.get(id)
+        // a live source's events are kept against the recording itself, not its derived channels' join
+        let live = self.live.lock().unwrap().get(&id).cloned();
+        live.map(|l| l.follow.read().unwrap().opened()).ok_or_else(|| "that file is not open".into())
     }
 
     /// The file's recording, or a live source's as of its last refresh.
@@ -60,7 +62,7 @@ impl Files {
             return Ok(o.clone());
         }
         let live = self.live.lock().unwrap().get(&id).cloned();
-        live.map(|l| l.follow.read().unwrap().opened()).ok_or_else(|| "that file is not open".into())
+        live.map(|l| l.opened()).ok_or_else(|| "that file is not open".into())
     }
 }
 
@@ -69,6 +71,8 @@ struct LiveEntry {
     source: Mutex<Option<tlmbench_live::Source>>,
     /// The source's newest part, followed (a tailed file's rotation starts a new one).
     follow: RwLock<Arc<tlmbench_store::Live>>,
+    /// Recipes computed over it as it grows, joined to it (set by `derive_apply`).
+    derived: RwLock<Option<Arc<tlmbench_store::LiveDerived>>>,
     part: AtomicUsize,
     session: std::path::PathBuf,
     /// What the Sources panel calls it.
@@ -83,6 +87,14 @@ struct LiveEntry {
 }
 
 impl LiveEntry {
+    /// The recording with its derived channels (if it has some), as of the last refresh.
+    fn opened(&self) -> Arc<StoreOpened> {
+        match self.derived.read().unwrap().as_ref() {
+            Some(d) => d.opened(),
+            None => self.follow.read().unwrap().opened(),
+        }
+    }
+
     fn health(&self) -> tlmbench_live::Health {
         let g = self.source.lock().unwrap();
         match g.as_ref() {
@@ -209,6 +221,39 @@ fn with_derived(
     attached: &[String],
     exclude: &[String],
 ) -> Result<Shown, String> {
+    let (recipes, mut skipped) = pick_recipes(store, attached, exclude);
+    if recipes.is_empty() {
+        return Ok((base.clone(), Vec::new(), skipped));
+    }
+    let d = store.open_derived(base, &recipes).map_err(|e| e.to_string())?;
+    // an automatic recipe that needs channels the file lacks just doesn't apply; one the user attached is reported
+    skipped.extend(
+        d.skipped
+            .iter()
+            .filter(|(n, _)| attached.contains(n))
+            .map(|(n, e)| Skipped { name: n.clone(), why: e.msg.clone() }),
+    );
+    let Some(opened) = d.opened else { return Ok((base.clone(), Vec::new(), skipped)) };
+    let first = base.recording().info().channels.len();
+    let derived = derived_infos(&recipes, &d.names, first);
+    let joined = store.join(base.clone(), Arc::new(opened)).map_err(|e| e.to_string())?;
+    Ok((Arc::new(joined), derived, skipped))
+}
+
+fn derived_infos(recipes: &[tlmbench_expr::Recipe], names: &[String], first: usize) -> Vec<DerivedInfo> {
+    names
+        .iter()
+        .enumerate()
+        .map(|(k, name)| {
+            let r = recipes.iter().find(|r| &r.name == name).expect("computed from a recipe in the list");
+            DerivedInfo { channel: first + k, name: name.clone(), expr: r.expr.clone(), automatic: r.automatic }
+        })
+        .collect()
+}
+
+/// The library's recipes a file gets: those named in `attached` in that order, then the automatic ones not excluded;
+/// and the attached names that aren't in the library.
+fn pick_recipes(store: &Store, attached: &[String], exclude: &[String]) -> (Vec<tlmbench_expr::Recipe>, Vec<Skipped>) {
     let lib = tlmbench_store::Library::new(store.root());
     // the attached ones in the order given (so a channel keeps its number when others come and go), then the
     // automatic ones that weren't named, by name
@@ -224,35 +269,12 @@ fn with_derived(
         .filter(|r| r.automatic && !exclude.contains(&r.name) && !recipes.iter().any(|x| x.name == r.name))
         .collect();
     recipes.extend(rest);
-    let mut skipped: Vec<Skipped> = attached
+    let skipped: Vec<Skipped> = attached
         .iter()
         .filter(|n| !recipes.iter().any(|r| &r.name == *n))
         .map(|n| Skipped { name: n.clone(), why: "There is no recipe with that name".into() })
         .collect();
-    if recipes.is_empty() {
-        return Ok((base.clone(), Vec::new(), skipped));
-    }
-    let d = store.open_derived(base, &recipes).map_err(|e| e.to_string())?;
-    // an automatic recipe that needs channels the file lacks just doesn't apply; one the user attached is reported
-    skipped.extend(
-        d.skipped
-            .iter()
-            .filter(|(n, _)| attached.contains(n))
-            .map(|(n, e)| Skipped { name: n.clone(), why: e.msg.clone() }),
-    );
-    let Some(opened) = d.opened else { return Ok((base.clone(), Vec::new(), skipped)) };
-    let first = base.recording().info().channels.len();
-    let derived = d
-        .names
-        .iter()
-        .enumerate()
-        .map(|(k, name)| {
-            let r = recipes.iter().find(|r| &r.name == name).expect("computed from a recipe in the list");
-            DerivedInfo { channel: first + k, name: name.clone(), expr: r.expr.clone(), automatic: r.automatic }
-        })
-        .collect();
-    let joined = store.join(base.clone(), Arc::new(opened)).map_err(|e| e.to_string())?;
-    Ok((Arc::new(joined), derived, skipped))
+    (recipes, skipped)
 }
 
 /// Builds `o`'s pyramid in the background, reporting progress (the part of `open` shared with applying recipes).
@@ -413,6 +435,32 @@ async fn derive_apply(
     progress: Channel<Progress>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
+    // a live source: the recipes follow it as it grows
+    let live = files.live.lock().unwrap().get(&file).cloned();
+    if let Some(l) = live {
+        let store = files.store.clone();
+        return spawn_blocking(move || -> Result<Opened, String> {
+            let (recipes, mut skipped) = pick_recipes(&store, &recipes, &exclude);
+            let base = l.follow.read().unwrap().clone();
+            let first = base.opened().recording().info().channels.len();
+            let mut derived = Vec::new();
+            *l.derived.write().unwrap() = None;
+            if !recipes.is_empty() {
+                let d = store.open_live_derived(base, &recipes).map_err(|e| e.to_string())?;
+                skipped.extend(d.skipped.iter().map(|(n, why)| Skipped { name: n.clone(), why: why.clone() }));
+                derived = derived_infos(&recipes, &d.names, first);
+                if !d.names.is_empty() {
+                    *l.derived.write().unwrap() = Some(Arc::new(d.live));
+                }
+            }
+            let o = l.opened();
+            let info = o.recording().info().clone();
+            let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
+            Ok(Opened { id: file, info, range, status: Status::Built, derived, skipped, missing: Vec::new() })
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
     let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
     let store = files.store.clone();
     let b = base.clone();
@@ -626,8 +674,8 @@ struct CheckRun {
 /// Runs sets (by name) on an open file, or reads the results kept for its contents and the sets' versions.
 #[tauri::command]
 async fn checks_run(file: u32, sets: Vec<String>, files: State<'_, Files>) -> Result<Vec<CheckRun>, String> {
-    let base = files.base(file)?;
     let live = files.live.lock().unwrap().contains_key(&file);
+    let base = if live { files.get(file)? } else { files.base(file)? };
     let store = files.store.clone();
     spawn_blocking(move || -> Result<Vec<CheckRun>, String> {
         let library = tlmbench_store::checks::Sets::new(store.root());
@@ -891,6 +939,7 @@ async fn live_connect(args: LiveArgs, files: State<'_, Files>) -> Result<Opened,
             last: Mutex::new(source.health()),
             source: Mutex::new(Some(source)),
             follow: RwLock::new(Arc::new(live)),
+            derived: RwLock::new(None),
             part: AtomicUsize::new(files_now.len()),
             session,
             name,
@@ -917,18 +966,23 @@ async fn live_connect(args: LiveArgs, files: State<'_, Files>) -> Result<Opened,
                 // the trigger carries over to the new part
                 let status = follower.follow.read().unwrap().trigger_status();
                 *follower.follow.write().unwrap() = Arc::new(next);
+                // derived channels followed the old part
+                *follower.derived.write().unwrap() = None;
                 follower.part.store(parts.len(), Ordering::Relaxed);
                 if let (true, Some(spec)) = (status.armed, status.spec) {
                     let recipes = tlmbench_store::Library::new(store.root()).list();
                     let _ = follower.follow.read().unwrap().arm_trigger(spec, &recipes);
                 }
             }
-            let live = follower.follow.read().unwrap().clone();
-            let _ = live.refresh();
+            let derived = follower.derived.read().unwrap().clone();
+            match derived {
+                Some(d) => drop(d.refresh()),
+                None => drop(follower.follow.read().unwrap().clone().refresh()),
+            }
             std::thread::sleep(LIVE_REFRESH);
         }
     });
-    let o = entry.follow.read().unwrap().opened();
+    let o = entry.opened();
     let info = o.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
     Ok(Opened { id, info, range, status: Status::Built, derived: Vec::new(), skipped: Vec::new(), missing: Vec::new() })
@@ -959,7 +1013,7 @@ struct LiveState {
 #[tauri::command]
 fn live_state(file: u32, files: State<'_, Files>) -> Result<LiveState, String> {
     let l = files.live.lock().unwrap().get(&file).cloned().ok_or("that source is not open")?;
-    let o = l.follow.read().unwrap().opened();
+    let o = l.opened();
     let info = o.recording().info().clone();
     Ok(LiveState {
         range: info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string())),

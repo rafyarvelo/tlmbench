@@ -43,7 +43,7 @@ use std::time::{Duration, SystemTime};
 
 pub use chunks::ChunkCache;
 pub use error::{Error, Result};
-pub use live::Live;
+pub use live::{Live, LiveDerived, LiveDerivedOpened};
 use rayon::prelude::*;
 use serde::Serialize;
 use tlmbench_core::chunks::{CHUNK_SAMPLES, Held, chunk_of};

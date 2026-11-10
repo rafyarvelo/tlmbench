@@ -233,7 +233,13 @@ impl Grow {
             .iter()
             // SAFETY: the level files are only appended to, by this `Live`, and readers use the first `lens`
             // summaries of each, written before the map was made.
-            .map(|levels| levels[..=top].iter().map(|f| unsafe { Mmap::map(f) }).collect::<std::io::Result<Vec<_>>>())
+            .map(|levels| {
+                levels[..=top]
+                    .iter()
+                    .map(|f| unsafe { Mmap::map(f) })
+                    .collect::<std::io::Result<Vec<_>>>()
+                    .map(Arc::new)
+            })
             .collect::<std::io::Result<Vec<_>>>()?;
         Ok(Loaded::growing(maps, lens, done, self.gaps.clone()))
     }
@@ -242,6 +248,176 @@ impl Grow {
 impl Drop for Live {
     fn drop(&mut self) {
         self.store.chunks.forget(self.id);
+        let _ = fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// A live recording with derived channels: the recipes are computed over each batch of new samples (after the samples
+/// their windows need) and appended to a recording of their own, itself followed as it grows; the two are joined, so
+/// the derived channels come after the recording's, as for a file. Recipes whose state can't be rebuilt from a bounded
+/// look-back (running totals, filters that start at the beginning) can't run live and are reported as skipped.
+#[derive(Debug)]
+pub struct LiveDerived {
+    store: Store,
+    base: Arc<Live>,
+    derived: Live,
+    file: Mutex<File>,
+    /// Samples of the base already computed.
+    done: Mutex<usize>,
+    recipes: Vec<tlmbench_expr::Resolved>,
+    joined: RwLock<Arc<Opened>>,
+    dir: PathBuf,
+}
+
+/// What opening derived channels on a live recording produced.
+#[derive(Debug)]
+pub struct LiveDerivedOpened {
+    pub live: LiveDerived,
+    /// The recipes computed, in channel order.
+    pub names: Vec<String>,
+    /// The recipes that don't apply (a channel they need is missing, a mistake in them, can't run live), and why.
+    pub skipped: Vec<(String, String)>,
+}
+
+impl Store {
+    /// Computes `recipes` over `base` as it grows. See [`LiveDerived`].
+    pub fn open_live_derived(&self, base: Arc<Live>, recipes: &[tlmbench_expr::Recipe]) -> Result<LiveDerivedOpened> {
+        use tlmbench_decode::descriptor::{DType, Descriptor, Endian, Field, TimeUnit};
+        let snap = base.opened();
+        let has: std::collections::HashSet<&str> =
+            snap.recording().info().channels.iter().map(|c| c.name.as_str()).collect();
+        let (resolved, failed) = tlmbench_expr::recipe::resolve(recipes, &|n| has.contains(n));
+        let mut skipped: Vec<(String, String)> = failed.into_iter().map(|(n, e)| (n, e.msg)).collect();
+        let hz = crate::derived::RecEnv::new(snap.recording());
+        let hz = tlmbench_expr::Env::hz(&hz).unwrap_or(1.0);
+        let mut ok = Vec::new();
+        for r in resolved {
+            if tlmbench_expr::is_stateless(&r.expr) || tlmbench_expr::warm_rows_at(&r.expr, hz).is_some() {
+                ok.push(r);
+            } else {
+                skipped.push((
+                    r.recipe.name.clone(),
+                    "It needs the whole recording to compute, so it can't follow a live source".into(),
+                ));
+            }
+        }
+        let dir = self.root.join("live").join(format!(
+            "derived-{}-{}",
+            &base.key[5..],
+            NEXT_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&dir).map_err(Error::io(&dir))?;
+        let field = |name: &str, dtype, offset, unit: Option<String>| Field {
+            name: name.to_owned(),
+            dtype,
+            offset,
+            unit,
+            scale: 1.0,
+            value_offset: 0.0,
+            bits: None,
+        };
+        let mut fields = vec![field("time", DType::I64, 0, None)];
+        for (k, r) in ok.iter().enumerate() {
+            fields.push(field(&r.recipe.name, DType::F64, 8 * (k as u64 + 1), r.recipe.unit.clone()));
+        }
+        let d = Descriptor {
+            sequence: None,
+            files: Vec::new(),
+            packet_types: Vec::new(),
+            packets: None,
+            schema: tlmbench_decode::descriptor::SCHEMA,
+            name: Some("derived".into()),
+            endian: Endian::Little,
+            header_size: 0,
+            record_size: 8 * fields.len() as u64,
+            time: tlmbench_decode::descriptor::TimeSpec::Field { field: "time".into(), unit: TimeUnit::Ns, t0_ns: 0 },
+            fields,
+        };
+        let path = dir.join("derived.tlm");
+        let mut file = OpenOptions::new().create_new(true).append(true).open(&path).map_err(Error::io(&path))?;
+        tlmbench_decode::reference::write_header(&mut file, &d).map_err(Error::io(&path))?;
+        let names: Vec<String> = ok.iter().map(|r| r.recipe.name.clone()).collect();
+        let this_live = LiveDerived {
+            store: self.clone(),
+            base,
+            // the placeholder is replaced below, once the first rows are written
+            derived: self.open_live(&path)?,
+            file: Mutex::new(file),
+            done: Mutex::new(0),
+            recipes: ok,
+            joined: RwLock::new(snap),
+            dir,
+        };
+        this_live.refresh()?;
+        Ok(LiveDerivedOpened { live: this_live, names, skipped })
+    }
+}
+
+impl LiveDerived {
+    /// Follows the base, computes the recipes over its new samples, and joins what is there. Returns whether it grew.
+    pub fn refresh(&self) -> Result<bool> {
+        let grew = self.base.refresh()?;
+        let snap = self.base.opened();
+        let rec = snap.recording();
+        let n = rec.info().samples;
+        let mut done = self.done.lock().unwrap();
+        if n > *done && !self.recipes.is_empty() {
+            let shared = self.store.expr_env.read().unwrap().clone();
+            let env = crate::derived::RecEnv::new(rec).with_labels(shared.labels).with_limits(shared.limits);
+            let hz = tlmbench_expr::Env::hz(&env).unwrap_or(1.0);
+            let (a, rows) = (*done, n - *done);
+            let mut cols: Vec<Vec<f64>> = Vec::with_capacity(self.recipes.len());
+            for r in &self.recipes {
+                let v = if tlmbench_expr::is_stateless(&r.expr) {
+                    tlmbench_expr::eval_range(&r.expr, &env, a..n).map(Some)
+                } else {
+                    let warm = tlmbench_expr::warm_rows_at(&r.expr, hz).unwrap_or(0);
+                    tlmbench_expr::eval_warm(&r.expr, &env, a..n, warm)
+                };
+                let col = match v {
+                    Ok(Some(tlmbench_expr::Val::Ser(s))) if s.len() == rows => s.v,
+                    Ok(Some(v)) if v.number().is_some() => vec![v.number().unwrap_or(f64::NAN); rows],
+                    // a window that fell short, or a mistake: these samples are missing
+                    _ => vec![f64::NAN; rows],
+                };
+                cols.push(col);
+            }
+            let times = rec.read_times(a, n);
+            let mut bytes = Vec::with_capacity(rows * 8 * (cols.len() + 1));
+            for (i, t) in times.iter().enumerate() {
+                bytes.extend_from_slice(&t.to_le_bytes());
+                for c in &cols {
+                    bytes.extend_from_slice(&c[i].to_le_bytes());
+                }
+            }
+            let mut f = self.file.lock().unwrap();
+            f.write_all(&bytes).map_err(Error::io(&self.dir))?;
+            f.flush().map_err(Error::io(&self.dir))?;
+            *done = n;
+        }
+        if *done == n {
+            self.derived.refresh()?;
+            let d = self.derived.opened();
+            if d.recording().info().samples == snap.recording().info().samples {
+                *self.joined.write().unwrap() = Arc::new(self.store.join(snap, d)?);
+            }
+        }
+        Ok(grew)
+    }
+
+    /// The recording with its derived channels, as of the last refresh.
+    pub fn opened(&self) -> Arc<Opened> {
+        self.joined.read().unwrap().clone()
+    }
+
+    /// The base recording being followed.
+    pub fn base(&self) -> &Arc<Live> {
+        &self.base
+    }
+}
+
+impl Drop for LiveDerived {
+    fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.dir);
     }
 }

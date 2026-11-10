@@ -13,6 +13,10 @@ learns about a file lives in its own cache, so a read-only network share works a
 | --- | --- | --- |
 | ![Cursors A and B on three panes, with Measure open on the right](docs/images/app-cursors.png) | ![The same view in the light theme](docs/images/app-light.png) | ![The ⋯ menu: View, All panes and Window groups](docs/images/app-more-menu.png) |
 
+| Connect a live source | A live tab |
+| --- | --- |
+| ![The Connect dialog on file playback: name, recording, speed, a preview of the channels, the record switch](docs/images/app-connect.png) | ![A live tab following a replayed recording, with the Sources panel's card and the trigger button](docs/images/app-live.png) |
+
 ## Why it's fast, and why you can trust what it draws
 
 - **A min/max pyramid per channel.** A recording is read once, at disk speed, into summaries of 256, 1,024,
@@ -50,9 +54,14 @@ app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in t
   with Undo, drag), an overview strip, Box zoom, Pan and Cursors with Back and Fit, values at the pointer, cursors A
   and B with Measure (values, Δt, Δy, exact min, max, mean and standard deviation), a gap factor per channel, Settings,
   and Play (a playhead the view follows, speed, window, A–B loop). Files being summarized fill in left to right.
-- **Live:** connect a serial port, TCP, UDP or a growing CSV or `.tlm` file; a live tab follows now (window presets,
-  scrub back, Jump to live) and shows the stream's health, while the session records to the app's Recordings folder
-  (never beside the data) and reopens like any file.
+- **Live:** connect a serial port, TCP, UDP, a growing CSV or `.tlm` file, or replay a recording as if it were arriving
+  now (file playback, for demos and for testing rules without hardware). A live tab follows now (window presets, scrub
+  back with the session drawn behind the scrubber, Jump to live), shows each source's health and warns when samples are
+  dropped, and can pause, stop and add sources. A trigger on any channel or expression freezes a window around a
+  crossing and marks it as an event; rules and checks run on the live file every couple of seconds; derived
+  channels follow it. The session records to a folder you choose (never beside the data) and reopens like any file.
+- **Analysis:** tables with sort and filter, XY plots, Gauges and widgets of your own, derived channels (expressions
+  and recipes), channel display, limits and value labels, events, and rules and checks (also `tlmbench check` in CI).
 - **Formats:** CSV (delimiter, units and time column detected) and Parquet (typed columns), each converted once to
   a column cache; fixed-width binary records described by a TOML descriptor, including the self-describing `.tlm`
   reference format; and packet files (sync word, length, checksum, zstd/lz4/gzip payloads) by the same descriptor,
@@ -67,6 +76,8 @@ app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in t
   tlmbench query stats flight.tlm -c amps          # exact stats over a span
   tlmbench record tcp://10.0.0.2:9000 --descriptor frames.toml   # record a live source into a session
   tlmbench record file:///logs/run.csv             # follow a growing CSV (only read)
+  tlmbench record replay://flight.tlm?speed=10    # replay a recording through the live path (a demo, no hardware)
+  tlmbench check runs/ --set acceptance.toml       # exit 0 all pass, 1 a check failed, 2 couldn't run, 3 configuration
   tlmbench convert flight.tlm --to parquet --out out/ -c "motor_*,battery_v"   # also csv, arrow, hdf5, mat
   ```
 
@@ -81,8 +92,11 @@ v1 is the whole design in [`docs/design.md`](docs/design.md), built in five gate
 | 1. Core loop | ✓ done | 100M points at 60 fps |
 | 2. Scale | ✓ gate passes | 10 GB first paint under 1 s |
 | 3. Live | ✓ gate passes | 4M samples/s with no drops |
-| 4. Formats + polish | the TOML descriptor UI, compressed packets, data export, workspace files, tables, XY | formats complete |
-| 5. Workbench | multiple windows, widgets, rules and checks with reports, derived channels, shared `.tlmbench/` config, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
+| 4. Formats + polish | ✓ done | formats complete |
+| 5. Workbench | in progress: derived channels, events, rules and checks, widgets and live are in; next several files and alignment, shared `.tlmbench/` config, multiple windows, Python, static HTML export | a folder check and an HTML export of a 2 h flight |
+
+[`docs/roadmap.md`](docs/roadmap.md) orders the remaining steps and [`docs/feature-matrix.md`](docs/feature-matrix.md) shows
+each feature in the design, the prototype and the app.
 
 The whole UI already exists as a working prototype: [`prototype/plotter.html`](prototype/plotter.html), one file with
 no build step and data synthesized in the page. It is the spec the app's UI is ported from.
@@ -93,7 +107,11 @@ no build step and data synthesized in the page. It is the spec the app's UI is p
 app/            the desktop app: Tauri shell (src-tauri) and the TypeScript + WebGL2 UI (ui)
 crates/core     time base, M4, the pyramid (build, exact queries, stats), gap index, wire format
 crates/decode   CSV column cache, format descriptors, the .tlm reference format (fuzzed)
-crates/store    the cache: pyramid files, resumable builds, eviction, the chunk cache, view batches
+crates/store    the cache: pyramid files, resumable builds, eviction, the chunk cache, view batches; derived
+                channels, checks, events, widgets, live files and triggers
+crates/expr     expressions: parser, evaluator, recipes, filters, the FFT
+crates/live     live sources (serial, TCP, UDP, tail, file playback), the ring buffer and session recording
+crates/export   data export writers
 cli/            the tlmbench command line
 tools/          gen (deterministic synthetic recordings), icons, winid (screenshots)
 prototype/      the UI prototype and its Playwright suite
