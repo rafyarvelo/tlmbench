@@ -364,7 +364,7 @@ fn truthy(x: f64) -> bool {
 }
 
 /// A parsed check with its recipes substituted.
-fn prepare(text: &str, recipes: &[Recipe], env: &dyn Env) -> std::result::Result<Expr, (Verdict, String)> {
+pub(crate) fn prepare(text: &str, recipes: &[Recipe], env: &dyn Env) -> std::result::Result<Expr, (Verdict, String)> {
     let has = |n: &str| env.read(n, 0..0).is_some();
     let mut all = vec![Recipe {
         name: "\0check".into(),

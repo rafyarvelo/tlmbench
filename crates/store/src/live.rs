@@ -20,6 +20,7 @@ use tlmbench_core::gaps::GapIndex;
 use tlmbench_core::pyramid::{MIN_LEVEL, Summary, span};
 
 use crate::pyr::Loaded;
+use crate::trigger::{Spec, Status, Trigger};
 use crate::{Error, NEXT_ID, Opened, Result, Store, hold};
 
 /// The coarsest level a snapshot uses: past its last whole summary, samples are read raw.
@@ -38,6 +39,7 @@ pub struct Live {
     key: String,
     current: RwLock<Arc<Opened>>,
     grow: Mutex<Grow>,
+    trigger: Mutex<Option<Trigger>>,
 }
 
 /// What a refresh continues from.
@@ -92,6 +94,7 @@ impl Store {
             key,
             current: RwLock::new(Arc::new(first)),
             grow: Mutex::new(grow),
+            trigger: Mutex::new(None),
         };
         live.refresh()?;
         Ok(live)
@@ -168,8 +171,34 @@ impl Live {
         g.samples = n;
         let loaded = g.snapshot().map_err(Error::io(&self.dir))?;
         *snap.loaded.write().unwrap() = Some(loaded);
-        *self.current.write().unwrap() = Arc::new(snap);
+        let snap = Arc::new(snap);
+        *self.current.write().unwrap() = snap.clone();
+        drop(g);
+        // the trigger looks at what just arrived; each crossing is an event of the recording
+        let events = self.trigger.lock().unwrap().as_mut().map(|t| t.poll(&self.store, &snap)).unwrap_or_default();
+        for e in events {
+            crate::events::save(self.store.root(), &self.key, e)?;
+        }
         Ok(true)
+    }
+
+    /// Arms a trigger on samples that arrive from now on, replacing any other. `recipes` are the library, for a
+    /// derived channel named by its recipe.
+    pub fn arm_trigger(&self, spec: Spec, recipes: &[tlmbench_expr::Recipe]) -> std::result::Result<(), String> {
+        let t = Trigger::arm(spec, &self.opened(), recipes)?;
+        *self.trigger.lock().unwrap() = Some(t);
+        Ok(())
+    }
+
+    /// Stops the trigger (its count and last crossing stay in [`Live::trigger_status`] until it is armed again).
+    pub fn disarm_trigger(&self) {
+        if let Some(t) = self.trigger.lock().unwrap().as_mut() {
+            t.disarm();
+        }
+    }
+
+    pub fn trigger_status(&self) -> Status {
+        self.trigger.lock().unwrap().as_ref().map(|t| t.status(&self.opened())).unwrap_or_default()
     }
 }
 

@@ -31,6 +31,7 @@ mod live;
 mod pyr;
 mod recipes;
 pub mod sys;
+pub mod trigger;
 pub mod widgets;
 pub mod xy;
 

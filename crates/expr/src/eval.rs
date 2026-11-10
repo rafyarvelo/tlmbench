@@ -128,6 +128,12 @@ pub fn warm_rows(e: &Expr) -> Option<usize> {
     analyze(e, None).ok().filter(|p| p.warmable && !p.stateless && p.depth == 0).map(|p| p.warm)
 }
 
+/// [`warm_rows`] for a recording sampled at about `hz`, which also settles recipes with time windows (`rolling_mean(x,
+/// 50ms)`): a live trigger replays that many samples before the new ones.
+pub fn warm_rows_at(e: &Expr, hz: f64) -> Option<usize> {
+    analyze(e, Some(hz)).ok().filter(|p| p.warmable && !p.stateless && p.depth == 0).map(|p| p.warm)
+}
+
 /// Samples `r` of a recipe with a [warm-up](warm_rows), computed alone from `warm` samples before it. `None` when a
 /// window needed more real samples than the replay held (gaps), and the recipe must then run in one piece.
 pub fn eval_warm(e: &Expr, env: &dyn Env, r: Range<usize>, warm: usize) -> R<Option<Val>> {
@@ -337,12 +343,18 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
                             | "rolling_sum"
                             | "median"
                     );
-                    let w = match args.get(1).map(|a| eval(a, &NoEnv)) {
-                        Some(Ok(v)) if rolling && kind.is_none() => window(Some(&v), f, 0).ok(),
-                        _ => None,
+                    let w = match args.get(1) {
+                        Some(Expr::Dur { secs, .. }) if rolling && kind.is_none() => Some(Window::Secs(*secs)),
+                        Some(a) => match eval(a, &NoEnv) {
+                            Ok(v) if rolling && kind.is_none() => window(Some(&v), f, 0).ok(),
+                            _ => None,
+                        },
+                        None => None,
                     };
-                    match w {
-                        Some(Window::Samples(n)) => plan.warm += n,
+                    match (w, hz) {
+                        (Some(Window::Samples(n)), _) => plan.warm += n,
+                        // a time window is that long at the recording's rate
+                        (Some(Window::Secs(t)), Some(fs)) if fs > 0.0 => plan.warm += (t * fs).ceil() as usize + 1,
                         _ => plan.warmable = false,
                     }
                 }
