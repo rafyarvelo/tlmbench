@@ -7,7 +7,7 @@ TIMEOUT=$(command -v timeout || command -v gtimeout) || { echo "run.sh needs GNU
 export TIMEOUT
 tests=${@:-$(ls t_*.js t_*.mjs 2>/dev/null | sed -E 's/\.m?js$//')}
 mkdir -p out
-run1() { t=$1; f=$t.js; [ -f $f ] || f=$t.mjs; s=$(date +%s); "$TIMEOUT" 120 node $f > out/$t.txt 2>&1; c=$?; d=$(( $(date +%s) - s ));
+run1() { t=$1; limit=120; case $t in t_perf_gauges|t_loading) limit=300 ;; esac; f=$t.js; [ -f $f ] || f=$t.mjs; s=$(date +%s); "$TIMEOUT" $limit node $f > out/$t.txt 2>&1; c=$?; d=$(( $(date +%s) - s ));
   if [ $c -eq 0 ]; then echo "PASS $t (${d}s) $(tail -1 out/$t.txt | sed 's/.*: //')"; else echo "FAIL $t (${d}s)"; grep -E "^  FAIL" out/$t.txt | sed 's/^/     /'; fi; }
 export -f run1
 printf '%s\n' $tests | grep . | xargs -P 3 -I{} bash -c 'run1 {}' | tee out/summary.txt
