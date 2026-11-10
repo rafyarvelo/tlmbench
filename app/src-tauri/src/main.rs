@@ -25,8 +25,10 @@ use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, State};
 use tlmbench_core::gaps::DEFAULT_FACTOR;
 use tlmbench_core::table::{self, Col, Filter, SortKey};
+use tlmbench_core::timemap::TimeMap;
 use tlmbench_core::{RecordingInfo, Viewport, wire};
 use tlmbench_decode::profile::ImportProfile;
+use tlmbench_store::group::Group;
 use tlmbench_store::{Opened as StoreOpened, Precision, Request, Status, Store};
 
 /// Open files, by id, and live sources (each a file that grows). Each window keeps its own view; files are shared.
@@ -38,6 +40,8 @@ struct Files {
     /// recipes change.
     bases: Mutex<HashMap<u32, Arc<StoreOpened>>>,
     live: Mutex<HashMap<u32, Arc<LiveEntry>>>,
+    /// A tab's several files on one timeline, by the id the tab shows (the members stay open under their own ids).
+    groups: Mutex<HashMap<u32, Arc<Group>>>,
     /// Sorted and filtered row lists, by query token (the latest per table; see `table_query`).
     queries: Mutex<HashMap<u32, Arc<RowQuery>>>,
     /// Running queries' cancel flags, by token.
@@ -45,6 +49,11 @@ struct Files {
 }
 
 impl Files {
+    /// The group a tab shows, if it has several files.
+    fn group(&self, id: u32) -> Option<Arc<Group>> {
+        self.groups.lock().unwrap().get(&id).cloned()
+    }
+
     /// The file as opened (before derived channels join it), or a live source's as of its last refresh: what events
     /// and checks are kept against.
     fn base(&self, id: u32) -> Result<Arc<StoreOpened>, String> {
@@ -60,6 +69,10 @@ impl Files {
     fn get(&self, id: u32) -> Result<Arc<StoreOpened>, String> {
         if let Some(o) = self.open.lock().unwrap().get(&id) {
             return Ok(o.clone());
+        }
+        // commands that don't know several files act on the primary's
+        if let Some(g) = self.groups.lock().unwrap().get(&id) {
+            return Ok(g.primary().clone());
         }
         let live = self.live.lock().unwrap().get(&id).cloned();
         live.map(|l| l.opened()).ok_or_else(|| "that file is not open".into())
@@ -423,6 +436,168 @@ async fn open(
     }
     let missing = missing_all(shown.recording());
     Ok(Opened { id, info, range, status, derived, skipped, missing })
+}
+
+/// One file of a tab with several, as asked for.
+#[derive(Deserialize)]
+struct MemberIn {
+    file: u32,
+    /// `(t_file, t_shared)` in nanoseconds as decimal strings; none is the identity.
+    knots: Vec<(String, String)>,
+}
+
+/// One file of a group as it is now.
+#[derive(Serialize)]
+struct SlotOut {
+    file: u32,
+    /// The file's first channel in the group's numbering, and how many it has.
+    first: usize,
+    count: usize,
+    knots: Vec<(String, String)>,
+    /// The file's own first and last times.
+    own: Option<(String, String)>,
+}
+
+/// A tab's files on one timeline.
+#[derive(Serialize)]
+struct GroupOpened {
+    id: u32,
+    info: RecordingInfo,
+    range: Option<(String, String)>,
+    status: Status,
+    slots: Vec<SlotOut>,
+}
+
+fn knots_in(k: &[(String, String)]) -> Result<TimeMap, String> {
+    let v: Result<Vec<(i64, i64)>, String> = k.iter().map(|(a, b)| Ok((parse_time(a)?, parse_time(b)?))).collect();
+    TimeMap::new(v?).map_err(|e| e.to_string())
+}
+
+fn knots_out(m: &TimeMap) -> Vec<(String, String)> {
+    m.knots.iter().map(|&(a, b)| (a.to_string(), b.to_string())).collect()
+}
+
+fn group_out(id: u32, g: &Group) -> GroupOpened {
+    let mut info = g.info().clone();
+    let (a, b) = g.bounds_now();
+    (info.t_first, info.t_last) = (a, b);
+    GroupOpened {
+        id,
+        range: a.zip(b).map(|(a, b)| (a.to_string(), b.to_string())),
+        status: g.status(),
+        slots: g
+            .slots()
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                let own = s.opened.recording().info();
+                let _ = i;
+                SlotOut {
+                    file: g.file_ids()[i],
+                    first: s.first,
+                    count: s.count,
+                    knots: knots_out(&s.map()),
+                    own: own.t_first.zip(own.t_last).map(|(a, b)| (a.to_string(), b.to_string())),
+                }
+            })
+            .collect(),
+        info,
+    }
+}
+
+/// Puts the files in `members` (the first is the primary) on one timeline, as the tab's file: the group with `group`'s
+/// id when it is given (the same id, so the tab's panes stay), else a new one. The members stay open under their own
+/// ids. Channels are numbered slot after slot.
+#[tauri::command]
+async fn group_set(
+    group: Option<u32>,
+    members: Vec<MemberIn>,
+    progress: Channel<Progress>,
+    files: State<'_, Files>,
+) -> Result<GroupOpened, String> {
+    if members.is_empty() {
+        return Err("A tab needs a file".into());
+    }
+    let mut parts = Vec::new();
+    let mut ids = Vec::new();
+    for m in &members {
+        let o = files.open.lock().unwrap().get(&m.file).cloned().ok_or("that file is not open")?;
+        parts.push((o, knots_in(&m.knots)?));
+        ids.push(m.file);
+    }
+    let g = Arc::new(Group::new(parts, ids));
+    let id = group.unwrap_or_else(|| files.next.fetch_add(1, Ordering::Relaxed) + 1);
+    if let Some(old) = files.groups.lock().unwrap().insert(id, g.clone()) {
+        old.cancel();
+    }
+    let out = group_out(id, &g);
+    if out.status != Status::Built {
+        let g = g.clone();
+        std::thread::spawn(move || {
+            let send = |done: u64, total: u64, error: Option<String>| {
+                let _ = progress.send(Progress { done, total, built_until: None, error });
+            };
+            if let Err(e) = g.build(&mut |d, t| send(d, t, None)) {
+                send(0, 0, Some(e.to_string()));
+            }
+        });
+    }
+    Ok(out)
+}
+
+/// Replaces one file's time map in a group (a nudge, a method's result): nothing is rebuilt.
+#[tauri::command]
+fn group_map(
+    group: u32,
+    slot: usize,
+    knots: Vec<(String, String)>,
+    files: State<'_, Files>,
+) -> Result<GroupOpened, String> {
+    let g = files.group(group).ok_or("that tab has one file")?;
+    if slot >= g.slots().len() {
+        return Err("no such file in this tab".into());
+    }
+    g.set_map(slot, knots_in(&knots)?);
+    Ok(group_out(group, &g))
+}
+
+/// What an alignment method finds for one file of a group against the primary, without applying it: the map, how far
+/// each matched point is from it, a quality in 0..1 and a note.
+#[tauri::command]
+async fn align_estimate(
+    group: u32,
+    slot: usize,
+    method: tlmbench_store::align::Method,
+    files: State<'_, Files>,
+) -> Result<AlignOut, String> {
+    let g = files.group(group).ok_or("that tab has one file")?;
+    let root = files.store.root().to_owned();
+    if slot == 0 || slot >= g.slots().len() {
+        return Err("the primary file is what the others line up with".into());
+    }
+    spawn_blocking(move || {
+        let (r, t) = (&g.slots()[0], &g.slots()[slot]);
+        let a = tlmbench_store::align::estimate(&root, &r.opened, &r.map(), &t.opened, &method)
+            .map_err(|e| e.to_string())?;
+        Ok(AlignOut {
+            knots: knots_out(&a.map),
+            residuals: a.residuals.iter().map(|&(t, r)| (t.to_string(), r)).collect(),
+            quality: a.quality,
+            note: a.note,
+            channel: a.channel,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize)]
+struct AlignOut {
+    knots: Vec<(String, String)>,
+    residuals: Vec<(String, f64)>,
+    quality: f64,
+    note: Option<String>,
+    channel: Option<String>,
 }
 
 /// Changes which recipes an open file shows (the automatic ones, and these): the same file id, with its channels
@@ -839,6 +1014,9 @@ async fn spectrum(
 
 #[tauri::command]
 fn close(file: u32, files: State<'_, Files>) {
+    if let Some(g) = files.groups.lock().unwrap().remove(&file) {
+        g.cancel();
+    }
     files.bases.lock().unwrap().remove(&file);
     if let Some(o) = files.open.lock().unwrap().remove(&file) {
         o.cancel();
@@ -1164,8 +1342,9 @@ async fn view(
     files: State<'_, Files>,
 ) -> Result<Response, String> {
     let o = files.get(file)?;
+    let g = files.group(file);
     let precision = if precision.as_deref() == Some("coarse") { Precision::Coarse } else { Precision::Exact };
-    let n = o.recording().info().channels.len();
+    let n = g.as_ref().map_or_else(|| o.recording().info().channels.len(), |g| g.info().channels.len());
     let mut ids = Vec::with_capacity(entries.len());
     let mut requests = Vec::with_capacity(entries.len());
     for e in entries {
@@ -1187,7 +1366,10 @@ async fn view(
     }
     let bytes = spawn_blocking(move || {
         let started = Instant::now();
-        let batch = o.view_batch(&requests, precision);
+        let batch = match &g {
+            Some(g) => g.view_batch(&requests, precision),
+            None => o.view_batch(&requests, precision),
+        };
         // channels and panes reduce together: each trace reports the whole call's time
         let us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
         let parts: Vec<(u32, Vec<u8>)> = ids
@@ -1231,11 +1413,26 @@ struct Nearest {
 #[tauri::command]
 async fn values_at(file: u32, channels: Vec<u32>, t: String, files: State<'_, Files>) -> Result<Vec<Nearest>, String> {
     let o = files.get(file)?;
+    let g = files.group(file);
     let t = parse_time(&t)?;
     spawn_blocking(move || {
-        let n = o.recording().info().channels.len();
+        let n = g.as_ref().map_or_else(|| o.recording().info().channels.len(), |g| g.info().channels.len());
         let channels: Vec<u32> = channels.into_iter().filter(|&c| (c as usize) < n).collect();
         let chans: Vec<usize> = channels.iter().map(|&c| c as usize).collect();
+        if let Some(g) = &g {
+            return channels
+                .iter()
+                .zip(g.readings(&chans, t))
+                .filter_map(|(&c, r)| {
+                    r.map(|r| Nearest {
+                        channel: c,
+                        index: r.index as u64,
+                        t: r.t.to_string(),
+                        value: (!r.value.is_nan()).then_some(r.value),
+                    })
+                })
+                .collect();
+        }
         let Some((i, ts, values)) = o.values_at(&chans, t) else { return Vec::new() };
         channels
             .iter()
@@ -1800,19 +1997,30 @@ async fn stats(
     files: State<'_, Files>,
 ) -> Result<Option<Vec<ChannelStats>>, String> {
     let o = files.get(file)?;
+    let g = files.group(file);
     let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
     spawn_blocking(move || {
         let num = |v: f64| (!v.is_nan()).then_some(v);
-        let n = o.recording().info().channels.len();
+        let n = g.as_ref().map_or_else(|| o.recording().info().channels.len(), |g| g.info().channels.len());
         let channels: Vec<u32> = channels.into_iter().filter(|&c| (c as usize) < n).collect();
         let chans: Vec<usize> = channels.iter().map(|&c| c as usize).collect();
-        let all = o.stats(&chans, t0, t1)?;
+        let all = match &g {
+            Some(g) => g.stats(&chans, t0, t1)?,
+            None => o.stats(&chans, t0, t1)?,
+        };
         Some(
             channels
                 .iter()
                 .zip(all)
                 .map(|(&c, s)| {
-                    let at = |m: Option<(f64, usize)>| m.map(|(_, i)| o.recording().time_at(i).to_string());
+                    let at = |m: Option<(f64, usize)>| {
+                        m.map(|(_, i)| {
+                            match g.as_ref().and_then(|g| g.route(c as usize).map(|(si, _)| &g.slots()[si])) {
+                                Some(slot) => slot.map().apply(slot.opened.recording().time_at(i)).to_string(),
+                                None => o.recording().time_at(i).to_string(),
+                            }
+                        })
+                    };
                     ChannelStats {
                         channel: c,
                         count: s.count,
@@ -2334,11 +2542,15 @@ fn main() {
             open: Mutex::default(),
             bases: Mutex::default(),
             live: Mutex::default(),
+            groups: Mutex::default(),
             queries: Mutex::default(),
             cancels: Mutex::default(),
         })
         .invoke_handler(tauri::generate_handler![
             open,
+            group_set,
+            group_map,
+            align_estimate,
             derive_apply,
             recipes_list,
             recipe_save,

@@ -35,6 +35,7 @@ impl Slot {
 pub struct Group {
     slots: Vec<Slot>,
     info: RecordingInfo,
+    ids: Vec<u32>,
 }
 
 /// A hover or cursor reading of one channel of a group.
@@ -50,7 +51,7 @@ pub struct Reading {
 
 impl Group {
     /// The files in slot order (the first is the primary) with their maps.
-    pub fn new(files: Vec<(Arc<Opened>, TimeMap)>) -> Self {
+    pub fn new(files: Vec<(Arc<Opened>, TimeMap)>, ids: Vec<u32>) -> Self {
         assert!(!files.is_empty(), "a group has a file");
         let mut info = files[0].0.recording().info().clone();
         let mut slots = Vec::with_capacity(files.len());
@@ -70,7 +71,7 @@ impl Group {
         let (a, b) = Self::bounds(&slots);
         info.t_first = a;
         info.t_last = b;
-        Self { slots, info }
+        Self { slots, info, ids }
     }
 
     /// The shared timeline's start and end: the primary's start to the last file's end (design: "primary file's
@@ -92,6 +93,11 @@ impl Group {
     /// All the channels, slot after slot, in the numbering the UI uses.
     pub fn info(&self) -> &RecordingInfo {
         &self.info
+    }
+
+    /// The caller's ids of the files, in slot order.
+    pub fn file_ids(&self) -> &[u32] {
+        &self.ids
     }
 
     pub fn slots(&self) -> &[Slot] {

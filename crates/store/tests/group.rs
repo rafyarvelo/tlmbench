@@ -65,7 +65,7 @@ fn drift_and_offset_align_to_within_a_sample() {
     let pairs = [(ns(0.0), ns(1.2345)), (ns(15.0), ns(15.0 * 1.0002 + 1.2345))];
     let est = timemap::from_pairs(&pairs, false).unwrap();
     // (b's true time is a's own time: the shared timeline is a's clock; the map takes b's own time to it)
-    let g = Group::new(vec![(a, TimeMap::identity()), (b, est.map)]);
+    let g = Group::new(vec![(a, TimeMap::identity()), (b, est.map)], vec![1, 2]);
     assert_eq!(g.info().channels.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["a", "a·2"]);
 
     // the nearest samples at the same shared times agree to within a sample's worth of the signal's slope
