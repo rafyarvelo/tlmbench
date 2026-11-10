@@ -17,6 +17,7 @@
 //! A live session is a folder, `session-<start>/`, with a `source-N.tlm` per source and a `session.json`. Sessions go
 //! to the app's data folder (see [`recordings_dir`]), never next to the data: they are kept, not cache.
 
+pub mod replay;
 pub mod tail;
 
 use std::collections::VecDeque;
@@ -47,6 +48,8 @@ pub enum Endpoint {
     File(PathBuf),
     /// Read a serial port (`/dev/tty.usbserial…`, `COM3`) at a baud rate.
     Serial { port: String, baud: u32 },
+    /// Replay a recording as if it were arriving now (see [`replay`]).
+    Replay(replay::Replay),
 }
 
 impl FromStr for Endpoint {
@@ -66,8 +69,28 @@ impl FromStr for Endpoint {
                 };
                 Ok(Endpoint::Serial { port: port.to_owned(), baud })
             }
+            Some(("replay", rest)) if !rest.is_empty() => {
+                let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+                let mut r = replay::Replay { path: PathBuf::from(path), speed_milli: 1000, start_ms: 0, looped: false };
+                for kv in query.split('&').filter(|kv| !kv.is_empty()) {
+                    let bad = || format!("{s:?}: couldn't read {kv:?}");
+                    match kv.split_once('=') {
+                        Some(("speed", v)) => {
+                            let x: f64 = v.parse().map_err(|_| bad())?;
+                            if !(x > 0.0 && x <= 1000.0) {
+                                return Err(format!("{s:?}: speed is between 0 and 1000"));
+                            }
+                            r.speed_milli = (x * 1000.0).round() as u32;
+                        }
+                        Some(("start", v)) => r.start_ms = (v.parse::<f64>().map_err(|_| bad())? * 1000.0) as u64,
+                        Some(("loop", v)) => r.looped = matches!(v, "1" | "true"),
+                        _ => return Err(bad()),
+                    }
+                }
+                Ok(Endpoint::Replay(r))
+            }
             _ => Err(format!(
-                "{s:?}: expected tcp://host:port, udp://host:port, serial://port?baud=<rate> or file:///path"
+                "{s:?}: expected tcp://host:port, udp://host:port, serial://port?baud=<rate>, file:///path or replay:///path?speed=<x>"
             )),
         }
     }
@@ -80,6 +103,14 @@ impl fmt::Display for Endpoint {
             Endpoint::Udp(a) => write!(f, "udp://{a}"),
             Endpoint::File(p) => write!(f, "file://{}", p.display()),
             Endpoint::Serial { port, baud } => write!(f, "serial://{port}?baud={baud}"),
+            Endpoint::Replay(r) => write!(
+                f,
+                "replay://{}?speed={}&start={}&loop={}",
+                r.path.display(),
+                f64::from(r.speed_milli) / 1000.0,
+                r.start_ms as f64 / 1000.0,
+                u8::from(r.looped)
+            ),
         }
     }
 }
@@ -128,6 +159,7 @@ pub struct Health {
     /// The stream has ended (the sender closed it, it went quiet, or the source was stopped).
     pub ended: bool,
     pub error: Option<String>,
+    pub paused: bool,
     pub seconds: f64,
 }
 
@@ -144,6 +176,8 @@ struct Counters {
     rows_back: AtomicU64,
     ring_high: AtomicU64,
     ended: AtomicBool,
+    /// Reading is paused (a replay's clock stops; a device's frames are let go by).
+    paused: AtomicBool,
     error: Mutex<Option<String>>,
 }
 
@@ -191,7 +225,7 @@ impl Source {
     ) -> io::Result<Source> {
         let invalid = |m: String| io::Error::new(ErrorKind::InvalidInput, m);
         let first = match (&endpoint, descriptor) {
-            (Endpoint::File(_), _) => None,
+            (Endpoint::File(_) | Endpoint::Replay(_), _) => None,
             (_, Some(d)) => {
                 d.validate().map_err(|e| invalid(e.to_string()))?;
                 if d.packets.is_some() {
@@ -224,6 +258,7 @@ impl Source {
                     Endpoint::Tcp(a) => ingest_tcp(a, &mut ring, &stop, &opts),
                     Endpoint::Udp(a) => ingest_udp(a, &mut ring, &stop, &opts),
                     Endpoint::File(p) => tail::follow(p, &mut ring, &stop, &opts),
+                    Endpoint::Replay(r) => replay::run(r, &mut ring, &stop),
                     Endpoint::Serial { port, baud } => ingest_serial(port, *baud, &mut ring, &stop),
                 } {
                     counters.fail(e);
@@ -280,8 +315,15 @@ impl Source {
             ring_high_water_bytes: get(&c.ring_high),
             ended: c.ended.load(Ordering::Acquire),
             error: c.error.lock().unwrap().clone(),
+            paused: c.paused.load(Ordering::Relaxed),
             seconds: self.started.elapsed().as_secs_f64(),
         }
+    }
+
+    /// Pauses or resumes reading. A replay's clock stops, so it resumes without a gap; a device keeps sending, its
+    /// frames in the meantime are let go, so resuming leaves a gap in the recording.
+    pub fn set_paused(&self, paused: bool) {
+        self.counters.paused.store(paused, Ordering::Release);
     }
 
     /// Waits for the stream to end, then for every received record to be on disk.
@@ -336,6 +378,9 @@ struct Ring<'a> {
 impl Ring<'_> {
     /// Pushes the whole records in `bytes` (a multiple of the record size); those that don't fit are dropped.
     fn push(&mut self, bytes: &[u8]) {
+        if self.counters.paused.load(Ordering::Relaxed) {
+            return;
+        }
         let n = bytes.len() / self.rs;
         let fit = n.min(self.producer.slots() / self.rs);
         if fit > 0 {
