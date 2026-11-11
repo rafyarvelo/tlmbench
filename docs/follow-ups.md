@@ -455,3 +455,20 @@ chunks become a cache entry, so a plugin runs once per file (and again when its 
   channels it wants) and may return a `note`; limits are per call (decoder chunk 30 s and 1 GB; estimator 2 s and
   256 MB); native plugins load only from your own folder and only once turned on; the files are found in
   `plugins/` of the app's data folder.
+
+## Found trying the 5.9 release app (Nov 11)
+
+None of these showed in the headless tests, which run Chromium on a fake core. Worth a real-window look when a step ends.
+
+- **In-page drag and drop in the desktop app:** the window takes Finder drops natively (`dragDropEnabled`), and then
+  Tauri claims every drag over the page, so channels, panels and tabs could not be dragged. `app/ui/src/dnd.ts` drives
+  those drags from the mouse in the desktop app (not in a browser tab). Design note: Finder drops still open files; the
+  drag ghost is a text pill (no drag image of the dragged element). The 5.8 tab-drag-out and window placement still
+  need a real-window check, now that tab drags work.
+- **Tailing a growing CSV** panicked in the core (`Chunked::get`, a held chunk shorter than the recording) and the live
+  tab stopped following; fixed. A growing `.tlm` shares the path and should be checked in a real window too.
+- **Explorer** listed nothing for a recording opened from outside the folder it shows, or for a live source, and the Open
+  list named only each tab's first file; fixed.
+- **Table click-to-sort** is off by default (owner, Nov 11); the setting is Settings › Click a column header to sort.
+- **Parity:** `just app-parity` reports 214 differences over 23 scenes (211 at 5.7). `docs/parity-audit.md`'s status
+  counts are stale: many rows still say Missing for things built in 5.2–5.4. Redo the audit before Gate 5.
