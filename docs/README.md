@@ -6,6 +6,11 @@
 - `parity-audit.md`: the app's UI against the prototype, control by control.
 - `follow-ups.md`: deferred work and what's left of finished phases.
 - `development.md`: setup, recipes, pinned versions, CI.
+- `release/release-plan.md`: from step 5.10 to v1.0.0 (review, gaps, packaging, documentation, cleanup, release), in order.
+- `release/review-prompt.md`: the prompt for the agent that reviews every step against the roadmap and writes the ledger.
+- `release/ledger.md`: every v1 requirement with its verdict and evidence; `ci/ledger_check.py` checks it.
+- `release/review.md`: what the review found: the gaps ranked, the drift corrected, the owner's decisions.
+- `release/next-agent-prompt.md`: the prompt for the agent that starts closing the gaps (R2.1, exports).
 
 The living versions are edited in Claude Docs and exported here at each milestone:
 
