@@ -110,9 +110,11 @@ where
 
     #[inline]
     fn get(&self, i: usize) -> S::Item {
+        // a chunk decoded while its recording was still filling is shorter than the recording is now: what it
+        // doesn't hold is read from `base`
         match self.held.get(chunk_of(i)) {
-            Some(c) => c.values()[i & (CHUNK_SAMPLES - 1)],
-            None => self.base.get(i),
+            Some(c) if (i & (CHUNK_SAMPLES - 1)) < c.len() => c.values()[i & (CHUNK_SAMPLES - 1)],
+            _ => self.base.get(i),
         }
     }
 
@@ -120,7 +122,7 @@ where
     fn slice(&self, start: usize, end: usize) -> Option<&[S::Item]> {
         let k = chunk_of(start);
         match self.held.get(k) {
-            Some(c) if start < end && chunk_of(end - 1) == k => {
+            Some(c) if start < end && chunk_of(end - 1) == k && end - k * CHUNK_SAMPLES <= c.len() => {
                 let at = k * CHUNK_SAMPLES;
                 Some(&c.values()[start - at..end - at])
             }
@@ -197,6 +199,21 @@ pub fn hold_all<V: Value + Pod>(values: &[V], first: usize, n: usize) -> Held {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chunk held while its recording was filling is shorter than the recording is when it is read.
+    #[test]
+    fn a_held_chunk_shorter_than_the_recording_falls_back_to_its_base() {
+        let all: Vec<f32> = (0..10).map(|i| i as f32).collect();
+        // held when only 5 samples existed
+        let held = hold_all(&all[..5], 0, 1);
+        let c = Chunked { base: &all[..], held: &held };
+        assert_eq!((0..10).map(|i| c.get(i)).collect::<Vec<_>>(), all);
+        assert_eq!(c.slice(0, 5).map(|s| s.to_vec()), Some(all[..5].to_vec()));
+        // a slice past what the chunk holds comes from the base
+        assert_eq!(c.slice(3, 9).map(|s| s.to_vec()), Some(all[3..9].to_vec()));
+        assert_eq!(c.range(2, 8).collect::<Vec<_>>(), all[2..8]);
+    }
+
     use crate::pyramid::{self, Pyramid};
     use crate::{RateTimes, Times, Viewport, m4};
     use proptest::prelude::*;
