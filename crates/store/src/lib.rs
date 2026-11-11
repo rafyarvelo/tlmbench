@@ -21,33 +21,56 @@
 //! channel of the request at once; views from the pyramid use the chunks already there and read the rest in place.
 
 mod adjust;
+
+/// Without threads, `par_iter` is `iter`: the one place the store's queries fan out over channels.
+#[cfg(not(feature = "native"))]
+mod seq {
+    pub trait ParIter<T> {
+        fn par_iter(&self) -> std::slice::Iter<'_, T>;
+    }
+    impl<T> ParIter<T> for Vec<T> {
+        fn par_iter(&self) -> std::slice::Iter<'_, T> {
+            self.iter()
+        }
+    }
+}
 pub mod align;
 pub mod checks;
 mod chunks;
+#[cfg(feature = "native")]
 pub mod config;
 mod derived;
 mod error;
 pub mod events;
 pub mod group;
 mod joined;
+#[cfg(feature = "native")]
 mod live;
 mod pyr;
 mod recipes;
+#[cfg(feature = "native")]
 pub mod sys;
 pub mod trigger;
 pub mod widgets;
 pub mod xy;
 
+#[cfg(feature = "native")]
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
+#[cfg(feature = "native")]
+use std::time::SystemTime;
 
 pub use chunks::ChunkCache;
 pub use error::{Error, Result};
+#[cfg(feature = "native")]
 pub use live::{Live, LiveDerived, LiveDerivedOpened};
+#[cfg(feature = "native")]
 use rayon::prelude::*;
+#[cfg(not(feature = "native"))]
+use seq::ParIter;
 use serde::Serialize;
 use tlmbench_core::chunks::{CHUNK_SAMPLES, Held, chunk_of};
 use tlmbench_core::gaps::{DEFAULT_FACTOR, MIN_FACTOR};
@@ -55,7 +78,9 @@ use tlmbench_core::mask::Mask;
 use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Pyramid, Stats};
 use tlmbench_core::table::{self, Col, Filter, Query, Rows, SortKey};
 use tlmbench_core::{Recording, Timestamp, Trace, TraceKind, Viewport};
+#[cfg(feature = "native")]
 use tlmbench_decode::OpenOptions;
+#[cfg(feature = "native")]
 use tlmbench_decode::profile::ImportProfile;
 
 pub use crate::adjust::Adjust;
@@ -85,6 +110,7 @@ pub struct Store {
     pub limits: Limits,
     chunks: Arc<ChunkCache>,
     /// Applied to every CSV file this store opens.
+    #[cfg(feature = "native")]
     profile: Option<Arc<ImportProfile>>,
     /// Scale, offset and missing values by channel name, applied to every recording this store opens.
     adjust: Arc<Vec<(String, Adjust)>>,
@@ -94,11 +120,26 @@ pub struct Store {
 
 impl Store {
     /// The store at `root`, else `$TLMBENCH_CACHE`, else the OS cache dir's `tlmbench`.
+    #[cfg(feature = "native")]
     pub fn new(root: Option<&Path>) -> Self {
         Self {
             root: tlmbench_decode::cache::cache_root(root),
             limits: Limits::default(),
             chunks: Arc::new(ChunkCache::new(ChunkCache::default_budget())),
+            profile: None,
+            adjust: Arc::default(),
+            expr_env: Arc::default(),
+        }
+    }
+
+    /// A store with no folder behind it: recordings are handed to it in memory ([`Opened::in_memory`]), nothing is read
+    /// or written, and the chunk cache is `chunk_budget` bytes. This is what the viewer in the browser builds.
+    pub fn in_memory(chunk_budget: u64) -> Self {
+        Self {
+            root: PathBuf::new(),
+            limits: Limits::default(),
+            chunks: Arc::new(ChunkCache::new(chunk_budget)),
+            #[cfg(feature = "native")]
             profile: None,
             adjust: Arc::default(),
             expr_env: Arc::default(),
@@ -112,6 +153,7 @@ impl Store {
 
     /// The same store, applying `profile` to every CSV file it opens (each profile has its own column cache and
     /// pyramid; other formats ignore it).
+    #[cfg(feature = "native")]
     pub fn with_profile(mut self, profile: Option<ImportProfile>) -> Self {
         self.profile = profile.filter(|p| !p.is_default()).map(Arc::new);
         self
@@ -138,6 +180,7 @@ impl Store {
         &self.chunks
     }
 
+    #[cfg(feature = "native")]
     /// Opens a recording (CSV and Parquet build their column cache first). Its pyramid is loaded if built, but not built:
     /// call [`Opened::build`] (on a background thread in the app). A packet file with several packet types needs
     /// [`Store::open_part`] or [`Store::open_all`].
@@ -145,6 +188,7 @@ impl Store {
         self.open_part(path, descriptor, None)
     }
 
+    #[cfg(feature = "native")]
     /// Opens the packet type `part` of a file with `[[packet_types]]` (any other file: `None`).
     pub fn open_part(&self, path: &Path, descriptor: Option<&Path>, part: Option<&str>) -> Result<Opened> {
         let opts = self.options(descriptor, part);
@@ -152,6 +196,7 @@ impl Store {
         self.wrap(path, tlmbench_decode::open(path, &opts)?)
     }
 
+    #[cfg(feature = "native")]
     /// Opens every recording a file holds: one, or one per packet type, in the descriptor's order.
     pub fn open_all(&self, path: &Path, descriptor: Option<&Path>) -> Result<Vec<Opened>> {
         let opts = self.options(descriptor, None);
@@ -159,6 +204,7 @@ impl Store {
         tlmbench_decode::open_all(path, &opts)?.into_iter().map(|rec| self.wrap(path, rec)).collect()
     }
 
+    #[cfg(feature = "native")]
     /// `opts` with this store's adjustments: the conditions in them are evaluated against the file opened plain.
     fn adjusted(
         &self,
@@ -175,6 +221,7 @@ impl Store {
         Ok(opts)
     }
 
+    #[cfg(feature = "native")]
     fn options(&self, descriptor: Option<&Path>, part: Option<&str>) -> OpenOptions {
         OpenOptions {
             descriptor: descriptor.map(Path::to_owned),
@@ -185,12 +232,14 @@ impl Store {
         }
     }
 
+    #[cfg(feature = "native")]
     fn wrap(&self, path: &Path, rec: Box<dyn Recording>) -> Result<Opened> {
         let profile = self.profile.as_deref().filter(|_| rec.info().format == "CSV");
         let fingerprint = tlmbench_decode::cache::fingerprint_with(path, profile)?;
         self.wrap_keyed(rec, fingerprint)
     }
 
+    #[cfg(feature = "native")]
     /// `rec` with its cache entries named by `fingerprint` (a source file's, or a derived entry's key).
     fn wrap_keyed(&self, rec: Box<dyn Recording>, fingerprint: String) -> Result<Opened> {
         let key = pyr::key(&fingerprint, &rec.layout_id());
@@ -216,7 +265,7 @@ impl Store {
             dir,
             loaded: RwLock::new(loaded),
             cancel: AtomicBool::new(false),
-            _in_use: in_use,
+            _in_use: Some(in_use),
             building: Mutex::new(()),
             masks: Mutex::default(),
             mask: RwLock::default(),
@@ -224,6 +273,7 @@ impl Store {
         })
     }
 
+    #[cfg(feature = "native")]
     /// Every cache entry, most recently opened first.
     pub fn entries(&self) -> Result<Vec<Entry>> {
         let mut out = Vec::new();
@@ -261,6 +311,7 @@ impl Store {
         Ok(out)
     }
 
+    #[cfg(feature = "native")]
     /// Removes the least recently opened entries until the cache is within its limits; entries in use by any
     /// process stay. Returns what was removed.
     pub fn evict(&self) -> Result<Vec<PathBuf>> {
@@ -285,6 +336,7 @@ impl Store {
         Ok(removed)
     }
 
+    #[cfg(feature = "native")]
     /// Removes every entry not in use; returns what was removed.
     pub fn clear(&self) -> Result<Vec<PathBuf>> {
         let mut removed = Vec::new();
@@ -297,9 +349,11 @@ impl Store {
     }
 }
 
+#[cfg(feature = "native")]
 /// Folders under the cache root holding column caches, named by the format they decode.
 const COLUMN_CACHES: [&str; 3] = ["csv", "parquet", "derived"];
 
+#[cfg(feature = "native")]
 /// One cache entry.
 #[derive(Clone, Debug, Serialize)]
 pub struct Entry {
@@ -316,6 +370,7 @@ pub struct Entry {
     pub fingerprint: Option<String>,
 }
 
+#[cfg(feature = "native")]
 fn unix_seconds<S: serde::Serializer>(t: &SystemTime, s: S) -> std::result::Result<S::Ok, S::Error> {
     s.serialize_u64(t.duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs()))
 }
@@ -355,7 +410,7 @@ pub struct Opened {
     dir: PathBuf,
     loaded: RwLock<Option<Loaded>>,
     cancel: AtomicBool,
-    _in_use: File,
+    _in_use: Option<std::fs::File>,
     building: Mutex<()>,
     /// What each owner (a table with Apply to charts) leaves out, and everything they leave out together.
     masks: Mutex<std::collections::HashMap<u32, Mask>>,
@@ -423,7 +478,50 @@ pub struct View {
     pub built_until: Option<Timestamp>,
 }
 
+/// A pyramid handed over in memory (see [`Opened::in_memory`]).
+#[derive(Debug)]
+pub struct MemoryPyramid {
+    /// Per channel, every level back to back, level 4 first: the bytes of `Summary` values, as in a cache file.
+    pub channels: Vec<Vec<u8>>,
+    /// Summaries per level (`tlmbench_core::pyramid::level_lengths`).
+    pub lens: Vec<usize>,
+    /// Samples `0..done` are summarized.
+    pub done: usize,
+    pub gaps: tlmbench_core::gaps::GapIndex,
+}
+
 impl Opened {
+    /// A recording the caller holds in memory, with its pyramid if it has one (without, every view reads raw samples).
+    /// Nothing is read from or written to disk, so this is what builds for WASM.
+    pub fn in_memory(store: &Store, rec: Box<dyn Recording>, pyramid: Option<MemoryPyramid>) -> Opened {
+        let loaded = pyramid.map(|p| {
+            Loaded::from_memory(
+                p.channels.into_iter().map(|c| pyr::Bytes::Mem(c.into())).collect(),
+                p.lens,
+                p.done,
+                p.gaps,
+            )
+        });
+        Opened {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            live: false,
+            filling: Mutex::new(()),
+            rec,
+            joined: None,
+            store: store.clone(),
+            fingerprint: String::new(),
+            key: String::new(),
+            dir: PathBuf::new(),
+            loaded: RwLock::new(loaded),
+            cancel: AtomicBool::new(false),
+            _in_use: None,
+            building: Mutex::new(()),
+            masks: Mutex::default(),
+            mask: RwLock::default(),
+            runs: Mutex::default(),
+        }
+    }
+
     /// The store this was opened through (with its profile and adjustments).
     pub fn store(&self) -> &Store {
         &self.store
@@ -466,11 +564,16 @@ impl Opened {
             self.compose();
             return Ok(());
         }
-        let done = pyr::build(self, progress)?;
-        if done {
-            touch_opened(&self.dir.join(&self.key));
-            let _ = self.store.evict();
+        #[cfg(feature = "native")]
+        {
+            let done = pyr::build(self, progress)?;
+            if done {
+                touch_opened(&self.dir.join(&self.key));
+                let _ = self.store.evict();
+            }
         }
+        #[cfg(not(feature = "native"))]
+        let _ = progress; // an in-memory recording's pyramid is handed over whole (`Opened::in_memory`)
         Ok(())
     }
 
@@ -487,11 +590,14 @@ impl Opened {
     fn compose(&self) {
         let Some((base, derived)) = &self.joined else { return };
         let (b, d) = (base.loaded.read().unwrap(), derived.loaded.read().unwrap());
+        #[cfg(feature = "native")]
         if let (Some(b), Some(d)) = (b.as_ref(), d.as_ref())
             && let Ok(Some(l)) = Loaded::concat(b, d)
         {
             *self.loaded.write().unwrap() = Some(l);
         }
+        #[cfg(not(feature = "native"))]
+        let _ = (b, d);
     }
 
     /// Whether this is a recording joined with derived channels.
@@ -829,6 +935,7 @@ impl Drop for Opened {
     }
 }
 
+#[cfg(feature = "native")]
 /// Marks the source with fingerprint `fp` as in use for as long as the returned file is open (a shared lock).
 fn hold(root: &Path, fp: &str) -> Result<File> {
     let dir = root.join("use");
@@ -839,6 +946,7 @@ fn hold(root: &Path, fp: &str) -> Result<File> {
     Ok(f)
 }
 
+#[cfg(feature = "native")]
 /// Whether any process holds the source with fingerprint `fp` open.
 fn in_use(root: &Path, fp: &str) -> bool {
     let path = root.join("use").join(fp);
@@ -848,17 +956,20 @@ fn in_use(root: &Path, fp: &str) -> bool {
     }
 }
 
+#[cfg(feature = "native")]
 fn touch_opened(dir: &Path) {
     if dir.is_dir() {
         let _ = fs::write(dir.join("opened"), b"");
     }
 }
 
+#[cfg(feature = "native")]
 fn opened_at(dir: &Path) -> SystemTime {
     let m = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
     m(&dir.join("opened")).or_else(|| m(dir)).unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
+#[cfg(feature = "native")]
 fn dir_size(dir: &Path) -> u64 {
     fs::read_dir(dir)
         .map(|rd| {

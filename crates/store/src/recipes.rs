@@ -52,6 +52,7 @@ impl Library {
             .filter_map(|t| tlmbench_expr::recipe::from_toml(&t).ok())
             .flatten()
             .collect();
+        #[cfg(feature = "native")]
         if self.overlay {
             for r in crate::config::shared_recipes(&crate::config::overlay()) {
                 if !out.iter().any(|o| o.name == r.name) {
@@ -82,7 +83,7 @@ impl Library {
     /// Saves `recipe`; `replacing` is the name it had when it was edited (a rename removes the old file).
     pub fn save(&self, recipe: &Recipe, replacing: Option<&str>) -> Result<()> {
         if recipe.name.trim().is_empty() {
-            return Err(Error::Decode(tlmbench_decode::Error::Descriptor("a recipe needs a name".into())));
+            return Err(Error::Invalid("a recipe needs a name".into()));
         }
         fs::create_dir_all(&self.dir).map_err(Error::io(&self.dir))?;
         if let Some(old) = replacing.filter(|o| *o != recipe.name) {

@@ -3,22 +3,35 @@
 //! Nothing is written beside the source.
 
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
 use std::ops::Range;
-use std::path::Path;
+use std::sync::Arc;
 
+#[cfg(feature = "native")]
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    path::Path,
+};
+
+#[cfg(feature = "native")]
 use rayon::prelude::*;
 use tlmbench_core::timemap::TimeMap;
 use tlmbench_core::{Recording, TimeSource};
+#[cfg(feature = "native")]
 use tlmbench_decode::cache::{DerivedChannel, DerivedSpec, DerivedTime};
+#[cfg(feature = "native")]
+use tlmbench_expr::CHUNK;
+#[cfg(feature = "native")]
 use tlmbench_expr::recipe::{self, Recipe, Resolved};
-use tlmbench_expr::{CHUNK, Env, ExprError, Grid, Series};
+use tlmbench_expr::{Env, ExprError, Grid, Series};
 
-use std::sync::Arc;
-
+use crate::Opened;
+#[cfg(feature = "native")]
+use crate::Result;
+#[cfg(feature = "native")]
+use crate::Store;
+#[cfg(feature = "native")]
 use crate::joined::Joined;
-use crate::{Opened, Result, Store};
 
 /// What opening derived channels produced.
 #[derive(Debug)]
@@ -178,10 +191,12 @@ impl Env for RecEnv<'_> {
     }
 }
 
+#[cfg(feature = "native")]
 fn write_f64(w: &mut (impl Write + ?Sized), v: &[f64]) -> std::io::Result<()> {
     w.write_all(bytemuck::cast_slice(v))
 }
 
+#[cfg(feature = "native")]
 impl Store {
     /// Computes `recipes` over `base` (those whose channels it has) into a recording of their own. The result is cached
     /// by the recording and the recipes, so reopening costs nothing; change a recipe and only its entry is rebuilt.
@@ -267,6 +282,7 @@ impl Store {
     }
 }
 
+#[cfg(feature = "native")]
 fn write_times(rec: &dyn Recording, dir: &Path) -> std::io::Result<()> {
     let mut w = BufWriter::new(File::create(dir.join("t.i64"))?);
     let n = rec.info().samples;
@@ -276,6 +292,7 @@ fn write_times(rec: &dyn Recording, dir: &Path) -> std::io::Result<()> {
     w.flush()
 }
 
+#[cfg(feature = "native")]
 /// Writes `bytes` at `offset`.
 fn write_at(f: &File, bytes: &[u8], offset: u64) -> std::io::Result<()> {
     #[cfg(unix)]
@@ -294,6 +311,7 @@ fn write_at(f: &File, bytes: &[u8], offset: u64) -> std::io::Result<()> {
     }
 }
 
+#[cfg(feature = "native")]
 fn write_channel(env: &RecEnv, r: &Resolved, rows: usize, path: &Path) -> std::result::Result<(), String> {
     let name = &r.recipe.name;
     let io = |e: std::io::Error| format!("{name}: {e}");
@@ -379,6 +397,7 @@ fn write_channel(env: &RecEnv, r: &Resolved, rows: usize, path: &Path) -> std::r
     }
 }
 
+#[cfg(feature = "native")]
 impl Store {
     /// `base` and its derived channels (from [`Store::open_derived`]) as one recording: the recording's channels, then
     /// the derived ones. Each part keeps its own pyramid, so nothing is rebuilt; build the joined one with
@@ -386,12 +405,12 @@ impl Store {
     pub fn join(&self, base: Arc<Opened>, derived: Arc<Opened>) -> Result<Opened> {
         let (b, d) = (base.recording().info(), derived.recording().info());
         if b.samples != d.samples {
-            return Err(crate::Error::Decode(tlmbench_decode::Error::Descriptor(format!(
+            return Err(crate::Error::Invalid(format!(
                 "{} has {} samples but its derived channels {}",
                 b.path.display(),
                 b.samples,
                 d.samples
-            ))));
+            )));
         }
         let fingerprint = derived.fingerprint().to_owned();
         let rec = Box::new(Joined::new(base.clone(), derived.clone()));

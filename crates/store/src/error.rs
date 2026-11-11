@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[cfg(feature = "native")]
     #[error(transparent)]
     Decode(#[from] tlmbench_decode::Error),
     #[error("{}: {source}", path.display())]

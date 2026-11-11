@@ -55,7 +55,14 @@ impl ChunkCache {
 
     /// 25% of physical memory (1 GB when the OS doesn't say).
     pub fn default_budget() -> u64 {
-        crate::sys::total_ram().map_or(1 << 30, |b| b / 4)
+        #[cfg(feature = "native")]
+        {
+            crate::sys::total_ram().map_or(1 << 30, |b| b / 4)
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            1 << 28
+        }
     }
 
     pub fn budget(&self) -> u64 {

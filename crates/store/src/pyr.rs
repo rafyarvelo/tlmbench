@@ -1,26 +1,67 @@
 //! Pyramid and gap files: their layout, loading, and the resumable build.
 
-use std::fs::{self, File, TryLockError};
-use std::io;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::path::PathBuf;
+#[cfg(feature = "native")]
+use std::{
+    fs::{self, File, TryLockError},
+    io,
+    path::Path,
+    sync::atomic::Ordering,
+};
 
-use memmap2::Mmap;
-use serde::{Deserialize, Serialize};
-use tlmbench_core::chunks::CHUNK_SAMPLES;
-use tlmbench_core::gaps::{GapIndex, Jump};
-use tlmbench_core::pyramid::{MIN_LEVEL, Pyramid, Summary, coarser, level_lengths, span};
-use tlmbench_core::{Recording, TimeIndex, TimeSource};
+use tlmbench_core::gaps::GapIndex;
+use tlmbench_core::pyramid::{Pyramid, Summary};
+#[cfg(feature = "native")]
+use {
+    serde::{Deserialize, Serialize},
+    tlmbench_core::chunks::CHUNK_SAMPLES,
+    tlmbench_core::gaps::Jump,
+    tlmbench_core::pyramid::{MIN_LEVEL, coarser, level_lengths, span},
+    tlmbench_core::{Recording, TimeIndex, TimeSource},
+};
 
+#[cfg(feature = "native")]
 use crate::{Error, FOLLOW_EVERY, Opened, Result};
 
+/// Summaries or raw bytes a pyramid reads: a mapped file (the app) or memory (the viewer, which is given an export's
+/// pyramid files, or builds the pyramid from the samples it holds).
+#[derive(Debug, Clone)]
+pub(crate) enum Bytes {
+    #[cfg(feature = "native")]
+    Map(std::sync::Arc<memmap2::Mmap>),
+    Mem(std::sync::Arc<[u8]>),
+}
+
+impl std::ops::Deref for Bytes {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match self {
+            #[cfg(feature = "native")]
+            Bytes::Map(m) => m,
+            Bytes::Mem(m) => m,
+        }
+    }
+}
+
+#[cfg(feature = "native")]
+impl From<memmap2::Mmap> for Bytes {
+    fn from(m: memmap2::Mmap) -> Self {
+        Bytes::Map(std::sync::Arc::new(m))
+    }
+}
+
+#[cfg(feature = "native")]
 /// The layout version: the folder under `pyr/`. A layout change bumps it, and old folders age out of the cache.
 pub(crate) const VERSION: &str = "v2";
+#[cfg(feature = "native")]
 const FORMAT: u32 = 1;
+#[cfg(feature = "native")]
 /// A build works in blocks of 4^10 samples: levels 4 to 10 of a block are written as soon as it is read.
 const BLOCK_LEVEL: u32 = 10;
+#[cfg(feature = "native")]
 const SUMMARY: usize = size_of::<Summary>();
 
+#[cfg(feature = "native")]
 /// The cache key: the source's fingerprint and how it is decoded.
 pub(crate) fn key(fingerprint: &str, layout_id: &[u8]) -> String {
     let mut h = blake3::Hasher::new();
@@ -30,6 +71,7 @@ pub(crate) fn key(fingerprint: &str, layout_id: &[u8]) -> String {
     h.finalize().to_hex()[..32].to_owned()
 }
 
+#[cfg(feature = "native")]
 #[derive(Debug, Serialize, Deserialize)]
 struct Manifest {
     format: u32,
@@ -44,6 +86,7 @@ struct Manifest {
     time_chunks: usize,
 }
 
+#[cfg(feature = "native")]
 #[derive(Debug, Serialize, Deserialize)]
 struct Progress {
     format: u32,
@@ -53,10 +96,12 @@ struct Progress {
     blocks_done: usize,
 }
 
+#[cfg(feature = "native")]
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
+#[cfg(feature = "native")]
 /// Writes JSON through a temporary file and a rename, so a reader never sees half of it.
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let tmp = path.with_extension("tmp");
@@ -64,6 +109,7 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     fs::rename(&tmp, path).map_err(Error::io(path))
 }
 
+#[cfg(feature = "native")]
 /// The fingerprint a pyramid folder (built or building) was made from.
 pub(crate) fn fingerprint_of(dir: &Path) -> Option<String> {
     read_json::<Manifest>(&dir.join("manifest.json"))
@@ -75,7 +121,7 @@ pub(crate) fn fingerprint_of(dir: &Path) -> Option<String> {
 #[derive(Debug)]
 pub(crate) struct Loaded {
     /// One per channel: every level back to back.
-    maps: Vec<Mmap>,
+    maps: Vec<Bytes>,
     /// The files mapped.
     paths: Vec<PathBuf>,
     /// Summaries per level, and where each level starts (in summaries).
@@ -89,7 +135,7 @@ pub(crate) struct Loaded {
     pub gaps: GapIndex,
     /// A recording that grows (see `live`): each channel's levels in files of their own, level 4 first, used up to
     /// `lens`. Empty for a recording's cache entry, whose levels share one file.
-    pub growing: Vec<std::sync::Arc<Vec<Mmap>>>,
+    pub growing: Vec<std::sync::Arc<Vec<Bytes>>>,
 }
 
 impl Loaded {
@@ -111,6 +157,37 @@ impl Loaded {
         Some(Pyramid::new(self.done, levels))
     }
 
+    /// A pyramid held in memory: `levels[channel]` is every level back to back (level 4 first), `lens` the summaries
+    /// per level, as in a cache file. `done` samples are summarized.
+    pub fn from_memory(levels: Vec<Bytes>, lens: Vec<usize>, done: usize, gaps: GapIndex) -> Loaded {
+        let offsets = offsets(&lens);
+        let usable = lens.len();
+        Loaded {
+            maps: levels,
+            paths: Vec::new(),
+            lens,
+            offsets,
+            usable,
+            done,
+            complete: true,
+            gaps,
+            growing: Vec::new(),
+        }
+    }
+}
+
+/// Memory has no cold pages to read through first.
+#[cfg(not(feature = "native"))]
+impl Loaded {
+    pub fn warm(&self, _channel: usize, _a: usize, _b: usize) {}
+
+    pub fn cold(&self, _channel: usize, _a: usize, _b: usize) -> Option<bool> {
+        None
+    }
+}
+
+#[cfg(feature = "native")]
+impl Loaded {
     /// Reads channel `channel`'s level-4 summaries of samples `a..b` with large sequential reads. An exact view of
     /// much of a cold file touches nearly every page of level 4 (its pixel edges), and page faults one by one are
     /// several times slower than reading the range through.
@@ -150,7 +227,7 @@ impl Loaded {
         (0..channels).map(|c| dir.join(format!("c{c}.pyr"))).collect()
     }
 
-    fn map(dir: &Path, channels: usize, total: usize) -> Result<Vec<Mmap>> {
+    fn map(dir: &Path, channels: usize, total: usize) -> Result<Vec<Bytes>> {
         (0..channels)
             .map(|c| {
                 let p = dir.join(format!("c{c}.pyr"));
@@ -161,7 +238,7 @@ impl Loaded {
                 }
                 // SAFETY: cache files are only written by a build holding the key's lock, in regions past what
                 // readers use (`done`), before the manifest marks them complete.
-                unsafe { Mmap::map(&f) }.map_err(Error::io(&p))
+                unsafe { memmap2::Mmap::map(&f) }.map(Bytes::from).map_err(Error::io(&p))
             })
             .collect()
     }
@@ -242,7 +319,7 @@ impl Loaded {
                     return Err(Error::Damaged { path: p.clone(), why: "wrong size".into() });
                 }
                 // SAFETY: as in `map`: a finished pyramid's files are never written again.
-                unsafe { Mmap::map(&f) }.map_err(Error::io(p))
+                unsafe { memmap2::Mmap::map(&f) }.map(Bytes::from).map_err(Error::io(p))
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(Some(Loaded {
@@ -260,7 +337,7 @@ impl Loaded {
 
     /// A growing recording's pyramid: `maps[channel][level]` holds at least `lens[level]` summaries, and `done`
     /// samples are summarized (the rest are read raw). Complete in the sense that every sample can be answered.
-    pub fn growing(maps: Vec<std::sync::Arc<Vec<Mmap>>>, lens: Vec<usize>, done: usize, gaps: GapIndex) -> Loaded {
+    pub fn growing(maps: Vec<std::sync::Arc<Vec<Bytes>>>, lens: Vec<usize>, done: usize, gaps: GapIndex) -> Loaded {
         let usable = lens.len();
         Loaded {
             maps: Vec::new(),
@@ -306,11 +383,13 @@ fn offsets(lens: &[usize]) -> Vec<usize> {
     out
 }
 
+#[cfg(feature = "native")]
 #[cfg(unix)]
 fn read_at(f: &File, buf: &mut [u8], at: u64) -> io::Result<()> {
     std::os::unix::fs::FileExt::read_exact_at(f, buf, at)
 }
 
+#[cfg(feature = "native")]
 #[cfg(windows)]
 fn read_at(f: &File, buf: &mut [u8], at: u64) -> io::Result<()> {
     use std::os::windows::fs::FileExt;
@@ -326,11 +405,13 @@ fn read_at(f: &File, buf: &mut [u8], at: u64) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "native")]
 #[cfg(unix)]
 fn write_at(f: &File, buf: &[u8], at: u64) -> io::Result<()> {
     std::os::unix::fs::FileExt::write_all_at(f, buf, at)
 }
 
+#[cfg(feature = "native")]
 #[cfg(windows)]
 fn write_at(f: &File, mut buf: &[u8], mut at: u64) -> io::Result<()> {
     use std::os::windows::fs::FileExt;
@@ -348,6 +429,7 @@ fn write_at(f: &File, mut buf: &[u8], mut at: u64) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "native")]
 /// Builds `op`'s pyramid (see the crate docs). Returns false when cancelled before the end.
 pub(crate) fn build(op: &Opened, progress: &mut dyn FnMut(u64, u64)) -> Result<bool> {
     let rec = op.rec.as_ref();

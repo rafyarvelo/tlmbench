@@ -663,6 +663,7 @@ impl Sets {
     pub fn list(&self) -> Vec<CheckSet> {
         let mut v: Vec<CheckSet> =
             self.files().iter().filter_map(|f| fs::read_to_string(f).ok()).filter_map(|t| from_toml(&t).ok()).collect();
+        #[cfg(feature = "native")]
         if self.overlay {
             for s in crate::config::shared_sets(&crate::config::overlay()) {
                 if !v.iter().any(|o| o.name == s.name) {

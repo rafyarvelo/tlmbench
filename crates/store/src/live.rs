@@ -122,7 +122,7 @@ impl Store {
             dir: self.root.join("live"),
             loaded: RwLock::new(loaded),
             cancel: AtomicBool::new(false),
-            _in_use: hold(&self.root, key)?,
+            _in_use: Some(hold(&self.root, key)?),
             building: Mutex::new(()),
             masks: Mutex::default(),
             mask: RwLock::default(),
@@ -236,7 +236,7 @@ impl Grow {
             .map(|levels| {
                 levels[..=top]
                     .iter()
-                    .map(|f| unsafe { Mmap::map(f) })
+                    .map(|f| unsafe { Mmap::map(f) }.map(crate::pyr::Bytes::from))
                     .collect::<std::io::Result<Vec<_>>>()
                     .map(Arc::new)
             })

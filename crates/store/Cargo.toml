@@ -9,22 +9,28 @@ publish.workspace = true
 
 [dependencies]
 tlmbench-core.workspace = true
-tlmbench-decode.workspace = true
+tlmbench-decode = { workspace = true, optional = true }
 tlmbench-expr.workspace = true
 blake3.workspace = true
 bytemuck.workspace = true
-memmap2.workspace = true
-rayon.workspace = true
+memmap2 = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2.191"
+libc = { version = "0.2.191", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading"] }
+
+[features]
+# Everything that needs an OS: files, mmap, threads and the decoders. Without it the crate is the part of the store that
+# answers queries (groups, time maps, checks, derived channels) over data held in memory, and builds for WASM.
+default = ["native"]
+native = ["dep:tlmbench-decode", "dep:memmap2", "dep:rayon", "dep:libc"]
 
 [dev-dependencies]
 criterion.workspace = true
