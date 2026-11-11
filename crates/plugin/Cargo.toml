@@ -1,0 +1,23 @@
+[package]
+name = "tlmbench-plugin"
+description = "TelemetryBench plugins: WASM decoders and alignment estimators on wasmtime, and native decoders"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tlmbench-core.workspace = true
+tlmbench-decode.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+wasmtime = { version = "50.0.1", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "parallel-compilation"] }
+wasmtime-wasi = { version = "50.0.1", default-features = false, features = ["p2"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

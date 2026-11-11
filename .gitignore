@@ -27,3 +27,4 @@ app/src-tauri/gen/
 
 # the app UI tests
 app/ui/tests/out/
+/plugins/*/target/

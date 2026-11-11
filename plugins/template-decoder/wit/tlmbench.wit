@@ -1,0 +1,90 @@
+// The interface WASM plugins implement: one WIT package, two worlds. Plugins are components built for wasm32-wasip2
+// (the template crates in plugins/ start from these). The host gives a plugin no files, network or clock: a decoder
+// reads the file only through `source`, an estimator only gets the series it asked for.
+package tlmbench:plugin@0.1.0;
+
+interface types {
+    /// The type of a channel's stored values. Columns are little-endian arrays of it.
+    enum dtype { i8, i16, i32, i64, %u8, %u16, %u32, %u64, %f32, %f64 }
+
+    record channel {
+        name: string,
+        unit: option<string>,
+        dtype: dtype,
+    }
+
+    record about {
+        name: string,
+        version: string,
+        description: option<string>,
+        /// File name patterns it decodes (`*` matches any text), besides what `sniff` claims.
+        files: list<string>,
+    }
+}
+
+/// The file a decoder reads, by byte ranges.
+interface source {
+    len: func() -> u64;
+    /// At most `len` bytes from `offset` (fewer at the end of the file).
+    read: func(offset: u64, len: u32) -> list<u8>;
+}
+
+world decoder {
+    use types.{about, channel};
+    import source;
+
+    record schema {
+        channels: list<channel>,
+        /// Chunks carry a time per row in nanoseconds; false numbers the samples.
+        timed: bool,
+    }
+
+    record chunk {
+        rows: u32,
+        /// `rows` times when the schema is timed, else empty. Never decreasing.
+        time: list<s64>,
+        /// One little-endian array per channel, `rows` values each.
+        columns: list<list<u8>>,
+    }
+
+    export describe: func() -> about;
+    /// Whether this plugin decodes a file with these first bytes and this name.
+    export sniff: func(head: list<u8>, name: string) -> bool;
+    /// Reads the file's start and returns the schema. Called once per file, before `next`. (Not called `open`: that is a C library symbol.)
+    export start: func() -> result<schema, string>;
+    /// The next at most `max-rows` rows, or none at the end. A plugin keeps its own position.
+    export next: func(max-rows: u32) -> result<option<chunk>, string>;
+}
+
+/// Alignment: finds the map from a file's clock to the shared one (see the design's "Alignment").
+world estimator {
+    use types.{about};
+
+    record series {
+        name: string,
+        /// Sample times in nanoseconds, increasing.
+        t: list<s64>,
+        v: list<f64>,
+    }
+
+    /// `(t_file, t_shared)` in nanoseconds, increasing in both. One knot is an offset, two add drift.
+    record knot {
+        file: s64,
+        shared: s64,
+    }
+
+    record estimate {
+        knots: list<knot>,
+        /// `(t_file, residual in ns)` per matched point.
+        residuals: list<tuple<s64, f64>>,
+        /// 0 to 1.
+        quality: f64,
+        note: option<string>,
+    }
+
+    export describe: func() -> about;
+    /// Names of the channels it needs from the reference and the target, given its parameters (JSON). The host sends
+    /// at most 1M samples of each, decimated.
+    export needs: func(params: string) -> result<list<string>, string>;
+    export estimate: func(reference: list<series>, target: list<series>, hint: list<knot>, params: string) -> result<estimate, string>;
+}

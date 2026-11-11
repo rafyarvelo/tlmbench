@@ -1,0 +1,23 @@
+[package]
+name = "my-decoder"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# A decoder plugin for TelemetryBench: a WASM component the app loads from its plugins folder.
+# Build:  cargo build --release --target wasm32-wasip2
+# Install: copy target/wasm32-wasip2/release/my_decoder.wasm to the plugins folder (Settings › Plugins opens it).
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.57.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+
+# (not part of tlmbench's workspace)
+[workspace]

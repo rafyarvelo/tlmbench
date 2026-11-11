@@ -1,0 +1,20 @@
+[package]
+name = "hostile"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.57.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+
+# (not part of tlmbench's workspace)
+[workspace]
