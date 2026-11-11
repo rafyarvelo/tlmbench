@@ -12,7 +12,7 @@
 - `release/review.md`: what the review found: the gaps ranked, the drift corrected, the owner's decisions.
 - `exports.md`: HTML exports, a folder or one file; why a folder needs a web server; what a trimmed export shows.
 - `release/r2-1-sparse-store.md`: the plan for the viewer's sparse raw store and which data a view reads (R2.1).
-- `release/next-agent-prompt.md`: the prompt for the agent that starts closing the gaps (R2.1, exports).
+- `release/next-agent-prompt.md`: the prompt for the next agent: R2.1 is done; it asks the owner for their list of actions from testing the release app before anything else.
 
 The living versions are edited in Claude Docs and exported here at each milestone:
 

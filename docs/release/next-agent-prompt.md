@@ -1,116 +1,85 @@
 You are continuing TelemetryBench (tlmbench) in `/Users/rafy/workspace/tlmbench`, branch `main`, on the way to the v1
-release. The features are built (roadmap steps 4.1 to 5.10) and a review (step R1) has checked every requirement against
-the code and the tests. Your job is to start closing the gaps it found, beginning with **step R2.1 (exports)** of
-`docs/release/release-plan.md`. One agent works at a time; you start from a clean
-`main` and leave a clean `main`.
+release. Step R2.1 (exports) is done and committed. **The owner is now testing the release app and will give you a list of
+actions. Your first job is to ask for that list and wait for it; do not start R2.2 or any other step before you have it.**
 
-## Read first, in this order
+One agent works at a time; you start from a clean `main` and leave a clean `main`. Nothing is pushed: pushing is the owner's
+call (CI on `d45727c` was green once; R0 needs two green runs in a row with no rerun).
 
-1. `CLAUDE.md`. Its hard requirements bind you: the app works from its cache alone on a read-only folder; nothing is
-   written next to data except by Share and exports; exports are static files; everything in the design is v1 and **you
-   never propose cutting scope** (if something looks infeasible, say so with evidence and ask the owner); the app never
-   runs Python or other programs.
-2. `docs/release/release-plan.md`: the steps R0 to R9, their order, and the ten decisions the owner has to make.
-3. `docs/release/ledger.md`: one row per requirement with a verdict, the evidence and the step that closes each gap. From
-   here on a feature is done only when its row is Done with evidence `ci/ledger_check.py` can check. The header of
-   `ci/ledger_check.py` says how evidence is written.
-4. `docs/release/review.md`: the ranked gaps, the drift found in the documents, what couldn't be checked, and the ten
-   decisions the owner needs to make (section 6).
-5. `docs/design.md` for whatever you are about to build (it is the source of truth), `docs/follow-ups.md` "Left from step
-   5.10", and the memory file `viewer-architecture.md` in
-   `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/` (how the export, the viewer and `crates/web` fit
-   together), plus `disk-space.md` and `headless-tests-miss-real-window.md` there.
+## First, in this order
 
-## Where things stand (Nov 11, 2026)
+1. Read `CLAUDE.md` (its hard requirements bind you: the app works from its cache alone on a read-only folder; nothing is
+   written next to data except by Share and exports; exports are static files; everything in the design is v1 and you never
+   propose cutting scope; the app never runs Python or other programs).
+2. Read `docs/release/release-plan.md` (steps R0 to R9, the ten release decisions), `docs/release/ledger.md` (one row per
+   requirement; a feature is done only when its row is Done with evidence `ci/ledger_check.py` can check) and `docs/release/review.md`.
+3. Read what R2.1 left: `docs/release/r2-1-sparse-store.md` (the viewer's sparse raw store and which data a view reads),
+   `docs/exports.md`, `docs/follow-ups.md` ("Left from step 5.10" and "Suggested by the owner's real-window pass"), and the
+   memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/` (`viewer-architecture.md`,
+   `disk-space.md`, `headless-tests-miss-real-window.md`, `roadmap-v1.md`, `release-plan.md`).
+4. `git log --oneline -12` and `git status`: confirm `main` is clean and the last commit is `0be7b83` (or later).
+5. **Then ask the owner for their list of actions.** Say in one or two lines what you have read and that you are waiting for
+   the list. Do not guess what it contains.
 
-- **R1 is finished.** `docs/release/review.md` is written, `python3 ci/ledger_check.py` prints `ok`, and the review is
-  committed. The ledger has 305 rows: Done 194, Partial 46, Missing 18, Diverged 7, Unverified 26, Owner pass 14.
-- Verified in the review, all on this Mac at `d45727c`: `cargo fmt --all --check`, clippy and `just lint` clean; 269
-  Rust tests pass (1 skipped: the sort timing test, release only); all 89 app UI tests pass, run one at a time, none
-  rerun; all 29 prototype tests and 9 Python tests pass; `just ro-test`, `just gate4 matrix` and `just gate5` pass;
-  `just app-parity` reports 212 differences in 23 scenes.
-- Not re-run (they need the release window or the 10 GB recordings; R6 does them): Gates 1 and 2, `gate3 core` and
-  `app`, `gate4 app` and the 10 GB packet file, `just fuzz-smoke`, `just bench`.
-- CI run 43073397717 on `d45727c`: macOS and Windows passed; the Linux job was still running after two and a half
-  hours. Check it first (`gh run view 43073397717`). No 5.10 commit has a fully green run yet, and R0 asks for two in a
-  row with no rerun: if Linux failed on a known flake (`t_live`, `t_trigger`, `t_checks`, `t_windows`, the prototype's
-  `t_folder`), find the race before starting R2.1. None of them failed in the review's run on the Mac.
-- Everything of R1 is committed on `main` (not pushed; don't push unless the owner asks).
+## What the owner is doing
 
-## Decisions: taken as the review recommended
+They are trying the release app (`target/release/tlmbench-app`, built Nov 11 after R2.1) and will come back with a list. Expect
+bugs, UI differences, requests and decisions, in any order and mixed. When it arrives:
 
-The owner read `review.md` and said to begin with its recommendations (Nov 11). Treat these as decided; don't ask again.
-Where one turns out not to work, stop and say so with evidence before building around it.
+- **Triage before you build.** Number each item, give each a verdict (bug, gap in a ledger row, new requirement, decision for
+  the owner, can't reproduce) and the ledger row it belongs to (add a row when none does; never renumber an ID). Show the owner
+  the short table and the order you propose, and what you will not do yet. Ask about anything that is a design decision with a
+  recommendation (CLAUDE.md: decisions belong to the owner).
+- **Reproduce each bug first**, ideally with the release build in daemon mode against the real core
+  (`target/release/tlmbench-app --daemon --ui app/ui/dist`, as `app/ui/tests/t_exportreal.js` does) or the real window. If the
+  owner's own settings are involved, work on a copy of `~/Library/Application Support/io.github.rafyarvelo.tlmbench/settings.json`
+  and never change the original. The Explorer item below was found exactly that way.
+- **Fix with a test for every behaviour change**, in small commits, one topic each, ledger updated in the same commit.
+- Fixes to the owner's list come **before** R2.2. When the list is done, report what changed and what is left, then ask which
+  step they want next (the plan says R2.2).
 
-1. **The store for WASM: one store everywhere.** Make the part of `tlmbench-store` that groups, time maps, checks and
-   derived channels need build for `wasm32-unknown-unknown`, with what can't (mmap, arrow and parquet, zstd, threads,
-   the cache on disk) behind features or a small storage trait, and have `crates/web` use it, instead of writing a
-   second group inside `crates/web`. First spend an hour finding what actually stops the build
-   (`cargo check --target wasm32-unknown-unknown` on the store and on decode) and tell the owner what you found and how
-   you'll split it. If it would take a rewrite of the store rather than a split, that is the case to stop and ask.
-2. **Export checksums: keep BLAKE3.** The viewer verifies every file it fetches against `export.json` and shows an
-   error instead of data on a mismatch (a truncated upload, a stale cached chunk). Note for the design doc that it says
-   SHA-256 and should say BLAKE3 (D-cli-08).
-3. **The design absorbs what the code settled:** checks run as their own pass after open (S5.3-04), and a check set's
-   TOML is what `examples/recordings/.tlmbench/checks/` shows (D-check-08). Mark both rows Done with the note for the
-   design doc; no code changes.
-4. **Widget traces stay SVG until measured.** R6 measures 100 widgets in the release app; canvas only if they miss
-   2 ms (S5.4-06 stays Diverged until then).
-5. **Live views stay whole views at 30 Hz**, noted for the design doc, unless R6's soak shows a cost (D-live-09).
-6. **CSV `#` comment lines are Accepted** (D-ingest-08): note it for the design doc.
-7. **Packet types become slots of one tab** (S4.3-08), in R2.5.
-8. **No phone layout in the app**; `t_phone` stays prototype-only.
-9. **The release gate fails when a UI test skips; the gate harness stays in release builds.** Make
-   `app/ui/tests/run.sh` take a flag (or an environment variable) that turns a skip into a failure, and use it in CI
-   once CI builds what those tests need.
-10. **CI first.** Check run 43073397717 before anything else. If the Linux job failed, fix that before R2.1: for a known
-    flake, find the race (a retry is not a fix). R0 is done at two green runs in a row with no rerun; pushing is the
-    owner's call, so ask when you need a run.
+## Already known (put these on the list yourself, flagged as yours)
 
-The ten release decisions in `release-plan.md` (licence, platforms, signing and the rest) are still open and not needed
-until R4; don't hold R2 for them, and don't decide them.
-
-## The work: R2.1, exports
-
-The list is `release-plan.md`'s R2.1 plus every ledger row whose last column names R2.1 (`grep -n "R2.1"
-docs/release/ledger.md`). Core and CLI first, tested headlessly, then the viewer page. The writer is
-`crates/export/src/html.rs`, the viewer's core `crates/web/src/{data,ops}.rs`, the page `app/ui/src/viewer.ts`, the CLI
-`cli/src/export_html.rs`. What makes it hard:
-
-- **Light's raw windows and a trimmed export** both need the viewer's core to hold data that is partly absent: raw
-  chunks present for some stretches only, and a pyramid whose finest level is not level 4. Today it assumes all or
-  nothing, and a trimmed channel shows nothing at all. Design the sparse store and the plan for which chunks a view
-  reads before writing either feature; the integrity rule (every value shown is a raw sample or an exact aggregate, and
-  a view that lacks its raw samples says so) is what the tests must hold.
-- **`file://` does not work for a folder export** (the browser refuses to fetch the WASM core and the data), and
-  `--single-file` is the design's answer. Don't paper over it: build the one-file variant and say plainly in the docs
-  why a folder needs a server.
-- **Build order:** `just viewer` must run before the CLI or the app is built, or they embed a stale viewer.
-- **The viewer is the app's UI.** A change to shared UI code changes the app too; run the app's tests, not only
-  `t_viewer`.
+- **Explorer looks empty when "Show only these" is on and nothing is open.** The owner's saved settings have `exOnlyOpen: true`,
+  so a freshly opened folder shows its header and no files (`list_folder` returned all entries; the filter hid them). It is in
+  `docs/follow-ups.md`. Proposed, not decided: say "Showing only open files" with a Show all button when the filter is on and
+  nothing is open, and clear the filter when a different folder is opened. Ask the owner before building it.
+- **Owner pass rows from R2.1** (only a real window shows them; ask the owner to confirm each or put it on their list): the
+  one-file export opened from a disk path, widget cards in a viewer, a check report's links (`#show=` framing a violation), the
+  export dialog's three raw-window fields, a two-file export in the viewer, and Light/trimmed exports drawing labelled coarse.
+- **Left Partial by R2.1:** a default `--detail` per rule-and-check set (D-cli-06); no viewer test drives Play, cursors or
+  Measure (D-cli-09); the viewer's footer doesn't show the provenance; a time range for a tab of several files is refused by the
+  app's Export; `tlmbench query view` shows no gap breaks until the pyramid is built. All in `docs/follow-ups.md`.
+- **Not run at the end of R2.1:** the Python tests (`just` recipes need a `maturin` build; the crate compiles and lints). Run
+  them when you next touch Python or the export manifest (its `raw_chunks` is now `[[first sample, samples], ...]`).
+- **Design-doc notes owed** (the doc stays the source of truth; list them for the owner, don't edit the Claude Doc): checksums
+  are BLAKE3, not SHA-256 (D-cli-08); checks run as a pass of their own after open (S5.3-04) and a set's TOML is what
+  `examples/recordings/.tlmbench/checks/` shows (D-check-08); CSV `#` comment lines are Accepted (D-ingest-08); a check that
+  reads a redacted channel leaves the export (D-cli-10); group routing for several files lives in `crates/web` (decision Nov 11).
 
 ## Rules
 
-- A row moves to Done only with evidence you ran in your session: a test by name, a file, or a command with its date.
-  Update the ledger row in the same commit as the code, never renumber an ID, and run `python3 ci/ledger_check.py`
-  before every commit. If you find a gap the ledger lacks, add a row.
-- A test for every behaviour change, the tests README's table, and a note for the design doc when behaviour differs
-  from it (CLAUDE.md).
-- Headless tests don't see the real window. Anything only a real window shows is an Owner pass row with what to look
-  at; before calling the step done, build the release app and hand the owner the checklist.
-- The Mac has 8 GB of memory and a small disk. Never run two cargo builds or two UI suites at once. Workspace-wide cargo
-  only (`-p` subsets pile up multi-GB copies; note that `just ro-test` builds with `-p` and cost 9 GB in the review).
-  Check `df -h /` before big builds; `rm -rf target/debug` when under 5 GB free; `cargo clean --manifest-path
-  python/Cargo.toml` after a Python build. The owner has OK'd deleting caches and builds.
-- UI tests run one at a time with `node tests/t_x.js` from `app/ui`, after `npx svelte-check --fail-on-warnings &&
-  npm run build`. `t_perf_gauges` runs alone at the end.
-- Shell: write scripts with the Write tool and run them (the safety check rejects some heredocs); macOS `sed -i ''`;
-  never `git stash`; `git add -A` sweeps untracked files, so add files by name; don't push or rewrite history unless the
-  owner asks. Small commits, one topic each, ending with `Co-Authored-By: Claude <noreply@anthropic.com>`.
-- Concise replies to the owner: lead with what changed and what's left, no recaps.
+- A row moves to Done only with evidence you ran in your session (a test by name, a file, or a command with its date). Run
+  `python3 ci/ledger_check.py` before every commit.
+- A test for every behaviour change, the tests README's table, and a note for the design doc when behaviour differs from it.
+- Headless tests don't see the real window. Anything only a real window shows is an Owner pass row with what to look at; before
+  calling a step done, build the release app and hand the owner the checklist.
+- The Mac has 8 GB of memory and a small disk. Never run two cargo builds or two UI suites at once; workspace-wide cargo only.
+  Check `df -h /` before big builds and `rm -rf target/debug` when under 5 GB free (a full disk fails builds with a confusing
+  error: it did in R2.1). `cargo clean --manifest-path python/Cargo.toml` after a Python build. The owner has OK'd deleting
+  caches and builds.
+- Build order: `just viewer` before the CLI or the app is built, or they embed a stale viewer. The release app is
+  `cd app/src-tauri && cargo tauri build --no-bundle` (about 10 minutes). The viewer is the app's UI: a change to shared UI
+  code changes both, so run the app's tests, not only `t_viewer`.
+- UI tests run one at a time with `node tests/t_x.js` from `app/ui`, after `npx svelte-check --fail-on-warnings && npm run build`;
+  `t_perf_gauges` runs alone at the end. `STRICT_SKIP=1 ./run.sh` turns a skipped test into a failure (the release gate).
+- Shell: write scripts with the Write tool and run them; macOS `sed -i ''`; never `git stash`; add files by name (`git add -A`
+  sweeps untracked files); don't push or rewrite history unless the owner asks. Commits end with
+  `Co-Authored-By: Claude <noreply@anthropic.com>`.
+- Concise replies to the owner: lead with what changed and what's left, no recaps. Never propose cutting scope.
 
-## Done when
+## After the owner's list
 
-Every ledger row that names R2.1 is Done with evidence; `just gate5`, the whole app UI suite, the Rust tests and
-`just lint` pass; the roadmap's status table, the tests READMEs and `docs/follow-ups.md` say what changed; and you have
-told the owner what is done, what is left, and which step comes next (R2.2).
+Once the list is done and the owner says go, the plan continues with **R2.2 (browser-only mode)** in `release-plan.md`: parse in
+a Worker, Parquet, `.tlm`, packets and descriptors (make `tlmbench-decode` build for WASM instead of including three of its
+files as source), derived channels, events, checks and several files in the browser, a reload remembering which files were
+open, and a static-host recipe. The store already builds for WASM (`native` off): R2.1 did that part.

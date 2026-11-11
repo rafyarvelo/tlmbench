@@ -556,3 +556,11 @@ folder it writes (`t_exportreal`), the viewer and browser-only mode from static 
   Worth a look in the owner's real-window pass.
 - **A flaky `t_live` ("Stop ends the recording") and `t_trigger`/`t_checks`/`t_windows`/`t_folder` each failed once and passed
   on a re-run** during this step's runs (they have flaked on CI before): timing, not behaviour.
+
+## Suggested by the owner's real-window pass (Nov 11, 2026)
+
+- **Explorer looks empty when "Show only these" is on and nothing is open** (`exOnlyOpen`, which is saved in settings). The
+  owner opened a folder and saw the Explorer header and no files; `list_folder` had returned all 33 entries, the filter hid them
+  all. Proposed (not decided; the owner decides): when the filter is on and no file is open, say "Showing only open files" with a
+  Show all button, and clear the filter when a different folder is opened. Found with the release build in daemon mode and a copy
+  of the real `settings.json` (the original untouched). It is not a regression from R2.1.
