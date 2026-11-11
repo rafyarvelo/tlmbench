@@ -44,6 +44,10 @@ pub struct Args {
     /// event's duration, the minimum and the cap); `0` turns them off. Default 3x,30s,10min
     #[arg(long, default_value = "3x,30s,10min")]
     pub detail: String,
+    /// One HTML file for email or `file://` (`--out` names the file): Light, up to 25 MB, the finest levels left out to
+    /// fit. A folder export needs a web server: a page opened from `file://` can't fetch its data or the core
+    #[arg(long)]
+    pub single_file: bool,
     /// A viewer folder to copy instead of the one built into this program (also $TLMBENCH_VIEWER)
     #[arg(long)]
     pub viewer: Option<PathBuf>,
@@ -117,7 +121,19 @@ pub fn split_slot(name: &str) -> (usize, &str) {
 }
 
 pub fn run(a: Args) -> Result<(), Fail> {
-    let budget = bytes_arg(&a.budget)?;
+    let mut budget = bytes_arg(&a.budget)?;
+    // a one-file export is Light and must fit 25 MB with the page and the core (the data is base64 in the page)
+    let single = if a.single_file {
+        let viewer = html::embedded_single_viewer();
+        if viewer.is_empty() {
+            return Err(Fail(2, "this build has no one-file viewer: run `just viewer` and build again".into()));
+        }
+        let room = html::SINGLE_FILE_LIMIT.saturating_sub(html::single_overhead(&viewer)) / 4 * 3;
+        budget = budget.min(room);
+        Some(viewer)
+    } else {
+        None
+    };
     let store = store(&a.common);
     // one recording per file (a packet file's types are separate recordings: pass --type)
     let mut opened: Vec<Opened> = Vec::new();
@@ -253,6 +269,7 @@ pub fn run(a: Args) -> Result<(), Fail> {
     );
     let opts = html::Options {
         mode: match a.mode {
+            _ if a.single_file => Mode::Light,
             None => Mode::Auto,
             Some(ModeArg::Full) => Mode::Full,
             Some(ModeArg::Light) => Mode::Light,
@@ -276,8 +293,32 @@ pub fn run(a: Args) -> Result<(), Fail> {
     let inputs: Vec<&Path> = a.files.iter().map(PathBuf::as_path).collect();
     let provenance = html::provenance(&command, &config, &inputs).map_err(|e| Fail(2, e.to_string()))?;
     let extra = json!({ "layout": layout, "events": events_out, "checks": checks_out, "provenance": provenance, "widgets": widgets, "tool": { "name": "tlmbench", "version": env!("CARGO_PKG_VERSION") } });
-    let report = html::export(&a.out, &files, extra, &opts).map_err(|e| Fail(2, e.to_string()))?;
-    if !a.no_viewer {
+    // a one-file export is made in a folder of its own first, then packed: nothing else is written
+    let folder = if single.is_some() {
+        std::env::temp_dir().join(format!("tlmbench-single-{}-{}", std::process::id(), budget))
+    } else {
+        a.out.clone()
+    };
+    let report = html::export(&folder, &files, extra, &opts).map_err(|e| Fail(2, e.to_string()))?;
+    if let Some(viewer) = &single {
+        let page = html::single_file(&folder, viewer).map_err(|e| Fail(2, e.to_string()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let page = page?;
+        if page.len() as u64 > html::SINGLE_FILE_LIMIT {
+            return Err(Fail(
+                2,
+                format!(
+                    "the one-file export is {} but the limit is {}: leave channels out of the layout, cut the time range with --from and --until, or write a folder",
+                    crate::size(page.len() as u64),
+                    crate::size(html::SINGLE_FILE_LIMIT)
+                ),
+            ));
+        }
+        if let Some(dir) = a.out.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir).map_err(|e| Fail(2, format!("{}: {e}", dir.display())))?;
+        }
+        std::fs::write(&a.out, &page).map_err(|e| Fail(2, format!("{}: {e}", a.out.display())))?;
+    } else if !a.no_viewer {
         match viewer_dir(a.viewer.as_deref()) {
             Some(src) => copy_dir(&src, &a.out).map_err(|e| Fail(2, format!("{}: {e}", src.display())))?,
             None => {

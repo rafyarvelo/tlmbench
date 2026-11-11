@@ -46,16 +46,43 @@ export const viewer = { manifest: null as Manifest | null };
 
 export const EXPORT_PREFIX = 'export://f';
 
+/** The files of a one-file export: base64 by path, put in the page by `tlmbench export html --single-file`. A page opened
+ * from `file://` can't fetch the core or the data, so it carries them. */
+const embedded = (): Record<string, string> | undefined => (window as unknown as { __tlmFiles?: Record<string, string> }).__tlmFiles;
+
+function unbase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** What the page says when it can't load its export. A folder export opened from `file://` can't: the browser refuses to
+ * fetch the core and the data from there, so it needs a web server (any static host, or `python3 -m http.server` in the
+ * folder), or a one-file export. */
+export function explainLoadFailure(e: unknown): string {
+  if (location.protocol === 'file:')
+    return 'This export is a folder, and a page opened from a file can\u2019t load the data beside it: the browser doesn\u2019t allow it. Put the folder on a web server (any static host, or run python3 -m http.server in the folder), or export one HTML file with tlmbench export html --single-file, which opens from anywhere.';
+  return `This export couldn\u2019t be loaded: ${e instanceof Error ? e.message : String(e)}`;
+}
+
 export async function installViewerCore(): Promise<void> {
   const base = new URL('.', document.baseURI).href;
-  const get = async (path: string) => {
+  const files = embedded();
+  const get = async (path: string): Promise<{ json(): Promise<unknown>; arrayBuffer(): Promise<ArrayBuffer> }> => {
+    if (files) {
+      const b64 = files[path];
+      if (b64 === undefined) throw new Error(`${path}: not in this file`);
+      const bytes = unbase64(b64);
+      return { json: async () => JSON.parse(new TextDecoder().decode(bytes)), arrayBuffer: async () => bytes.buffer as ArrayBuffer };
+    }
     const r = await fetch(new URL(path, base));
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return r;
   };
   const manifest = (await (await get('export.json')).json()) as Manifest;
   viewer.manifest = manifest;
-  const core = await loadCore(new URL('tlmbench_web.wasm', base).href);
+  const core = await loadCore(files ? unbase64(files['tlmbench_web.wasm'] ?? '') : new URL('tlmbench_web.wasm', base).href);
   const fetched = async (path: string) => new Uint8Array(await (await get(path)).arrayBuffer());
   /** A data file, checked against the export's checksum before anything uses it: a truncated upload or a stale cached
    * chunk shows an error, never data. */

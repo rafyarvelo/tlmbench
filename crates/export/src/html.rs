@@ -486,6 +486,76 @@ pub fn embedded_viewer() -> Vec<(String, Vec<u8>)> {
     unpack(include_bytes!(concat!(env!("OUT_DIR"), "/viewer.pack")))
 }
 
+/// The one-file viewer built into this program (`index.html` with a `<!--TLM_FILES-->` marker, and the WASM core).
+pub fn embedded_single_viewer() -> Vec<(String, Vec<u8>)> {
+    unpack(include_bytes!(concat!(env!("OUT_DIR"), "/single.pack")))
+}
+
+/// A one-file export's size limit, the design's 25 MB.
+pub const SINGLE_FILE_LIMIT: u64 = 25 * 1024 * 1024;
+
+/// The bytes the one-file viewer takes before any data (its page and the core).
+pub fn single_overhead(viewer: &[(String, Vec<u8>)]) -> u64 {
+    // the core is base64 in the page
+    viewer.iter().map(|(p, d)| if p == "index.html" { d.len() as u64 } else { (d.len() as u64).div_ceil(3) * 4 }).sum()
+}
+
+fn base64(b: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(b.len().div_ceil(3) * 4);
+    for c in b.chunks(3) {
+        let n =
+            (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
+        out.push(A[(n >> 18) as usize & 63] as char);
+        out.push(A[(n >> 12) as usize & 63] as char);
+        out.push(if c.len() > 1 { A[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 2 { A[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
+/// A one-file export: the viewer's page with the export folder `dir` (`export.json` and `data/**`) and the core inside
+/// it, as one HTML file that opens from `file://` (a page there can't fetch the core or the data).
+pub fn single_file(dir: &Path, viewer: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
+    let page = viewer
+        .iter()
+        .find(|(p, _)| p == "index.html")
+        .ok_or_else(|| Error::Write("the one-file viewer has no page".into()))?;
+    let html = String::from_utf8_lossy(&page.1).into_owned();
+    let mut entries: Vec<(String, Vec<u8>)> = viewer.iter().filter(|(p, _)| p != "index.html").cloned().collect();
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) -> Result<()> {
+        let mut names: Vec<_> = fs::read_dir(dir).map_err(io_err(dir))?.flatten().map(|e| e.path()).collect();
+        names.sort();
+        for p in names {
+            if p.is_dir() {
+                walk(root, &p, out)?;
+            } else {
+                let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().replace('\\', "/");
+                out.push((rel, fs::read(&p).map_err(io_err(&p))?));
+            }
+        }
+        Ok(())
+    }
+    walk(dir, dir, &mut entries)?;
+    let mut table = String::from("{");
+    for (i, (path, data)) in entries.iter().enumerate() {
+        if i > 0 {
+            table.push(',');
+        }
+        table.push_str(&serde_json::to_string(path).map_err(|e| Error::Write(e.to_string()))?);
+        table.push(':');
+        table.push('"');
+        table.push_str(&base64(data));
+        table.push('"');
+    }
+    table.push('}');
+    let tag = format!("<script>window.__tlmFiles={table}</script>");
+    if !html.contains("<!--TLM_FILES-->") {
+        return Err(Error::Write("the one-file viewer has no place for the data".into()));
+    }
+    Ok(html.replacen("<!--TLM_FILES-->", &tag, 1).into_bytes())
+}
+
 pub fn unpack(mut b: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut out = Vec::new();
     let take = |b: &mut &[u8], n: usize| -> Option<Vec<u8>> {

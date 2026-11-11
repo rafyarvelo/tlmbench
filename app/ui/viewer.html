@@ -7,6 +7,20 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <!-- A folder export opened from file:// can't run: the browser refuses to load the module script, so nothing
+         below would ever say why. This plain script runs anyway (a one-file export carries its files and skips it). -->
+    <script>
+      if (location.protocol === 'file:' && !window.__tlmFiles) {
+        document.addEventListener('DOMContentLoaded', function () {
+          var p = document.createElement('p');
+          p.id = 'file-note';
+          p.style.cssText = 'font:13px/1.5 system-ui,sans-serif;max-width:60ch;margin:12vh auto;padding:0 16px';
+          p.textContent =
+            'This export is a folder, and a page opened from a file can’t load the data beside it: the browser doesn’t allow it. Put the folder on a web server (any static host, or run python3 -m http.server in the folder), or export one HTML file with tlmbench export html --single-file, which opens from anywhere.';
+          document.body.appendChild(p);
+        });
+      }
+    </script>
     <script type="module" src="/src/viewer-main.ts"></script>
   </body>
 </html>

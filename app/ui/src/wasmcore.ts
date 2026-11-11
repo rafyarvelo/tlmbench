@@ -8,9 +8,9 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 /** Loads the WASM core. JSON replies parse, binary ones come back as an ArrayBuffer, errors throw. */
-export async function loadCore(url: string): Promise<Core> {
-  const res = await fetch(url);
-  const { instance } = await WebAssembly.instantiateStreaming(res, {});
+export async function loadCore(src: string | Uint8Array): Promise<Core> {
+  // a URL (a folder export), or the bytes the page carries itself (a one-file export, which can't fetch from file://)
+  const { instance } = typeof src === 'string' ? await WebAssembly.instantiateStreaming(await fetch(src), {}) : await WebAssembly.instantiate(src as BufferSource, {});
   const x = instance.exports as unknown as {
     memory: WebAssembly.Memory;
     alloc(n: number): number;

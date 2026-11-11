@@ -3,7 +3,7 @@
 // the layout's panes draw, channels list, the checks summary shows with the violations marked, and nothing edits.
 // Needs the CLI (cargo build -p tlmbench) and the built viewer (just viewer); without either the test says so and passes.
 import { spawnSync } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -147,6 +147,30 @@ try {
     return false;
   })());
   check('no page errors when trimmed', errs4.length === 0, errs4);
+
+  // one file: opens from file:// with no server, fetches nothing, and stays under 25 MB
+  const one = join(work, 'one', 'report.html');
+  const r1 = spawnSync(CLI, ['export', 'html', csv, '--single-file', '--layout', join(work, 'layout.json'), '--config', join(work, 'cfg'), '--checks', 'Test limits', '--cache', join(work, 'cache'), '--out', one], { encoding: 'utf8' });
+  check('--single-file writes one HTML file and nothing beside it', r1.status === 0 && existsSync(one) && statSync(one).size < 25 * 1024 * 1024 && readdirSync(join(work, 'one')).length === 1, [r1.stderr, existsSync(one) && statSync(one).size]);
+  const fp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const errs6 = [];
+  const requests = [];
+  fp.on('pageerror', (e) => errs6.push(e.message));
+  fp.on('request', (q) => !q.url().startsWith('file:') && !q.url().startsWith('data:') && !q.url().startsWith('blob:') && requests.push(q.url()));
+  await fp.goto('file://' + one, { waitUntil: 'domcontentloaded' });
+  check('the one-file export draws from file://', await (async () => {
+    for (let i = 0; i < 150; i++) {
+      if (await fp.evaluate(() => window.__tlmFirstView != null && /Two panes/.test(document.querySelector('#wsTabs .wstab')?.textContent ?? '')).catch(() => false)) return true;
+      await fp.waitForTimeout(60);
+    }
+    return false;
+  })(), errs6);
+  check('it fetches nothing and has no page errors', requests.length === 0 && errs6.length === 0, [requests, errs6]);
+  // a folder export from file:// can't load: the page says why, it doesn't sit empty
+  const fold = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  await fold.goto('file://' + join(work, 'site', 'index.html'), { waitUntil: 'domcontentloaded' });
+  await fold.waitForTimeout(1200);
+  check('a folder export from file:// never draws data, and the page says it needs a server and offers --single-file', await fold.evaluate(() => window.__tlmFirstView == null && /web server/.test(document.body.textContent ?? '') && /--single-file/.test(document.body.textContent ?? '')), await fold.evaluate(() => document.body.textContent?.slice(0, 200)));
 
   // widgets of your own: an SVG one drawn safe, a code one as a value card, and no widget host (nothing runs)
   for (const [d, toml, f, body] of [

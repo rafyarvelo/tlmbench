@@ -10,6 +10,8 @@
 - `release/review-prompt.md`: the prompt for the agent that reviews every step against the roadmap and writes the ledger.
 - `release/ledger.md`: every v1 requirement with its verdict and evidence; `ci/ledger_check.py` checks it.
 - `release/review.md`: what the review found: the gaps ranked, the drift corrected, the owner's decisions.
+- `exports.md`: HTML exports, a folder or one file; why a folder needs a web server; what a trimmed export shows.
+- `release/r2-1-sparse-store.md`: the plan for the viewer's sparse raw store and which data a view reads (R2.1).
 - `release/next-agent-prompt.md`: the prompt for the agent that starts closing the gaps (R2.1, exports).
 
 The living versions are edited in Claude Docs and exported here at each milestone:

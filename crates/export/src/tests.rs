@@ -347,3 +347,25 @@ fn raw_windows_are_centred_capped_and_parsed() {
     assert_eq!((custom.factor, custom.min_ns, custom.cap_ns), (2.0, 10 * s, 120 * s));
     assert!(Window::parse("soon").is_err() && Window::parse("1s,2s,3s").is_err());
 }
+
+#[test]
+fn a_single_file_carries_the_export_folder_and_the_core() {
+    use crate::html;
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("data/f0")).unwrap();
+    std::fs::write(tmp.path().join("export.json"), br#"{"format":"tlmbench-export"}"#).unwrap();
+    std::fs::write(tmp.path().join("data/f0/c0.0.bin"), [0u8, 1, 2, 3, 254, 255]).unwrap();
+    let viewer = vec![
+        ("index.html".to_string(), b"<body><!--TLM_FILES--><p>page</p></body>".to_vec()),
+        ("tlmbench_web.wasm".to_string(), b"\0asm".to_vec()),
+    ];
+    let page = String::from_utf8(html::single_file(tmp.path(), &viewer).unwrap()).unwrap();
+    assert!(page.starts_with("<body><script>window.__tlmFiles={") && page.ends_with("<p>page</p></body>"));
+    // base64 of the three kinds of file (the standard alphabet, padded), by their paths
+    assert!(page.contains(r#""export.json":"eyJmb3JtYXQiOiJ0bG1iZW5jaC1leHBvcnQifQ==""#), "{page}");
+    assert!(page.contains(r#""data/f0/c0.0.bin":"AAECA/7/""#), "{page}");
+    assert!(page.contains(r#""tlmbench_web.wasm":"AGFzbQ==""#), "{page}");
+    // a viewer without the marker is refused rather than written without its data
+    let bad = vec![("index.html".to_string(), b"<body></body>".to_vec())];
+    assert!(html::single_file(tmp.path(), &bad).is_err());
+}

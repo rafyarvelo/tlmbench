@@ -29,7 +29,7 @@ plugin-template:
 # mode is a static site in app/browser/dist.
 viewer:
     cd crates/web && cargo build --release --target wasm32-unknown-unknown
-    cd app/ui && npx vite build --config vite.viewer.config.ts && npx vite build --config vite.browser.config.ts
+    cd app/ui && npx vite build --config vite.viewer.config.ts && npx vite build --config vite.single.config.ts && npx vite build --config vite.browser.config.ts
 
 # Gate 5, the v1 release: a folder check, and an HTML export of a 2 h flight within the 250 MB budget that opens in
 # under 2 s from a static host (needs `just viewer` before the build, and Playwright's Chromium)
