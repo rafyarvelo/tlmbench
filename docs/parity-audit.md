@@ -1,6 +1,6 @@
 # Parity audit: the app against the prototype
 
-Audited Nov 2, 2026 on `main` (814feec). Shared styles and sizes fixed Nov 3 (see "Fixed since the audit"); the rows below are as audited unless they say fixed. The reference is `prototype/plotter.html`. The app is `app/ui/` (Svelte 5 and
+Audited Nov 2, 2026 on `main` (814feec), redone Nov 11 (see the Lead and "Parity pass, Nov 11"). Shared styles and sizes fixed Nov 3 (see "Fixed since the audit"); the rows below are as audited unless they say fixed or re-checked. The reference is `prototype/plotter.html`. The app is `app/ui/` (Svelte 5 and
 TypeScript), built with `npm run build` and run against the fake core (`app/ui/tests/fakecore.js`) with three
 recordings in a folder `/data`. Both were screenshotted at 1440×900 in dark theme, once in light theme and once at
 760×800. The prototype was loaded with the real uPlot and TanStack from the CDN, so its pixels are true. Every menu,
@@ -9,24 +9,19 @@ page.
 
 ## Lead
 
-*This lead describes the app at the audit. Most of Phase 3 has been ported since: see "Fixed since the audit" below and the status counts.*
+*Redone Nov 11, 2026 (step 5.10, `main` after 5.10; see "Parity pass, Nov 11" at the end). Every row below was re-checked against the feature matrix and the app; rows that said Missing or Partial for things built in steps 5.1–5.9 now say Ported, with "Re-checked Nov 11" in their notes. The audit text of Nov 2 for the individual rows is kept.*
 
-The app has the prototype's skeleton: the rail, the slim top bar with tabs, Explorer, the pane stack with its ⋯ and
-view menus, Measure, the overview, Play and Live. Most of what fills that skeleton is missing or simplified. That
-includes controls the design puts in the Phase 3 shell port: the lock, focus mode, the time-format menu, keyboard
-pan and zoom, the clear-panes buttons, sidebar panels that collapse, move and resize, the start page, multi-select
-and drag in Explorer, channel categories, the full Settings list, and the tooltip system. Three things make the
-app look and feel most unlike the prototype:
+The app has the prototype's skeleton and nearly everything that fills it: the rail with Events, Rules & checks, Layouts, Measure
+and Live; the slim top bar with tabs; Explorer with categories, multi-select, drag and the folder menu; the pane stack with every
+view (chart, table, values, Gauges, Checks, XY, Spectrum); event markers, limits and value labels; tables with sort, filter and
+Copy as CSV; Play, Live with triggers and sources; several files with alignment; Share, Export (data, image, HTML) and
+Settings. What differs now is mostly looks and structure: the shared sizes of menus and Explorer's header, the number of items
+in the menus (the app has more), and a few behaviours the owner has accepted as different (see "Accepted differences" in
+`docs/roadmap.md`).
 
-- The sizes don't match. The sidebar widths are swapped (left 260 px against 300 px, Measure 300 px against
-  260 px). Rows, chips and pane headers are smaller. Plot areas have a filled background. Panes stretch to fill the
-  window instead of keeping the prototype's fixed heights.
-- The app has no motion, no focus rings and no custom tooltips. Its buttons and inputs don't inherit the UI font,
-  so they render at 13.33 px.
-- Measure, the values tiles and the tables show raw float precision and a reduced set of facts.
-
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 195 · Partial 32 · Different 11 · Missing 44** (282 rows; counts as of Nov 8, at the end of step 4.4). Of the missing rows, 2 belong to Phase 3 (the shell port
-that was due), 14 to Phase 4 and 34 to Phase 5. A row tagged with several phases counts under its first.
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 251 · Partial 20 ·
+Different 11 · Missing 1** (283 rows; counts as of Nov 11, at the end of step 5.10). The one Missing row is "Slower channels dimmed"
+(tables of files with several rates). The Partial rows are listed in the "Parity pass" section below with what each lacks.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
 looks or behaves otherwise; this includes app-only items. **Missing** is absent from the app. Phase is the roadmap
@@ -269,7 +264,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | When a file opens | Remember its last layout, Starter charts, Starter charts + tables, One table, One values pane, Nothing plotted (`1702`) | Settings → When a file opens: Remember, Starter charts, Starter charts + tables, One table, One values pane, Nothing plotted | Ported | 3 | Fixed Nov 3. The default for a first-time file is Starter charts (the prototype's is one table); `fileOpenNew` changes it. |
 | Files opened for the first time | `1703` | Settings → Files opened for the first time | Ported | 3 | Fixed Nov 3. |
 | Forget remembered file layouts | `1704` | Settings → Layout → Forget layouts | Ported | 3 | Fixed Nov 3. |
-| Derived channels and import profiles: Manage… | `1705` | — | Missing | 5 | |
+| Derived channels and import profiles: Manage… | `1705` | — | Partial | 5 | Re-checked Nov 11: the Recipes manager is built (TOML export and import); the import-profiles tab and Share of recipes wait (matrix). |
 | Channels (display settings list) | `1709`, `renderChannelSettings 10720` | — | Ported | 5 | Re-checked Nov 11: Settings › Channels built (5.2). |
 | Show the start page at launch | `1713` | Settings → Show the start page at launch; over the restored tabs at launch | Ported | 3 | Fixed Nov 3. |
 | Record live sessions to | `1714` | — | Ported | 3 | The app records to a fixed Recordings folder. Re-checked Nov 11: Built 5.5. |
@@ -307,7 +302,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Tab overflow | ‹ › scroll buttons when tabs don't fit | ‹ › scroll buttons beside the tab strip; the front tab kept in sight | Ported | 3 | Fixed Nov 3. |
 | Tab menu header | Name and × (`1743`) | The tab menu opens with the tab's name and × | Ported | 4 | Built Nov 8 (step 4.4). |
 | Tab menu status | What the tab is (starter layout, saved, unsaved, shared, built-in, live) (`updateWsStatus 3535-3567`) | The tab menu's status line: live, shared (by whom, where), saved, unsaved, or what the file opened with; "This tab shows" names the file | Ported | 4 | Built Nov 8 (step 4.4). |
-| This tab shows | The tab's files as numbered slots (`3537`) | None | Missing | 5 | |
+| This tab shows | The tab's files as numbered slots (`3537`) | None | Partial | 5 | Re-checked Nov 11: the tab menu names the tab's file; numbered chips for every file of a tab (slots) are in Explorer, not in this menu. |
 | Save layout ⌘S | Always listed, disabled when there's nothing to save (`1749`) | Listed on layout tabs only (`shell/TopBar.svelte:182-184`) | Different | 4 | |
 | Save as… | Name form (`1750`, `openNameForm 3589`) | Name form (`shell/TopBar.svelte:168-180`) | Ported | 4 | |
 | Revert changes | `1751` | `shell/TopBar.svelte:194-196` | Ported | 4 | |
@@ -331,7 +326,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Open together, Compare | `openFilesTogether 3126`, `compareFiles 2221` | — | Ported | 5 | Re-checked Nov 11: Built 5.6. |
 | Channel prefix… | `9439` | — | Ported | 5 | Re-checked Nov 11: Built 5.6. |
 | Derive… | Expression editor with recipes (`openDerive 10193`) | — | Ported | 5 | Re-checked Nov 11: Built 5.1. |
-| Recipes and profiles manager | `openRecipeManager 10281` | — | Missing | 5 | |
+| Recipes and profiles manager | `openRecipeManager 10281` | — | Partial | 5 | Re-checked Nov 11: the library, the manager, TOML export and import are built; the import-profiles tab waits (matrix). |
 | Events panel | + Event (marker at A, range A–B), Share…, Rules, Categories, filter, grouping, category chips, list with start and duration, inline edit, Expand/Collapse all (`1609-1613`, `renderEventList 6819`) | — | Ported | 5 | `proto_rail_events.png`. Re-checked Nov 11: Built 5.2. |
 | Rule events | `11038` | — | Ported | 5 | Re-checked Nov 11: Built 5.3. |
 | Rules & checks panel | Sets on the files in front, progress, results (`renderChecksPanel 11451`) | — | Ported | 5 | Re-checked Nov 11: Built 5.3. |
@@ -533,7 +528,7 @@ style, and the axis tick font.
 | Ctrl+PageUp / PageDown | Switch tabs | Switch tabs | Ported |
 | Ctrl+Shift+PageUp / PageDown | Move the tab | Move the tab | Ported |
 | Delete on a tab | Close it | Close it | Ported |
-| Ctrl/Cmd+A in Explorer | Select all rows of a kind | — | Missing |
+| Ctrl/Cmd+A in Explorer | Select all rows of a kind | — | Ported Re-checked Nov 11: Ctrl/Cmd+A selects the file's channels in Explorer. |
 | Enter in Explorer | Open the file; with several rows, the primary action | Open the file, toggle the channel | Partial |
 | ⌘O | — | Open recording… | Different (app only) |
 
@@ -598,3 +593,69 @@ New scene `alignment` (two files in one tab). The app's fields in the Alignment 
 prototype lists file 2 in the Files panel and the app in Explorer under its slot, so the two differ by design there
 (the slot number badge and the file label have no prototype twin). `just app-parity` over all scenes: 211 differences in
 23 scenes (the harness reports, it doesn't fail).
+
+
+## Parity pass, Nov 11 (before step 5.10 was called done)
+
+**What was done.** The owner found the 5.9 release app "way off from the prototype" after five minutes of use. This pass:
+(1) re-checked all 283 rows against the feature matrix and the app (above: 251 Ported); (2) ran `just app-parity` (the app on
+the fake core against the prototype, 23 scenes) and read the screenshots of the main view and the Connect dialog; (3) ran the
+real core, not the fake one: the release daemon with a Playwright page on real CSV recordings for every live kind (file
+playback, a growing tailed CSV, two sources, with a folder open and with none: `t_livecsv`), which found that the Open list
+and tab named live sources `source-1.tlm` and that a source showed no state (fixed: both), and opened exports and
+browser-only mode from static folders (`t_viewer`, `t_browseronly`); (4) built the release app for the owner's own
+real-window pass (below). The headless suite, the fake-core scenes and the daemon can't see what only a real window shows
+(Finder drops, native dialogs, WKWebView text), so those stay a checklist for the owner.
+
+**The harness's result: 214 differences in 23 scenes, the same total as before step 5.9** (main 56, table 17, import 11,
+new-tab menu 11, tab menu 10, channel and pane hover 9 each, connect 9, view menu 8, table columns 8, more menu 7, add-pane menu
+7, folder menu 7, alignment 6, explorer menu 6, pane menu 6, start 5, settings 5, tooltip 5, table autofit 5, table filter 3,
+descriptor 2, axis dialog 2). It compares computed styles of mapped elements, so it counts what a person wouldn't notice
+(18 are icon-only buttons the prototype gives a font size of 0 px) and what is a different state of the scene (the Connect
+dialog opens on TCP in the prototype and on File playback in the app: its 9 differences are mostly that; the import dialog's
+field label 970 px against 57 px is the same). 64 of the 214 are counts or missing elements, not styles: mostly the app's
+menus holding more items than the prototype's (the ⋯ menu 19 items against 8, the folder menu 9 against 5, the new-tab menu
+lists the folder's layouts), which is the app having more, not less.
+
+**Ranked, what is really off** (by how often and how visible; sizes are the prototype's against the app's):
+
+1. **Menus: 71 of the 214.** Tab menu and new-tab menu are 320 px wide in the app and 380 px in the prototype (items 310
+   against 358); item icons, separators and group headings differ by a pixel or two throughout. One width token fixes the
+   widest part.
+2. **Explorer's header and filter: 33.** The heading row is 15.9 px tall against 24.7, the filter box has no fill and no border
+   (the prototype's has both: `rgb(21, 27, 36)` and `rgb(35, 43, 54)`), and is 92.6 px wide against 122.5; the open-file chip
+   is 146.9 px against 124.1 and a channel row 287 px against 244.5 (the app lists the unit and a pane badge in each row, the
+   prototype only on hover).
+3. **The channel tick: 6.** 14 px with the channel colour as a fill in the app, 24 px with no fill (the colour is a border)
+   in the prototype. In the main scene the app's rows read as busier than the prototype's.
+4. **Pane geometry: about 12.** Panes are 204 px tall against 222 (a selected one 186 against 192) and 10 px wider than the
+   prototype's; the overview's pane picker is 163 px against 260; the time range text 187 px against 218 (the app's decimals
+   follow the zoom).
+5. **Tables: 24.** The status line and header cells differ by a pixel; a dimmed cell colour (75% alpha in the prototype);
+   five header cells against four (the app has the Sample column).
+6. **Dialogs: 24**, nearly all scene state (see above); the real ones are the field widths in Connect (460 px against 225
+   when a form has fewer fields).
+7. **Start page, Settings, Alignment: 16**: the prototype's start page shows a card and rows (saved live sources, recent
+   sessions) the app's scene doesn't have (the app lists them when it has some), and Alignment has a file label and a slot
+   number the prototype lacks (the app's numbered slots).
+
+**What the screenshots show beyond the numbers.** In the main scene the prototype draws event pennants, limit lines and
+shading, and a 2 h envelope because its synthesized flight has events and limits; the app's fake recording has neither, so the
+two look different for lack of data, not of features (the app draws all of them on a recording that has them: see the
+screenshots in the README). Explorer's categories come from the descriptor in the prototype (IMU, Attitude, Propulsion with
+"2 / 6" counts) and from name prefixes in the app (accel, motor, other): accepted by the owner Nov 3.
+
+**Partial rows, and what each lacks** (20): the time range text's decimals (auto, not 3); Start page (recent sessions);
+Drop a file (a CSV without a saved profile asks first); Explorer multi-select of categories; the channel tree's categories
+(name prefixes); dragging a channel to pane edges and between rows; Event markers on charts (no tooltip); a table's status
+line and Event column; the filter strip's Save as rule; Stop at… (several categories at once); keyboard Enter in Explorer;
+Quiet interface (chips, file numbers and grips); the Recipes and profiles manager (the import-profiles tab); Folder runs
+(one level, no trends tab); the + menu's own differences; the CSV import dialog (profile applied silently only for an exact
+header); This tab shows (one file chip); Tab contents.
+
+**For the owner's real-window pass** (the release app is built from this commit; nothing below is checked by a headless test):
+open it, then check against the prototype scene by scene: the main view with a recording that has events and limits, the ⋯ and
+tab menus (width), Explorer's header and filter, a Finder drop of a CSV and of a `.tlm`, the Export to HTML… dialog and a
+folder it writes (open its `index.html` over a static server, e.g. `python3 -m http.server` in the folder), the live tab for
+a replayed recording with a folder open (each source a file row with its channels and its state), drag of a channel to a pane
+and of a tab out of the window, Settings › Cache. Anything that looks wrong goes on this list, ranked.
