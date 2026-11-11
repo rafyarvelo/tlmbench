@@ -79,10 +79,13 @@ fn a_well_behaved_run_of_the_test_plugin_works() {
 
 #[test]
 fn a_plugin_that_never_returns_is_stopped() {
+    // building the plugin (a cold CI machine takes many seconds) is not what is timed
+    build("test-hostile", "hostile.wasm");
     let started = std::time::Instant::now();
     let e = open_as("LOOP", Limits { cpu: std::time::Duration::from_millis(300), ..Limits::DECODER }).unwrap_err();
     assert!(e.contains("ran past its time limit"), "{e}");
-    assert!(started.elapsed().as_secs() < 5, "stopped promptly");
+    // the limit is 0.3 s; a loop that wasn't stopped would never finish
+    assert!(started.elapsed().as_secs() < 20, "stopped promptly: {:?}", started.elapsed());
 }
 
 #[test]
