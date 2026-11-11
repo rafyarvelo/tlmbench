@@ -322,7 +322,8 @@ fn connection<R: Runtime>(
                     cmd: req["cmd"].as_str().unwrap_or_default().to_string(),
                     callback: CallbackFn(0),
                     error: CallbackFn(1),
-                    url: "tauri://localhost/".parse().unwrap(),
+                    // the address the app's own pages have, so the commands are the local ones (Windows serves it over https)
+                    url: if cfg!(windows) { "https://tauri.localhost/" } else { "tauri://localhost/" }.parse().unwrap(),
                     body: InvokeBody::Json(req["args"].clone()),
                     headers: tauri::http::HeaderMap::new(),
                     invoke_key: app.invoke_key().to_string(),
