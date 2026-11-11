@@ -1,0 +1,13 @@
+[package]
+name = "test-native"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+# A native decoder plugin (the C interface in crates/plugin/include/tlmbench_plugin.h), written in Rust, used by tests.
+
+[lib]
+crate-type = ["cdylib"]
+
+# (not part of tlmbench's workspace)
+[workspace]

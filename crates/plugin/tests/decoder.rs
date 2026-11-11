@@ -9,22 +9,8 @@ use tlmbench_decode::plugin::{DecoderPlugin, Tier, set_plugins};
 use tlmbench_decode::{OpenOptions, open};
 use tlmbench_plugin::{Limits, WasmDecoder};
 
-/// Builds a plugin crate under `plugins/` (it needs the wasm32-wasip2 target, which rust-toolchain.toml installs).
-fn build(name: &str, wasm: &str) -> PathBuf {
-    static BUILT: OnceLock<Mutex<()>> = OnceLock::new();
-    let _g = BUILT.get_or_init(Default::default).lock().unwrap();
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins").join(name);
-    let out = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
-        .args(["build", "--release", "--target", "wasm32-wasip2", "--quiet"])
-        .current_dir(&dir)
-        .env_remove("CARGO_TARGET_DIR")
-        .env_remove("CARGO_ENCODED_RUSTFLAGS")
-        .env_remove("RUSTFLAGS")
-        .output()
-        .expect("cargo runs");
-    assert!(out.status.success(), "building {name}: {}", String::from_utf8_lossy(&out.stderr));
-    dir.join("target/wasm32-wasip2/release").join(wasm)
-}
+mod common;
+use common::build;
 
 fn demo_file(dir: &Path, rows: u32) -> PathBuf {
     let mut b = b"DEMO".to_vec();
