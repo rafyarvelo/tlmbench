@@ -387,6 +387,8 @@ pub fn core(clients: Arc<Clients>) -> tauri::App<tauri::test::MockRuntime> {
 pub fn run(args: Args) {
     let clients = Arc::new(Clients::default());
     let app = core(clients.clone());
+    let saved = crate::settings_path(app.handle()).ok().and_then(|p| std::fs::read_to_string(p).ok());
+    crate::plugins::start(app.handle(), saved, app.state::<crate::Files>().plugins.clone());
     let ui = args
         .ui
         .or_else(|| std::env::var_os("TLMBENCH_UI").map(PathBuf::from))

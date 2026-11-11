@@ -58,6 +58,7 @@ import { derive, type DerivedInfo, manager, quoteName, type Recipe, recipes, TEM
 import { SvgContext, svg } from './svgctx';
 import type { CustomWidget } from './widgets';
 import { cfg, choices, defaultPick, type Problem, rowKey, share as shareDlg, type ShareRow } from './share.svelte';
+import { pluginsState, readPlugins } from './plugins.svelte';
 import { tabs, type TabInfo } from './tabs.svelte';
 import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, ui } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
@@ -2121,7 +2122,7 @@ function sessionOf(kept: TabInfo[], front: TabInfo | undefined): Session {
   const groups: NonNullable<Session['groups']> = {};
   for (const t of kept) {
     const ms = t.ws ? undefined : fileOf(t.key)?.members;
-    if (ms && ms.length > 1) groups[t.path] = ms.slice(1).map((m) => ({ path: m.path, method: m.align.method, seconds: m.align.seconds, ...(m.align.channel ? { channel: m.align.channel } : {}), locked: m.align.locked, knots: m.knots, pairs: m.align.pairs }));
+    if (ms && ms.length > 1) groups[t.path] = ms.slice(1).map((m) => ({ path: m.path, ...alignSaved(m.align, m.knots) }));
   }
   if (Object.keys(groups).length) session.groups = groups;
   session.at = Date.now();
@@ -2473,7 +2474,7 @@ function sharedView(name: string): Workspace | string {
   const files = members.map((m, i) => ({
     path: m.path.slice(folder.length + 1).split(s).join('/'),
     slot: i + 1,
-    ...(i > 0 && m.align ? { align: { method: m.align.method, seconds: m.align.seconds, ...(m.align.channel ? { channel: m.align.channel } : {}), locked: m.align.locked, knots: m.knots, pairs: m.align.pairs } } : {}),
+    ...(i > 0 && m.align ? { align: alignSaved(m.align, m.knots) } : {}),
   }));
   return { ...toWorkspace(name, stack.panes, channelNames()), files, view: [secs(state.t0), secs(state.t1)] };
 }
@@ -2556,6 +2557,10 @@ async function configUse(): Promise<void> {
     cfg.widgets = r.from.widgets.map((w) => widgetFrom(w, r.dir ?? ''));
     await Promise.all([refreshRecipes(), loadCheckSets()]);
     if (state.file) void loadEvents();
+    // plugins the folder shares wait for your OK (Settings › Plugins)
+    await readPlugins();
+    const waiting = pluginsState.list.filter((p) => p.status.state === 'untrusted').length;
+    if (waiting) note(`This folder shares ${waiting === 1 ? 'a plugin' : `${waiting} plugins`}. It won't load until you trust the folder in Settings › Plugins.`);
   } catch (e) {
     note(`Couldn't read the folder's configuration: ${e}`);
   }
@@ -3540,6 +3545,9 @@ interface GroupOpened { id: number; info: RecordingInfo; range: [string, string]
 interface AlignOut { knots: [string, string][]; residuals: [string, number][]; quality: number; note: string | null; channel: string | null }
 
 const freshAlign = (): AlignView => ({ method: 'starts', seconds: 0, residuals: [], pairs: [], locked: false, offset: 0, drift: 0 });
+
+/** A member's alignment as sessions and shared views keep it (the knots reproduce it exactly). */
+const alignSaved = (a: AlignView, knots: [string, string][]) => ({ method: a.method, seconds: a.seconds, ...(a.channel ? { channel: a.channel } : {}), ...(a.plugin ? { plugin: a.plugin, params: a.params ?? '' } : {}), locked: a.locked, knots, pairs: a.pairs });
 /** A file's short name: its prefix when it has one (Channel prefix…), else its name without the extension. */
 const shortOf = (path: string) => settings.filePrefix[path] || nameOf(path).replace(/\.[^.]*$/, '');
 
@@ -3583,7 +3591,7 @@ function saveTimemapsSoon(f: OpenFile): void {
     const ms = f.members;
     if (!ms || ms.length < 2 || live.on) return;
     for (const m of ms.slice(1)) {
-      const map = { folder: settings.folder, primary: ms[0].id, file: m.id, method: m.align.method, seconds: m.align.seconds, channel: m.align.channel ?? '', locked: m.align.locked, knots: m.knots, pairs: m.align.pairs };
+      const map = { folder: settings.folder, primary: ms[0].id, file: m.id, method: m.align.method, seconds: m.align.seconds, channel: m.align.channel ?? '', plugin: m.align.plugin ?? '', params: m.align.params ?? '', locked: m.align.locked, knots: m.knots, pairs: m.align.pairs };
       void invoke('timemap_save', { map }).catch(() => {});
     }
   }, 600);
@@ -3678,7 +3686,7 @@ async function addToTab(path: string, saved?: NonNullable<Session['groups']>[str
     if (saved) {
       // a session's file comes back with the alignment it had, knots and all
       m.knots = saved.knots;
-      m.align = { ...m.align, method: saved.method as AlignMethod, seconds: saved.seconds, channel: saved.channel, locked: saved.locked, pairs: saved.pairs, ...mapFacts(saved.knots, m.own[0]) };
+      m.align = { ...m.align, method: saved.method as AlignMethod, seconds: saved.seconds, channel: saved.channel, plugin: saved.plugin, params: saved.params, locked: saved.locked, pairs: saved.pairs, ...mapFacts(saved.knots, m.own[0]) };
       await groupApply(f, order);
       publishSlots(f);
       return;
@@ -3688,7 +3696,7 @@ async function addToTab(path: string, saved?: NonNullable<Session['groups']>[str
     const found = await invoke<NonNullable<Session['groups']>[string][number] | null>('timemap_find', { folder: settings.folder, primary: have[0].id, file: m.id }).catch(() => null);
     if (found) {
       m.knots = found.knots;
-      m.align = { ...m.align, method: found.method as AlignMethod, seconds: found.seconds, channel: found.channel || undefined, locked: found.locked, pairs: found.pairs, ...mapFacts(found.knots, m.own[0]) };
+      m.align = { ...m.align, method: found.method as AlignMethod, seconds: found.seconds, channel: found.channel || undefined, plugin: found.plugin || undefined, params: found.params || undefined, locked: found.locked, pairs: found.pairs, ...mapFacts(found.knots, m.own[0]) };
       await groupApply(f, order);
       publishSlots(f);
       return;
@@ -3778,7 +3786,7 @@ async function makePrimary(slot: number): Promise<void> {
 }
 
 /** The request the core wants for a method. */
-function alignRequest(f: OpenFile, m: Member, method: AlignMethod, arg: { seconds?: number; channel?: string } = {}): Record<string, unknown> {
+function alignRequest(f: OpenFile, m: Member, method: AlignMethod, arg: AlignArg = {}): Record<string, unknown> {
   switch (method) {
     case 'manual':
       return { method, seconds: arg.seconds ?? m.align.seconds };
@@ -3790,16 +3798,21 @@ function alignRequest(f: OpenFile, m: Member, method: AlignMethod, arg: { second
       return { method: 'timesource', channel: arg.channel ?? null };
     case 'events':
       return { method, name: arg.channel ?? null };
+    case 'plugin':
+      return { method, name: arg.plugin ?? m.align.plugin ?? '', params: arg.params ?? m.align.params ?? '' };
     default:
       return { method };
   }
 }
 
 /** Methods that fit something: they show their result for a look (Keep or Undo) rather than just applying. */
-const FITS: AlignMethod[] = ['sync', 'events', 'xcorr', 'timesrc'];
+const FITS: AlignMethod[] = ['sync', 'events', 'xcorr', 'timesrc', 'plugin'];
+
+/** What a method may be given besides its name. */
+type AlignArg = { seconds?: number; channel?: string; plugin?: string; params?: string };
 
 /** Lines file `slot` up with the primary by `method`; the result is applied, with a preview to keep or undo for methods that fit. */
-async function alignSet(slot: number, method: AlignMethod, arg: { seconds?: number; channel?: string } = {}): Promise<void> {
+async function alignSet(slot: number, method: AlignMethod, arg: AlignArg = {}): Promise<void> {
   const f = state.file;
   const m = f?.members?.[slot - 1];
   if (!f || !m || slot < 2 || m.align.locked) return;
@@ -3807,10 +3820,10 @@ async function alignSet(slot: number, method: AlignMethod, arg: { seconds?: numb
   try {
     const a = await invoke<AlignOut>('align_estimate', { group: f.id, slot: slot - 1, method: alignRequest(f, m, method, arg) });
     const res: [number, number][] = a.residuals.map(([t, r]) => [Number(BigInt(t) - f.first) / 1e9, r / 1e6]);
-    m.align = { ...m.align, method, seconds: method === 'manual' ? (arg.seconds ?? m.align.seconds) : 0, channel: a.channel ?? m.align.channel, note: a.note ?? undefined, quality: FITS.includes(method) ? a.quality : undefined, residuals: res, preview: FITS.includes(method) ? { knots: before } : null };
+    m.align = { ...m.align, method, seconds: method === 'manual' ? (arg.seconds ?? m.align.seconds) : 0, channel: a.channel ?? m.align.channel, ...(method === 'plugin' ? { plugin: arg.plugin ?? m.align.plugin, params: arg.params ?? m.align.params ?? '' } : {}), note: a.note ?? undefined, quality: FITS.includes(method) ? a.quality : undefined, residuals: res, preview: FITS.includes(method) ? { knots: before } : null };
     await setMap(f, slot, a.knots);
   } catch (e) {
-    m.align = { ...m.align, method, note: String(e).replace(/^Error:\s*/, ''), quality: undefined, residuals: [], preview: null };
+    m.align = { ...m.align, method, ...(method === 'plugin' ? { plugin: arg.plugin ?? m.align.plugin, params: arg.params ?? m.align.params ?? '' } : {}), note: String(e).replace(/^Error:\s*/, ''), quality: undefined, residuals: [], preview: null };
     publishSlots(f);
   }
 }
@@ -4841,7 +4854,7 @@ Object.assign(actions, {
   compare: (a: string, b: string) => void compareRuns(a, b),
   closeSlot: (n: number) => void closeSlot(n),
   makePrimary: (n: number) => void makePrimary(n),
-  alignSet: (n: number, m: AlignMethod, a?: { seconds?: number; channel?: string }) => void alignSet(n, m, a),
+  alignSet: (n: number, m: AlignMethod, a?: AlignArg) => void alignSet(n, m, a),
   alignApply,
   alignDiscard,
   alignNudge,

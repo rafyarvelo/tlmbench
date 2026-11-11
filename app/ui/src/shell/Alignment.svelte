@@ -4,12 +4,18 @@
 <script lang="ts">
   import { duration } from '../axes';
   import { ui, actions, type AlignMethod, type SlotRow } from '../ui.svelte';
+  import { estimators, readPlugins } from '../plugins.svelte';
 
   let { slot }: { slot: SlotRow } = $props();
   const a = $derived(slot.align);
   const m = $derived(a.method);
   let step = $state(0.01);
   let seconds = $state<number | null>(null);
+  // alignment plugins, listed after the built-in methods
+  $effect(() => void readPlugins());
+  const plug = $derived(estimators());
+  /** The select's value: a built-in method, or `plugin:<name>` (a plugin that isn't loaded now stays listed). */
+  const choice = $derived(m === 'plugin' ? `plugin:${a.plugin ?? ''}` : m);
 
   const METHODS: [AlignMethod, string][] = [
     ['starts', 'Align starts'],
@@ -31,7 +37,9 @@
   const clean = (n: string) => n;
 
   function choose(e: Event) {
-    const v = (e.currentTarget as HTMLSelectElement).value as AlignMethod;
+    const raw = (e.currentTarget as HTMLSelectElement).value;
+    if (raw.startsWith('plugin:')) return actions.alignSet(slot.slot, 'plugin', { plugin: raw.slice(7), params: a.plugin === raw.slice(7) ? a.params : '' });
+    const v = raw as AlignMethod;
     actions.alignSet(slot.slot, v, { seconds: v === 'manual' ? a.offset : undefined, channel: v === 'xcorr' || v === 'timesrc' ? a.channel : undefined });
   }
   /** The residuals as a small plot: time across, residual up (ms), a line at zero. */
@@ -49,8 +57,10 @@
 <div class="align" data-align={slot.slot} aria-label="Alignment of {slot.name}">
   <label class="arow">
     <span>Alignment</span>
-    <select class="sel" data-falign={slot.slot} value={m} disabled={a.locked} aria-label="Alignment for {slot.name}" onchange={choose}>
+    <select class="sel" data-falign={slot.slot} value={choice} disabled={a.locked} aria-label="Alignment for {slot.name}" onchange={choose}>
       {#each METHODS as [id, label] (id)}<option value={id}>{label}</option>{/each}
+      {#each plug as p (p.path)}<option value="plugin:{p.name}">{p.name} (plugin)</option>{/each}
+      {#if m === 'plugin' && !plug.some((p) => p.name === a.plugin)}<option value="plugin:{a.plugin ?? ''}">{a.plugin} (not loaded)</option>{/if}
     </select>
   </label>
 
@@ -70,6 +80,14 @@
         <option value="">Automatic</option>
         {#each shared as n (n)}<option value={n}>{clean(n)}</option>{/each}
       </select>
+    </label>
+  {/if}
+
+  {#if m === 'plugin'}
+    <label class="arow">
+      <span>Parameters</span>
+      <input class="sel" data-fparams={slot.slot} disabled={a.locked} value={a.params ?? ''} placeholder={'{"channel": "name"}'} spellcheck="false" aria-label="Parameters for {a.plugin}"
+        onchange={(e) => actions.alignSet(slot.slot, 'plugin', { plugin: a.plugin, params: e.currentTarget.value.trim() })} />
     </label>
   {/if}
 

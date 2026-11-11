@@ -19,13 +19,16 @@ export interface FolderEntry {
 }
 
 /** How a file of a tab lines up with the primary (file 1). */
-export type AlignMethod = 'starts' | 'clock' | 'manual' | 'sync' | 'events' | 'xcorr' | 'timesrc';
+export type AlignMethod = 'starts' | 'clock' | 'manual' | 'sync' | 'events' | 'xcorr' | 'timesrc' | 'plugin';
 export interface AlignView {
   method: AlignMethod;
   /** Manual: seconds after the primary's start. */
   seconds: number;
   /** The channel matched on (cross-correlation, time channel). */
   channel?: string;
+  /** The estimator plugin and its parameters (JSON text), for the plugin method. */
+  plugin?: string;
+  params?: string;
   /** One line from the method (`Matched on accel_x: +1.2 s, r = 0.98`) or why it failed. */
   note?: string;
   /** 0..1, for methods that fit something. */
@@ -142,7 +145,7 @@ export const actions = {
   closeSlot: (_slot: number) => {},
   makePrimary: (_slot: number) => {},
   /** A file's alignment: choose a method (with its parameters), nudge it, lock it, add a sync point from cursors A and B. */
-  alignSet: (_slot: number, _method: AlignMethod, _arg?: { seconds?: number; channel?: string }) => {},
+  alignSet: (_slot: number, _method: AlignMethod, _arg?: { seconds?: number; channel?: string; plugin?: string; params?: string }) => {},
   alignApply: (_slot: number) => {},
   alignDiscard: (_slot: number) => {},
   alignNudge: (_slot: number, _seconds: number) => {},

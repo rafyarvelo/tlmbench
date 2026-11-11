@@ -10,6 +10,7 @@
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
   import { actions, ui } from '../ui.svelte';
   import { cfg } from '../share.svelte';
+  import { type PluginRow, pluginsState, readPlugins, scanPlugins } from '../plugins.svelte';
   import { limitText } from '../display.svelte';
 
   interface Row {
@@ -85,6 +86,22 @@
     if (!closed) void invoke<string | null>('browser_access', { on: null }).then((u) => (browserUrl = u), () => {});
   });
   const browserSet = async (on: boolean) => (browserUrl = await invoke<string | null>('browser_access', { on }).catch(() => null));
+  /** Plugins: what the plugins folders hold, as the core last read them. */
+  $effect(() => {
+    if (!closed) void readPlugins();
+  });
+  const rescan = () => scanPlugins(settings.nativePlugins, settings.trustedPluginFolders);
+  /** The open folder's shared plugins and whether you trust them. */
+  const sharedFolders = $derived([...new Set(pluginsState.list.filter((p) => p.shared && p.folder).map((p) => p.folder!))].map((f) => ({ folder: f, trusted: settings.trustedPluginFolders.includes(f), count: pluginsState.list.filter((p) => p.folder === f && p.path.endsWith('.wasm')).length })));
+  function trustFolder(folder: string, on: boolean): void {
+    setSetting('trustedPluginFolders', on ? [...new Set([...settings.trustedPluginFolders, folder])] : settings.trustedPluginFolders.filter((f) => f !== folder));
+    void rescan();
+  }
+  function nativeOn(file: string, on: boolean): void {
+    setSetting('nativePlugins', on ? [...new Set([...settings.nativePlugins, file])] : settings.nativePlugins.filter((f) => f !== file));
+    void rescan();
+  }
+  const kindText = (k: PluginRow['kind']) => (k === 'decoder' ? 'Decoder' : k === 'estimator' ? 'Alignment' : '');
   const other = $derived(sideOf('settings') === 'left' ? 'right' : 'left');
 
   function editCat(i: number, patch: Partial<EventCategory>): void {
@@ -179,6 +196,23 @@
     <h3>Browser access</h3>
     <div class="urow"><span>Open this core in a browser<br /><small class="muted">A tab on this computer shows the same files, live sources and settings. The address has a token that lasts until you turn this off or quit.</small></span><label class="catchart"><input type="checkbox" id="browserOn" checked={!!browserUrl} onchange={(e) => void browserSet(e.currentTarget.checked)} />On</label></div>
     {#if browserUrl}<div class="urow"><span id="browserUrl" class="muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{browserUrl}</span><button class="tbtn" id="browserCopy" onclick={() => void navigator.clipboard?.writeText(browserUrl!)}>Copy</button></div>{/if}
+  </section>
+  <section id="pluginSet">
+    <h3>Plugins</h3>
+    {#each sharedFolders as s (s.folder)}
+      <div class="urow" data-plugfolder={s.folder}><span>{#if s.trusted}This folder's plugins are trusted.{:else}This folder has {s.count} {s.count === 1 ? 'plugin' : 'plugins'} waiting for your OK.{/if}<br /><small class="muted">{#if s.trusted}They run in a sandbox with no access to your files or network.{:else}They run in a sandbox with no access to your files or network, but they decide how files decode and align. Trust them only if you trust who shared the folder.{/if}</small></span>{#if s.trusted}<button class="tbtn" data-plugdistrust onclick={() => trustFolder(s.folder, false)}>Stop trusting</button>{:else}<button class="tbtn primary" data-plugtrust onclick={() => trustFolder(s.folder, true)}>Trust this folder's plugins</button>{/if}</div>
+    {/each}
+    {#each pluginsState.list as p (p.path)}
+      <div class="urow plugrow" data-plugin={p.file}>
+        <span><b>{p.name}</b><br />
+          <small class="muted">{[p.version, kindText(p.kind), p.tier === 'wasm' ? 'WASM, sandboxed' : 'Native, runs with your rights', p.shared ? 'from this folder' : ''].filter(Boolean).join(' · ')}</small><br />
+          {#if p.status.state === 'failed'}<small data-plugwhy style="color: var(--danger)">{p.status.why}</small>{:else if p.description}<small class="muted">{p.description}</small>{:else if p.status.state === 'untrusted'}<small class="muted" data-plugwhy>Not loaded until you trust this folder's plugins.</small>{:else if p.status.state === 'off'}<small class="muted" data-plugwhy>Off: it isn't loaded until you turn it on.</small>{/if}</span>
+        {#if p.tier === 'native' && !p.shared}<label class="catchart"><input type="checkbox" data-pluginon={p.file} checked={settings.nativePlugins.includes(p.file)} onchange={(e) => nativeOn(p.file, e.currentTarget.checked)} />On</label>{/if}
+      </div>
+    {:else}
+      <div class="urow"><span class="muted" id="pluginNone">No plugins yet. Decoders for other formats and alignment methods go in your plugins folder.</span></div>
+    {/each}
+    <div class="urow"><span class="muted">WASM plugins can't reach your files or network. Native ones can, so they stay off until you turn them on.</span><span class="uctl"><button class="tbtn" id="pluginsOpen" onclick={() => invoke('plugins_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="pluginsRescan" data-tip="Read the plugins folders again" onclick={() => void rescan()}>Rescan</button></span></div>
   </section>
   {#if customised.length}
     <section id="chSet"><h3>Channels</h3>

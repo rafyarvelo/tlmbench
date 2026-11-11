@@ -1280,6 +1280,24 @@
       if (on === false) fake.browserUrl = null;
       return fake.browserUrl ?? null;
     },
+    // plugins: what the folders hold; a native one loads only when turned on
+    plugins_list: () => fake.plugins ?? [],
+    plugins_scan({ nativeOn, trusted }) {
+      fake.nativeOn = nativeOn ?? fake.nativeOn ?? [];
+      fake.trustedFolders = trusted ?? fake.trustedFolders ?? [];
+      fake.scans = (fake.scans ?? 0) + 1;
+      fake.plugins = (fake.pluginFiles ?? []).map((p) => {
+        if (p.tier === 'native' && !p.shared) return { ...p, status: fake.nativeOn.includes(p.file) ? { state: 'loaded' } : { state: 'off' } };
+        // a folder's sandboxed plugin waits for the person's OK
+        if (p.shared && p.tier === 'wasm' && p.waiting) return fake.trustedFolders.includes(p.folder) ? { ...p, kind: p.kindWhenTrusted, status: { state: 'loaded' } } : { ...p, kind: null, status: { state: 'untrusted' } };
+        return p;
+      });
+      return fake.plugins;
+    },
+    plugins_reveal() {
+      fake.pluginsRevealed = (fake.pluginsRevealed ?? 0) + 1;
+      return null;
+    },
     holders: () => fake.holdersOf ?? [],
     window_take: () => fake.handoff ?? null,
     window_frame: () => fake.frame ?? { x: 10, y: 20, w: 1200, h: 760 },

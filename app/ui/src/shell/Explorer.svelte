@@ -468,7 +468,7 @@
     onclick={() => sl.slot > 1 && (alignOpen = alignOpen === sl.slot ? null : sl.slot)}
     onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), sl.slot > 1 && (alignOpen = alignOpen === sl.slot ? null : sl.slot))}>
     <b class="slotn">{sl.slot}</b><span class="nm">{sl.name}</span>
-    {#if sl.slot === 1}<span class="meta" data-primary>primary</span>{:else}<span class="meta" data-asum>{sl.align.locked ? 'locked · ' : ''}{({ starts: 'starts aligned', clock: 'same clock', timesrc: 'time channel', xcorr: 'correlated', events: 'events', sync: 'sync points', manual: 'offset' })[sl.align.method]}</span>{/if}
+    {#if sl.slot === 1}<span class="meta" data-primary>primary</span>{:else}<span class="meta" data-asum>{sl.align.locked ? 'locked · ' : ''}{({ starts: 'starts aligned', clock: 'same clock', timesrc: 'time channel', xcorr: 'correlated', events: 'events', sync: 'sync points', manual: 'offset', plugin: sl.align.plugin ?? 'plugin' })[sl.align.method]}</span>{/if}
     <span class="slotact">
       {#if sl.slot > 1}<button class="linkbtn" data-makeprimary data-tip="Make this file the primary: file 1 keeps plain channel names and defines time zero" onclick={(e) => (e.stopPropagation(), actions.makePrimary(sl.slot))}>Make primary</button>{/if}
       <button class="ibtn" data-closeslot aria-label="Close {sl.name}" data-tip="Close this file" onclick={(e) => (e.stopPropagation(), actions.closeSlot(sl.slot))}>{@html ICON.close}</button>

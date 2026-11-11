@@ -104,7 +104,7 @@ export interface Session {
   activeWs?: string;
   views?: Record<string, { t0: string; t1: string; A?: string; B?: string }>;
   /** Tabs with several files, by the primary's path: the others in slot order with their alignment (the knots reproduce it exactly). */
-  groups?: Record<string, { path: string; method: string; seconds: number; channel?: string; locked: boolean; knots: [string, string][]; pairs: [number, number][] }[]>;
+  groups?: Record<string, { path: string; method: string; seconds: number; channel?: string; plugin?: string; params?: string; locked: boolean; knots: [string, string][]; pairs: [number, number][] }[]>;
   at?: number;
 }
 
@@ -231,6 +231,10 @@ export interface Settings {
   windows: Record<string, WindowSaved>;
   /** Where live sessions are recorded ('' is the default folder in the app's data folder). */
   recordTo: string;
+  /** The native plugins turned on, by file name. They run with your rights, so each starts off. */
+  nativePlugins: string[];
+  /** Folders' shared plugins (`<folder>/.tlmbench/plugins`, by path) you trust to load; they stay listed, not loaded, until then. */
+  trustedPluginFolders: string[];
   /** Connections saved from the Connect dialog, listed on the start page. */
   savedConnections: SavedConnection[];
   /** The Connect dialog's last form, and the trigger's last settings. */
@@ -312,6 +316,8 @@ export const DEFAULTS: Settings = {
   sessions: {},
   windows: {},
   recordTo: '',
+  nativePlugins: [],
+  trustedPluginFolders: [],
   savedConnections: [],
   liveForm: {},
   liveTrigger: { channel: '', kind: 'rise', level: 0, pre: 2, post: 3, repeat: false },
@@ -445,7 +451,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
+const KEEP: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

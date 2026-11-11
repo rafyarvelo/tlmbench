@@ -52,6 +52,8 @@ struct Files {
     queries: Mutex<HashMap<u32, Arc<RowQuery>>>,
     /// Running queries' cancel flags, by token.
     cancels: Mutex<HashMap<u32, Arc<AtomicBool>>>,
+    /// The plugins found in the plugins folders and which native ones are on.
+    plugins: Arc<plugins::State>,
 }
 
 /// Windows holding each id. An id nobody holds is closed at once.
@@ -2466,12 +2468,17 @@ struct ConfigFolder {
 /// Points the app at a folder's shared configuration: recipes, check sets, import profiles, decoders and events of
 /// the nearest `.tlmbench/` are read besides the cache from now on (yours win a name). Only reads.
 #[tauri::command]
-async fn config_use(folder: Option<String>) -> Result<ConfigFolder, String> {
+async fn config_use<R: tauri::Runtime>(folder: Option<String>, app: AppHandle<R>) -> Result<ConfigFolder, String> {
     spawn_blocking(move || {
         let dir =
             folder.as_deref().filter(|f| !f.is_empty()).and_then(|f| tlmbench_store::config::nearest(Path::new(f)));
         tlmbench_store::config::set_overlay(dir.iter().cloned().collect());
         tlmbench_decode::descriptor::set_config_dirs(Vec::new());
+        // the folder's own sandboxed plugins come and go with it
+        let files = app.state::<Files>();
+        if files.plugins.set_shared(dir.as_ref().map(|d| d.join("plugins"))) {
+            files.plugins.scan(plugins::own_dir(&app));
+        }
         let Some(d) = dir else {
             return ConfigFolder {
                 dir: None,
@@ -2687,6 +2694,10 @@ struct TimeMapIn {
     #[serde(default)]
     channel: String,
     #[serde(default)]
+    plugin: String,
+    #[serde(default)]
+    params: String,
+    #[serde(default)]
     locked: bool,
     /// `[t_file, t_shared]` in nanoseconds as decimal strings.
     #[serde(default)]
@@ -2726,6 +2737,8 @@ async fn timemap_save(map: TimeMapIn, files: State<'_, Files>) -> Result<(), Str
             method: map.method,
             seconds: map.seconds,
             channel: map.channel,
+            plugin: map.plugin,
+            params: map.params,
             locked: map.locked,
             knots,
             pairs: map.pairs,
@@ -2749,6 +2762,8 @@ struct SavedMap {
     method: String,
     seconds: f64,
     channel: String,
+    plugin: String,
+    params: String,
     locked: bool,
     knots: Vec<[String; 2]>,
     pairs: Vec<[f64; 2]>,
@@ -2786,6 +2801,8 @@ async fn timemap_find(
                     method: m.method,
                     seconds: m.seconds,
                     channel: m.channel,
+                    plugin: m.plugin,
+                    params: m.params,
                     locked: m.locked,
                     knots: m.knots.iter().map(|k| [k[0].to_string(), k[1].to_string()]).collect(),
                     pairs: m.pairs,
@@ -3139,6 +3156,42 @@ async fn cache_reveal(files: State<'_, Files>) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(root).map_err(|e| e.to_string())
 }
 
+/// Settings › Plugins: what the plugins folders hold, as of the last scan.
+#[tauri::command]
+fn plugins_list(files: State<'_, Files>) -> Vec<tlmbench_plugin::Found> {
+    files.plugins.list()
+}
+
+/// Reads the plugins folders again. `native_on` says which native plugins are turned on (by file name; the UI keeps it
+/// in settings) and `trusted` which folders' shared plugins may load; none keeps the last answer.
+#[tauri::command]
+async fn plugins_scan<R: tauri::Runtime>(
+    native_on: Option<Vec<String>>,
+    trusted: Option<Vec<String>>,
+    app: AppHandle<R>,
+) -> Result<Vec<tlmbench_plugin::Found>, String> {
+    spawn_blocking(move || {
+        let files = app.state::<Files>();
+        if let Some(on) = native_on {
+            files.plugins.set_native_on(on);
+        }
+        if let Some(t) = trusted {
+            files.plugins.set_trusted(t);
+        }
+        files.plugins.scan(plugins::own_dir(&app))
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Settings › Plugins › Open folder: the file manager shows your plugins folder (made if it isn't there).
+#[tauri::command]
+async fn plugins_reveal<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    let dir = plugins::own_dir(&app).ok_or("The app has no data folder")?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    tauri_plugin_opener::reveal_item_in_dir(dir).map_err(|e| e.to_string())
+}
+
 /// `bytes` zero bytes: the IPC transfer cost alone, for the gate report.
 #[tauri::command]
 fn echo(bytes: u32) -> Response {
@@ -3316,6 +3369,9 @@ macro_rules! commands {
             launch,
             gate_report,
             gate_manifest,
+            plugins_list,
+            plugins_scan,
+            plugins_reveal,
             daemon::browser_access
         ]
     };
@@ -3334,10 +3390,12 @@ fn new_files() -> Files {
         groups: Mutex::default(),
         queries: Mutex::default(),
         cancels: Mutex::default(),
+        plugins: Default::default(),
     }
 }
 
 mod daemon;
+mod plugins;
 
 fn main() {
     if let Some(args) = daemon::Args::from_env() {
@@ -3357,6 +3415,9 @@ fn main() {
         .manage(new_files())
         .manage(daemon::Browser::new(clients.clone()))
         .setup(|app| {
+            let files = app.state::<Files>();
+            let saved = settings_path(app.handle()).ok().and_then(|p| std::fs::read_to_string(p).ok());
+            plugins::start(app.handle(), saved, files.plugins.clone());
             // `--browser`: browser access from the start, its address printed
             if std::env::args().any(|a| a == "--browser") {
                 let url = daemon::browser_access(Some(true), app.handle().clone(), app.state::<daemon::Browser>());
