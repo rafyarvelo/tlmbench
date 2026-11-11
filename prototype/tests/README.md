@@ -4,7 +4,7 @@ Setup once: `just setup playwright` from the repo root (runs `npm ci` here and i
 The suite runs on macOS and Linux; on a Mac it needs GNU `timeout` (`brew install coreutils`). Ctrl-clicks use the
 `ControlOrMeta` modifier, since Chromium on macOS turns Ctrl-click into a right-click.
 
-`./run.sh` runs the suite: every `t_*.js` here (27 tests), three at a time, about 4 minutes in all. Timing tests
+`./run.sh` runs the suite: every `t_*.js` here (29 tests), three at a time, about 4 minutes in all. Timing tests
 (`t_loading`, how fast rows appear; `t_perf_gauges`, how long 100+ widgets take to draw) run alone at the end so
 other tests' load can't skew them.
 It prints PASS or FAIL per test with the checks that failed, then a summary, and exits 1 on any failure.

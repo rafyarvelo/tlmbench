@@ -9,7 +9,8 @@ the design). **Prototype** and **App**: ✓ done, ◐ partly, ✗ missing, **sim
 synthesized in the page, so there is no real file I/O), **n/a** doesn't apply. A ✓ in the App column means it works as
 in the prototype and the design, not just that something exists.
 
-Totals over the 204 rows below: the app has 108 ✓, 29 ◐ and 67 ✗. The prototype has 158 ✓, 6 ◐ and 12 ✗, and 27 rows
+Totals over the 204 rows below, recounted Nov 11 in the release review (`docs/release/ledger.md` is the finer list and
+wins where they differ): the app has 172 ✓, 30 ◐ and 2 ✗. The prototype has 158 ✓, 6 ◐ and 13 ✗, and 27 rows
 are simulated or don't apply to it. Its gaps are the parts only real software can have (multiple windows, plugins,
 alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 
@@ -26,7 +27,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Packet files: sync, length, checksum, zstd/lz4/gzip, cached index | v1 | sim | ✓ (opened through the descriptor form, compressed payloads previewed by the core) | |
 | Packet types: one recording per type (`flight.bin · gps`) | v1 | ✗ | ◐ (core, CLI and app, a tab per type; putting the types of one file in one tab as slots is not built) | follow-ups |
 | Packets without a length field | v1 | ✓ | ✓ | |
-| Descriptor `files = [...]` name patterns | v1 | ✓ | ◐ (core and CLI find descriptors in `.tlmbench/decoders/` and the app cache's `decoders/`; the app's open path uses it) | 4.3 |
+| Descriptor `files = [...]` name patterns | v1 | ✓ | ✓ (core and CLI find descriptors in `.tlmbench/decoders/` and the app cache's `decoders/`; the app's open path uses it) | 4.3 |
 | Bitfields in descriptors | v1 | ✗ | ✓ (core, CLI and the form's Bits column) | |
 | Time bases: column, rate, counter, arrival, index | v1 | sim | ✓ (column, rate, counter with wraparound, index; arrival for live) | |
 | Time going backwards flagged in the index | v1 | ✗ | ✓ (CSV and Parquet: flagged, kept in file order, said on opening; fixed-width, packet and plugin files still fail on it) | 5.10 |
@@ -66,7 +67,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Rail: Explorer, Measure, Live, Settings | v1 | ✓ | ✓ | |
 | Rail: Events, Rules & checks, Layouts | v1 | ✓ | ✓ | 5.3 |
 | Tabs: file and workspace tabs, drag to reorder, keys, Undo on close | v1 | ✓ | ✓ | |
-| Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ✓ | |
+| Tab menu: header with name and ×, save status, "This tab shows" | v1 | ✓ | ◐ (one file named, not numbered slots: ledger S4.4-04) | |
 | Tab menu actions: Save layout, Save as, Revert, Share, Export file, Delete, Close… | v1 | ✓ | ✓ | |
 | + menu: empty layout, your layouts, shared in this folder | v1 | ✓ | ✓ | |
 | + menu: what each layout needs ("needs file 2"), slot picker | v1 | ✓ | ✓ (a layout that names `lat·2` says it needs file 2; opening it asks which recording fills the slot) | |
@@ -128,7 +129,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Pane ⋯ menu: axis and scale, close, duplicate, split, add below | v1 | ✓ | ✓ | |
 | Pane ⋯ menu: event markers in this pane | v1 | ✓ | ✓ | 5.2 |
 | Chips: drag, ×, +N overflow, value on hover | v1 | ✓ | ✓ | |
-| Chip click opens the channel editor (Display and Limits) | v1 | ✓ | ◐ (Display tab: name, colour, decimals, unit, line style; Limits, Value labels and Missing wait) | 5.2 |
+| Chip click opens the channel editor (Display and Limits) | v1 | ✓ | ✓ (Display, Limits, Value labels and missing values) | 5.2 |
 | View menu: Chart, Table, Chart and table, Values | v1 | ✓ | ✓ | |
 | View menu: Chart and values, Gauges, Checks, XY plot, Spectrum | v1 | ✓ | ✓ | 5.3, 5.4 |
 | Axis and scale: a unit's axis each, range, include zero, decimals, label, log | v1 | ✓ | ✓ | |
@@ -137,7 +138,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Fixed pane heights and a height grip, as the prototype | v1 | ✓ | ✓ |  |
 | Limit lines and shading past warn and alarm | v1 | ✓ | ✓ | 5.2 |
 | Event markers on charts (washes, notches, tooltips) | v1 | ✓ | ◐ (washes and notches; the pointer readout names the event; no tooltip) | 5.2 |
-| Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ◐ (Apply to charts and its chip work, the core leaves the rows out; match marks and hatching are drawn from `table_marks`) | 4.2 |
+| Table filter matches on charts; Apply to charts with hatching and a chip | v1 | ✓ | ✓ (Apply to charts and its chip work, the core leaves the rows out; match marks and hatching are drawn from `table_marks`) | 4.2 |
 | Table rows band on the charts | v1 | ✓ | ✓ built (`t_tablequery`) | 4.2 |
 | Settings → Gaps in lines: break at gaps, or connect across them (dashed) | — (owner, Nov 8; needs a design entry) | ✗ | ✓ built (`t_gaps`; core `connect_gaps`, `query view --connect-gaps`) | 4.2 |
 | Hover readout snapping to samples; legend values | v1 | ✓ | ✓ | |
@@ -224,23 +225,23 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | A − B, A ÷ B, A × B, A + B with two selected | v1 | ✓ | ✓ | |
 | Recipes library; Recipes and profiles manager; TOML import/export | v1 | ✓ | ◐ (the library in the app cache, the Recipes manager with TOML export and import; the import-profiles tab and Share to `.tlmbench/recipes/` wait) | 5.1 |
 | Spectrum (FFT) pane view | v1 | ✓ | ✓ | |
-| Autocomplete for channels, functions and value names | v1 | ✓ | ◐ (channels, recipes, functions; value names wait for 5.2) | 5.2 |
+| Autocomplete for channels, functions and value names | v1 | ✓ | ✓ (channels, recipes, functions, value names) | 5.2 |
 
 ## 11. Events, rules and checks
 
 | Feature | Design | Prototype | App | Step |
 | --- | --- | --- | --- | --- |
-| Events: name, start, duration, category, source; per recording in the cache | v1 | ✓ | ✗ | 5.2 |
+| Events: name, start, duration, category, source; per recording in the cache | v1 | ✓ | ✓ (your events, rule and check events; events detected in the file are not built: ledger D-ui-12) | 5.2 |
 | Events panel: list, add from cursors, inline edit, filters, grouping | v1 | ✓ | ✓ | 5.2 |
 | Event categories (Settings; shared as `categories.toml`) | v1 | ✓ | ✓ (the folder's win a shared id) | 5.2, 5.7 |
 | Value labels (enums) on channels | v1 | ✓ | ✓ (tiles, tables, chips and Measure show the text; expressions name them; axis ticks per value wait) | 5.2 |
 | Channel limits (warn, alarm) with sensible defaults | v1 | ✓ | ✓ | 5.2 |
 | Rules: an expression held for a minimum time, marking events | v1 | ✓ | ✓ (core engine, the editor's Rule rows, rule events in Events) | 5.3 |
-| Checks: Expect, When, grace, settle, summary checks, severity | v1 | ✓ | ✓ (`tlmbench_store::checks`; "missing values fail" option not built) | 5.3 |
-| Rules & checks panel; one editor with Lists and ƒ | v1 | ✓ | ✓ (the "files with this import profile" attachment is CLI only) | 5.3 |
+| Checks: Expect, When, grace, settle, summary checks, severity | v1 | ✓ | ◐ (`tlmbench_store::checks`; "missing values fail" option not built) | 5.3 |
+| Rules & checks panel; one editor with Lists and ƒ | v1 | ✓ | ◐ (the "files with this import profile" attachment is CLI only) | 5.3 |
 | Check results: badges, dots, Check failed events, ▲▼ through violations | v1 | ✓ | ✓ | 5.3, 5.4 |
 | Checks pane view | v1 | ✓ | ✓ | 5.3 |
-| Folder run (files × groups), Report tab with trends | v1 | ◐ (a dialog) | ✓ (Explorer's folder, one level; results as CSV) | 5.3 |
+| Folder run (files × groups), Report tab with trends | v1 | ◐ (a dialog) | ◐ (Explorer's folder, one level; results as CSV) | 5.3 |
 | Check results cached in the app cache | v1 | ✓ | ✓ (`checks-results/`, by file contents, set version, recipes and limits) | 5.3 |
 
 ## 12. Pane views and widgets
@@ -282,7 +283,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | `.tlmbench/` for every object (events, checks, categories, recipes, profiles, decoders, widgets, icons, time maps) | v1 | ◐ (views, events, checks, categories) | ✓ (views, events, check sets, categories, recipes, profiles, decoders, widgets, icons, time maps) | 5.7 |
 | `tlmbench config export`; `tlmbench validate`; nearest `.tlmbench/` or `--config` | v1 | n/a | ✓ (CLI and app; the Python package reads the nearest `.tlmbench/` for checks) | 5.7 |
 | CLI: info, build, query, record, convert | v1 | n/a | ✓ | |
-| CLI: `check` with JUnit, CSV, JSON, HTML reports | v1 | n/a | ✓ (the HTML report's cells don't link to an exported view yet: left from 5.10) | 5.3 |
-| CLI: `export html` | v1 | n/a | ✓ (the embedded viewer, `--layout`, `--checks`, `--budget`, `--mode`, `--redact`) | 5.10 |
+| CLI: `check` with JUnit, CSV, JSON, HTML reports | v1 | n/a | ◐ (the HTML report's cells don't link to an exported view yet: left from 5.10) | 5.3 |
+| CLI: `export html` | v1 | n/a | ◐ (the embedded viewer, `--layout`, `--checks`, `--budget`, `--mode`, `--redact`) | 5.10 |
 | Python bindings | v1 | n/a | ◐ (`python/`: read, NumPy and Arrow, view, values, stats, checks, convert, export html; no wheels on PyPI yet) | 5.10 |
 | Browser-only mode (core in WASM) | v1 | n/a | ◐ (CSV files from the picker or a drop, charts, tables, values, Measure, the cache in the browser's private storage; no other formats, derived channels, checks, folders or several files) | 5.10 |

@@ -19,8 +19,9 @@ Settings. What differs now is mostly looks and structure: the shared sizes of me
 in the menus (the app has more), and a few behaviours the owner has accepted as different (see "Accepted differences" in
 `docs/roadmap.md`).
 
-Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 251 · Partial 20 ·
-Different 11 · Missing 1** (283 rows; counts as of Nov 11, at the end of step 5.10). The one Missing row is "Slower channels dimmed"
+Status counts over the tables below, including the keyboard table (a row per control or behaviour): **Ported 250 · Partial 20 ·
+Different 12 · Missing 1** (283 rows; counts as of Nov 11, at the end of step 5.10, recounted from the Status column in
+the release review). The one Missing row is "Slower channels dimmed"
 (tables of files with several rates). The Partial rows are listed in the "Parity pass" section below with what each lacks.
 
 Status key: **Ported** works as in the prototype. **Partial** exists with parts missing. **Different** exists but
