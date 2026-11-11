@@ -148,6 +148,34 @@ try {
   })());
   check('no page errors when trimmed', errs4.length === 0, errs4);
 
+  // widgets of your own: an SVG one drawn safe, a code one as a value card, and no widget host (nothing runs)
+  for (const [d, toml, f, body] of [
+    ['dial', 'schema = 1\nname = "Dial"\nkind = "svg"\nentry = "widget.svg"\n', 'widget.svg', '<svg viewBox="0 0 10 10" onload="window.__stolen = 1"><script>window.__stolen = 1</script><text x="1" y="5" font-size="3">{{value}}</text></svg>'],
+    ['bar', 'schema = 1\nname = "Bar (code)"\nkind = "code"\nentry = "widget.js"\n', 'widget.js', 'export default { build(el) { window.__stolen = 1 }, update() {} }'],
+  ]) {
+    mkdirSync(join(work, 'cfg/widgets', d), { recursive: true });
+    writeFileSync(join(work, 'cfg/widgets', d, 'widget.toml'), toml);
+    writeFileSync(join(work, 'cfg/widgets', d, f), body);
+  }
+  writeFileSync(join(work, 'wlayout.json'), JSON.stringify({ schema: 1, name: 'Widgets', panes: [{ channels: ['rpm'], view: 'gauges', widgets: { rpm: { type: 'sw_dial' } } }, { channels: ['temp'], view: 'gauges', widgets: { temp: { type: 'sw_bar' } } }] }));
+  const wsite = join(work, 'wsite');
+  const rwid = spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'wlayout.json'), '--config', join(work, 'cfg'), '--cache', join(work, 'cache'), '--out', wsite, '--viewer', VIEWER], { encoding: 'utf8' });
+  check('widgets are exported', rwid.status === 0 && JSON.parse(readFileSync(join(wsite, 'export.json'), 'utf8')).widgets.length === 2, rwid.stderr);
+  site = wsite;
+  const wp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const errs5 = [];
+  wp.on('pageerror', (e) => errs5.push(e.message));
+  await wp.goto(url, { waitUntil: 'domcontentloaded' });
+  check('both widgets draw as SVG', await (async () => {
+    for (let i = 0; i < 150; i++) {
+      if (await wp.evaluate(() => document.querySelectorAll('.gsvg').length >= 2).catch(() => false)) return true;
+      await wp.waitForTimeout(60);
+    }
+    return false;
+  })(), await wp.evaluate(() => document.querySelectorAll('.gsvg').length));
+  check('nothing from the widgets ran, and no widget host is in the page', await wp.evaluate(() => window.__stolen === undefined && !document.querySelector('iframe') && !document.querySelector('.gsvg script')), null);
+  check('no page errors with widgets', errs5.length === 0, errs5);
+
   // a damaged chunk is an error, never data
   const bad1 = join(work, 'damaged');
   spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'layout.json'), '--cache', join(work, 'cache'), '--out', bad1, '--viewer', VIEWER], { encoding: 'utf8' });

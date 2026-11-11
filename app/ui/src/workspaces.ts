@@ -64,7 +64,7 @@ export function toWorkspace(name: string, panes: Pane[], names: string[]): Works
       if (p.beside) w.beside = true;
       if (p.under) w.under = true;
       if (p.mode && p.mode !== 'chart') w.view = p.mode;
-      if (p.axis) w.axis = structuredClone(p.axis);
+      if (p.axis) w.axis = JSON.parse(JSON.stringify(p.axis));
       if (p.widths) w.widths = Object.fromEntries(Object.entries(p.widths).map(([k, v]) => [k.startsWith('c') ? `c:${names[Number(k.slice(1))]}` : k, v]));
       if (p.tableH != null) w.tableH = p.tableH;
       const colName = (c: string) => (c.startsWith('c') ? `c:${names[Number(c.slice(1))]}` : c);
@@ -72,7 +72,7 @@ export function toWorkspace(name: string, panes: Pane[], names: string[]): Works
       if (p.filters) w.filters = Object.fromEntries(Object.entries(p.filters).map(([k, v]) => [colName(k), v]));
       if (p.tfilt) w.tfilt = { ...p.tfilt };
       if (p.hideCols?.length) w.hide = p.hideCols.map((c) => names[c]).filter((n) => n != null);
-      if (p.widgets) w.widgets = structuredClone(p.widgets);
+      if (p.widgets) w.widgets = JSON.parse(JSON.stringify(p.widgets));
       if (p.x != null && names[p.x] != null) w.x = names[p.x];
       if (p.xyEqual != null) w.xyEqual = p.xyEqual;
       if (p.xyView) w.xyView = [...p.xyView];
@@ -96,7 +96,7 @@ export function fromWorkspace(ws: Workspace, names: string[]): { panes: Pane[]; 
     if (w.beside) p.beside = true;
     if (w.under) p.under = true;
     if (w.view && w.view !== 'chart') p.mode = w.view;
-    if (w.axis) p.axis = structuredClone(w.axis);
+    if (w.axis) p.axis = JSON.parse(JSON.stringify(w.axis));
     if (w.widths) {
       const widths: Record<string, number> = {};
       for (const [k, v] of Object.entries(w.widths)) {
@@ -115,7 +115,7 @@ export function fromWorkspace(ws: Workspace, names: string[]): { panes: Pane[]; 
     if (w.tfilt) p.tfilt = { ...w.tfilt };
     const hide = (w.hide ?? []).flatMap((n) => (index.has(n) ? [index.get(n)!] : []));
     if (hide.length) p.hideCols = hide;
-    if (w.widgets) p.widgets = structuredClone(w.widgets);
+    if (w.widgets) p.widgets = JSON.parse(JSON.stringify(w.widgets));
     if (w.x != null && index.has(w.x)) p.x = index.get(w.x);
     if (w.xyEqual != null) p.xyEqual = w.xyEqual;
     if (w.xyView) p.xyView = [...w.xyView];

@@ -815,6 +815,33 @@ impl Store {
     }
 }
 
+/// `set` and its `res` without the checks that read a redacted channel (in what they expect, when they apply, or
+/// the channels they report), with the rollup made again: a check can't lose a channel and still mean what it says, so
+/// it leaves the export. Returns them with how many checks were left out.
+pub fn redacted(set: &CheckSet, res: &SetResult, channels: &[String]) -> (CheckSet, SetResult, usize) {
+    let reads = |text: &str| match tlmbench_expr::parse(text) {
+        Ok(e) => e.names().iter().any(|n| channels.iter().any(|c| c == n.split('|').next().unwrap_or(n).trim())),
+        // text that doesn't parse: leave it out if it so much as mentions a redacted name
+        Err(_) => channels.iter().any(|c| text.contains(c.as_str())),
+    };
+    let keep: Vec<bool> = set
+        .checks
+        .iter()
+        .zip(&res.outcomes)
+        .map(|(k, o)| {
+            !(reads(&k.expect)
+                || k.when.as_deref().is_some_and(reads)
+                || o.channels.iter().any(|c| channels.contains(c)))
+        })
+        .collect();
+    let mut out = set.clone();
+    out.checks = set.checks.iter().zip(&keep).filter(|(_, k)| **k).map(|(c, _)| c.clone()).collect();
+    let outcomes: Vec<Outcome> = res.outcomes.iter().zip(&keep).filter(|(_, k)| **k).map(|(o, _)| o.clone()).collect();
+    let rollup = rollup(&out, &outcomes);
+    let left = keep.iter().filter(|k| !**k).count();
+    (out, SetResult { set: res.set.clone(), outcomes, rollup }, left)
+}
+
 /// Which channels fail checks (Fail beats Warn) of every check of the results fall in a map of channel → failing (for badges).
 pub fn failing_channels(set: &CheckSet, res: &SetResult) -> HashMap<String, Verdict> {
     let mut m: HashMap<String, Verdict> = HashMap::new();

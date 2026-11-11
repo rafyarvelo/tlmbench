@@ -36,6 +36,7 @@ export interface Manifest {
   layout: unknown;
   events: { file: number; events: unknown[] }[];
   checks: { file: number; set: { name: string }; result: unknown; events: unknown[]; t_first: string }[];
+  widgets?: unknown[];
   /** BLAKE3 (hex) of every data file, by its path in the export. */
   checksums: Record<string, string>;
 }
@@ -167,7 +168,7 @@ export async function installViewerCore(): Promise<void> {
     ...stubs,
     launch: () => ({ file: null, gate: null, gateMode: null, gateSeconds: null }),
     // what the page does on its own once the app is up (see app.ts, `viewerBoot`)
-    viewer_boot: () => ({ files: manifest.files.map((f) => `${EXPORT_PREFIX}${f.k}`), layout: manifest.layout, events: manifest.events, checks: manifest.checks, report: manifest.report }),
+    viewer_boot: () => ({ files: manifest.files.map((f) => `${EXPORT_PREFIX}${f.k}`), layout: manifest.layout, events: manifest.events, checks: manifest.checks, report: manifest.report, widgets: manifest.widgets ?? [] }),
     open: (a) => {
       const path = String(a.path);
       if (!path.startsWith(EXPORT_PREFIX)) throw new Error('A viewer opens only what its export holds.');
@@ -187,6 +188,7 @@ export async function installViewerCore(): Promise<void> {
     values_at: async (a) => (await waitRaw(a.file, a.channels), core('values_at', a)),
     stats: async (a) => (await waitRaw(a.file, a.channels), core('stats', a)),
     rows: async (a) => (await waitRaw(a.file, a.channels), core('rows', a)),
+    widgets_frame: async (a) => (await waitRaw(a.file, (a.widgets as { channel: number }[]).map((w) => w.channel)), core('widgets_frame', a)),
     events_list: (a) => (manifest.events.find((e) => e.file === Number(a.file) - 0)?.events ?? []),
     // the check sets the export ran, and their results as the app's Checks pane reads them
     check_sets_list: () => [...new Map(manifest.checks.map((c) => [c.set.name, { ...c.set, runs_on_any_file: true }])).values()],

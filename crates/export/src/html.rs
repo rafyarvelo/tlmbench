@@ -268,6 +268,36 @@ fn plan(f: &File, o: &Options) -> Plan {
     Plan { range: (a, b), times, rate, chans }
 }
 
+/// What `export.json` records about how it was made (`provenance`): the command line, a hash of everything that
+/// configured the export (the layout, the check sets, the options: `config`, as the caller has it), the core's version,
+/// and each input file's size and BLAKE3 (the whole file, read once). A report's footer shows the same.
+pub fn provenance(command: &[String], config: &serde_json::Value, inputs: &[&Path]) -> Result<serde_json::Value> {
+    use std::io::Read;
+    let mut files = Vec::new();
+    for p in inputs {
+        let mut f = fs::File::open(p).map_err(io_err(p))?;
+        let (mut h, mut n, mut buf) = (blake3::Hasher::new(), 0u64, vec![0u8; 1 << 20]);
+        loop {
+            let k = f.read(&mut buf).map_err(io_err(p))?;
+            if k == 0 {
+                break;
+            }
+            h.update(&buf[..k]);
+            n += k as u64;
+        }
+        files.push(serde_json::json!({ "path": p, "bytes": n, "blake3": h.finalize().to_hex().to_string() }));
+    }
+    // serde_json keeps object keys sorted, so the same configuration always hashes the same
+    let config_hash =
+        blake3::hash(&serde_json::to_vec(config).map_err(|e| Error::Write(e.to_string()))?).to_hex().to_string();
+    Ok(serde_json::json!({
+        "command": command,
+        "config_hash": config_hash,
+        "core_version": env!("CARGO_PKG_VERSION"),
+        "inputs": files,
+    }))
+}
+
 fn raw_bytes(len: usize) -> u64 {
     len as u64 * 8
 }

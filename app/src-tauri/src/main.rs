@@ -2913,6 +2913,9 @@ struct HtmlRequest {
     sets: Vec<String>,
     /// Light's raw windows (`30s`, `3x,30s,10min`, `0` for none); none: the default.
     detail: Option<String>,
+    /// The widgets of your own the layout can use (the settings' list): SVG goes in made safe, code as a value card.
+    #[serde(default)]
+    widgets: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -2961,10 +2964,18 @@ async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlEx
                 "t_first": base.recording().info().t_first.unwrap_or(0).to_string(),
             }));
         }
+        let config = serde_json::json!({
+            "layout": req.layout, "checks": req.sets, "detail": req.detail, "mode": req.mode, "budget": req.budget,
+            "channels": req.channels, "raw": req.raw, "span": [req.from, req.until],
+        });
+        let command = vec!["tlmbench-app".to_owned(), "Export to HTML…".to_owned()];
+        let provenance = html::provenance(&command, &config, &[info.path.as_path()]).map_err(|e| e.to_string())?;
         let extra = serde_json::json!({
             "layout": req.layout,
             "events": [{ "file": 0, "events": events }],
             "checks": checks,
+            "provenance": provenance,
+            "widgets": tlmbench_export::widgets::export_widgets(&req.widgets),
             "tool": { "name": "tlmbench-app", "version": env!("CARGO_PKG_VERSION") },
         });
         let opts = html::Options {

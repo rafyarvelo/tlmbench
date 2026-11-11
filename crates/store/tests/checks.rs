@@ -343,3 +343,34 @@ fn sets_are_toml_files_in_the_shared_format() {
     t.checks[0].grace = 1.0;
     assert_ne!(t.version(), v);
 }
+
+#[test]
+fn redacting_a_channel_leaves_out_the_checks_that_read_it() {
+    let mut a = check("rpm limit", "rpm < 5000");
+    a.group = "A".into();
+    let mut b = check("temp limit", "temp < 70");
+    b.group = "B".into();
+    let mut c = check("scoped", "temp < 70");
+    c.when = Some("rpm > 100".into());
+    c.group = "B".into();
+    let mut d = check("needs a function", "max(rpm, 3) < 9000|x");
+    d.group = "C".into();
+    let s = set(vec![a.clone(), b.clone(), c.clone(), d.clone()], &[]);
+    let r = run_set(&rec(), &s, 0, &[]);
+    assert_eq!(r.outcomes.len(), 4);
+    let (s2, r2, left) = redacted(&s, &r, &["rpm".to_owned()]);
+    // a, c (its When) and d read rpm; only the temperature limit stays
+    assert_eq!(left, 3);
+    assert_eq!(s2.checks.iter().map(|k| k.name.as_str()).collect::<Vec<_>>(), ["temp limit"]);
+    assert_eq!(r2.outcomes.len(), 1);
+    assert_eq!(r2.outcomes[0].name, "temp limit");
+    assert_eq!(r2.rollup.failed, 1, "the temperature excursion is the only failure left");
+    assert!(r.rollup.failed > r2.rollup.failed);
+    // the roll-up is made again from what is left, and the events (violation spans) come only from it
+    assert_eq!(r2.rollup.groups.iter().map(|g| g.name.as_str()).collect::<Vec<_>>(), ["B"]);
+    let events = events_of(&s2, &r2);
+    assert!(events.iter().all(|e| e.name == "temp limit"));
+    // nothing redacted: nothing changes
+    let (s3, r3, none) = redacted(&s, &r, &["nothing".to_owned()]);
+    assert_eq!((none, s3.checks.len(), r3.outcomes.len()), (0, 4, 4));
+}

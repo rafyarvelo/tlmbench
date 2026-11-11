@@ -139,6 +139,7 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
         "view" => view(st, a),
         "values_at" => values_at(st, a),
         "stats" => stats(st, a),
+        "widgets_frame" => widgets_frame(st, a),
         "rows" => rows(st, a),
         _ => Err(format!("the viewer has no command {cmd:?}")),
     }
@@ -391,6 +392,14 @@ fn values_at(st: &State, a: &Value) -> Result<Reply, String> {
     Ok(Reply::Json(Value::Array(out)))
 }
 
+/// The exact statistics of samples `lo..hi`, when the channel has what they need (see [`exact_summary`]).
+fn stats_of(d: &Ds, c: usize, lo: usize, hi: usize) -> Option<Stats> {
+    match d.pyramid(c) {
+        Some(py) if d.cols[c].raw.slice(d.len).is_some() => Some(d.stats(c, &py, lo, hi, &Held::default())),
+        _ => exact_summary(d, c, lo, hi).map(Stats::from),
+    }
+}
+
 fn stats(st: &State, a: &Value) -> Result<Reply, String> {
     let d = ds(st, arg(a, "file")?)?;
     let channels: Vec<u32> = arg(a, "channels")?;
@@ -409,17 +418,76 @@ fn stats(st: &State, a: &Value) -> Result<Reply, String> {
             continue;
         }
         // exact stats need raw samples at the span's ragged edges: a channel without them is left out
-        let s = match d.pyramid(c) {
-            Some(py) if d.cols[c].raw.slice(d.len).is_some() => d.stats(c, &py, lo, hi, &Held::default()),
-            _ => match exact_summary(d, c, lo, hi) {
-                Some(s) => Stats::from(s),
-                None => continue,
-            },
-        };
+        let Some(s) = stats_of(d, c, lo, hi) else { continue };
         let at = |m: Option<(f64, usize)>| m.map(|(_, i)| d.time_at(i).to_string());
         out.push(json!({ "channel": c, "count": s.count, "min": s.min.map(|m| m.0), "minT": at(s.min), "max": s.max.map(|m| m.0), "maxT": at(s.max), "mean": num(s.mean), "std": num(s.std) }));
     }
     Ok(Reply::Json(Value::Array(out)))
+}
+
+/// How far back a run of equal values is followed.
+const LOOK_BACK: usize = 4 << 20;
+
+/// The time the run of equal values that sample `i` of channel `c` is in began, when the samples back to it are held.
+fn run_start(d: &Ds, c: usize, i: usize) -> Option<i64> {
+    let raw = &d.cols[c].raw;
+    let cur = raw.get(i)?;
+    let same = |v: f64| v == cur || (v.is_nan() && cur.is_nan());
+    let mut j = i;
+    while j > 0 && i - j < LOOK_BACK {
+        // a sample that isn't held may be a different value: the start is unknown
+        if !same(raw.get(j - 1)?) {
+            return Some(d.time_at(j));
+        }
+        j -= 1;
+    }
+    Some(d.time_at(j))
+}
+
+/// Every widget of a Gauges pane in one call (see the app's `widgets_frame`): values from held raw samples only,
+/// the lowest and highest value from the exact statistics, a run's start while its samples are held, and a trace
+/// drawn from the summaries.
+fn widgets_frame(st: &State, a: &Value) -> Result<Reply, String> {
+    let d = ds(st, arg(a, "file")?)?;
+    let t = time(&arg::<String>(a, "t")?)?;
+    let view: Value = arg(a, "view")?;
+    let (v0, v1) = (time(view["t0"].as_str().unwrap_or(""))?, time(view["t1"].as_str().unwrap_or(""))?);
+    let asks: Vec<Value> = arg(a, "widgets")?;
+    let Some(i) = nearest(d, t) else { return Ok(Reply::Json(Value::Null)) };
+    let ts = d.time_at(i);
+    let n = d.info.channels.len();
+    let num = |v: f64| (!v.is_nan()).then_some(v);
+    let widgets: Vec<Value> = asks
+        .iter()
+        .map(|w| {
+            let c = (w["channel"].as_u64().unwrap_or(0) as usize).min(n.saturating_sub(1));
+            let flag = |k: &str| w[k].as_bool().unwrap_or(false);
+            let value = d.cols[c].raw.get(i).and_then(num);
+            let (mut min, mut max) = (None, None);
+            if flag("minmax") {
+                let end = ts.min(v1.saturating_sub(1)).saturating_add(1);
+                let start = v0.min(ts);
+                let (lo, hi) = (d.lower_bound(start), d.lower_bound(end.max(start + 1)));
+                if let Some(s) = stats_of(d, c, lo, hi).filter(|_| lo < hi) {
+                    (min, max) = (s.min.map(|m| m.0), s.max.map(|m| m.0));
+                }
+            }
+            let run = flag("run").then(|| run_start(d, c, i)).flatten().map(|t| t.to_string());
+            let px = w["trace"].as_u64().unwrap_or(0).min(600) as u32;
+            let mut trace: Vec<Option<f32>> = Vec::new();
+            if px > 0 {
+                let vp = Viewport { t0: v0, t1: v1, width_px: px, raw_max: 0 };
+                let span = (v1 - v0).max(1) as f64;
+                let tr = summary_trace(d, c, vp);
+                for (&x, &y) in tr.t.iter().zip(&tr.y) {
+                    trace.push(Some(((x - v0) as f64 / span) as f32));
+                    trace.push((!y.is_nan()).then_some(y));
+                }
+            }
+            json!({ "value": value, "min": min, "max": max, "runStart": run, "trace": trace })
+        })
+        .collect();
+    Ok(Reply::Json(json!({ "index": i, "t": ts.to_string(), "widgets": widgets })))
 }
 
 fn rows(st: &State, a: &Value) -> Result<Reply, String> {
@@ -545,6 +613,34 @@ mod tests {
         let Reply::Json(Value::String(h)) = dispatch(&mut st, "hash", &Value::Null, b"abc").unwrap() else { panic!() };
         assert_eq!(h, blake3::hash(b"abc").to_hex().to_string());
         assert_eq!(h.len(), 64);
+    }
+
+    #[test]
+    fn a_widgets_frame_answers_from_held_samples_and_exact_statistics() {
+        let d = trimmed(2, &[(1_000, 6_000)]);
+        let mut st = State::default();
+        st.files.push(Some(d));
+        let frame = |t_ms: i64, v0_ms: i64| {
+            let a = json!({ "file": 0, "t": (t_ms * 1_000_000).to_string(),
+                "view": { "t0": (v0_ms * 1_000_000).to_string(), "t1": "100000000000" },
+                "widgets": [{ "channel": 0, "minmax": true, "run": true, "trace": 50 }] });
+            match widgets_frame(&st, &a).unwrap() {
+                Reply::Json(v) => v,
+                _ => unreachable!(),
+            }
+        };
+        // inside the window: the value, exact min and max over 1_500..=4_000, a run start, and a drawn trace
+        let f = frame(4_000, 1_500);
+        let w = &f["widgets"][0];
+        assert_eq!(w["value"].as_f64(), Some(value(4_000)));
+        let (mn, mx, _) = brute(1_500, 4_001);
+        assert_eq!((w["min"].as_f64(), w["max"].as_f64()), (Some(mn), Some(mx)));
+        assert!(w["runStart"].is_string() && !w["trace"].as_array().unwrap().is_empty());
+        // outside every window: no value, no run, and min and max only when the edges are held (they are not)
+        let f = frame(50_000, 20_000);
+        let w = &f["widgets"][0];
+        assert!(w["value"].is_null() && w["runStart"].is_null() && w["min"].is_null() && w["max"].is_null());
+        assert!(!w["trace"].as_array().unwrap().is_empty(), "the trace comes from the summaries");
     }
 
     #[test]

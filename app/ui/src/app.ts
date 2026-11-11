@@ -4155,7 +4155,7 @@ async function htmlGo(): Promise<void> {
     const span = o.range === 'all' ? null : ctx.view;
     const out = `${folder.replace(/[\\/]$/, '')}${sep(folder)}${ctx.base}-export`;
     const w = await invoke<{ out: string; viewer: boolean; report: { mode: string; bytes: number; trimmed: boolean } }>('export_html', {
-      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [] },
+      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [], widgets: settings.customWidgets },
     });
     const mb = (w.report.bytes / 1048576).toFixed(w.report.bytes > 1e7 ? 0 : 1);
     html.result = `Wrote ${mb} MB (${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}) to ${nameOf(w.out)} in ${folder}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
@@ -5269,7 +5269,9 @@ else if (launch.gate === '1' && launch.file) {
 
 // A viewer (an HTML export): open the export's files and show the layout it was exported with.
 if ((window as unknown as { __tlmViewer?: boolean }).__tlmViewer) {
-  const boot = await invoke<{ files: string[]; layout: Workspace | null }>('viewer_boot');
+  const boot = await invoke<{ files: string[]; layout: Workspace | null; widgets?: CustomWidget[] }>('viewer_boot');
+  // the export's widgets: SVG made safe and code as value cards, so nothing the file carries runs
+  if (boot.widgets?.length) setSetting('customWidgets', boot.widgets);
   for (const p of boot.files) await openPath(p);
   if (boot.files.length && boot.layout?.panes) {
     // the layout is of the first file

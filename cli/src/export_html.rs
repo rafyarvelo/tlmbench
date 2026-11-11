@@ -212,9 +212,20 @@ pub fn run(a: Args) -> Result<(), Fail> {
             let (recipes, _) = recipe_library(&info.path, &a.common, true, true)?;
             for set in &sets {
                 let res = store.run_checks(o, set, &recipes)?;
-                let marked = checks::events_of(set, &res);
+                // a redacted channel leaves the export: so do the checks that read it, and their violations
+                let (set, res) = if a.redact.is_empty() {
+                    (set.clone(), res)
+                } else {
+                    let (s, r, _) = checks::redacted(set, &res, &a.redact);
+                    (s, r)
+                };
+                let marked = checks::events_of(&set, &res);
                 checks_out.push(json!({ "file": k, "set": set, "result": res, "events": marked, "t_first": info.t_first.unwrap_or(0).to_string() }));
             }
+        }
+        // an event's channel list never names a redacted channel
+        for e in &mut evs {
+            e.channels.retain(|c| !a.redact.contains(c));
         }
         if let Some(w) = window {
             // raw windows around every event, and around the violations the check sets marked (a check's events)
@@ -250,7 +261,21 @@ pub fn run(a: Args) -> Result<(), Fail> {
         from,
         until,
     };
-    let extra = json!({ "layout": layout, "events": events_out, "checks": checks_out, "tool": { "name": "tlmbench", "version": env!("CARGO_PKG_VERSION") } });
+    let config = json!({
+        "layout": layout, "checks": sets, "detail": a.detail, "mode": format!("{:?}", a.mode), "budget": budget,
+        "redact": a.redact, "all_channels": a.all_channels, "span": [from, until],
+    });
+    // the widgets of your own the layout can use, as shared in the config folders: SVG made safe, code as a value card
+    let shared: Vec<Value> = dirs
+        .iter()
+        .flat_map(|d| config::from_folder(d).widgets)
+        .map(|w| json!({ "id": format!("sw_{}", w.id), "name": w.name, "icon": w.icon, "svg": w.svg, "angle": w.angle, "code": w.code, "by": w.by }))
+        .collect();
+    let widgets = tlmbench_export::widgets::export_widgets(&shared);
+    let command: Vec<String> = std::env::args().collect();
+    let inputs: Vec<&Path> = a.files.iter().map(PathBuf::as_path).collect();
+    let provenance = html::provenance(&command, &config, &inputs).map_err(|e| Fail(2, e.to_string()))?;
+    let extra = json!({ "layout": layout, "events": events_out, "checks": checks_out, "provenance": provenance, "widgets": widgets, "tool": { "name": "tlmbench", "version": env!("CARGO_PKG_VERSION") } });
     let report = html::export(&a.out, &files, extra, &opts).map_err(|e| Fail(2, e.to_string()))?;
     if !a.no_viewer {
         match viewer_dir(a.viewer.as_deref()) {
