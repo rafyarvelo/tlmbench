@@ -145,7 +145,12 @@ pub(crate) struct Manifest {
     /// An even rate from `t0` instead of a time column or the row number (a profile's assumed or resampled rate).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) rate: Option<ManifestRate>,
+    /// Where the file's time went backwards (see [`Backwards`]).
+    #[serde(default, skip_serializing_if = "Backwards::is_empty")]
+    pub(crate) backwards: Backwards,
 }
+
+pub(crate) use crate::backwards::{Backwards, clamp_backwards};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub(crate) struct ManifestRate {
@@ -340,6 +345,9 @@ fn write_quoted(source: &Source, schema: &csv::Schema, dir: &Path) -> Result<Opt
     })
 }
 
+/// What the writer thread reports: rows, skipped rows, the first and last time, and where time went backwards.
+type Written = (usize, usize, Option<i64>, Option<i64>, Backwards);
+
 type ParseChunk<'a> = dyn Fn(&Range<u64>) -> Result<csv::Rows> + Sync + 'a;
 
 /// Parses the chunks and writes every column; `Ok(None)` when the fast path met a quote and the file must be read
@@ -351,7 +359,6 @@ fn write_columns(
     dir: &Path,
     parse_chunk: &ParseChunk,
 ) -> Result<Option<Manifest>> {
-    let path = source.path.as_path();
     let create = |name: &str| {
         let p = dir.join(name);
         File::create(&p).map(|f| BufWriter::with_capacity(1 << 20, f)).map_err(io_err(p))
@@ -365,22 +372,16 @@ fn write_columns(
     let batch = rayon::current_num_threads() * 2;
     let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<csv::Rows>>(1);
     let written = std::thread::scope(|s| {
-        let writer = s.spawn(move || -> Result<(usize, usize, Option<i64>, Option<i64>)> {
+        let writer = s.spawn(move || -> Result<Written> {
             let (mut rows, mut skipped) = (0usize, 0usize);
             let (mut t_first, mut t_last) = (None, None::<i64>);
+            let mut backwards = Backwards::default();
             for parsed in rx {
-                for p in parsed {
+                for mut p in parsed {
                     if let Some(w) = &mut t_out {
-                        if let Some(i) = p.t.windows(2).position(|w| w[1] < w[0]) {
-                            return Err(format_err(path, format!("time goes backwards at data row {}", rows + i + 2)));
-                        }
-                        if let (Some(prev), Some(&first)) = (t_last, p.t.first())
-                            && first < prev
-                        {
-                            return Err(format_err(path, format!("time goes backwards at data row {}", rows + 1)));
-                        }
+                        // data row 1 is the line after the header: `rows + 1` is this chunk's first
+                        clamp_backwards(&mut p.t, &mut t_last, rows + 1, &mut backwards);
                         t_first = t_first.or(p.t.first().copied());
-                        t_last = p.t.last().copied().or(t_last);
                         w.write_all(bytemuck::cast_slice(&p.t)).map_err(io_err(dir))?;
                     }
                     for (w, col) in outs.iter_mut().zip(&p.columns) {
@@ -393,7 +394,7 @@ fn write_columns(
             for mut w in t_out.into_iter().chain(outs) {
                 w.flush().map_err(io_err(dir))?;
             }
-            Ok((rows, skipped, t_first, t_last))
+            Ok((rows, skipped, t_first, t_last, backwards))
         });
         let (mut quotes, mut read_error) = (false, None);
         for group in chunks.chunks(batch) {
@@ -419,7 +420,7 @@ fn write_columns(
             None => written.map(|w| (w, quotes)),
         }
     });
-    let ((rows, skipped, t_first, t_last), quotes) = written?;
+    let ((rows, skipped, t_first, t_last, backwards), quotes) = written?;
     if quotes {
         return Ok(None);
     }
@@ -453,6 +454,7 @@ fn write_columns(
         t_first,
         t_last,
         rate: schema.index_rate.map(|hz| ManifestRate { t0: 0, hz }),
+        backwards,
     }))
 }
 
@@ -498,6 +500,7 @@ pub(crate) fn load(path: &Path, dir: &Path, m: Manifest, format: &str) -> Result
             })
             .collect(),
         skipped: m.skipped_columns,
+        notes: m.backwards.note().into_iter().collect(),
     };
     Ok(CachedRecording {
         info,
@@ -612,14 +615,28 @@ mod tests {
     }
 
     #[test]
-    fn backwards_time_fails_and_leaves_no_entry() {
+    fn backwards_time_is_flagged_not_reordered() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("bad.csv");
-        fs::write(&src, "t,v\n0,1\n2,2\n1,3\n").unwrap();
-        let root = tmp.path().join("cache");
-        let err = open_csv(&src, &root).unwrap_err().to_string();
-        assert!(err.contains("backwards at data row 3"), "{err}");
-        assert_eq!(fs::read_dir(root.join("csv")).unwrap().count(), 0);
+        fs::write(&src, "t,v\n0,1\n2,2\n1,3\n4,4\n3,5\n").unwrap();
+        let r = open_csv(&src, &tmp.path().join("cache")).unwrap();
+        // rows stay in file order; a row that reads earlier takes the latest time before it
+        assert_eq!(r.info().samples, 5);
+        assert_eq!(r.read_times(0, 5), vec![0, 2_000_000_000, 2_000_000_000, 4_000_000_000, 4_000_000_000]);
+        assert_eq!(r.read(0, 0, 5).to_f64(1.0, 0.0), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        // the note names how many and the first
+        let note = r.info().notes.first().expect("a note").clone();
+        assert!(
+            note.contains("2 rows") && note.contains("data row 3") && note.contains("it says 1 s, after 2 s"),
+            "{note}"
+        );
+        // and it is the same on the next open, from the cache
+        let again = open_csv(&src, &tmp.path().join("cache")).unwrap();
+        assert_eq!(again.info().notes, r.info().notes);
+        // a file whose time never goes backwards has no note
+        let ok = tmp.path().join("ok.csv");
+        fs::write(&ok, "t,v\n0,1\n1,2\n1,3\n").unwrap();
+        assert!(open_csv(&ok, &tmp.path().join("cache")).unwrap().info().notes.is_empty());
     }
 
     fn sample_csv(dir: &Path) -> PathBuf {
@@ -789,6 +806,7 @@ pub fn open_derived(
                     DerivedTime::Rate { t0, hz } => Some(ManifestRate { t0, hz }),
                     _ => None,
                 },
+                backwards: Default::default(),
             })
         })?,
     };

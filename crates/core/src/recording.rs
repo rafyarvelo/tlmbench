@@ -50,6 +50,9 @@ pub struct RecordingInfo {
     pub channels: Vec<ChannelInfo>,
     /// Columns or fields that hold no plottable numbers (text, for now), left out of `channels`.
     pub skipped: Vec<String>,
+    /// What a person should know about how the file was read (time that goes backwards, for one): shown when it opens.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 /// A computation over one channel, run with its concrete time and sample types (see [`Channels::dispatch`]).

@@ -743,6 +743,9 @@ fn print_info(info: &RecordingInfo, gaps: Option<&GapsJson>, derived: &[tlmbench
     if !info.skipped.is_empty() {
         println!("  Skipped   {} (text)", info.skipped.join(", "));
     }
+    for n in &info.notes {
+        println!("  Note      {n}");
+    }
 }
 
 fn cache(action: CacheAction, common: &Common) -> Result<(), Fail> {

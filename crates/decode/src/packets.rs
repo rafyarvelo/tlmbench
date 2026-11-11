@@ -403,6 +403,7 @@ impl PacketFile {
                 t_last: None,
                 channels: Vec::new(),
                 skipped: Vec::new(),
+                notes: Vec::new(),
             },
             bad_packets: 0,
             skipped_bytes: 0,

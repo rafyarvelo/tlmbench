@@ -106,6 +106,7 @@ impl FixedWidth {
                 t_last: None,
                 channels: Vec::new(),
                 skipped: Vec::new(),
+                notes: Vec::new(),
             },
             desc,
         };

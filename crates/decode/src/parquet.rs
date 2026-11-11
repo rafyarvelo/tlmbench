@@ -173,6 +173,7 @@ fn build(source: &Source, tmp: &Path) -> Result<Manifest> {
 
     let (mut rows, mut skipped_rows) = (0usize, 0usize);
     let (mut t_first, mut t_last) = (None, None::<i64>);
+    let mut backwards = cache::Backwards::default();
     let batch = rayon::current_num_threads() * 2;
     let ids: Vec<usize> = (0..groups.len()).collect();
     for group in ids.chunks(batch) {
@@ -204,18 +205,11 @@ fn build(source: &Source, tmp: &Path) -> Result<Manifest> {
                 })
             })
             .collect::<Result<Vec<Decoded>>>()?;
-        for d in decoded {
+        for mut d in decoded {
             if let Some(w) = &mut t_out {
-                if let Some(i) = d.t.windows(2).position(|w| w[1] < w[0]) {
-                    return Err(format_err(path, format!("time goes backwards at row {}", rows + i + 2)));
-                }
-                if let (Some(prev), Some(&first)) = (t_last, d.t.first())
-                    && first < prev
-                {
-                    return Err(format_err(path, format!("time goes backwards at row {}", rows + 1)));
-                }
+                // time that goes backwards is flagged, not reordered (see `Backwards`)
+                cache::clamp_backwards(&mut d.t, &mut t_last, rows + 1, &mut backwards);
                 t_first = t_first.or(d.t.first().copied());
-                t_last = d.t.last().copied().or(t_last);
                 w.write_all(bytemuck::cast_slice(&d.t)).map_err(io_err(tmp))?;
             }
             for (w, col) in outs.iter_mut().zip(&d.columns) {
@@ -246,6 +240,7 @@ fn build(source: &Source, tmp: &Path) -> Result<Manifest> {
         t_first,
         t_last,
         rate: None,
+        backwards,
     })
 }
 

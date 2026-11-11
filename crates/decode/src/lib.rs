@@ -12,6 +12,7 @@
 //!
 //! Nothing here writes next to the data: the only writes are cache files under the cache root.
 
+mod backwards;
 mod bytes;
 pub mod cache;
 pub mod csv;

@@ -199,5 +199,6 @@ fn build(path: &Path, source: &Source, plugin: &dyn DecoderPlugin, tmp: &Path) -
         t_first,
         t_last,
         rate: None,
+        backwards: Default::default(),
     })
 }
