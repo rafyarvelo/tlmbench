@@ -201,6 +201,7 @@ impl Rec {
 
     /// Export to HTML: the same folder as `tlmbench export html`. `layout` is a shared view as JSON text or empty.
     #[pyo3(signature = (out, layout=None, channels=None, raw=None, mode="auto", budget=None))]
+    #[allow(clippy::too_many_arguments)]
     fn export_html(
         &self,
         py: Python<'_>,
