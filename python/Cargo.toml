@@ -1,0 +1,28 @@
+[package]
+name = "tlmbench-python"
+description = "TelemetryBench for Python: the same core as the app and the command line, as the `tlmbench` package"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "UNLICENSED"
+publish = false
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py310"] }
+tlmbench-core = { path = "../crates/core" }
+tlmbench-decode = { path = "../crates/decode" }
+tlmbench-store = { path = "../crates/store" }
+tlmbench-expr = { path = "../crates/expr" }
+tlmbench-export = { path = "../crates/export" }
+serde_json = "1.0.154"
+
+# Its own workspace and target folder, like the plugin crates: an extension module links only through maturin.
+[workspace]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
