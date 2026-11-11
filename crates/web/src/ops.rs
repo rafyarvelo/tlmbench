@@ -11,6 +11,7 @@ use tlmbench_core::{RateTimes, Recording, Trace, TraceKind, Viewport};
 
 use crate::Reply;
 use crate::data::{Ds, State, Tm, dtype};
+use crate::group::{route, slots};
 
 const RAW_MAX: u32 = 10_000_000;
 const MAX_ROWS: usize = 10_000;
@@ -129,17 +130,35 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
             Ok(Reply::Json(Value::Null))
         }
         "close" => {
-            if let Some(f) = st.files.get_mut(arg::<u32>(a, "file")? as usize) {
+            let id = arg::<u32>(a, "file")?;
+            // closing a tab's id closes the tab, not its files (they stay open under their own ids)
+            if st.groups.remove(&id).is_none()
+                && let Some(f) = st.files.get_mut(id as usize)
+            {
                 *f = None;
             }
             Ok(Reply::Json(Value::Null))
         }
+        "group_set" => Ok(Reply::Json(crate::group::set(
+            st,
+            a.get("group").and_then(Value::as_u64).map(|g| g as u32),
+            a.get("members").unwrap_or(&Value::Null),
+        )?)),
+        "group_state" => Ok(Reply::Json(crate::group::opened(st, arg(a, "group")?)?)),
+        "group_map" => Ok(Reply::Json(crate::group::set_map(
+            st,
+            arg(a, "group")?,
+            arg(a, "slot")?,
+            a.get("knots").unwrap_or(&Value::Null),
+        )?)),
         // the BLAKE3 of the bytes sent, as hex: the page checks each file it fetches against `export.json`
         "hash" => Ok(Reply::Json(Value::String(blake3::hash(bin).to_hex().to_string()))),
         "view" => view(st, a),
         "values_at" => values_at(st, a),
         "stats" => stats(st, a),
         "widgets_frame" => widgets_frame(st, a),
+        "xy_points" => xy_points(st, a),
+        "spectrum" => spectrum(st, a),
         "rows" => rows(st, a),
         _ => Err(format!("the viewer has no command {cmd:?}")),
     }
@@ -208,12 +227,39 @@ struct ViewEntry {
     connect_gaps: bool,
 }
 
+/// One channel's trace over `vp` (its file's own clock): the exact view where the raw samples are held, else the
+/// summaries, labelled coarse. Returns the trace, whether it is coarse, and whether a pyramid answered.
+fn channel_trace(d: &Ds, c: usize, vp: Viewport, factor: f64, coarse_first: bool) -> (Trace, bool, bool) {
+    let (lo, hi) = (d.lower_bound(vp.t0), d.lower_bound(vp.t1));
+    let coarse_pays = hi.saturating_sub(lo) / vp.width_px.max(1) as usize >= MIN_BUCKET_SAMPLES;
+    let breaks = d.gaps.breaks(factor);
+    let held = Held::default();
+    let pyr = d.pyramid(c);
+    let col = &d.cols[c];
+    let whole = col.raw.slice(d.len).is_some();
+    // the samples the view reads (and one either side) are all here: an exact view
+    let covered = whole || col.raw.covers(lo.saturating_sub(1), (hi + 1).min(d.len));
+    // a trimmed pyramid (its finest level is above 4) never goes through the core's; a view of very many raw
+    // samples without one is answered from the summaries
+    let exact_ok = covered && (pyr.is_some() || hi.saturating_sub(lo) <= EXACT_RAW_MAX);
+    let (trace, coarse) = match &pyr {
+        // raw samples missing for the view: the pyramid answers, labelled coarse
+        Some(_) if !exact_ok && !coarse_pays => (summary_trace(d, c, vp), true),
+        Some(p) if !exact_ok => (d.view_coarse(c, vp, p, &breaks, &held), true),
+        Some(p) if coarse_first && coarse_pays && whole => (d.view_coarse(c, vp, p, &breaks, &held), true),
+        p if exact_ok => (d.view(c, vp, p.as_ref(), &breaks, &held), false),
+        // a trimmed pyramid: its finest level that fits, every value an exact aggregate
+        None if !col.levels.is_empty() => (summary_trace(d, c, vp), true),
+        _ => (Trace { kind: TraceKind::Raw, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] }, false),
+    };
+    (trace, coarse, pyr.is_some())
+}
+
 fn view(st: &State, a: &Value) -> Result<Reply, String> {
-    let d = ds(st, arg(a, "file")?)?;
+    let sl = slots(st, arg(a, "file")?)?;
     let generation: u32 = arg(a, "generation")?;
     let coarse_first = a.get("precision").and_then(Value::as_str) == Some("coarse");
     let entries: Vec<ViewEntry> = arg(a, "entries")?;
-    let n = d.info.channels.len();
     let mut parts = Vec::new();
     for e in entries {
         let vp = Viewport {
@@ -222,35 +268,21 @@ fn view(st: &State, a: &Value) -> Result<Reply, String> {
             width_px: e.width_px.clamp(1, 16_384),
             raw_max: e.raw_max.min(RAW_MAX),
         };
-        let (lo, hi) = (d.lower_bound(vp.t0), d.lower_bound(vp.t1));
-        let coarse_pays = hi.saturating_sub(lo) / vp.width_px.max(1) as usize >= MIN_BUCKET_SAMPLES;
         let mut views: Vec<(usize, Trace, Vec<u32>, bool, bool)> = Vec::new();
-        for (i, &c) in e.channels.iter().enumerate().filter(|&(_, &c)| (c as usize) < n) {
-            let c = c as usize;
+        for (i, &c) in e.channels.iter().enumerate() {
+            let Some((si, local)) = route(&sl, c as usize) else { continue };
+            let s = &sl[si];
+            // the shared span goes through the inverse of the file's map; the times that come back go through the map
+            let own = Viewport { t0: s.map.inverse(vp.t0), t1: s.map.inverse(vp.t1), ..vp };
             let factor = e.gap_factors.get(i).copied().unwrap_or(DEFAULT_FACTOR).max(MIN_FACTOR);
-            let breaks = d.gaps.breaks(factor);
-            let held = Held::default();
-            let pyr = d.pyramid(c);
-            let col = &d.cols[c];
-            let whole = col.raw.slice(d.len).is_some();
-            // the samples the view reads (and one either side) are all here: an exact view
-            let covered = whole || col.raw.covers(lo.saturating_sub(1), (hi + 1).min(d.len));
-            // a trimmed pyramid (its finest level is above 4) never goes through the core's; a view of very many raw
-            // samples without one is answered from the summaries
-            let exact_ok = covered && (pyr.is_some() || hi.saturating_sub(lo) <= EXACT_RAW_MAX);
-            let (trace, coarse) = match &pyr {
-                // raw samples missing for the view: the pyramid answers, labelled coarse
-                Some(_) if !exact_ok && !coarse_pays => (summary_trace(d, c, vp), true),
-                Some(p) if !exact_ok => (d.view_coarse(c, vp, p, &breaks, &held), true),
-                Some(p) if coarse_first && coarse_pays && whole => (d.view_coarse(c, vp, p, &breaks, &held), true),
-                p if exact_ok => (d.view(c, vp, p.as_ref(), &breaks, &held), false),
-                // a trimmed pyramid: its finest level that fits, every value an exact aggregate
-                None if !col.levels.is_empty() => (summary_trace(d, c, vp), true),
-                _ => (Trace { kind: TraceKind::Raw, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] }, false),
-            };
+            let (mut trace, coarse, from_pyramid) = channel_trace(s.ds, local, own, factor, coarse_first);
+            if !s.map.knots.is_empty() {
+                trace.t.iter_mut().for_each(|t| *t = s.map.apply(*t));
+                trace.bucket_ns = (s.map.apply(trace.bucket_ns) - s.map.apply(0)).max(1);
+            }
             let (trace, dashed) =
                 if e.connect_gaps { tlmbench_core::connect_gaps(&trace) } else { (trace, Vec::new()) };
-            views.push((c, trace, dashed, coarse, pyr.is_some()));
+            views.push((c as usize, trace, dashed, coarse, from_pyramid));
         }
         let outs: Vec<wire::Out> = views
             .iter()
@@ -375,17 +407,19 @@ fn nearest(d: &Ds, t: i64) -> Option<usize> {
 }
 
 fn values_at(st: &State, a: &Value) -> Result<Reply, String> {
-    let d = ds(st, arg(a, "file")?)?;
+    let sl = slots(st, arg(a, "file")?)?;
     let channels: Vec<u32> = arg(a, "channels")?;
     let t = time(&arg::<String>(a, "t")?)?;
-    let Some(i) = nearest(d, t) else { return Ok(Reply::Json(json!([]))) };
-    let ts = d.time_at(i).to_string();
-    // a channel whose raw samples aren't in the export has no value to show: never a pyramid value as a sample
+    // each channel's sample nearest the shared time, in its own file (files at other rates each give a real sample);
+    // a channel whose raw sample isn't in the export has no value to show: never a pyramid value as one
     let out: Vec<Value> = channels
         .iter()
-        .filter(|&&c| (c as usize) < d.info.channels.len())
         .filter_map(|&c| {
-            let v = d.cols[c as usize].raw.get(i)?;
+            let (si, local) = route(&sl, c as usize)?;
+            let s = &sl[si];
+            let i = nearest(s.ds, s.map.inverse(t))?;
+            let v = s.ds.cols[local].raw.get(i)?;
+            let ts = s.map.apply(s.ds.time_at(i)).to_string();
             Some(json!({ "channel": c, "index": i, "t": ts, "value": (!v.is_nan()).then_some(v) }))
         })
         .collect();
@@ -401,16 +435,17 @@ fn stats_of(d: &Ds, c: usize, lo: usize, hi: usize) -> Option<Stats> {
 }
 
 fn stats(st: &State, a: &Value) -> Result<Reply, String> {
-    let d = ds(st, arg(a, "file")?)?;
+    let sl = slots(st, arg(a, "file")?)?;
     let channels: Vec<u32> = arg(a, "channels")?;
     let span: Value = arg(a, "span")?;
     let (t0, t1) = (time(span["t0"].as_str().unwrap_or(""))?, time(span["t1"].as_str().unwrap_or(""))?);
-    let (lo, hi) = (d.lower_bound(t0), d.lower_bound(t1));
     let num = |v: f64| (!v.is_nan()).then_some(v);
     let mut out = Vec::new();
-    for &c in channels.iter().filter(|&&c| (c as usize) < d.info.channels.len()) {
-        let c = c as usize;
-        if d.cols[c].levels.is_empty() {
+    for &c in &channels {
+        let Some((si, local)) = route(&sl, c as usize) else { continue };
+        let (d, m) = (sl[si].ds, &sl[si].map);
+        let (lo, hi) = (d.lower_bound(m.inverse(t0)), d.lower_bound(m.inverse(t1)));
+        if d.cols[local].levels.is_empty() {
             continue;
         }
         if lo >= hi {
@@ -418,8 +453,8 @@ fn stats(st: &State, a: &Value) -> Result<Reply, String> {
             continue;
         }
         // exact stats need raw samples at the span's ragged edges: a channel without them is left out
-        let Some(s) = stats_of(d, c, lo, hi) else { continue };
-        let at = |m: Option<(f64, usize)>| m.map(|(_, i)| d.time_at(i).to_string());
+        let Some(s) = stats_of(d, local, lo, hi) else { continue };
+        let at = |mm: Option<(f64, usize)>| mm.map(|(_, i)| m.apply(d.time_at(i)).to_string());
         out.push(json!({ "channel": c, "count": s.count, "min": s.min.map(|m| m.0), "minT": at(s.min), "max": s.max.map(|m| m.0), "maxT": at(s.max), "mean": num(s.mean), "std": num(s.std) }));
     }
     Ok(Reply::Json(Value::Array(out)))
@@ -444,19 +479,14 @@ fn run_start(d: &Ds, c: usize, i: usize) -> Option<i64> {
     Some(d.time_at(j))
 }
 
-/// Every widget of a Gauges pane in one call (see the app's `widgets_frame`): values from held raw samples only,
-/// the lowest and highest value from the exact statistics, a run's start while its samples are held, and a trace
-/// drawn from the summaries.
-fn widgets_frame(st: &State, a: &Value) -> Result<Reply, String> {
-    let d = ds(st, arg(a, "file")?)?;
-    let t = time(&arg::<String>(a, "t")?)?;
-    let view: Value = arg(a, "view")?;
-    let (v0, v1) = (time(view["t0"].as_str().unwrap_or(""))?, time(view["t1"].as_str().unwrap_or(""))?);
-    let asks: Vec<Value> = arg(a, "widgets")?;
-    let Some(i) = nearest(d, t) else { return Ok(Reply::Json(Value::Null)) };
+/// One file's answer to a Gauges frame: the nearest sample's index and time, and each widget's answer (`asks` name the
+/// file's own channels, `view` is in the file's own clock).
+fn widgets_one(d: &Ds, t: i64, view: (i64, i64), asks: &[Value]) -> Option<(usize, i64, Vec<Value>)> {
+    let i = nearest(d, t)?;
     let ts = d.time_at(i);
     let n = d.info.channels.len();
     let num = |v: f64| (!v.is_nan()).then_some(v);
+    let (v0, v1) = view;
     let widgets: Vec<Value> = asks
         .iter()
         .map(|w| {
@@ -472,7 +502,7 @@ fn widgets_frame(st: &State, a: &Value) -> Result<Reply, String> {
                     (min, max) = (s.min.map(|m| m.0), s.max.map(|m| m.0));
                 }
             }
-            let run = flag("run").then(|| run_start(d, c, i)).flatten().map(|t| t.to_string());
+            let run = flag("run").then(|| run_start(d, c, i)).flatten();
             let px = w["trace"].as_u64().unwrap_or(0).min(600) as u32;
             let mut trace: Vec<Option<f32>> = Vec::new();
             if px > 0 {
@@ -487,19 +517,267 @@ fn widgets_frame(st: &State, a: &Value) -> Result<Reply, String> {
             json!({ "value": value, "min": min, "max": max, "runStart": run, "trace": trace })
         })
         .collect();
-    Ok(Reply::Json(json!({ "index": i, "t": ts.to_string(), "widgets": widgets })))
+    Some((i, ts, widgets))
+}
+
+/// Every widget of a Gauges pane in one call (see the app's `widgets_frame`): values from held raw samples only,
+/// the lowest and highest value from the exact statistics, a run's start while its samples are held, and a trace
+/// drawn from the summaries. In a tab of several files each file answers its own widgets through its map; the frame's
+/// sample is the first answering file's.
+fn widgets_frame(st: &State, a: &Value) -> Result<Reply, String> {
+    let sl = slots(st, arg(a, "file")?)?;
+    let t = time(&arg::<String>(a, "t")?)?;
+    let view: Value = arg(a, "view")?;
+    let (v0, v1) = (time(view["t0"].as_str().unwrap_or(""))?, time(view["t1"].as_str().unwrap_or(""))?);
+    let asks: Vec<Value> = arg(a, "widgets")?;
+    let total: usize = sl.iter().map(|s| s.ds.info.channels.len()).sum();
+    let mut out: Vec<Value> = vec![Value::Null; asks.len()];
+    let mut head: Option<(usize, i64)> = None;
+    for (si, s) in sl.iter().enumerate() {
+        let (mut at, mut sub) = (Vec::new(), Vec::new());
+        for (k, w) in asks.iter().enumerate() {
+            let c = (w["channel"].as_u64().unwrap_or(0) as usize).min(total.saturating_sub(1));
+            if route(&sl, c).is_some_and(|(r, _)| r == si) {
+                let mut w = w.clone();
+                w["channel"] = json!(c - s.first);
+                at.push(k);
+                sub.push(w);
+            }
+        }
+        if at.is_empty() {
+            continue;
+        }
+        let m = &s.map;
+        let Some((i, ts, got)) = widgets_one(s.ds, m.inverse(t), (m.inverse(v0), m.inverse(v1)), &sub) else {
+            return Ok(Reply::Json(Value::Null));
+        };
+        head.get_or_insert((i, m.apply(ts)));
+        for (k, mut w) in at.into_iter().zip(got) {
+            w["runStart"] =
+                w["runStart"].as_i64().map(|t| Value::String(m.apply(t).to_string())).unwrap_or(Value::Null);
+            out[k] = w;
+        }
+    }
+    let Some((index, ts)) = head else { return Ok(Reply::Json(Value::Null)) };
+    Ok(Reply::Json(json!({ "index": index, "t": ts.to_string(), "widgets": out })))
+}
+
+/// One Y channel's points: its number, then the times, x and y values.
+type XySeries = (usize, Vec<i64>, Vec<f64>, Vec<f64>);
+
+/// Samples read at a time while an XY plot reduces its pairs.
+const XY_SLICE: usize = 1 << 18;
+
+/// Channel `c`'s held samples `a..b`: an absent sample reads as missing, so a pair with one breaks the line (never a
+/// point from a sample the export doesn't hold).
+fn held(d: &Ds, c: usize, a: usize, b: usize) -> Vec<f64> {
+    let raw = &d.cols[c].raw;
+    (a..b).map(|i| raw.get(i).unwrap_or(f64::NAN)).collect()
+}
+
+/// An XY plot (see the app's `xy_points`): Y channels against an X channel of one file over a span, the pairs reduced
+/// to a grid of cells. Samples are paired by index, so the channels share their times.
+/// Little-endian: `TLMX`, u32 series, u32 flags (bit 0 sampled, bit 1 has a range), u32 0, f64 x0, x1, y0, y1; then per
+/// series u32 channel, u32 n, and n x i64 time, n x f64 x, n x f64 y (NaN pairs break the line).
+fn xy_points(st: &State, a: &Value) -> Result<Reply, String> {
+    let sl = slots(st, arg(a, "file")?)?;
+    let span: Value = arg(a, "span")?;
+    let ask: Value = a.get("ask").cloned().ok_or("no ask")?;
+    let (t0, t1) = (time(span["t0"].as_str().unwrap_or(""))?, time(span["t1"].as_str().unwrap_or(""))?);
+    let total: usize = sl.iter().map(|s| s.ds.info.channels.len()).sum();
+    let x = (ask["x"].as_u64().unwrap_or(0) as usize).min(total.saturating_sub(1));
+    let (sx, lx) = route(&sl, x).ok_or("no such channel")?;
+    let mut ys = Vec::new();
+    for y in
+        ask["ys"].as_array().into_iter().flatten().filter_map(Value::as_u64).map(|y| y as usize).filter(|&y| y < total)
+    {
+        let (s, l) = route(&sl, y).ok_or("no such channel")?;
+        if s != sx {
+            return Err("An XY plot pairs channels of one file".into());
+        }
+        ys.push((y, l));
+    }
+    let (d, m) = (sl[sx].ds, &sl[sx].map);
+    let rect: Option<[f64; 4]> = ask["rect"]
+        .as_array()
+        .filter(|r| r.len() == 4)
+        .map(|r| std::array::from_fn(|i| r[i].as_f64().unwrap_or(f64::NAN)));
+    let grid = (ask["grid"][0].as_u64().unwrap_or(1).max(1) as f64, ask["grid"][1].as_u64().unwrap_or(1).max(1) as f64);
+    let max_points = ask["maxPoints"].as_u64().unwrap_or(100_000) as usize;
+    let (lo, hi) = (d.lower_bound(m.inverse(t0)), d.lower_bound(m.inverse(t1)));
+    let mut series: Vec<XySeries> = ys.iter().map(|&(c, _)| (c, Vec::new(), Vec::new(), Vec::new())).collect();
+    let (mut range, mut sampled) = (None::<[f64; 4]>, false);
+    if hi > lo {
+        // pass 1: the range of the pairs
+        let mut r = [f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY];
+        let mut s0 = lo;
+        while s0 < hi {
+            let b = (s0 + XY_SLICE).min(hi);
+            let xs = held(d, lx, s0, b);
+            for &(_, yl) in &ys {
+                for (&xv, &yv) in xs.iter().zip(&held(d, yl, s0, b)) {
+                    if xv.is_finite() && yv.is_finite() {
+                        r = [r[0].min(xv), r[1].max(xv), r[2].min(yv), r[3].max(yv)];
+                    }
+                }
+            }
+            s0 = b;
+        }
+        if r[0].is_finite() {
+            range = Some(r);
+            // pass 2: reduce on the grid of the visible area (the data's own range when not zoomed)
+            let rc = rect.unwrap_or(r);
+            let cell = |xv: f64, yv: f64| {
+                let cx = ((xv - rc[0]) / (rc[1] - rc[0]).max(f64::MIN_POSITIVE) * grid.0).floor();
+                let cy = ((yv - rc[2]) / (rc[3] - rc[2]).max(f64::MIN_POSITIVE) * grid.1).floor();
+                (cx as i64, cy as i64)
+            };
+            let inside =
+                |xv: f64, yv: f64| rect.is_none() || (xv >= rc[0] && xv <= rc[1] && yv >= rc[2] && yv <= rc[3]);
+            for (s, &(_, yl)) in series.iter_mut().zip(&ys) {
+                let mut last: Option<(i64, i64)> = None;
+                let mut was_in = false;
+                let mut pending: Option<(i64, f64, f64)> = None;
+                let mut s0 = lo;
+                while s0 < hi {
+                    let b = (s0 + XY_SLICE).min(hi);
+                    let (xs, yv, ts) = (held(d, lx, s0, b), held(d, yl, s0, b), d.read_times(s0, b));
+                    for k in 0..xs.len() {
+                        let (xk, yk) = (xs[k], yv[k]);
+                        let t = m.apply(ts[k]);
+                        if !(xk.is_finite() && yk.is_finite()) {
+                            if s.2.last().is_some_and(|v| !v.is_nan()) {
+                                s.1.push(t);
+                                s.2.push(f64::NAN);
+                                s.3.push(f64::NAN);
+                            }
+                            (last, was_in, pending) = (None, false, None);
+                            continue;
+                        }
+                        let c = cell(xk, yk);
+                        if inside(xk, yk) {
+                            if let Some((pt, px, py)) = pending.take() {
+                                s.1.push(pt);
+                                s.2.push(px);
+                                s.3.push(py);
+                            }
+                            if last != Some(c) {
+                                s.1.push(t);
+                                s.2.push(xk);
+                                s.3.push(yk);
+                            }
+                            was_in = true;
+                        } else {
+                            if was_in {
+                                s.1.push(t);
+                                s.2.push(xk);
+                                s.3.push(yk);
+                            } else {
+                                pending = Some((t, xk, yk));
+                            }
+                            was_in = false;
+                        }
+                        last = Some(c);
+                    }
+                    s0 = b;
+                }
+                if max_points > 0 && s.2.len() > max_points {
+                    let step = s.2.len().div_ceil(max_points);
+                    let idx: Vec<usize> = (0..s.2.len())
+                        .filter(|&i| i.is_multiple_of(step) || s.2[i].is_nan() || i + 1 == s.2.len())
+                        .collect();
+                    s.1 = idx.iter().map(|&i| s.1[i]).collect();
+                    s.3 = idx.iter().map(|&i| s.3[i]).collect();
+                    s.2 = idx.iter().map(|&i| s.2[i]).collect();
+                    sampled = true;
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    out.extend_from_slice(b"TLMX");
+    out.extend_from_slice(&(series.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(u32::from(sampled) | (u32::from(range.is_some()) << 1)).to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    for v in range.unwrap_or([f64::NAN; 4]) {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    for (c, t, x, y) in &series {
+        out.extend_from_slice(&(*c as u32).to_le_bytes());
+        out.extend_from_slice(&(x.len() as u32).to_le_bytes());
+        t.iter().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
+        x.iter().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
+        y.iter().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
+    }
+    Ok(Reply::Bytes(out))
+}
+
+/// The sample rate of a file: its fixed rate, else from its median interval.
+fn rate_hz(d: &Ds) -> Option<f64> {
+    match &d.info.time {
+        TimeSource::Rate { hz } if *hz > 0.0 => Some(*hz),
+        _ if d.gaps.median_ns > 0 => Some(1e9 / d.gaps.median_ns as f64),
+        _ => None,
+    }
+}
+
+/// The Spectrum view: each channel's frequency content over `t0..t1`, from a window of up to 16384 held samples
+/// centred in the span at the file's sample rate. A window that needs a sample the export doesn't hold has no spectrum
+/// (nothing is filled in).
+fn spectrum(st: &State, a: &Value) -> Result<Reply, String> {
+    let sl = slots(st, arg(a, "file")?)?;
+    let channels: Vec<u32> = arg(a, "channels")?;
+    let (t0, t1) = (time(&arg::<String>(a, "t0")?)?, time(&arg::<String>(a, "t1")?)?);
+    let mut out = Vec::new();
+    for &c in &channels {
+        let Some((si, local)) = route(&sl, c as usize) else { continue };
+        let (d, m) = (sl[si].ds, &sl[si].map);
+        let (t0, t1) = (m.inverse(t0), m.inverse(t1));
+        let (Some(first), Some(last), Some(rate)) = (d.info.t_first, d.info.t_last, rate_hz(d)) else { continue };
+        let available = ((t1 - t0) as f64 / 1e9 * rate).floor();
+        let Some(n) = tlmbench_expr::fft::points(
+            if available.is_finite() && available > 0.0 { available as usize } else { 0 },
+            tlmbench_expr::fft::MAX_POINTS,
+        ) else {
+            continue;
+        };
+        let start = t0 as f64 + ((t1 - t0) as f64 - n as f64 / rate * 1e9) / 2.0;
+        let idx: Vec<Option<usize>> = (0..n)
+            .map(|i| {
+                let t = (start + i as f64 / rate * 1e9).round() as i64;
+                (first..=last).contains(&t).then(|| d.lower_bound(t.saturating_add(1)).clamp(1, d.len) - 1)
+            })
+            .collect();
+        let raw = &d.cols[local].raw;
+        // every sample the window reads must be held
+        let Some(x) = idx
+            .iter()
+            .map(|i| match i {
+                Some(i) => raw.get(*i),
+                None => Some(f64::NAN),
+            })
+            .collect::<Option<Vec<f64>>>()
+        else {
+            continue;
+        };
+        let Some(s) = tlmbench_expr::spectrum(&x, rate) else { continue };
+        out.push(json!({ "channel": c, "df": s.df, "nyquist": s.nyquist, "peak_hz": s.peak_hz, "peak_amp": s.peak_amp, "n": s.n, "mag": s.mag.iter().map(|&v| v as f32).collect::<Vec<_>>() }));
+    }
+    Ok(Reply::Json(Value::Array(out)))
 }
 
 fn rows(st: &State, a: &Value) -> Result<Reply, String> {
-    let d = ds(st, arg(a, "file")?)?;
+    let sl = slots(st, arg(a, "file")?)?;
     let channels: Vec<u32> = arg(a, "channels")?;
     let span: Value = arg(a, "span")?;
     let offset: u64 = arg(a, "offset")?;
     let limit: u32 = arg(a, "limit")?;
     let (t0, t1) = (time(span["t0"].as_str().unwrap_or(""))?, time(span["t1"].as_str().unwrap_or(""))?);
-    let chans: Vec<usize> = channels.iter().map(|&c| c as usize).filter(|&c| c < d.info.channels.len()).collect();
-    let lo = d.lower_bound(t0);
-    let hi = d.lower_bound(t1).max(lo);
+    // the rows are the primary's samples; another file's columns hold its last sample at or before each row's time
+    let (d, pm) = (sl[0].ds, &sl[0].map);
+    let chans: Vec<(usize, usize)> = channels.iter().filter_map(|&c| route(&sl, c as usize)).collect();
+    let lo = d.lower_bound(pm.inverse(t0));
+    let hi = d.lower_bound(pm.inverse(t1)).max(lo);
     let start = (lo as u64).saturating_add(offset).min(hi as u64) as usize;
     let end = start + (hi - start).min(limit as usize).min(MAX_ROWS);
     let k = end - start;
@@ -510,12 +788,23 @@ fn rows(st: &State, a: &Value) -> Result<Reply, String> {
     out.extend_from_slice(&((hi - lo) as u64).to_le_bytes());
     out.extend_from_slice(&(k as u32).to_le_bytes());
     out.extend_from_slice(&0u32.to_le_bytes());
-    for t in d.read_times(start, end) {
+    let times: Vec<i64> = d.read_times(start, end).into_iter().map(|t| pm.apply(t)).collect();
+    for t in &times {
         out.extend_from_slice(&t.to_le_bytes());
     }
-    for &c in &chans {
-        // a sample the export doesn't hold is a blank cell
-        (start..end).for_each(|i| out.extend_from_slice(&d.cols[c].raw.get(i).unwrap_or(f64::NAN).to_le_bytes()));
+    for &(si, local) in &chans {
+        let s = &sl[si];
+        for (j, &t) in times.iter().enumerate() {
+            // a sample the export doesn't hold is a blank cell
+            let v = if si == 0 {
+                s.ds.cols[local].raw.get(start + j)
+            } else {
+                s.ds.lower_bound(s.map.inverse(t).saturating_add(1))
+                    .checked_sub(1)
+                    .and_then(|i| s.ds.cols[local].raw.get(i))
+            };
+            out.extend_from_slice(&v.unwrap_or(f64::NAN).to_le_bytes());
+        }
     }
     Ok(Reply::Bytes(out))
 }
@@ -690,5 +979,160 @@ mod tests {
         let Reply::Bytes(b) = view(&st2, &a).unwrap() else { unreachable!() };
         let tr = &tlmbench_core::wire::decode_batch(&b).unwrap().entries[0].1.traces[0];
         assert!(tr.x.is_empty() && !tr.coarse);
+    }
+
+    /// Two files on one timeline: the second is logged 10 s after the first starts.
+    fn two_files() -> (State, u32) {
+        let mut st = State::default();
+        st.files.push(Some(trimmed(0, &[(0, N)])));
+        st.files.push(Some(trimmed(2, &[(20_000, 30_000)])));
+        let m = json!([{ "file": 0, "knots": [] }, { "file": 1, "knots": [["0", "10000000000"]] }]);
+        let g = crate::group::set(&mut st, None, &m).unwrap();
+        let id = g["id"].as_u64().unwrap() as u32;
+        (st, id)
+    }
+
+    #[test]
+    fn a_group_reads_each_file_through_its_map() {
+        let (st, g) = two_files();
+        // channel 0 is file 1's, channel 1 is file 2's (one channel each)
+        let at = |t_s: i64| {
+            let a = json!({ "file": g, "channels": [0, 1], "t": (t_s * 1_000_000_000).to_string() });
+            match values_at(&st, &a).unwrap() {
+                Reply::Json(Value::Array(v)) => v,
+                _ => unreachable!(),
+            }
+        };
+        // shared 55 s is 55 s in file 1 and 45 s in file 2, whose raw samples are held from 20 s to 30 s only
+        let v = at(55);
+        assert_eq!(v.len(), 1, "file 2 holds nothing at its 45 s: {v:?}");
+        assert_eq!(v[0]["channel"], 0);
+        // shared 32 s is 22 s in file 2: held, and reported at 32 s
+        let v = at(32);
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[1]["value"].as_f64(), Some(value(22_000)));
+        assert_eq!(v[1]["t"], "32000000000");
+        assert_eq!(v[0]["value"].as_f64(), Some(value(32_000)));
+        // stats of a span in file 2's window, through its map: shared 32..36 s is file 2's 22..26 s
+        let a = json!({ "file": g, "channels": [1], "span": { "t0": "32000000000", "t1": "36000000000" } });
+        let Reply::Json(Value::Array(s)) = stats(&st, &a).unwrap() else { unreachable!() };
+        let (mn, mx, _) = brute(22_000, 26_000);
+        assert_eq!((s[0]["min"].as_f64(), s[0]["max"].as_f64()), (Some(mn), Some(mx)));
+        // the time of the extreme is in the shared clock
+        let (_, imax) =
+            (22_000..26_000).fold((f64::MIN, 0), |(m, k), i| if value(i) > m { (value(i), i) } else { (m, k) });
+        assert_eq!(s[0]["maxT"], ((imax as i64 + 10_000) * 1_000_000).to_string());
+    }
+
+    #[test]
+    fn a_group_view_is_in_the_shared_clock_and_labels_what_it_lacks() {
+        let (st, g) = two_files();
+        let view_of = |t0_s: i64, t1_s: i64| {
+            let a = json!({ "file": g, "generation": 1, "entries": [{ "id": 7, "channels": [1],
+                "t0": (t0_s * 1_000_000_000).to_string(), "t1": (t1_s * 1_000_000_000).to_string(), "widthPx": 300 }] });
+            let Reply::Bytes(b) = view(&st, &a).unwrap() else { unreachable!() };
+            tlmbench_core::wire::decode_batch(&b).unwrap().entries.remove(0).1
+        };
+        // inside file 2's window (shared 32..35 s): exact, and the times are shared times
+        let r = view_of(32, 35);
+        assert_eq!(r.traces.len(), 1);
+        assert!(!r.traces[0].coarse && !r.traces[0].x.is_empty());
+        // outside it (shared 50..90 s): coarse, from the summaries
+        assert!(view_of(50, 90).traces[0].coarse);
+        // a channel number past every file is ignored
+        let a = json!({ "file": g, "generation": 1, "entries": [{ "id": 1, "channels": [9], "t0": "0", "t1": "1000000000", "widthPx": 10 }] });
+        let Reply::Bytes(b) = view(&st, &a).unwrap() else { unreachable!() };
+        assert!(tlmbench_core::wire::decode_batch(&b).unwrap().entries[0].1.traces.is_empty());
+    }
+
+    #[test]
+    fn a_groups_table_holds_the_other_files_last_sample_and_blanks_what_is_absent() {
+        let (st, g) = two_files();
+        // rows of the primary from shared 30 s; file 2's column (channel 1) holds its sample at or before each time
+        let a = json!({ "file": g, "channels": [0, 1], "span": { "t0": "30000000000", "t1": "30003000000" }, "offset": 0, "limit": 10 });
+        let Reply::Bytes(b) = rows(&st, &a).unwrap() else { unreachable!() };
+        let f = |o: usize| f64::from_le_bytes(b[o..o + 8].try_into().unwrap());
+        let k = 3;
+        assert_eq!(u32::from_le_bytes(b[24..28].try_into().unwrap()) as usize, k);
+        let col0 = 32; // after the 32-byte header: times (k), then channel 0, then channel 1
+        let c0 = col0 + 8 * k;
+        let c1 = c0 + 8 * k;
+        assert_eq!(f(c0), value(30_000));
+        // file 2's own time is 20 s there: its first held sample, 20_000
+        assert_eq!(f(c1), value(20_000));
+        assert_eq!(f(c1 + 16), value(20_002));
+        // before file 2's window: blank
+        let a = json!({ "file": g, "channels": [1], "span": { "t0": "20000000000", "t1": "20001000000" }, "offset": 0, "limit": 10 });
+        let Reply::Bytes(b) = rows(&st, &a).unwrap() else { unreachable!() };
+        assert!(f64::from_le_bytes(b[32 + 8..32 + 16].try_into().unwrap()).is_nan());
+    }
+
+    #[test]
+    fn a_groups_gauges_answer_each_file_in_the_shared_clock() {
+        let (st, g) = two_files();
+        let a = json!({ "file": g, "t": "32000000000", "view": { "t0": "30000000000", "t1": "40000000000" },
+            "widgets": [{ "channel": 0, "run": true }, { "channel": 1, "minmax": true, "run": true }] });
+        let Reply::Json(f) = widgets_frame(&st, &a).unwrap() else { unreachable!() };
+        assert_eq!(f["t"], "32000000000");
+        assert_eq!(f["widgets"][0]["value"].as_f64(), Some(value(32_000)));
+        assert_eq!(f["widgets"][1]["value"].as_f64(), Some(value(22_000)));
+        // file 2's run starts are in the shared clock (its own 10 s is shared 20 s at the earliest)
+        let run = f["widgets"][1]["runStart"].as_str().map(|s| s.parse::<i64>().unwrap());
+        assert!(run.is_some_and(|r| r >= 30_000_000_000), "{run:?}");
+    }
+
+    #[test]
+    fn closing_a_tab_leaves_its_files_open() {
+        let (mut st, g) = two_files();
+        dispatch(&mut st, "close", &json!({ "file": g }), &[]).unwrap();
+        assert!(st.groups.is_empty() && st.files.iter().all(Option::is_some));
+        dispatch(&mut st, "close", &json!({ "file": 1 }), &[]).unwrap();
+        assert!(st.files[1].is_none() && st.files[0].is_some());
+    }
+
+    #[test]
+    fn xy_pairs_only_held_samples_and_spectrum_needs_its_whole_window() {
+        // x and y are the same channel here: points lie on the diagonal, and only inside the held window
+        let d = trimmed(0, &[(20_000, 30_000)]);
+        let mut st = State::default();
+        st.files.push(Some(d));
+        let xy = |t0_s: i64, t1_s: i64| {
+            let a = json!({ "file": 0, "span": { "t0": (t0_s * 1_000_000_000).to_string(), "t1": (t1_s * 1_000_000_000).to_string() },
+                "ask": { "x": 0, "ys": [0], "grid": [200, 200], "maxPoints": 100000 } });
+            let Reply::Bytes(b) = xy_points(&st, &a).unwrap() else { unreachable!() };
+            b
+        };
+        let counts = |b: &[u8]| {
+            (
+                u32::from_le_bytes(b[4..8].try_into().unwrap()),
+                u32::from_le_bytes(b[8..12].try_into().unwrap()) >> 1 & 1,
+                u32::from_le_bytes(b[48 + 4..48 + 8].try_into().unwrap()),
+            )
+        };
+        let inside = xy(20, 30);
+        let (series, has_range, n) = counts(&inside);
+        assert_eq!((series, has_range), (1, 1));
+        assert!(n > 10, "a diagonal through the held samples: {n} points");
+        // outside the window nothing is held: no range, no points
+        let outside = xy(50, 60);
+        assert_eq!((counts(&outside).1, counts(&outside).2), (0, 0));
+        // a span that is half inside draws only the half the export holds
+        let half = xy(25, 40);
+        assert!(counts(&half).2 > 0 && counts(&half).2 < n + 1);
+        // the spectrum of held samples finds the sine (0.013 rad/sample at 1 kHz is 2.07 Hz); a window with absent samples has none
+        let whole = trimmed(0, &[(0, N)]);
+        let mut st2 = State::default();
+        st2.files.push(Some(whole));
+        let sp = |st: &State, t0: i64, t1: i64| {
+            let a = json!({ "file": 0, "channels": [0], "t0": (t0 * 1_000_000_000).to_string(), "t1": (t1 * 1_000_000_000).to_string() });
+            let Reply::Json(Value::Array(v)) = spectrum(st, &a).unwrap() else { unreachable!() };
+            v
+        };
+        let v = sp(&st2, 0, 90);
+        assert_eq!(v.len(), 1);
+        let peak = v[0]["peak_hz"].as_f64().unwrap();
+        assert!((1.5..3.0).contains(&peak), "{peak}");
+        assert!(sp(&st, 0, 90).is_empty(), "the window reads samples the export does not hold");
+        assert_eq!(sp(&st, 20, 30).len(), 1, "a window inside the held samples has a spectrum");
     }
 }

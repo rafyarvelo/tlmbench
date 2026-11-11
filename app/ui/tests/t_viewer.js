@@ -148,6 +148,50 @@ try {
   })());
   check('no page errors when trimmed', errs4.length === 0, errs4);
 
+  // two files in one export: one tab, the second on the first's timeline (separate runs line up at their starts), and the
+  // layout's `rpm·2` pane draws the second file's channel
+  const csv2 = join(work, 'bench2.csv');
+  writeFileSync(csv2, 'time,rpm,temp\n' + Array.from({ length: 20000 }, (_, i) => `${1000 + i / 100},${Math.cos(i / 50)},${30 + i / 300}`).join('\n') + '\n');
+  writeFileSync(join(work, 'two.json'), JSON.stringify({ schema: 1, name: 'Both runs', panes: [{ channels: ['rpm', 'rpm·2'], view: 'chart' }, { channels: ['temp·2'], view: 'chart' }] }));
+  const two = join(work, 'two');
+  const r2 = spawnSync(CLI, ['export', 'html', csv, csv2, '--layout', join(work, 'two.json'), '--cache', join(work, 'cache'), '--out', two, '--viewer', VIEWER], { encoding: 'utf8' });
+  const m2 = existsSync(join(two, 'export.json')) ? JSON.parse(readFileSync(join(two, 'export.json'), 'utf8')) : null;
+  check('a two-file export records each file\'s alignment', r2.status === 0 && m2?.files.length === 2 && m2.group?.slots.length === 1 && m2.group.slots[0].method === 'starts' && m2.group.slots[0].knots.length === 1, [r2.stderr, m2?.group]);
+  site = two;
+  const gp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const errs7 = [];
+  gp.on('pageerror', (e) => errs7.push(e.message));
+  await gp.goto(url, { waitUntil: 'domcontentloaded' });
+  const untilG = async (fn) => {
+    for (let i = 0; i < 200; i++) {
+      if (await gp.evaluate(fn).catch(() => false)) return true;
+      await gp.waitForTimeout(60);
+    }
+    return false;
+  };
+  check('both files open as one tab', await untilG(() => window.__tlmFirstView != null && document.querySelectorAll('#wsTabs .wstab').length === 1), await gp.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
+  check('the second file is on the first\'s timeline: the view runs to about 200 s, not 1200 s', await untilG(() => { const v = window.__tlmApp?.view?.(); return !!v && BigInt(v.t1) > 190_000_000_000n && BigInt(v.t1) < 210_000_000_000n; }), await gp.evaluate(() => window.__tlmApp?.view?.()));
+  check('the layout draws both runs (the pane with rpm and rpm·2 has two traces)', await untilG(() => (window.__tlmApp?.drawn?.()?.[0] ?? []).length === 2), await gp.evaluate(() => window.__tlmApp?.drawn?.()));
+  check('no page errors with two files', errs7.length === 0, errs7);
+
+  // XY and the spectrum work in a viewer (they were stubs): the pairs and the window are held samples
+  writeFileSync(join(work, 'xy.json'), JSON.stringify({ schema: 1, name: 'XY and spectrum', panes: [{ channels: ['rpm'], view: 'xy', x: 'temp' }, { channels: ['rpm'], view: 'spectrum' }] }));
+  const xyd = join(work, 'xy');
+  spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'xy.json'), '--cache', join(work, 'cache'), '--out', xyd, '--viewer', VIEWER], { encoding: 'utf8' });
+  site = xyd;
+  const xp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const errs8 = [];
+  xp.on('pageerror', (e) => errs8.push(e.message));
+  await xp.goto(url, { waitUntil: 'domcontentloaded' });
+  check('an XY pane and a Spectrum pane draw from the export', await (async () => {
+    for (let i = 0; i < 200; i++) {
+      if (await xp.evaluate(() => !!document.querySelector('[data-xy]') && !!document.querySelector('[data-spec]')).catch(() => false)) return true;
+      await xp.waitForTimeout(60);
+    }
+    return false;
+  })(), await xp.evaluate(() => [!!document.querySelector('[data-xy]'), !!document.querySelector('[data-spec]')]));
+  check('and say nothing is unavailable', errs8.length === 0 && !(await xp.evaluate(() => /not available here/.test(document.body.textContent ?? ''))), errs8);
+
   // a link from a check report frames the violation: #show=<start>,<end> (the data runs 0..200 s; the violation is 100..101 s)
   site = join(work, 'site');
   const sp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();

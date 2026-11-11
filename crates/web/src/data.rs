@@ -11,6 +11,8 @@ use tlmbench_core::{RateTimes, Samples, Times, Timestamp};
 #[derive(Default)]
 pub struct State {
     pub files: Vec<Option<Ds>>,
+    /// Tabs of several files on one timeline, by the id the page uses for the tab (see [`crate::group`]).
+    pub groups: std::collections::HashMap<u32, crate::group::Group>,
 }
 
 pub enum Tm {

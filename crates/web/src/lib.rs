@@ -8,6 +8,7 @@
 #![allow(clippy::chunks_exact_to_as_chunks)]
 
 mod data;
+mod group;
 mod import;
 mod ops;
 

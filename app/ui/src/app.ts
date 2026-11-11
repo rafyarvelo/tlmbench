@@ -5278,7 +5278,9 @@ if ((window as unknown as { __tlmViewer?: boolean }).__tlmViewer) {
   const boot = await invoke<{ files: string[]; layout: Workspace | null; widgets?: CustomWidget[] }>('viewer_boot');
   // the export's widgets: SVG made safe and code as value cards, so nothing the file carries runs
   if (boot.widgets?.length) setSetting('customWidgets', boot.widgets);
-  for (const p of boot.files) await openPath(p);
+  // several files are one tab: the first, and the others on its timeline (the export says how each lines up)
+  if (boot.files.length > 1) await openTogether(boot.files);
+  else for (const p of boot.files) await openPath(p);
   if (boot.files.length && boot.layout?.panes) {
     // the layout is of the first file
     const first = tabs.list[0];

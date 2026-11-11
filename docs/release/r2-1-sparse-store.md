@@ -64,7 +64,7 @@ summary view (2) reads a pyramid that starts higher, so core is unchanged.
 `Raw` is in `crates/web/src/data.rs`; the summary view and `exact_summary` (stats from whole summaries and raw edges,
 for any first level) are in `crates/web/src/ops.rs`; the writer's `Window` (centred on the event, `--detail`) is in
 `crates/export/src/html.rs`. The viewer core uses `tlmbench-store`'s no-`native` build only for what the app shares
-(`Opened::in_memory`, groups, checks); groups with several files arrive with the multi-file export, below.
+(`Opened::in_memory`, checks). **Owner decision, Nov 11:** several files are routed in `crates/web/src/group.rs` on core's `TimeMap` over the same sparse-aware per-file queries, because the store's `Opened` queries would read an absent sample as missing instead of as "not in this export"; making them sparse-aware is a rewrite of the store's query layer.
 
 ## Tests
 

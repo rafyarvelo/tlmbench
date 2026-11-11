@@ -109,6 +109,45 @@ fn find_layout(name: &str, first: &Path, common: &Common) -> Result<Value, Fail>
     serde_json::from_str(&text).map_err(|e| Fail(3, format!("the view {name:?} doesn't read: {e}")))
 }
 
+/// How file `k` (2nd on) lines up with the primary in a multi-file export: a saved alignment for the pair (yours, then the
+/// config folders' `timemaps`), matched by the files' identities or names, else the app's default: files logged in one
+/// session share a clock, separate runs line up at their starts. As the manifest's `group.slots[]` has it.
+fn slot_alignment(k: usize, primary: &Opened, o: &Opened, store_root: &Path, dirs: &[PathBuf]) -> Value {
+    let name = |x: &Opened| {
+        x.recording().info().path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    };
+    let mut roots = vec![store_root.join("timemaps")];
+    roots.extend(dirs.iter().map(|d| d.join("timemaps")));
+    for r in roots {
+        let Ok(rd) = std::fs::read_dir(&r) else { continue };
+        let mut found: Vec<_> = rd
+            .flatten()
+            .filter_map(|e| config::timemap_from_toml(&std::fs::read_to_string(e.path()).ok()?).ok())
+            .collect();
+        found.sort_by_key(|m| m.file_name());
+        let pn = name(primary);
+        let on = name(o);
+        let by_id = |m: &config::TimeMapFile| {
+            !m.primary_id.is_empty() && m.primary_id == primary.fingerprint() && m.file_id == o.fingerprint()
+        };
+        let by_name = |m: &config::TimeMapFile| {
+            m.primary.rsplit(['/', '\\']).next() == Some(pn.as_str())
+                && m.file.rsplit(['/', '\\']).next() == Some(on.as_str())
+        };
+        if let Some(m) = found.into_iter().find(|m| by_id(m) || by_name(m)) {
+            return json!({ "file": k, "method": m.method, "seconds": m.seconds, "channel": m.channel, "plugin": m.plugin, "params": m.params, "locked": m.locked,
+                "knots": m.knots.iter().map(|x| [x[0].to_string(), x[1].to_string()]).collect::<Vec<_>>(), "pairs": m.pairs });
+        }
+    }
+    let (a, b) = (primary.recording().info(), o.recording().info());
+    let overlap = matches!((a.t_first, a.t_last, b.t_first, b.t_last), (Some(a0), Some(a1), Some(b0), Some(b1)) if a0 <= b1 && b0 <= a1);
+    let (method, knots) = match (overlap, a.t_first, b.t_first) {
+        (false, Some(a0), Some(b0)) => ("starts", vec![[b0.to_string(), a0.to_string()]]),
+        _ => ("clock", Vec::new()),
+    };
+    json!({ "file": k, "method": method, "seconds": 0, "channel": "", "plugin": "", "params": "", "locked": false, "knots": knots, "pairs": [] })
+}
+
 /// A pane channel `name` or `name·2` (slot 2): the slot (1-based) and the channel's own name.
 pub fn split_slot(name: &str) -> (usize, &str) {
     if let Some((base, n)) = name.rsplit_once('·')
@@ -289,10 +328,16 @@ pub fn run(a: Args) -> Result<(), Fail> {
         .map(|w| json!({ "id": format!("sw_{}", w.id), "name": w.name, "icon": w.icon, "svg": w.svg, "angle": w.angle, "code": w.code, "by": w.by }))
         .collect();
     let widgets = tlmbench_export::widgets::export_widgets(&shared);
+    // several files: one tab, each file a slot with the map to the shared timeline
+    let group = (opened.len() > 1).then(|| {
+        let slots: Vec<Value> =
+            (1..opened.len()).map(|k| slot_alignment(k, &opened[0], &opened[k], store.root(), &dirs)).collect();
+        json!({ "slots": slots })
+    });
     let command: Vec<String> = std::env::args().collect();
     let inputs: Vec<&Path> = a.files.iter().map(PathBuf::as_path).collect();
     let provenance = html::provenance(&command, &config, &inputs).map_err(|e| Fail(2, e.to_string()))?;
-    let extra = json!({ "layout": layout, "events": events_out, "checks": checks_out, "provenance": provenance, "widgets": widgets, "tool": { "name": "tlmbench", "version": env!("CARGO_PKG_VERSION") } });
+    let extra = json!({ "layout": layout, "events": events_out, "checks": checks_out, "provenance": provenance, "widgets": widgets, "group": group, "tool": { "name": "tlmbench", "version": env!("CARGO_PKG_VERSION") } });
     // a one-file export is made in a folder of its own first, then packed: nothing else is written
     let folder = if single.is_some() {
         std::env::temp_dir().join(format!("tlmbench-single-{}-{}", std::process::id(), budget))

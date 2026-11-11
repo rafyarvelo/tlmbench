@@ -37,6 +37,8 @@ export interface Manifest {
   events: { file: number; events: unknown[] }[];
   checks: { file: number; set: { name: string }; result: unknown; events: unknown[]; t_first: string }[];
   widgets?: unknown[];
+  /** Several files: each file after the first with the map from its clock to the shared timeline. */
+  group?: { slots: { file: number; method: string; seconds: number; channel: string; plugin: string; params: string; locked: boolean; knots: [string, string][]; pairs: [number, number][] }[] } | null;
   /** BLAKE3 (hex) of every data file, by its path in the export. */
   checksums: Record<string, string>;
 }
@@ -101,8 +103,17 @@ export async function installViewerCore(): Promise<void> {
   /** Per file, per channel: resolves once its raw samples are in the core (at once for a channel that keeps none). */
   const rawReady = new Map<number, Promise<void>[]>();
   const waitRaw = async (file: unknown, channels: unknown) => {
-    const ps = rawReady.get(Number(file)) ?? [];
-    await Promise.all((channels as number[]).map((c) => ps[c]));
+    const want = channels as number[];
+    const direct = rawReady.get(Number(file));
+    if (direct) return void (await Promise.all(want.map((c) => direct[c])));
+    // a tab of several files: each channel waits for its own file's raw samples
+    let slots: { file: number; first: number; count: number }[] = [];
+    try {
+      slots = ((core('group_state', { group: file }) as { slots?: typeof slots }).slots ?? []) as typeof slots;
+    } catch {
+      return;
+    }
+    await Promise.all(want.map((c) => { const s = slots.find((x) => c >= x.first && c < x.first + x.count); return s ? rawReady.get(s.file)?.[c - s.first] : undefined; }));
   };
 
   /** The sample the last view was centred on (file k's), so the raw windows nearest it load first. */
@@ -214,7 +225,15 @@ export async function installViewerCore(): Promise<void> {
     },
     values_at: async (a) => (await waitRaw(a.file, a.channels), core('values_at', a)),
     stats: async (a) => (await waitRaw(a.file, a.channels), core('stats', a)),
+    // the alignment each file after the first was exported with, as the app reads a saved one
+    timemap_find: (a) => manifest.group?.slots.find((s) => s.file === Number(a.file)) ?? null,
+    timemap_save: () => null,
+    group_set: (a) => core('group_set', a),
+    group_state: (a) => core('group_state', a),
+    group_map: (a) => core('group_map', a),
     rows: async (a) => (await waitRaw(a.file, a.channels), core('rows', a)),
+    xy_points: async (a) => (await waitRaw(a.file, [(a.ask as { x: number }).x, ...(a.ask as { ys: number[] }).ys]), core('xy_points', a)),
+    spectrum: async (a) => (await waitRaw(a.file, a.channels), core('spectrum', a)),
     widgets_frame: async (a) => (await waitRaw(a.file, (a.widgets as { channel: number }[]).map((w) => w.channel)), core('widgets_frame', a)),
     events_list: (a) => (manifest.events.find((e) => e.file === Number(a.file) - 0)?.events ?? []),
     // the check sets the export ran, and their results as the app's Checks pane reads them
