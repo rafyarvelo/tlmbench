@@ -5,7 +5,7 @@
 //! alignment (`tlmbench_store::align`); [`Found`] is what Settings lists, loaded or not.
 //!
 //! Trust: a `.wasm` file runs in the sandbox, so it loads from the person's own folder and from a folder's shared
-//! `.tlmbench/plugins/`. A native library runs with the person's rights, so it loads only from their own folder and
+//! `.tlmbench/plugins/` once the person has trusted that folder (until then they are listed, not loaded). A native library runs with the person's rights, so it loads only from their own folder and
 //! only once they turn it on (by file name): until then it isn't even opened.
 
 mod decoder;
@@ -33,6 +33,22 @@ pub enum Kind {
     Estimator,
 }
 
+/// A WASM plugin file loaded on its own (the author's `tlmbench plugins --check`).
+#[derive(Debug)]
+pub enum Loaded {
+    Decoder(WasmDecoder),
+    Estimator(WasmEstimator),
+}
+
+/// Loads one `.wasm` file, whichever world it implements.
+pub fn load_wasm(path: &Path) -> Result<Loaded, String> {
+    match wasm::kind_of(&wasm::load(path)?) {
+        Some(Kind::Decoder) => WasmDecoder::load(path).map(Loaded::Decoder),
+        Some(Kind::Estimator) => WasmEstimator::load(path).map(Loaded::Estimator),
+        None => Err(format!("{}: it implements neither a decoder nor an estimator", path.display())),
+    }
+}
+
 /// Where a plugin stands.
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 #[serde(tag = "state", content = "why", rename_all = "lowercase")]
@@ -40,6 +56,8 @@ pub enum Status {
     Loaded,
     /// A native plugin the person hasn't turned on: not loaded.
     Off,
+    /// In a folder's shared plugins that the person hasn't trusted yet: listed, not loaded (not even compiled).
+    Untrusted,
     /// Loading failed, or it isn't allowed here.
     Failed(String),
 }
@@ -59,6 +77,8 @@ pub struct Found {
     pub description: Option<String>,
     /// Found in a folder's shared `.tlmbench/plugins/` and not the person's own.
     pub shared: bool,
+    /// For a shared plugin: that plugins folder, which is what trusting it is keyed by.
+    pub folder: Option<String>,
     pub status: Status,
 }
 
@@ -81,9 +101,10 @@ fn files_in(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// Reads the plugins folders and replaces the loaded plugins everywhere. `own` is the person's plugins folder (the
-/// only one native plugins load from), `shared` are folders' `.tlmbench/plugins/`, `native_on` the file names of the
+/// only one native plugins load from), `shared` are folders' `.tlmbench/plugins/` and `trusted` the ones the person
+/// has said to load (by path; an untrusted folder's plugins are only listed), `native_on` the file names of the
 /// native plugins they have turned on.
-pub fn install(own: Option<&Path>, shared: &[PathBuf], native_on: &[String]) -> Installed {
+pub fn install(own: Option<&Path>, shared: &[PathBuf], trusted: &[String], native_on: &[String]) -> Installed {
     let mut found = Vec::new();
     let mut decoders: Vec<Arc<dyn DecoderPlugin>> = Vec::new();
     let mut estimators: Vec<Arc<dyn EstimatorPlugin>> = Vec::new();
@@ -101,9 +122,13 @@ pub fn install(own: Option<&Path>, shared: &[PathBuf], native_on: &[String]) -> 
                 version: None,
                 description: None,
                 shared: is_shared,
+                folder: is_shared.then(|| dir.to_string_lossy().into_owned()),
                 status: Status::Loaded,
             };
-            if ext == "wasm" {
+            let held_back = is_shared && !trusted.contains(&dir.to_string_lossy().into_owned());
+            if ext == "wasm" && held_back {
+                f.status = Status::Untrusted;
+            } else if ext == "wasm" {
                 match wasm::load(&path).map(|c| (wasm::kind_of(&c), c)) {
                     Err(e) => f.status = Status::Failed(e),
                     Ok((None, _)) => {

@@ -57,10 +57,32 @@ struct Common {
     /// A derived channel of this one expression, `name=expression` (repeat), as channels of the recording
     #[arg(long = "expr", global = true)]
     exprs: Vec<String>,
+    /// Your plugins folder (default: `plugins/` in the app's data folder). WASM decoders and alignment plugins in it,
+    /// and in the `plugins/` of each --config folder, are loaded
+    #[arg(long, global = true)]
+    plugins: Option<PathBuf>,
+    /// Turn on a native plugin of your plugins folder, by file name (repeat). Native plugins run with your rights, so
+    /// each stays off until named
+    #[arg(long = "native-plugin", global = true)]
+    native_plugins: Vec<String>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// The plugins found in your plugins folder and the --config folders, with tier, version and whether they loaded
+    Plugins {
+        /// JSON instead of a table
+        #[arg(long)]
+        json: bool,
+        /// Try one plugin (a `.wasm` file) instead of listing: what it says about itself and, with a file, what it
+        /// decodes (schema, samples, time range) or why it can't. For writing a plugin
+        #[arg(long)]
+        check: Option<PathBuf>,
+        /// The file to decode with --check
+        file: Option<PathBuf>,
+        #[command(flatten)]
+        common: Common,
+    },
     /// Channels, units, types, sample count, time range, time source and gaps of each file
     Info {
         #[arg(required = true)]
@@ -344,6 +366,10 @@ impl From<tlmbench_store::Error> for Fail {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
+        Command::Plugins { json, check, file, common } => match check {
+            Some(plugin) => check_plugin(&plugin, file.as_deref(), &common),
+            None => plugins(json, &common),
+        },
         Command::Info { files, json, common } => info(&files, json, &common),
         Command::Inspect { file, common } => inspect(&file, &common),
         Command::Derive { file, span, common } => derive(&file, &span, &common),
@@ -433,6 +459,97 @@ fn config(action: ConfigAction, common: &Common) -> Result<(), Fail> {
     }
 }
 
+/// `tlmbench plugins --check PLUGIN [FILE]`: the author's harness.
+fn check_plugin(plugin: &std::path::Path, file: Option<&std::path::Path>, common: &Common) -> Result<(), Fail> {
+    use tlmbench_plugin::Loaded;
+    let loaded = tlmbench_plugin::load_wasm(plugin).map_err(|e| Fail(2, e))?;
+    let (info, decoder) = match &loaded {
+        Loaded::Decoder(d) => (tlmbench_decode::plugin::DecoderPlugin::info(d).clone(), Some(d)),
+        Loaded::Estimator(e) => (e.info().clone(), None),
+    };
+    println!(
+        "{} {} ({}), {}",
+        info.name,
+        info.version,
+        if decoder.is_some() { "decoder" } else { "alignment" },
+        plugin.display()
+    );
+    if let Some(d) = &info.description {
+        println!("  {d}");
+    }
+    let (Some(dec), Some(file)) = (decoder, file) else {
+        if decoder.is_some() {
+            println!("  Give a file to see what it decodes.");
+        }
+        return Ok(());
+    };
+    use tlmbench_decode::plugin::DecoderPlugin;
+    let head = tlmbench_decode::read_head(file, 4096).map_err(tlmbench_store::Error::from)?;
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let by_name = info.files.iter().any(|p| tlmbench_decode::descriptor::name_matches(p, &name));
+    println!(
+        "  claims this file: by name {}, by sniff {}",
+        if by_name { "yes" } else { "no" },
+        if dec.sniff(&head, &name) { "yes" } else { "no" }
+    );
+    let root = tlmbench_decode::cache::cache_root(common.cache.as_deref());
+    let started = std::time::Instant::now();
+    let rec = tlmbench_decode::plugin::open_with(file, &root, dec).map_err(|e| Fail(2, e.to_string()))?;
+    let i = tlmbench_core::Recording::info(&rec);
+    println!(
+        "  decoded {} samples in {:.2} s (cached: a second run is instant)",
+        i.samples,
+        started.elapsed().as_secs_f64()
+    );
+    for c in &i.channels {
+        println!("  channel {:<20} {:<4} {}", c.name, c.dtype, c.unit.as_deref().unwrap_or(""));
+    }
+    match (i.t_first, i.t_last) {
+        (Some(a), Some(b)) => println!("  time {a} .. {b} ns ({:?})", i.time),
+        _ => println!("  no samples"),
+    }
+    Ok(())
+}
+
+fn plugins(json: bool, common: &Common) -> Result<(), Fail> {
+    let found = load_plugins(common);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&found).expect("json prints"));
+        return Ok(());
+    }
+    if found.is_empty() {
+        println!(
+            "No plugins. Put .wasm files in {}",
+            own_plugins(common).map(|d| d.display().to_string()).unwrap_or_default()
+        );
+    }
+    for f in &found {
+        use tlmbench_plugin::{Kind, Status, Tier};
+        let kind = match f.kind {
+            Some(Kind::Decoder) => "decoder",
+            Some(Kind::Estimator) => "alignment",
+            None => "?",
+        };
+        let tier = if f.tier == Tier::Wasm { "wasm" } else { "native" };
+        let state = match &f.status {
+            Status::Loaded => "loaded".to_string(),
+            Status::Off => "off (turn on with --native-plugin)".to_string(),
+            Status::Untrusted => "waiting for your OK".to_string(),
+            Status::Failed(why) => format!("failed: {why}"),
+        };
+        println!(
+            "{:<24} {:<8} {:<7} {:<10} {}{}",
+            f.file,
+            f.version.as_deref().unwrap_or("-"),
+            tier,
+            kind,
+            state,
+            if f.shared { "  [from --config]" } else { "" }
+        );
+    }
+    Ok(())
+}
+
 fn inspect(file: &std::path::Path, common: &Common) -> Result<(), Fail> {
     let i = tlmbench_decode::csv::inspect_file(file).map_err(tlmbench_store::Error::from)?;
     let root = tlmbench_decode::cache::cache_root(common.cache.as_deref());
@@ -449,8 +566,31 @@ fn inspect(file: &std::path::Path, common: &Common) -> Result<(), Fail> {
     Ok(())
 }
 
+/// Your plugins folder: `--plugins`, else the app's (the same one Settings › Plugins opens).
+fn own_plugins(common: &Common) -> Option<PathBuf> {
+    common.plugins.clone().or_else(|| dirs::data_dir().map(|d| d.join("io.github.rafyarvelo.tlmbench").join("plugins")))
+}
+
+/// Loads the plugins once (nothing starts when no folder has any).
+fn load_plugins(common: &Common) -> Vec<tlmbench_plugin::Found> {
+    static LOADED: std::sync::OnceLock<Vec<tlmbench_plugin::Found>> = std::sync::OnceLock::new();
+    LOADED
+        .get_or_init(|| {
+            let own = own_plugins(common).filter(|d| d.is_dir());
+            let shared: Vec<PathBuf> = common.config.iter().map(|d| d.join("plugins")).filter(|d| d.is_dir()).collect();
+            if own.is_none() && shared.is_empty() {
+                return Vec::new();
+            }
+            // a folder named with --config is the person's own choice: its plugins are trusted
+            let trusted: Vec<String> = shared.iter().map(|d| d.to_string_lossy().into_owned()).collect();
+            tlmbench_plugin::install(own.as_deref(), &shared, &trusted, &common.native_plugins).found
+        })
+        .clone()
+}
+
 fn store(common: &Common) -> Store {
     tlmbench_decode::descriptor::set_config_dirs(common.config.clone());
+    load_plugins(common);
     Store::new(common.cache.as_deref()).with_profile(common.profile.as_deref().map(load_profile))
 }
 

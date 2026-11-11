@@ -117,7 +117,7 @@ pub fn open_with(path: &Path, root: &Path, plugin: &dyn DecoderPlugin) -> Result
 
 fn build(path: &Path, source: &Source, plugin: &dyn DecoderPlugin, tmp: &Path) -> Result<Manifest> {
     let fail = |msg: String| format_err(path, format!("{}: {msg}", plugin.info().name));
-    let mut session = plugin.open(path).map_err(&fail)?;
+    let mut session = plugin.open(path).map_err(fail)?;
     let schema = session.schema().clone();
     let size = |c: &PluginChannel| c.dtype.size() as usize;
     let mut seen = std::collections::HashSet::new();
@@ -134,7 +134,7 @@ fn build(path: &Path, source: &Source, plugin: &dyn DecoderPlugin, tmp: &Path) -
         (0..schema.channels.len()).map(|k| format!("c{k}.{}", schema.channels[k].dtype.name())).collect();
     let mut outs = names.iter().map(|n| create(n)).collect::<Result<Vec<_>>>()?;
     let (mut rows, mut t_first, mut t_last) = (0usize, None, None::<i64>);
-    while let Some(chunk) = session.next(CHUNK_ROWS).map_err(&fail)? {
+    while let Some(chunk) = session.next(CHUNK_ROWS).map_err(fail)? {
         if chunk.rows == 0 {
             break;
         }

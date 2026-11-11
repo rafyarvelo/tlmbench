@@ -2,8 +2,7 @@
 
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use tlmbench_core::timemap::TimeMap;

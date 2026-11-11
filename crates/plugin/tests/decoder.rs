@@ -2,8 +2,7 @@
 //! plugin that misbehaves is stopped by the sandbox.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use tlmbench_decode::plugin::{DecoderPlugin, Tier, set_plugins};
 use tlmbench_decode::{OpenOptions, open};

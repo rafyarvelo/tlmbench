@@ -249,6 +249,11 @@ pub struct TimeMapFile {
     pub seconds: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub channel: String,
+    /// For the `plugin` method: the estimator plugin's name and the parameters it was given (JSON text).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub plugin: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub params: String,
     #[serde(default)]
     pub locked: bool,
     #[serde(default)]

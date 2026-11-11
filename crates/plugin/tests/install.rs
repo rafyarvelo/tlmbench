@@ -44,7 +44,20 @@ fn folders_are_read_native_plugins_wait_to_be_turned_on_and_shared_ones_are_only
     let opts = OpenOptions { cache_dir: Some(dir.path().join("cache")), ..Default::default() };
 
     // nothing turned on: the native plugin is listed, not loaded, and its files stay unknown
-    let got = install(Some(&own), std::slice::from_ref(&shared), &[]).found;
+    let shared_key = shared.to_string_lossy().into_owned();
+    // the folder's plugins wait for the person's OK: listed, not loaded
+    let got = install(Some(&own), std::slice::from_ref(&shared), &[], &[]).found;
+    let waiting = got.iter().find(|f| f.shared && f.tier == Tier::Wasm).unwrap();
+    assert_eq!(
+        (&waiting.status, waiting.folder.as_deref(), waiting.kind),
+        (&Status::Untrusted, Some(shared_key.as_str()), None)
+    );
+    // trusted: they load (and a folder named some other way stays untrusted)
+    let other = vec!["/somewhere/else".to_string()];
+    let got = install(Some(&own), std::slice::from_ref(&shared), &other, &[]).found;
+    assert_eq!(got.iter().find(|f| f.shared && f.tier == Tier::Wasm).unwrap().status, Status::Untrusted);
+    let trusted = vec![shared_key.clone()];
+    let got = install(Some(&own), std::slice::from_ref(&shared), &trusted, &[]).found;
     let wasm_dec = by_file(&got, "my_decoder.wasm");
     assert_eq!((wasm_dec.kind, wasm_dec.tier, &wasm_dec.status), (Some(Kind::Decoder), Tier::Wasm, &Status::Loaded));
     assert_eq!((wasm_dec.name.as_str(), wasm_dec.version.as_deref()), ("demo", Some("0.1.0")));
@@ -60,7 +73,7 @@ fn folders_are_read_native_plugins_wait_to_be_turned_on_and_shared_ones_are_only
     assert!(open(&nat_file, &opts).is_err());
 
     // turned on (by file name): it loads and decodes
-    let got = install(Some(&own), std::slice::from_ref(&shared), std::slice::from_ref(&nat_name)).found;
+    let got = install(Some(&own), std::slice::from_ref(&shared), &trusted, std::slice::from_ref(&nat_name)).found;
     let on = got.iter().find(|f| f.file == nat_name && !f.shared).unwrap();
     assert_eq!((on.tier, &on.status, on.name.as_str()), (Tier::Native, &Status::Loaded, "native-test"));
     assert_eq!(on.version.as_deref(), Some("0.2.0"));
@@ -72,7 +85,7 @@ fn folders_are_read_native_plugins_wait_to_be_turned_on_and_shared_ones_are_only
     assert_eq!(rec.info().t_last, Some(4_000_000));
 
     // and turned off again
-    install(Some(&own), &[], &[]);
+    install(Some(&own), &[], &[], &[]);
     assert!(open(&dir.path().join("other.nat"), &opts).is_err());
-    install(None, &[], &[]);
+    install(None, &[], &[], &[]);
 }
