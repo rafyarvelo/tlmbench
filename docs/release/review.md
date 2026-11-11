@@ -115,6 +115,9 @@ pyramid build, the zero-phase low-pass 1.52 s, the z-score 1.93 s (2.05×, at th
 
 ## 6. Decisions for the owner
 
+**Owner, Nov 11: begin with these recommendations.** They are written out as decisions in
+`docs/release/next-agent-prompt.md`; number 1 is "one store everywhere, unless it means rewriting the store".
+
 | # | Question | Recommendation |
 | --- | --- | --- |
 | 1 | The store for WASM: build the needed part of `tlmbench-store` for WASM, or write groups inside `crates/web`? Exports of several files and browser-only mode both wait on it. | Decide before R2.1; the next agent looks at what blocks the build (arrow, zstd, mmap) and recommends. One store everywhere is the design's line. |

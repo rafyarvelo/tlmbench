@@ -35,25 +35,40 @@ the code and the tests. Your job is to start closing the gaps it found, beginnin
   hours. Check it first (`gh run view 43073397717`). No 5.10 commit has a fully green run yet, and R0 asks for two in a
   row with no rerun: if Linux failed on a known flake (`t_live`, `t_trigger`, `t_checks`, `t_windows`, the prototype's
   `t_folder`), find the race before starting R2.1. None of them failed in the review's run on the Mac.
-- Uncommitted and the owner's own: the edit to `docs/README.md`, and `docs/release/release-plan.md` and
-  `review-prompt.md` (untracked). Leave them unless the owner asks; add files by name.
+- Everything of R1 is committed on `main` (not pushed; don't push unless the owner asks).
 
-## Then: ask the owner before building
+## Decisions: taken as the review recommended
 
-Decisions belong to the owner. Ask these in one message, each with your short recommendation, and build nothing that
-depends on an answer you don't have:
+The owner read `review.md` and said to begin with its recommendations (Nov 11). Treat these as decided; don't ask again.
+Where one turns out not to work, stop and say so with evidence before building around it.
 
-1. **The store for WASM** (needed by R2.1 and R2.2): make the needed part of `tlmbench-store` build for
-   `wasm32-unknown-unknown`, or write a group inside `crates/web`. Look at what stops the store building for WASM
-   (arrow, zstd, mmap) before you recommend.
-2. **The export's checksums:** keep BLAKE3 and change the design, or write SHA-256 as the design says. Either way the
-   viewer must verify each chunk as it loads (D-cli-08).
-3. Whether to confirm R2.1 as the next step, or take R0's de-flaking first if the Linux CI job failed on a known flake.
-4. Whichever of `review.md`'s decisions (section 6) the owner hasn't answered; numbers 3 to 9 there don't block
-   R2.1, so don't wait on them.
+1. **The store for WASM: one store everywhere.** Make the part of `tlmbench-store` that groups, time maps, checks and
+   derived channels need build for `wasm32-unknown-unknown`, with what can't (mmap, arrow and parquet, zstd, threads,
+   the cache on disk) behind features or a small storage trait, and have `crates/web` use it, instead of writing a
+   second group inside `crates/web`. First spend an hour finding what actually stops the build
+   (`cargo check --target wasm32-unknown-unknown` on the store and on decode) and tell the owner what you found and how
+   you'll split it. If it would take a rewrite of the store rather than a split, that is the case to stop and ask.
+2. **Export checksums: keep BLAKE3.** The viewer verifies every file it fetches against `export.json` and shows an
+   error instead of data on a mismatch (a truncated upload, a stale cached chunk). Note for the design doc that it says
+   SHA-256 and should say BLAKE3 (D-cli-08).
+3. **The design absorbs what the code settled:** checks run as their own pass after open (S5.3-04), and a check set's
+   TOML is what `examples/recordings/.tlmbench/checks/` shows (D-check-08). Mark both rows Done with the note for the
+   design doc; no code changes.
+4. **Widget traces stay SVG until measured.** R6 measures 100 widgets in the release app; canvas only if they miss
+   2 ms (S5.4-06 stays Diverged until then).
+5. **Live views stay whole views at 30 Hz**, noted for the design doc, unless R6's soak shows a cost (D-live-09).
+6. **CSV `#` comment lines are Accepted** (D-ingest-08): note it for the design doc.
+7. **Packet types become slots of one tab** (S4.3-08), in R2.5.
+8. **No phone layout in the app**; `t_phone` stays prototype-only.
+9. **The release gate fails when a UI test skips; the gate harness stays in release builds.** Make
+   `app/ui/tests/run.sh` take a flag (or an environment variable) that turns a skip into a failure, and use it in CI
+   once CI builds what those tests need.
+10. **CI first.** Check run 43073397717 before anything else. If the Linux job failed, fix that before R2.1: for a known
+    flake, find the race (a retry is not a fix). R0 is done at two green runs in a row with no rerun; pushing is the
+    owner's call, so ask when you need a run.
 
-The ten release decisions in `release-plan.md` (licence, platforms, signing and the rest) are not needed until R4; don't
-hold R2 for them.
+The ten release decisions in `release-plan.md` (licence, platforms, signing and the rest) are still open and not needed
+until R4; don't hold R2 for them, and don't decide them.
 
 ## The work: R2.1, exports
 
@@ -96,7 +111,6 @@ docs/release/ledger.md`). Core and CLI first, tested headlessly, then the viewer
 
 ## Done when
 
-The owner has answered the decisions R2.1
-needs; every ledger row that names R2.1 is Done with evidence; `just gate5`, the whole app UI suite, the Rust tests and
+Every ledger row that names R2.1 is Done with evidence; `just gate5`, the whole app UI suite, the Rust tests and
 `just lint` pass; the roadmap's status table, the tests READMEs and `docs/follow-ups.md` say what changed; and you have
 told the owner what is done, what is left, and which step comes next (R2.2).
