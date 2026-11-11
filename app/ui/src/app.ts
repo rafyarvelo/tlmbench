@@ -5185,3 +5185,16 @@ else if (launch.gate === '1' && launch.file) {
   ui.note = '';
   if (settings.showStart && !launch.file && tabs.list.length) ui.start = true;
 }
+
+// A viewer (an HTML export): open the export's files and show the layout it was exported with.
+if ((window as unknown as { __tlmViewer?: boolean }).__tlmViewer) {
+  const boot = await invoke<{ files: string[]; layout: Workspace | null }>('viewer_boot');
+  for (const p of boot.files) await openPath(p);
+  if (boot.files.length && boot.layout?.panes) {
+    // the layout is of the first file
+    const first = tabs.list.find((t) => t.path === boot.files[0] || t.path.startsWith('export://'));
+    if (first) await showTab(first.key);
+    await openLayout(boot.layout, boot.layout.name);
+  }
+  ui.start = false;
+}
