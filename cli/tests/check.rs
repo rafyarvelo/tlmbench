@@ -230,3 +230,47 @@ fn twenty_files_run_in_parallel_and_report_in_name_order() {
     let failing = csv.lines().filter(|l| l.contains("Battery above 12 V") && l.contains(",fail,fail,")).count();
     assert_eq!(failing, 7); // bad.csv and f00, f03, f06, f09, f12, f15
 }
+
+#[test]
+fn the_html_report_links_failing_cells_to_an_export_at_the_first_violation() {
+    let (data, cache, out) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let f = folder(data.path());
+    let o = run(
+        cache.path(),
+        &[
+            f.to_str().unwrap(),
+            "--set",
+            "Acceptance",
+            "--report",
+            "html",
+            "--views",
+            "--allow-cant-run",
+            "--out",
+            out.path().to_str().unwrap(),
+        ],
+    );
+    // the run itself still exits by its result (a failure here), and writes the report
+    assert_eq!(code(&o), 1, "{}", text(&o));
+    let html = std::fs::read_to_string(out.path().join("report.html")).unwrap();
+    // bad.csv fails from 5.0 s (sample 50); its row links to its own export, framed on that violation (ns)
+    assert!(html.contains("views/01-bad/index.html#show=5000000000,"), "{html}");
+    assert!(!html.contains("views/02-good"), "a file that passes has no export: {html}");
+    let view = out.path().join("views/01-bad");
+    assert!(view.join("index.html").exists() && view.join("export.json").exists());
+    let m: serde_json::Value = serde_json::from_slice(&std::fs::read(view.join("export.json")).unwrap()).unwrap();
+    // the failing checks' channels, in their own panes, with the check set's summary and its violations marked
+    let names: Vec<&str> =
+        m["layout"]["panes"].as_array().unwrap().iter().map(|p| p["channels"][0].as_str().unwrap()).collect();
+    assert!(names.contains(&"battery_v"), "{names:?}");
+    assert_eq!(m["checks"][0]["set"]["name"], "Acceptance");
+    assert!(!m["checks"][0]["events"].as_array().unwrap().is_empty());
+    // the layout file that made it is not left behind
+    assert!(!out.path().join("views/01-bad.layout.json").exists());
+    // without --views the report has no links
+    let plain = tempfile::tempdir().unwrap();
+    run(
+        cache.path(),
+        &[f.to_str().unwrap(), "--set", "Acceptance", "--report", "html", "--out", plain.path().to_str().unwrap()],
+    );
+    assert!(!std::fs::read_to_string(plain.path().join("report.html")).unwrap().contains("index.html#show="));
+}

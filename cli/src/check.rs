@@ -49,6 +49,11 @@ pub struct Args {
     /// Where the reports go (created if missing)
     #[arg(long)]
     out: Option<PathBuf>,
+    /// With `--report html`: write an HTML export of each file with a failing check into `<out>/views/` (a Light export
+    /// of the channels those checks read, with the violations marked) and link each failing cell in the report to its
+    /// first violation there. The sets must be found by name in a `.tlmbench/checks` folder
+    #[arg(long)]
+    views: bool,
     /// Files checked at once
     #[arg(long, default_value_t = 1)]
     jobs: usize,
@@ -233,12 +238,17 @@ pub fn run(args: Args) -> Result<(), Fail> {
     print_summary(&results);
     if let Some(out) = &args.out {
         std::fs::create_dir_all(out).map_err(|e| Fail(2, format!("{}: {e}", out.display())))?;
+        let links = if args.views && args.report.contains(&Report::Html) {
+            export_views(&results, out, &args)?
+        } else {
+            Vec::new()
+        };
         for r in &args.report {
             let (name, text) = match r {
                 Report::Junit => ("junit.xml", junit(&results, args.fail_on)),
                 Report::Csv => ("results.csv", csv(&results)),
                 Report::Json => ("results.json", json(&results)),
-                Report::Html => ("report.html", html(&results)),
+                Report::Html => ("report.html", html(&results, &links)),
             };
             let p = out.join(name);
             std::fs::write(&p, text).map_err(|e| Fail(2, format!("{}: {e}", p.display())))?;
@@ -462,7 +472,77 @@ fn json(results: &[FileRes]) -> String {
     serde_json::to_string_pretty(&v).expect("results serialize") + "\n"
 }
 
-fn html(results: &[FileRes]) -> String {
+/// Per file, the folder (relative to the report) of its export, when it has a failing or warning check.
+type Links = Vec<Option<String>>;
+
+/// The link to file `i`'s export at the first violation of `o`: the viewer shows that span (`#show=start,end`).
+fn link(links: &Links, i: usize, o: &Outcome) -> Option<String> {
+    let dir = links.get(i)?.as_ref()?;
+    let r = o.runs.first()?;
+    Some(format!("{dir}/index.html#show={},{}", r.start, r.end))
+}
+
+/// `--views`: an HTML export per file with a failing or warning check, into `<out>/views/<n>-<name>`.
+fn export_views(results: &[FileRes], out: &Path, args: &Args) -> Result<Links, Fail> {
+    let mut links: Links = Vec::new();
+    for (i, f) in results.iter().enumerate() {
+        let bad: Vec<(&CheckSet, &Check, &Outcome)> = rows(f)
+            .filter(|(_, _, o)| matches!(o.verdict, Verdict::Fail | Verdict::Warn) && !o.runs.is_empty())
+            .collect();
+        if bad.is_empty() {
+            links.push(None);
+            continue;
+        }
+        // one pane per channel the failing checks read, in the order they are met
+        let mut channels: Vec<&str> = Vec::new();
+        for (_, _, o) in &bad {
+            for c in &o.channels {
+                if !channels.contains(&c.as_str()) {
+                    channels.push(c);
+                }
+            }
+        }
+        let stem: String = f
+            .path
+            .file_stem()
+            .map_or_else(|| "file".into(), |s| s.to_string_lossy().into_owned())
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect();
+        let dir = format!("views/{:02}-{stem}", i + 1);
+        let layout = out.join(format!("{dir}.layout.json"));
+        std::fs::create_dir_all(out.join("views")).map_err(|e| Fail(2, format!("{}: {e}", out.display())))?;
+        let panes: Vec<serde_json::Value> =
+            channels.iter().map(|c| serde_json::json!({ "channels": [c], "view": "chart" })).collect();
+        std::fs::write(
+            &layout,
+            serde_json::json!({ "schema": 1, "name": "Failing checks", "panes": panes }).to_string(),
+        )
+        .map_err(|e| Fail(2, format!("{}: {e}", layout.display())))?;
+        let mut argv = vec![
+            f.path.display().to_string(),
+            "--out".into(),
+            out.join(&dir).display().to_string(),
+            "--layout".into(),
+            layout.display().to_string(),
+            "--mode".into(),
+            "light".into(),
+        ];
+        let mut names: Vec<&str> = bad.iter().map(|(s, _, _)| s.name.as_str()).collect();
+        names.dedup();
+        for n in names {
+            argv.extend(["--checks".to_owned(), n.to_owned()]);
+        }
+        argv.extend(super::common_flags(&args.common));
+        let r = super::run_export_html(argv);
+        let _ = std::fs::remove_file(&layout);
+        r.map_err(|Fail(c, m)| Fail(c, format!("the export of {}: {m}", f.path.display())))?;
+        links.push(Some(dir));
+    }
+    Ok(links)
+}
+
+fn html(results: &[FileRes], links: &Links) -> String {
     let class = |v: Verdict| format!("{v:?}").to_lowercase();
     let mut x = String::from(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
@@ -500,17 +580,25 @@ table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:4px 8px;te
             x += &format!("<th>{}</th>", esc(g));
         }
         x += "</tr>";
-        for f in results {
-            let Some((_, r)) = f.sets.iter().find(|(s, _)| s.name == name) else { continue };
-            x += &format!(
-                "<tr><td>{}</td><td class=\"{}\">{}</td>",
-                esc(&f.path.display().to_string()),
-                class(r.rollup.verdict),
-                word(r.rollup.verdict)
-            );
+        for (i, f) in results.iter().enumerate() {
+            let Some((set, r)) = f.sets.iter().find(|(s, _)| s.name == name) else { continue };
+            // a failing cell links to the export at the first violation (of the file, or of the group's first failing check)
+            let first = |group: Option<&str>| {
+                set.checks.iter().zip(&r.outcomes).find_map(|(k, o)| {
+                    (group.is_none_or(|g| k.group == g) && matches!(o.verdict, Verdict::Fail | Verdict::Warn))
+                        .then(|| link(links, i, o))
+                        .flatten()
+                })
+            };
+            let cell = |class: String, text: &str, href: Option<String>| match href {
+                Some(h) => format!("<td class=\"{class}\"><a href=\"{}\">{text}</a></td>", esc(&h)),
+                None => format!("<td class=\"{class}\">{text}</td>"),
+            };
+            x += &format!("<tr><td>{}</td>", esc(&f.path.display().to_string()));
+            x += &cell(class(r.rollup.verdict), word(r.rollup.verdict), first(None));
             for g in &groups {
                 match r.rollup.groups.iter().find(|x| x.name == *g) {
-                    Some(g) => x += &format!("<td class=\"{}\">{}</td>", class(g.verdict), word(g.verdict)),
+                    Some(gr) => x += &cell(class(gr.verdict), word(gr.verdict), first(Some(g))),
                     None => x += "<td></td>",
                 }
             }
@@ -519,7 +607,7 @@ table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:4px 8px;te
         x += "</table>";
     }
     x += "<h2>Checks that didn't pass</h2><table><tr><th>File</th><th>Set</th><th>Group</th><th>Check</th><th>Result</th></tr>";
-    for f in results {
+    for (i, f) in results.iter().enumerate() {
         if let Some(e) = &f.error {
             x += &format!(
                 "<tr><td>{}</td><td colspan=\"3\"></td><td class=\"err\">{}</td></tr>",
@@ -529,6 +617,11 @@ table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:4px 8px;te
         }
         for (s, k, o) in rows(f) {
             if !matches!(o.verdict, Verdict::Pass | Verdict::Na | Verdict::Off) {
+                let text = esc(&describe(o));
+                let text = match link(links, i, o) {
+                    Some(h) => format!("<a href=\"{}\">{text}</a>", esc(&h)),
+                    None => text,
+                };
                 x += &format!(
                     "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td class=\"{}\">{}</td></tr>",
                     esc(&f.path.display().to_string()),
@@ -536,7 +629,7 @@ table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:4px 8px;te
                     esc(&k.group),
                     esc(&k.name),
                     class(o.verdict),
-                    esc(&describe(o))
+                    text
                 );
             }
         }

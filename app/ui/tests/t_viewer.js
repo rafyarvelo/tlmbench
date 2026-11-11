@@ -148,6 +148,19 @@ try {
   })());
   check('no page errors when trimmed', errs4.length === 0, errs4);
 
+  // a link from a check report frames the violation: #show=<start>,<end> (the data runs 0..200 s; the violation is 100..101 s)
+  site = join(work, 'site');
+  const sp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  await sp.goto(url + '#show=100000000000,101000000000', { waitUntil: 'domcontentloaded' });
+  check('#show frames the violation with context either side', await (async () => {
+    for (let i = 0; i < 150; i++) {
+      const v = await sp.evaluate(() => window.__tlmApp?.view?.()).catch(() => null);
+      if (v && BigInt(v.t0) > 90000000000n && BigInt(v.t1) < 112000000000n && BigInt(v.t0) < 100000000000n && BigInt(v.t1) > 101000000000n) return true;
+      await sp.waitForTimeout(80);
+    }
+    return false;
+  })(), await sp.evaluate(() => window.__tlmApp?.view?.()));
+
   // one file: opens from file:// with no server, fetches nothing, and stays under 25 MB
   const one = join(work, 'one', 'report.html');
   const r1 = spawnSync(CLI, ['export', 'html', csv, '--single-file', '--layout', join(work, 'layout.json'), '--config', join(work, 'cfg'), '--checks', 'Test limits', '--cache', join(work, 'cache'), '--out', one], { encoding: 'utf8' });

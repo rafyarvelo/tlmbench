@@ -6,7 +6,7 @@
   import { ICON } from '../icons';
   import { actions } from '../ui.svelte';
   import { html } from '../exports.svelte';
-  import { setSetting, settings } from '../settings.svelte';
+  import { DEFAULT_DETAIL, setSetting, settings } from '../settings.svelte';
 
   const o = $derived(settings.exportHtml);
   const ctx = $derived(html.ctx);
@@ -20,11 +20,19 @@
   const auto = $derived(s ? (s.full <= s.budget ? 'full' : 'light') : null);
   const mode = $derived(o.mode === 'auto' ? auto : o.mode);
   const fits = $derived(s && mode ? (mode === 'full' ? s.full : s.light) <= s.budget : true);
+  /** `--detail`: the factor, the minimum and the cap; `0` when both the factor and the minimum are 0. */
+  const d = $derived({ ...DEFAULT_DETAIL, ...o.detail });
+  const detail = $derived(d.factor <= 0 && d.min <= 0 ? '0' : `${d.factor}x,${d.min}s,${Math.max(d.cap, d.min)}s`);
+  const setDetail = (k: 'factor' | 'min' | 'cap', v: string) => {
+    const n = Math.max(0, Number(v));
+    if (Number.isFinite(n)) set('detail', { ...d, [k]: n });
+  };
   const nchan = $derived(o.channels === 'all' ? (ctx?.all.length ?? 0) : html.layout.length);
   const cli = $derived(
     `tlmbench export html ${ctx?.base ?? 'recording'} --out …` +
       (o.channels === 'all' ? ' --all-channels' : '') +
       (o.mode !== 'auto' ? ` --mode ${o.mode}` : '') +
+      (mode === 'light' && detail !== '3x,30s,600s' ? ` --detail ${detail}` : '') +
       (o.checks && html.sets.length ? html.sets.map((n) => ` --checks "${n}"`).join('') : ''),
   );
   function key(e: KeyboardEvent) {
@@ -62,6 +70,16 @@
           </select></label>
         <label class="lvchk"><input type="checkbox" id="htmlChecks" checked={o.checks} disabled={!html.sets.length} onchange={(e) => set('checks', e.currentTarget.checked)} />Include the checks summary{html.sets.length ? ` (${html.sets.join(', ')})` : ': no set runs on this file'}</label>
       </div>
+      {#if mode === 'light'}
+        <div class="lvrow" id="htmlDetail">
+          <label class="lvf"><span>Raw around events</span>
+            <input class="sel" id="htmlDetFactor" type="number" min="0" step="0.5" value={d.factor} onchange={(e) => setDetail('factor', e.currentTarget.value)} data-tip="Times the event's duration" /></label>
+          <label class="lvf"><span>At least (s)</span>
+            <input class="sel" id="htmlDetMin" type="number" min="0" value={d.min} onchange={(e) => setDetail('min', e.currentTarget.value)} /></label>
+          <label class="lvf"><span>At most (s)</span>
+            <input class="sel" id="htmlDetCap" type="number" min="0" value={d.cap} onchange={(e) => setDetail('cap', e.currentTarget.value)} /></label>
+        </div>
+      {/if}
       <div class="exsum" id="htmlSummary">
         <b>{nchan} channel{nchan === 1 ? '' : 's'}</b>{#if s && mode}{' · '}{mode === 'full' ? 'Full' : 'Light'}: about {size(mode === 'full' ? s.full : s.light)} of the {Math.round(s.budget / 1048576)} MB budget{/if}
       </div>

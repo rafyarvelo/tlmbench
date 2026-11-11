@@ -91,12 +91,16 @@ export interface ExportOpts {
   time: 'auto' | 'seconds' | 'iso' | 'ns';
   raw: boolean;
 }
+export const DEFAULT_DETAIL = { factor: 3, min: 30, cap: 600 };
+
 /** Export to HTML…: what was chosen last. */
 export interface HtmlOpts {
   mode: 'auto' | 'full' | 'light';
   range: 'view' | 'all';
   channels: 'layout' | 'all';
   checks: boolean;
+  /** Light's raw windows around events and violations: the factor of an event's duration, the minimum in seconds, the cap in seconds (0 and 0 turn them off). */
+  detail: { factor: number; min: number; cap: number };
 }
 export interface ImageOpts {
   format: 'png' | 'svg';
@@ -292,7 +296,7 @@ export const DEFAULTS: Settings = {
   importWhere: 'tabs',
   exportData: { format: 'csv', range: 'view', channels: 'tab', layout: 'wide', resample: false, hz: 100, time: 'auto', raw: false },
   exportImage: { format: 'png', what: 'all', scale: 2 },
-  exportHtml: { mode: 'auto', range: 'all', channels: 'layout', checks: true },
+  exportHtml: { mode: 'auto', range: 'all', channels: 'layout', checks: true, detail: { ...DEFAULT_DETAIL } },
   fileRecipes: {},
   fileRecipesOff: {},
   filePrefix: {},

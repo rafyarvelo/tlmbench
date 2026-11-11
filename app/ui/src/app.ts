@@ -22,7 +22,7 @@ const ENVELOPE_ALPHA = 0.16;
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
-import { applyTheme, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
+import { applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
@@ -477,6 +477,12 @@ function linkSend(): void {
   if (!settings.linkView || linkApplying || !f) return;
   const cursors = settings.linkCursors ? { A: state.A == null ? null : String(state.A), B: state.B == null ? null : String(state.B) } : null;
   void invoke('link_send', { view: { t0: String(state.t0), t1: String(state.t1), cursors } }).catch(() => {});
+}
+
+/** `--detail` from the dialog's three fields (Light's raw windows); 0 turns them off. */
+function htmlDetail(o: typeof settings.exportHtml): string {
+  const d = { ...DEFAULT_DETAIL, ...o.detail };
+  return d.factor <= 0 && d.min <= 0 ? '0' : `${d.factor}x,${d.min}s,${Math.max(d.cap, d.min)}s`;
 }
 
 function setView(t0: bigint, t1: bigint, remember = false): void {
@@ -4155,7 +4161,7 @@ async function htmlGo(): Promise<void> {
     const span = o.range === 'all' ? null : ctx.view;
     const out = `${folder.replace(/[\\/]$/, '')}${sep(folder)}${ctx.base}-export`;
     const w = await invoke<{ out: string; viewer: boolean; report: { mode: string; bytes: number; trimmed: boolean } }>('export_html', {
-      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [], widgets: settings.customWidgets },
+      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [], widgets: settings.customWidgets, detail: htmlDetail(o) },
     });
     const mb = (w.report.bytes / 1048576).toFixed(w.report.bytes > 1e7 ? 0 : 1);
     html.result = `Wrote ${mb} MB (${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}) to ${nameOf(w.out)} in ${folder}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
@@ -5282,5 +5288,8 @@ if ((window as unknown as { __tlmViewer?: boolean }).__tlmViewer) {
     const plain = tabs.list.findIndex((t) => t.key === first?.key);
     if (plain >= 0 && tabs.list.some((t) => t.ws)) tabs.list.splice(plain, 1);
   }
+  // a link from a check report: `#show=<start>,<end>` (ns) frames that span, a violation with context either side
+  const show = /^#show=(-?\d+),(-?\d+)$/.exec(location.hash);
+  if (show && state.file) checkShow(show[1], show[2]);
   ui.start = false;
 }

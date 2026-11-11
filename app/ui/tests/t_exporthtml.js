@@ -15,6 +15,8 @@ run(
     check('the mode list shows both sizes', /Full \(/.test(await text('#htmlMode')) && /Light \(/.test(await text('#htmlMode')), await text('#htmlMode'));
     check('the command line is the same export', /tlmbench export html flight --out …/.test(await text(`${dlg} .hint`)), await text(`${dlg} .hint`));
 
+    check('Light\'s raw windows are not offered in Full', !(await p.$('#htmlDetail')));
+
     // a file that doesn't fit the budget: Automatic says Light, and why
     await fake(() => (window.__tlmFake.htmlSizeScale = 1e6));
     await p.selectOption('#htmlChannels', 'all');
@@ -26,12 +28,17 @@ run(
     check('the choices show in the command line', /--all-channels/.test(await text(`${dlg} .hint`)) && /--mode light/.test(await text(`${dlg} .hint`)), await text(`${dlg} .hint`));
     check('and are remembered in settings', (await settingsLS()).exportHtml?.mode === 'light' && (await settingsLS()).exportHtml?.range === 'view' && (await settingsLS()).exportHtml?.channels === 'all');
 
+    check('Light offers the raw windows around events: 3 times the duration, at least 30 s, at most 600 s', await p.$eval('#htmlDetFactor', (i) => i.value) === '3' && await p.$eval('#htmlDetMin', (i) => i.value) === '30' && await p.$eval('#htmlDetCap', (i) => i.value) === '600');
+    await p.fill('#htmlDetMin', '60');
+    await p.dispatchEvent('#htmlDetMin', 'change');
+    check('changing one is in the command line (--detail) and remembered', await until(() => /--detail 3x,60s,600s/.test(document.querySelector('#htmlDlg .hint')?.textContent ?? '')) && (await settingsLS()).exportHtml?.detail?.min === 60, await text(`${dlg} .hint`));
     await fake(() => (window.__tlmFake.pickFolder = '/out/dir'));
     await p.click('#htmlGo');
     check('Export asks the core to write', await until(() => window.__tlmFake.htmlExports.length === 1));
     const r = (await fake(() => window.__tlmFake.htmlExports))[0];
     check('into a folder named after the file, in the folder chosen', r.out === '/out/dir/flight-export', r.out);
     check('with the mode, every channel and the time view', r.mode === 'light' && r.channels.join() === '0,1,2,3,4,5' && r.from != null && r.until != null, r);
+    check('the windows go with it', r.detail === '3x,60s,600s', r.detail);
     check('the layout in front goes with it', r.layout?.schema === 1 && Array.isArray(r.layout?.panes) && Array.isArray(r.layout?.view), r.layout);
     check('it says what it wrote', await until(() => /Wrote 4\.0 MB \(Light\) to flight-export in \/out\/dir\./.test(document.querySelector('#htmlDone')?.textContent ?? '')), await text('#htmlDone'));
 

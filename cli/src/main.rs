@@ -375,6 +375,50 @@ impl From<tlmbench_store::Error> for Fail {
     }
 }
 
+/// `c` as the flags that make it again, for a command this program runs on itself (`check --views` runs `export html`).
+fn common_flags(c: &Common) -> Vec<String> {
+    let mut v = Vec::new();
+    let mut one = |flag: &str, x: Option<&PathBuf>| {
+        if let Some(x) = x {
+            v.push(flag.to_owned());
+            v.push(x.display().to_string());
+        }
+    };
+    one("--descriptor", c.descriptor.as_ref());
+    one("--profile", c.profile.as_ref());
+    one("--cache", c.cache.as_ref());
+    one("--plugins", c.plugins.as_ref());
+    for p in &c.config {
+        v.extend(["--config".to_owned(), p.display().to_string()]);
+    }
+    for p in &c.recipes {
+        v.extend(["--recipes".to_owned(), p.display().to_string()]);
+    }
+    for e in &c.exprs {
+        v.extend(["--expr".to_owned(), e.clone()]);
+    }
+    for n in &c.native_plugins {
+        v.extend(["--native-plugin".to_owned(), n.clone()]);
+    }
+    if let Some(t) = &c.part {
+        v.extend(["--type".to_owned(), t.clone()]);
+    }
+    if c.derived {
+        v.push("--derived".to_owned());
+    }
+    v
+}
+
+/// Runs `tlmbench export html` with `args` (after the program name), as if typed.
+fn run_export_html(args: Vec<String>) -> Result<(), Fail> {
+    let argv = ["tlmbench".to_owned(), "export".to_owned(), "html".to_owned()].into_iter().chain(args);
+    match Cli::try_parse_from(argv) {
+        Ok(Cli { command: Command::Export { what: ExportCmd::Html(a) } }) => export_html::run(a),
+        Ok(_) => unreachable!("the arguments name export html"),
+        Err(e) => Err(Fail(3, e.to_string())),
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
