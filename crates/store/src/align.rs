@@ -3,6 +3,7 @@
 //! which is the primary's clock through the primary's own map.
 
 use std::path::Path;
+use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
 use tlmbench_core::timemap::{self, Estimate, Grid, TimeMap};
@@ -36,6 +37,60 @@ pub enum Method {
     },
     /// A time channel (a GPS time of week, in seconds) both files record.
     TimeSource { channel: Option<String> },
+    /// An estimator plugin (see [`EstimatorPlugin`]) with its parameters, a JSON text the plugin understands.
+    Plugin {
+        name: String,
+        #[serde(default)]
+        params: String,
+    },
+}
+
+/// A channel's samples as an estimator plugin sees them: times in nanoseconds on the clock the plugin is told, shown
+/// values.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Series {
+    pub name: String,
+    pub t: Vec<Timestamp>,
+    pub v: Vec<f64>,
+}
+
+/// What an estimator plugin returns.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PluginEstimate {
+    /// `(t_file, t_shared)`, increasing in both.
+    pub knots: Vec<(Timestamp, Timestamp)>,
+    pub residuals: Vec<(Timestamp, f64)>,
+    pub quality: f64,
+    pub note: Option<String>,
+}
+
+/// Custom alignment code (a WASM component, see the `tlmbench-plugin` crate). The core decimates each channel to at
+/// most [`PLUGIN_SAMPLES`] samples and hands over only the channels `needs` names; the reference's times are on the
+/// shared timeline and the target's on its own clock. `hint` is the starts-aligned map.
+pub trait EstimatorPlugin: Send + Sync + std::fmt::Debug {
+    fn name(&self) -> &str;
+    fn needs(&self, params: &str) -> std::result::Result<Vec<String>, String>;
+    fn estimate(
+        &self,
+        reference: &[Series],
+        target: &[Series],
+        hint: &TimeMap,
+        params: &str,
+    ) -> std::result::Result<PluginEstimate, String>;
+}
+
+/// The most samples of a channel an estimator plugin is given.
+pub const PLUGIN_SAMPLES: usize = 1_000_000;
+
+static ESTIMATORS: RwLock<Vec<Arc<dyn EstimatorPlugin>>> = RwLock::new(Vec::new());
+
+/// Replaces the list of estimator plugins.
+pub fn set_estimators(list: Vec<Arc<dyn EstimatorPlugin>>) {
+    *ESTIMATORS.write().unwrap() = list;
+}
+
+pub fn estimators() -> Vec<Arc<dyn EstimatorPlugin>> {
+    ESTIMATORS.read().unwrap().clone()
 }
 
 /// A map with how it was found.
@@ -89,7 +144,54 @@ pub fn estimate(root: &Path, reference: &Opened, rmap: &TimeMap, target: &Opened
         Method::Events { name } => by_events(root, reference, rmap, target, name.as_deref()),
         Method::Xcorr { channel, windows } => by_correlation(reference, rmap, target, channel.as_deref(), *windows),
         Method::TimeSource { channel } => by_time_channel(reference, rmap, target, channel.as_deref()),
+        Method::Plugin { name, params } => by_plugin(reference, rmap, target, name, params),
     }
+}
+
+fn by_plugin(reference: &Opened, rmap: &TimeMap, target: &Opened, name: &str, params: &str) -> Result<Aligned> {
+    let plugin = estimators()
+        .into_iter()
+        .find(|p| p.name() == name)
+        .ok_or_else(|| bad(format!("No alignment plugin named {name} (Settings › Plugins lists them)")))?;
+    let wanted = plugin.needs(params).map_err(|e| bad(format!("{name}: {e}")))?;
+    let (rr, tr) = (reference.recording(), target.recording());
+    let (Some(rf), Some(tf)) = (rr.info().t_first, tr.info().t_first) else {
+        return Err(bad("A file has no samples"));
+    };
+    let series = |rec: &dyn Recording, map: Option<&TimeMap>| -> Result<Vec<Series>> {
+        wanted
+            .iter()
+            .map(|n| {
+                let ch = rec
+                    .info()
+                    .channels
+                    .iter()
+                    .position(|c| &c.name == n)
+                    .ok_or_else(|| bad(format!("Both files need a channel named {n}")))?;
+                let (mut t, v) = thin_many(rec, ch, PLUGIN_SAMPLES);
+                if let Some(m) = map {
+                    t.iter_mut().for_each(|x| *x = m.apply(*x));
+                }
+                Ok(Series { name: n.clone(), t, v })
+            })
+            .collect()
+    };
+    let (rs, ts) = (series(rr, Some(rmap))?, series(tr, None)?);
+    let hint = TimeMap::offset(rmap.apply(rf) - tf);
+    let e = plugin.estimate(&rs, &ts, &hint, params).map_err(|e| bad(format!("{name}: {e}")))?;
+    let map = TimeMap::new(e.knots).map_err(|m| bad(format!("{name} returned a bad map: {m}")))?;
+    let est = Estimate { map, residuals: e.residuals, quality: e.quality.clamp(0.0, 1.0) };
+    Ok(done(est, e.note, None))
+}
+
+/// [`thin`], reading the whole channel at once when it has at most `m` samples.
+fn thin_many(rec: &dyn Recording, ch: usize, m: usize) -> (Vec<Timestamp>, Vec<f64>) {
+    let n = rec.info().samples;
+    if n > m {
+        return thin(rec, ch, m);
+    }
+    let (scale, offset) = rec.scale_offset(ch);
+    (rec.read_times(0, n), rec.read(ch, 0, n).to_f64(scale, offset))
 }
 
 fn by_events(root: &Path, reference: &Opened, rmap: &TimeMap, target: &Opened, name: Option<&str>) -> Result<Aligned> {
