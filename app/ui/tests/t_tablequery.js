@@ -76,4 +76,4 @@ run('tablequery', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   check('Clear sort and filters', await until(() => /^200,000 rows in view/.test(document.querySelector('[data-table] [data-tstat]').textContent)) && (await p.inputValue(`${T} [data-filter="c0"]`)) === '' && !(await p.$(`${T} [data-clear]`)), await stat());
   const after = (await settingsLS()).layouts['/data/flight.tlm'][0];
   check('nothing left in the layout', !after.sort && !after.filters, after);
-});
+}, { settings: { tableClickSort: true } });

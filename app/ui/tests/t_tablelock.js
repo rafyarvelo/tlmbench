@@ -41,4 +41,4 @@ run('tablelock', async ({ p, check, until, settingsLS, text }) => {
   await p.click(`${T} [data-col="c0"] .thtop`);
   check('a header click leaves the sort as it was', (await sortOf('c0')) === 'ascending', await sortOf('c0'));
   check('and says why', await until(() => /sort and filters are locked/i.test(document.body.innerText)));
-});
+}, { settings: { tableClickSort: true } });

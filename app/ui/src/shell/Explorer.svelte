@@ -50,12 +50,17 @@
   /** The file whose Alignment is showing (its slot number). */
   let alignOpen = $state<number | null>(null);
   /** The open files, each with the tab a click brings forward (its file tab, else a layout shown on it). */
-  const openFiles = $derived(
-    [...new Set(tabs.list.map((t) => t.path))].map((path) => {
+  const openFiles = $derived.by(() => {
+    const name = (path: string) => path.split(/[\\/]/).pop() ?? path;
+    const out = [...new Set(tabs.list.map((t) => t.path))].map((path) => {
       const on = tabs.list.filter((t) => t.path === path);
-      return { path, name: path.split(/[\\/]/).pop() ?? path, tab: on.find((t) => !t.ws) ?? on[0], front: on.some((t) => t.key === tabs.active) };
-    }),
-  );
+      return { path, name: name(path), tab: on.find((t) => !t.ws) ?? on[0], front: on.some((t) => t.key === tabs.active) };
+    });
+    // the other files of the tab in front (Add to tab, Open together) are open too: listed after it, a click shows the tab
+    const front = tabs.list.find((t) => t.key === tabs.active);
+    if (front) for (const s of ui.slots) if (s.slot > 1 && !out.some((f) => f.path === s.path)) out.push({ path: s.path, name: name(s.path), tab: front, front: true });
+    return out;
+  });
   /** A file shows when its name, or (the open one) one of its channels, matches. */
   /** A channel shows when its name, unit or category matches. */
   const chanMatch = (ch: { name: string; unit?: string | null }) => matcher.test(ch.name) || matcher.test(ch.unit ?? '') || matcher.test(catOf(ch.name));
@@ -86,6 +91,12 @@
     }
     return out;
   }
+  /** The front file isn't in the folder Explorer shows (opened with Open…, or dropped): it is listed on its own. */
+  const outsideFolder = $derived.by(() => {
+    if (!ui.folder || !ui.file || !ui.path) return false;
+    const has = (d: FolderEntry): boolean => d.children.some((c) => (c.dir ? has(c) : c.path === ui.path));
+    return !has(ui.folder);
+  });
   /** The open file shows in the tree: the folders on its way open when it opens. */
   $effect(() => {
     const path = ui.path;
@@ -276,7 +287,7 @@
             <button class="ofnm" onclick={() => actions.showTab(f.tab.key)}>{f.name}</button><button
               class="ofx"
               aria-label="Close {f.name}"
-              onclick={() => actions.closePath(f.path)}>{@html ICON.close}</button
+              onclick={() => ((slotOf(f.path)?.slot ?? 1) > 1 ? actions.closeSlot(slotOf(f.path)!.slot) : actions.closePath(f.path))}>{@html ICON.close}</button
             >
           </span>
         {/each}
@@ -313,6 +324,7 @@
           {/each}
         {/if}
       {/if}
+      {#if outsideFolder}{@render file(ui.path, ui.file!, 0)}{/if}
       {@render dir(ui.folder, 0)}
     {:else if ui.file}
       {@render file(ui.path, ui.file, 0)}

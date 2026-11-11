@@ -253,7 +253,7 @@ export const DEFAULTS: Settings = {
   lockCursors: true,
   lockLayout: false,
   lockSortFilter: true,
-  tableClickSort: true,
+  tableClickSort: false,
   wheelZoom: true,
   dropNewView: 'chart',
   showHints: true,

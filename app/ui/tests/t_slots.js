@@ -30,6 +30,7 @@ run(
     await p.click('.filemenu [data-fm="add"]');
     check('Add to tab: two slots', await until(() => document.querySelectorAll('#explorer .row.slot').length === 2));
     check('the core was asked to group both', JSON.stringify(await calls('groupSets')) === '[[1,2]]', await calls('groupSets'));
+    check('the Open list names both files', (await p.$$eval('#openFiles .ofile .ofnm', (e) => e.map((x) => x.textContent))).join() === 'flight.tlm,gps.tlm' && /Open · 2/.test(await p.$eval('.exoh', (e) => e.textContent)), await p.$$eval('#openFiles .ofile .ofnm', (e) => e.map((x) => x.textContent)));
     check('slot 1 is the primary', (await text('#explorer .row.slot[data-slot="1"] [data-primary]')) === 'primary');
     check('files logged on one clock: Same clock', /same clock/.test(await text('#explorer .row.slot[data-slot="2"] [data-asum]')));
     check('slot 2 channels sit under it', (await p.$$eval('#explorer .row.chan .nm', (r) => r.map((x) => x.textContent))).slice(-3).join() === 'lat,lon,accel_x');
