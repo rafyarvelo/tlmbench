@@ -51,7 +51,7 @@ playwright() {
 }
 
 python() {
-  local py; py=$(command -v python3.12 || command -v python) || { echo "python3.12 not found (brew bundle installs it)" >&2; return 1; }
+  local py; py=$(command -v python3.12 || type -P python) || { echo "python3.12 not found (brew bundle installs it)" >&2; return 1; }
   [[ -d "$VENV" ]] || "$py" -m venv "$VENV"
   local vpy="$VENV/bin/python"; [[ -x "$vpy" ]] || vpy="$VENV/Scripts/python.exe"   # Windows venvs use Scripts/
   "$vpy" -m pip install -q --upgrade pip
