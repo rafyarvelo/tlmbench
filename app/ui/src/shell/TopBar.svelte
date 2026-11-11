@@ -109,8 +109,11 @@
     { label: 'Remove every channel', data: { more: 'nochan' }, disabled: !stack.panes.some((p) => p.channels.length), run: clearChannels },
     { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: !stack.panes.length, run: clearPanes },
     { heading: 'Export' },
-    { label: 'Export data…', data: { more: 'exportdata' }, disabled: !ui.file, run: actions.exportOpen },
-    { label: 'Export to HTML…', data: { more: 'exporthtml' }, disabled: !ui.file || ui.viewer, tip: 'A folder of static files that opens in any browser with nothing to install', run: actions.htmlOpen },
+    // a viewer is an export: it cannot make one (these are left out of its build, not disabled)
+    ...(__VIEWER__ ? [] : [
+      { label: 'Export data…', data: { more: 'exportdata' }, disabled: !ui.file, run: actions.exportOpen },
+      { label: 'Export to HTML…', data: { more: 'exporthtml' }, disabled: !ui.file || ui.viewer, tip: 'A folder of static files that opens in any browser with nothing to install', run: actions.htmlOpen },
+    ] as MenuItem[]),
     { label: 'Save the view as an image…', data: { more: 'exportimage' }, disabled: !ui.file || !stack.panes.length, run: actions.imageOpen },
     { heading: 'Window' },
     { label: settings.panelsClosed.length >= PANELS.length ? 'Expand all sidebar panels' : 'Collapse all sidebar panels', data: { more: 'panels' }, run: toggleAllPanels },
@@ -210,7 +213,7 @@
         >
       </div>
     {/each}
-    {#if !ui.viewer}<button
+    {#if !__VIEWER__}<button
       class="tnew"
       id="wsTabNew"
       aria-label="New tab"

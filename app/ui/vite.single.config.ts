@@ -23,6 +23,7 @@ function pack(files: [string, Buffer][]): Buffer {
 // The viewer of a one-file export: the page, its script, its styles and fonts in one HTML file with a marker where the
 // export's files go (`<!--TLM_FILES-->`), and the core beside it. Nothing is fetched, so the file opens from `file://`.
 export default defineConfig({
+  define: { __VIEWER__: 'true' },
   plugins: [
     svelte(),
     {

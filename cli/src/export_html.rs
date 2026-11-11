@@ -48,6 +48,9 @@ pub struct Args {
     /// fit. A folder export needs a web server: a page opened from `file://` can't fetch its data or the core
     #[arg(long)]
     pub single_file: bool,
+    /// The viewer connects the line across gaps (time jumps, missing values), dashed, instead of breaking it
+    #[arg(long)]
+    pub connect_gaps: bool,
     /// A viewer folder to copy instead of the one built into this program (also $TLMBENCH_VIEWER)
     #[arg(long)]
     pub viewer: Option<PathBuf>,
@@ -337,7 +340,7 @@ pub fn run(a: Args) -> Result<(), Fail> {
     let command: Vec<String> = std::env::args().collect();
     let inputs: Vec<&Path> = a.files.iter().map(PathBuf::as_path).collect();
     let provenance = html::provenance(&command, &config, &inputs).map_err(|e| Fail(2, e.to_string()))?;
-    let extra = json!({ "layout": layout, "events": events_out, "checks": checks_out, "provenance": provenance, "widgets": widgets, "group": group, "tool": { "name": "tlmbench", "version": env!("CARGO_PKG_VERSION") } });
+    let extra = json!({ "layout": layout, "events": events_out, "checks": checks_out, "provenance": provenance, "widgets": widgets, "group": group, "display": { "gap_lines": if a.connect_gaps { "connect" } else { "break" } }, "tool": { "name": "tlmbench", "version": env!("CARGO_PKG_VERSION") } });
     // a one-file export is made in a folder of its own first, then packed: nothing else is written
     let folder = if single.is_some() {
         std::env::temp_dir().join(format!("tlmbench-single-{}-{}", std::process::id(), budget))

@@ -481,31 +481,23 @@ compiled to WASM, `crates/web`), the embedded viewer in the CLI and the app (`ju
 checks summary and violation marks in the viewer, the Python package (`python/`), browser-only mode (`app/browser/dist`),
 the Canvas 2D fallback renderer, time going backwards flagged in the index, `just gate5`. What is left:
 
-- **Light mode's raw windows around events and violations.** The design has Light ship raw samples for 30 s (3× the event's
-  duration, capped at 10 min) around every event and check violation, so stepping to a failure is exact. The writer ships the
-  pyramid for chart-only channels and raw samples for table, values and XY ones, but no windows. A viewer past the finest
-  level of a chart-only channel draws from the level-4 summaries (labelled coarse) and has no values at a cursor for it.
-  Needs a sparse raw store in the WASM core (chunks present or absent) and the plan for which chunks a view reads.
-- **A trimmed export in the viewer.** When Light doesn't fit, the writer leaves out the finest levels of the biggest channels
-  and records it (`first_level`), but the viewer's core needs level 4 to build a pyramid and ignores a channel whose
-  pyramid starts higher: the channel shows nothing. The design says the viewer then says "finer detail not in this export" past
-  that zoom; that needs a pyramid that starts at any level.
-- **Several files in one export.** `export html` takes several files (slots filled in order) and the writer writes each,
-  but the viewer opens each as its own tab: it has no group (alignment, `accel_x·2` channels, tables with other files'
-  columns). The groups live in `tlmbench-store`, which doesn't build for WASM.
-- **The viewer is the whole UI with the editing hidden, not a reduced bundle.** The page is 0.4 MB of JavaScript (130 KB
-  gzipped) plus the 0.7 MB core; opening is dominated by fetching the pyramids and the first view arrives in about 0.2 s from
-  a local server. The design says "a reduced frontend bundle": cutting the dialogs and menus out of the bundle is left.
-- **No `--single-file` variant** (one HTML file for email or `file://`, 25 MB, Light, coarse levels only). `file://` doesn't
-  work for the folder either: the browser refuses to fetch the WASM core and the data from a file URL.
-- **No `--redact` check against checks and events**: a redacted channel stays in the checks summary's expressions and in
-  event channel lists (the data itself is left out). **User SVG widgets and code widgets are not exported**: the layout's
-  widgets show as ordinary panes; the design's sanitised SVG and value-card versions are left.
-- **The HTML check report's cells don't link to an exported view** (the design's CI recipe). `tlmbench check --report html`
-  and `tlmbench export html --checks` write what such a link needs (the export's `checks[].result` and events), the link
-  itself isn't written.
-- **Time-range views in the viewer.** The export keeps the whole layout's time range as a `view`; `--from/--until` cut the
-  data, the shared view's range is applied as `openLayout` does for a shared tab.
+Done in R2.1 (Nov 11; see `docs/release/r2-1-sparse-store.md`, `docs/exports.md` and the ledger rows named there): Light's raw
+windows (`--detail`, the dialog's three fields) in a sparse raw store (`crates/web` `Raw`); a trimmed export that draws
+labelled coarse; BLAKE3 checksums the viewer verifies; several files in one export (the viewer's tab, `crates/web/src/group.rs`,
+the app's Export of a tab); `--single-file` (and why a folder needs a server); `--redact` that reaches checks and events;
+SVG widgets sanitised and code widgets as value cards; the check report's cells linking to an export at the first violation
+(`check --report html --views`); a reduced viewer bundle (the dialogs, the Rail's editing buttons and the export menu items are cut
+by `__VIEWER__`); provenance in `export.json`; gauges, XY and the spectrum in the viewer. What is left of it:
+
+- **A default `--detail` per rule-and-check set** (D-cli-06): the dialog and the CLI set it per export.
+- **A time range (`from`/`until`) for a tab of several files**: refused with a message by the app's Export, as each file would read
+  the span in its own clock.
+- **The viewer's report footer** doesn't show the provenance yet (it is in `export.json`).
+- **Play, cursors and Measure in the viewer** are the app's code but no viewer test drives them.
+- **`query view` and gaps**: the gap index comes with the pyramid, so a never-built file shows no gap breaks in `tlmbench query view`
+  until `cache build` (the app builds in the background).
+- **The viewer's core queries through `tlmbench-store`**: the store builds for WASM (`native` off, `Opened::in_memory`) and the viewer
+  could use more of it; its queries stay in `crates/web` because they are sparse-aware (decision Nov 11).
 - **Browser-only mode reads CSV only**, in the page's main thread (a big file freezes the tab while it parses; a worker is
   left), with no Parquet, `.tlm`, packets, descriptors or WASM plugins (the decoder crate doesn't build for WASM: the page
   includes its CSV reader as source). No derived channels, events, checks, folders, live sources, several files or

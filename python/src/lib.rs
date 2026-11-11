@@ -233,7 +233,7 @@ impl Rec {
         let out = PathBuf::from(out);
         let report = py
             .detach(move || {
-                let f = html::File { name: info.path.file_name().map_or_else(|| "recording".into(), |n| n.to_string_lossy().into_owned()), rec: o.recording(), channels: chans, raw: raw.unwrap_or_default() };
+                let f = html::File { name: info.path.file_name().map_or_else(|| "recording".into(), |n| n.to_string_lossy().into_owned()), rec: o.recording(), channels: chans, raw: raw.unwrap_or_default(), windows: Vec::new() };
                 let extra = serde_json::json!({ "layout": layout, "events": [], "checks": [], "tool": { "name": "tlmbench-python" } });
                 let opts = html::Options { mode, budget: budget.unwrap_or(html::DEFAULT_BUDGET), from: None, until: None };
                 let report = html::export(&out, &[f], extra, &opts)?;

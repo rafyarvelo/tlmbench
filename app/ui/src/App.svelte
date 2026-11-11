@@ -127,10 +127,12 @@
   {/if}
 {/snippet}
 
+<!-- Editing, importing and exporting dialogs are not part of a viewer: the build leaves them out (`__VIEWER__`), they are not hidden. -->
+<ExportDialog />
+{#if !__VIEWER__}
 {#if live.connect}<Connect />{/if}
 <ImportDialog />
 <DescriptorForm />
-<ExportDialog />
 <HtmlExportDialog />
 <DeriveDialog />
 <ChannelEditor />
@@ -141,6 +143,7 @@
 <SlotPicker />
 <CheckEditor />
 <FolderRun />
+{/if}
 
 <div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>
   <Rail />

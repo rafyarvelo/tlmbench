@@ -37,6 +37,8 @@ export interface Manifest {
   events: { file: number; events: unknown[] }[];
   checks: { file: number; set: { name: string }; result: unknown; events: unknown[]; t_first: string }[];
   widgets?: unknown[];
+  /** How the viewer draws, as it was exported: gaps broken or connected. */
+  display?: { gap_lines?: 'break' | 'connect' } | null;
   /** Several files: each file after the first with the map from its clock to the shared timeline. */
   group?: { slots: { file: number; method: string; seconds: number; channel: string; plugin: string; params: string; locked: boolean; knots: [string, string][]; pairs: [number, number][] }[] } | null;
   /** BLAKE3 (hex) of every data file, by its path in the export. */
@@ -206,7 +208,7 @@ export async function installViewerCore(): Promise<void> {
     ...stubs,
     launch: () => ({ file: null, gate: null, gateMode: null, gateSeconds: null }),
     // what the page does on its own once the app is up (see app.ts, `viewerBoot`)
-    viewer_boot: () => ({ files: manifest.files.map((f) => `${EXPORT_PREFIX}${f.k}`), layout: manifest.layout, events: manifest.events, checks: manifest.checks, report: manifest.report, widgets: manifest.widgets ?? [] }),
+    viewer_boot: () => ({ files: manifest.files.map((f) => `${EXPORT_PREFIX}${f.k}`), layout: manifest.layout, events: manifest.events, checks: manifest.checks, report: manifest.report, widgets: manifest.widgets ?? [], display: manifest.display ?? null }),
     open: (a) => {
       const path = String(a.path);
       if (!path.startsWith(EXPORT_PREFIX)) throw new Error('A viewer opens only what its export holds.');

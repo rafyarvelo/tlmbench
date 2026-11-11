@@ -71,6 +71,28 @@ try {
   const m = existsSync(join(out, 'export.json')) ? JSON.parse(readFileSync(join(out, 'export.json'), 'utf8')) : null;
   check('the manifest holds the layout in front', m?.layout?.panes?.length > 0 && m?.files?.[0]?.samples === 5000, m?.layout);
 
+  // a tab of two files exports both, each with its alignment (the second joins the tab through the import dialog)
+  await page.keyboard.press('Escape');
+  await until(page, () => !document.querySelector('#htmlDlg'));
+  const csv2 = join(home, 'second run.csv');
+  writeFileSync(csv2, 'time,rpm,temp\n' + Array.from({ length: 3000 }, (_, i) => `${500 + i / 100},${Math.cos(i / 50)},${30 + i / 300}`).join('\n') + '\n');
+  await page.evaluate((p) => window.__tlmApp.addToTab(p), csv2);
+  check('a second file joins the tab', await until(page, () => document.querySelectorAll('#explorer .tree .row.chan').length === 4, 15000), await page.$$eval('#explorer .tree .row', (r) => r.length));
+  await page.click('#b-more');
+  await page.click('.moremenu [data-more="exporthtml"]');
+  await until(page, () => !!document.getElementById('htmlGo'));
+  await page.selectOption('#htmlChannels', 'all');
+  const dest2 = join(home, 'out2');
+  mkdirSync(dest2);
+  answer = dest2;
+  await page.click('#htmlGo');
+  check('Export writes both files', await until(page, () => /Wrote /.test(document.querySelector('#htmlDone')?.textContent ?? ''), 20000), await page.$eval('#htmlErr, #htmlDone', (e) => e.textContent).catch(() => null));
+  const two = join(dest2, 'bench run-export');
+  const m2 = existsSync(join(two, 'export.json')) ? JSON.parse(readFileSync(join(two, 'export.json'), 'utf8')) : null;
+  check('the export holds both files, the second with its map to the shared timeline', m2?.files?.length === 2 && m2.files[1].samples === 3000 && m2.group?.slots?.length === 1 && m2.group.slots[0].knots.length >= 1, [m2?.files?.map((f) => f.samples), m2?.group]);
+  check('and the second file\'s channels are in the data', existsSync(join(two, 'data/f1/c0.pyr.bin')), existsSync(two));
+  await page.keyboard.press('Escape');
+
   // that folder from a plain static server
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.woff2': 'font/woff2' };
   const server = http.createServer((q, s) => {

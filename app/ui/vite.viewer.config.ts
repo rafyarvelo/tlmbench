@@ -31,6 +31,7 @@ const wasm = fileURLToPath(new URL('../../crates/web/target/wasm32-unknown-unkno
 // The viewer a static export ships: relative paths, so the folder opens from any place on a static host or share.
 // The page is index.html, and the core (crates/web, built by `just viewer`) sits beside it.
 export default defineConfig({
+  define: { __VIEWER__: 'true' },
   plugins: [
     svelte(),
     {

@@ -8,6 +8,7 @@ const wasm = fileURLToPath(new URL('../../crates/web/target/wasm32-unknown-unkno
 
 // Browser-only mode as a static site: relative paths, so it can be served from any folder of a static host.
 export default defineConfig({
+  define: { __VIEWER__: 'false' },
   plugins: [
     svelte(),
     {

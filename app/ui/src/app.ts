@@ -4161,7 +4161,7 @@ async function htmlGo(): Promise<void> {
     const span = o.range === 'all' ? null : ctx.view;
     const out = `${folder.replace(/[\\/]$/, '')}${sep(folder)}${ctx.base}-export`;
     const w = await invoke<{ out: string; viewer: boolean; report: { mode: string; bytes: number; trimmed: boolean } }>('export_html', {
-      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [], widgets: settings.customWidgets, detail: htmlDetail(o) },
+      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [], widgets: settings.customWidgets, detail: htmlDetail(o), connectGaps: settings.gapLines === 'connect' },
     });
     const mb = (w.report.bytes / 1048576).toFixed(w.report.bytes > 1e7 ? 0 : 1);
     html.result = `Wrote ${mb} MB (${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}) to ${nameOf(w.out)} in ${folder}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
@@ -5222,6 +5222,8 @@ export const gateApi = {
 
 /** What the UI tests read (app/ui/tests): the view, cursors and build state, as plain values. */
 (window as unknown as { __tlmApp: unknown }).__tlmApp = {
+  /** Adds a file to the tab in front, on its timeline (what the import dialog's "This tab" does). */
+  addToTab: (path: string) => addToTab(path),
   view: () => ({ t0: String(state.t0), t1: String(state.t1), back: state.history.length }),
   cursors: () => ({ A: state.A == null ? null : String(state.A), B: state.B == null ? null : String(state.B) }),
   hoverT: () => (state.hoverT == null ? null : String(state.hoverT)),
@@ -5275,7 +5277,8 @@ else if (launch.gate === '1' && launch.file) {
 
 // A viewer (an HTML export): open the export's files and show the layout it was exported with.
 if ((window as unknown as { __tlmViewer?: boolean }).__tlmViewer) {
-  const boot = await invoke<{ files: string[]; layout: Workspace | null; widgets?: CustomWidget[] }>('viewer_boot');
+  const boot = await invoke<{ files: string[]; layout: Workspace | null; widgets?: CustomWidget[]; display?: { gap_lines?: 'break' | 'connect' } | null }>('viewer_boot');
+  if (boot.display?.gap_lines) setSetting('gapLines', boot.display.gap_lines);
   // the export's widgets: SVG made safe and code as value cards, so nothing the file carries runs
   if (boot.widgets?.length) setSetting('customWidgets', boot.widgets);
   // several files are one tab: the first, and the others on its timeline (the export says how each lines up)

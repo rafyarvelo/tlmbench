@@ -174,3 +174,30 @@ fn rows_filtered_and_sorted() {
     assert_eq!(bad.status.code(), Some(3));
     assert!(String::from_utf8_lossy(&bad.stderr).contains("can't read \"> x\""));
 }
+
+#[test]
+fn query_view_connects_gaps_when_asked() {
+    let (data, cache) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    // 1 s of samples, a 90 s hole, then 1 s more
+    let mut csv = String::from("time,v\n");
+    for i in 0..10 {
+        csv.push_str(&format!("{},{}\n", i as f64 / 10.0, i));
+    }
+    for i in 0..10 {
+        csv.push_str(&format!("{},{}\n", 91.0 + i as f64 / 10.0, 20 + i));
+    }
+    let f = data.path().join("gap.csv");
+    std::fs::write(&f, csv).unwrap();
+    let f = f.to_str().unwrap();
+    // the gap index comes with the pyramid
+    run(cache.path(), &["cache", "build", f, "--quiet"]);
+    let plain = text(&run(cache.path(), &["query", "view", f, "--width", "50"]));
+    let connected = text(&run(cache.path(), &["query", "view", f, "--width", "50", "--connect-gaps"]));
+    // broken (the default): no dashed column; connected: the segment that ends after the hole is marked dashed
+    assert_eq!(plain.lines().next().unwrap(), "channel,time_ns,value", "{plain}");
+    assert_eq!(connected.lines().next().unwrap(), "channel,time_ns,value,dashed", "{connected}");
+    let dashed: Vec<&str> = connected.lines().skip(1).filter(|l| l.ends_with(",1")).collect();
+    assert_eq!(dashed.len(), 1, "one segment crosses the hole: {connected}");
+    assert!(dashed[0].starts_with("v,91000000000,"), "it ends at the first sample after the hole: {dashed:?}");
+    assert!(connected.lines().skip(1).filter(|l| l.ends_with(",0")).count() >= 10);
+}

@@ -2913,6 +2913,9 @@ struct HtmlRequest {
     sets: Vec<String>,
     /// Light's raw windows (`30s`, `3x,30s,10min`, `0` for none); none: the default.
     detail: Option<String>,
+    /// Gaps are connected, dashed, in the viewer (the app's setting); else the line breaks.
+    #[serde(default)]
+    connect_gaps: bool,
     /// The widgets of your own the layout can use (the settings' list): SVG goes in made safe, code as a value card.
     #[serde(default)]
     widgets: Vec<serde_json::Value>,
@@ -2942,12 +2945,15 @@ async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlEx
     let o = files.get(req.file)?;
     let base = files.base(req.file)?;
     let store = files.store.clone();
+    // a tab of several files exports all of them: each with its channels (numbered slot after slot) and its map
+    let members: Vec<(Arc<StoreOpened>, TimeMap)> =
+        files.group(req.file).map_or_else(|| vec![(o.clone(), TimeMap::identity())], |g| g.files());
     spawn_blocking(move || {
         let rec = o.recording();
         let info = rec.info();
-        let n = info.channels.len();
-        let channels: Vec<usize> = req.channels.iter().map(|&c| c as usize).filter(|&c| c < n).collect();
-        let raw: Vec<usize> = req.raw.iter().map(|&c| c as usize).filter(|&c| c < n).collect();
+        if members.len() > 1 && (req.from.is_some() || req.until.is_some()) {
+            return Err("A time range isn't available for a tab of several files yet: export the whole recordings".to_string());
+        }
         let name = info.path.file_name().map_or_else(|| "recording".into(), |n| n.to_string_lossy().into_owned());
         let events = {
             let mine = tlmbench_store::events::list(store.root(), base.identity()).map_err(|e| e.to_string())?;
@@ -2976,6 +2982,7 @@ async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlEx
             "checks": checks,
             "provenance": provenance,
             "widgets": tlmbench_export::widgets::export_widgets(&req.widgets),
+            "display": { "gap_lines": if req.connect_gaps { "connect" } else { "break" } },
             "tool": { "name": "tlmbench-app", "version": env!("CARGO_PKG_VERSION") },
         });
         let opts = html::Options {
@@ -2991,7 +2998,7 @@ async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlEx
         let out = Path::new(&req.out);
         let window = html::Window::parse(req.detail.as_deref().unwrap_or("3x,30s,10min"))?;
         // raw windows around every event and every violation the sets marked
-        let windows = window
+        let windows: Vec<(i64, i64)> = window
             .map(|w| {
                 let evs = extra["events"][0]["events"].as_array().into_iter().flatten();
                 let marked = extra["checks"]
@@ -3006,8 +3013,34 @@ async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlEx
                     .collect()
             })
             .unwrap_or_default();
-        let f = html::File { name, rec, channels, raw, windows };
-        let report = html::export(out, &[f], extra, &opts).map_err(|e| e.to_string())?;
+        let mut first = 0usize;
+        let mut exported = Vec::new();
+        for (m, map) in &members {
+            let r = m.recording();
+            let count = r.info().channels.len();
+            let mine = |v: &[u32]| -> Vec<usize> {
+                v.iter().map(|&c| c as usize).filter(|&c| c >= first && c < first + count).map(|c| c - first).collect()
+            };
+            let fname = r.info().path.file_name().map_or_else(|| "recording".into(), |n| n.to_string_lossy().into_owned());
+            // the windows are in the shared clock: each file reads them in its own
+            let own: Vec<(i64, i64)> = windows.iter().map(|&(a, b): &(i64, i64)| (map.inverse(a), map.inverse(b))).collect();
+            exported.push(html::File { name: if exported.is_empty() { name.clone() } else { fname }, rec: r, channels: mine(&req.channels), raw: mine(&req.raw), windows: own });
+            first += count;
+        }
+        let mut extra = extra;
+        if members.len() > 1 {
+            let slots: Vec<serde_json::Value> = members
+                .iter()
+                .enumerate()
+                .skip(1)
+                .map(|(k, (_, map))| {
+                    serde_json::json!({ "file": k, "method": "manual", "seconds": 0, "channel": "", "plugin": "", "params": "", "locked": true,
+                        "knots": map.knots.iter().map(|(a, b)| [a.to_string(), b.to_string()]).collect::<Vec<_>>(), "pairs": [] })
+                })
+                .collect();
+            extra["group"] = serde_json::json!({ "slots": slots });
+        }
+        let report = html::export(out, &exported, extra, &opts).map_err(|e| e.to_string())?;
         let built_in = html::embedded_viewer();
         let viewer = !built_in.is_empty();
         if viewer {

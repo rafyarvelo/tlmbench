@@ -71,11 +71,11 @@ try {
   await p.click('[data-rail="explorer"]');
   check('Explorer lists the exported channels, with the layout\'s panes', await until(() => document.querySelectorAll('#explorer .tree .row.chan').length === 2 && /pane 2/.test(document.querySelector('#explorer .tree')?.textContent ?? '')), await p.$$eval('#explorer .tree .row', (r) => r.map((x) => x.className)));
   check('nothing edits: no new tab, no layouts, no live, no start page', !(await p.$('#wsTabNew')) && !(await p.$('[data-rail="layouts"]')) && !(await p.$('[data-rail="live"]')) && !(await p.$('#b-start')));
-  check('Export to HTML… is off in a viewer', await (async () => {
+  check('a viewer cannot make exports: Export data and Export to HTML are not in its menu (cut from the build, not disabled)', await (async () => {
     await p.click('#b-more');
-    const off = await p.$eval('.moremenu [data-more="exporthtml"]', (b) => b.disabled || b.getAttribute('aria-disabled') === 'true').catch(() => true);
+    const gone = !(await p.$('.moremenu [data-more="exporthtml"]')) && !(await p.$('.moremenu [data-more="exportdata"]')) && !!(await p.$('.moremenu [data-more="exportimage"]'));
     await p.keyboard.press('Escape');
-    return off;
+    return gone;
   })());
   await p.click('[data-rail="checks"]');
   check('the checks summary shows the set and its failure', await until(() => /Test limits/.test(document.querySelector('#checksBody')?.textContent ?? '') && /1 failed/.test(document.querySelector('#checksBody')?.textContent ?? '')), await p.$eval('#checksBody', (b) => b.textContent).catch(() => null));
@@ -173,6 +173,28 @@ try {
   check('the second file is on the first\'s timeline: the view runs to about 200 s, not 1200 s', await untilG(() => { const v = window.__tlmApp?.view?.(); return !!v && BigInt(v.t1) > 190_000_000_000n && BigInt(v.t1) < 210_000_000_000n; }), await gp.evaluate(() => window.__tlmApp?.view?.()));
   check('the layout draws both runs (the pane with rpm and rpm·2 has two traces)', await untilG(() => (window.__tlmApp?.drawn?.()?.[0] ?? []).length === 2), await gp.evaluate(() => window.__tlmApp?.drawn?.()));
   check('no page errors with two files', errs7.length === 0, errs7);
+
+  // a reduced bundle: the editing, importing and exporting dialogs are cut out of the viewer's code, not hidden
+  const code = readdirSync(join(VIEWER, 'assets')).filter((f) => f.endsWith('.js')).map((f) => readFileSync(join(VIEWER, 'assets', f), 'utf8')).join('\n');
+  const appCode = readdirSync(join(ROOT, 'app/ui/dist/assets')).filter((f) => f.endsWith('.js')).map((f) => readFileSync(join(ROOT, 'app/ui/dist/assets', f), 'utf8')).join('\n');
+  const markers = ['htmlDlg', 'recipesDlg', 'importDlg'].filter((m) => appCode.includes(m));
+  check('the viewer\'s code has none of the dialogs the app\'s has (export, recipes, import…)', markers.length >= 2 && markers.every((m) => !code.includes(m)), markers.filter((m) => code.includes(m)));
+  check('and is smaller for it', code.length < appCode.length * 0.9, [code.length, appCode.length]);
+
+  // gaps connected, as exported
+  const cg = join(work, 'cg');
+  spawnSync(CLI, ['export', 'html', csv, '--connect-gaps', '--layout', join(work, 'layout.json'), '--cache', join(work, 'cache'), '--out', cg, '--viewer', VIEWER], { encoding: 'utf8' });
+  site = cg;
+  const cp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  await cp.goto(url, { waitUntil: 'domcontentloaded' });
+  check('--connect-gaps: the viewer draws gaps connected', await (async () => {
+    for (let i = 0; i < 100; i++) {
+      if (await cp.evaluate(() => window.__tlmSettings?.get('gapLines') === 'connect' && window.__tlmFirstView != null).catch(() => false)) return true;
+      await cp.waitForTimeout(60);
+    }
+    return false;
+  })(), await cp.evaluate(() => window.__tlmSettings?.get('gapLines')));
+  check('without it the line breaks', JSON.parse(readFileSync(join(work, 'site/export.json'), 'utf8')).display.gap_lines === 'break' && JSON.parse(readFileSync(join(cg, 'export.json'), 'utf8')).display.gap_lines === 'connect');
 
   // XY and the spectrum work in a viewer (they were stubs): the pairs and the window are held samples
   writeFileSync(join(work, 'xy.json'), JSON.stringify({ schema: 1, name: 'XY and spectrum', panes: [{ channels: ['rpm'], view: 'xy', x: 'temp' }, { channels: ['rpm'], view: 'spectrum' }] }));
