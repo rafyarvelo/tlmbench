@@ -1,0 +1,25 @@
+[package]
+name = "tlmbench-web"
+description = "TelemetryBench in a browser: the core compiled to WASM, answering the viewer's queries over an export's data (and, in browser-only mode, over files opened in the page)"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "UNLICENSED"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tlmbench-core = { path = "../core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+# Its own workspace and target folder: the WASM build must not share the native one.
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
