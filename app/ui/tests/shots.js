@@ -24,6 +24,9 @@ for (const scheme of ['dark', 'light']) {
     await p.click('#b-more');
     await p.waitForTimeout(300);
     await shot(p, 'app-more-menu.png');
+    await p.click('.moremenu [data-more="exporthtml"]');
+    await p.waitForTimeout(500);
+    await shot(p, 'app-export-html.png');
     await p.keyboard.press('Escape');
     await p.click('#b-settings');
     await p.waitForTimeout(300);

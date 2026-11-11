@@ -21,6 +21,10 @@ learns about a file lives in its own cache, so a read-only network share works a
 | --- |
 | ![A live tab following a replayed recording, with the Sources panel's card and the trigger button](docs/images/app-live.png) |
 
+| An HTML export, from a static server | Export to HTML… |
+| --- | --- |
+| ![An HTML export opened from a static server: the layout's panes, the checks summary and the violations marked, nothing that edits](docs/images/app-viewer.png) | ![The Export to HTML dialog: Automatic, Full and Light with their sizes against the budget](docs/images/app-export-html.png) |
+
 ## Why it's fast, and why you can trust what it draws
 
 - **A min/max pyramid per channel.** A recording is read once, at disk speed, into summaries of 256, 1,024,
