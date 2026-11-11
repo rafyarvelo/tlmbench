@@ -17,7 +17,10 @@ call (CI on `d45727c` was green once; R0 needs two green runs in a row with no r
    memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/` (`viewer-architecture.md`,
    `disk-space.md`, `headless-tests-miss-real-window.md`, `roadmap-v1.md`, `release-plan.md`).
 4. `git log --oneline -12` and `git status`: confirm `main` is clean and the last commit is `0be7b83` (or later).
-5. **Then ask the owner for their list of actions.** Say in one or two lines what you have read and that you are waiting for
+5. **Then ask the owner for their list of actions.** The owner may hand you `docs/release/owner-test-sheet.md` filled in (a
+   `Result:` of PASS, FAIL or SKIP per test, `Notes:` in plain words, plus "Other things I noticed" and "Anything you want
+   built"); every FAIL and every non-empty Notes line is an item for your triage table, cited by its ID (A1, F5…). If they give a
+   different list, use that. If they haven't, give them the sheet. Say in one or two lines what you have read and that you are waiting for
    the list. Do not guess what it contains.
 
 ## What the owner is doing
