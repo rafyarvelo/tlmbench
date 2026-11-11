@@ -548,3 +548,19 @@ the Canvas 2D fallback renderer, time going backwards flagged in the index, `jus
   replaces the earlier decision that it is an error.
 - **Browser-only mode** includes the decoder's CSV reader as source (`crates/web` `#[path]` modules), so what a file's
   header, units and time column mean is the same code as the app's.
+
+## Found trying the 5.10 release app (Nov 11)
+
+What was run: the release daemon (`tlmbench-app --daemon`) with a Playwright page and the real core for every live kind on
+real CSVs (`t_livecsv`: file playback, a growing tailed CSV, two sources, with and without a folder), Export to HTML… and the
+folder it writes (`t_exportreal`), the viewer and browser-only mode from static folders, and `just gate5`.
+
+- **Live sources in Explorer** worked in the real core for every kind, with a folder open or not; what was wrong was the
+  names: the Open list and the tab called each source `source-N.tlm`, and no source showed its state. Both fixed (the Open
+  list and tab name the source; Explorer shows Streaming, Paused, Stopped or Ended on the source's row or slot).
+- **`TLMBENCH_GUI=1 node tests/t_browser.js` (the desktop window serving a browser tab) fails at its first step**: Ctrl+O in
+  the tab doesn't bring up the import dialog (the page loads and the token check passes; the daemon mode of the same test
+  passes). Not looked into: it may be the test's assumption (a browser tab driving the window's own core) rather than the app.
+  Worth a look in the owner's real-window pass.
+- **A flaky `t_live` ("Stop ends the recording") and `t_trigger`/`t_checks`/`t_windows`/`t_folder` each failed once and passed
+  on a re-run** during this step's runs (they have flaked on CI before): timing, not behaviour.
