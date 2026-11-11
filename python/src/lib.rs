@@ -8,7 +8,7 @@ use std::sync::Arc;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use tlmbench_core::{Recording, Viewport};
+use tlmbench_core::Viewport;
 use tlmbench_store::{Opened, Precision, Store};
 
 fn err(e: impl std::fmt::Display) -> PyErr {
@@ -66,7 +66,13 @@ impl Rec {
     }
 
     /// Samples `start..end` (indexes): `(times_ns, [values...])`, each little-endian bytes (i64, f64 shown values).
-    fn read(&self, py: Python<'_>, channels: Vec<usize>, start: usize, end: usize) -> PyResult<(Py<PyBytes>, Vec<Py<PyBytes>>)> {
+    fn read(
+        &self,
+        py: Python<'_>,
+        channels: Vec<usize>,
+        start: usize,
+        end: usize,
+    ) -> PyResult<(Py<PyBytes>, Vec<Py<PyBytes>>)> {
         let rec = self.opened.recording();
         let n = rec.info().samples;
         let (start, end) = (start.min(n), end.min(n).max(start.min(n)));
@@ -91,7 +97,14 @@ impl Rec {
 
     /// The channel reduced to about `width` pixels over `[t0, t1)` (M4: the extremes of each pixel column, so a spike
     /// stays): `(times_ns, values)` as bytes (i64, f32).
-    fn view(&self, py: Python<'_>, channel: usize, t0: i64, t1: i64, width: u32) -> PyResult<(Py<PyBytes>, Py<PyBytes>)> {
+    fn view(
+        &self,
+        py: Python<'_>,
+        channel: usize,
+        t0: i64,
+        t1: i64,
+        width: u32,
+    ) -> PyResult<(Py<PyBytes>, Py<PyBytes>)> {
         if channel >= self.opened.recording().info().channels.len() {
             return Err(PyValueError::new_err(format!("no channel {channel}")));
         }
@@ -157,7 +170,15 @@ impl Rec {
 
     /// Writes the recording (`fmt`: csv, parquet, arrow, hdf5 or mat) to `out`; the path written and the rows.
     #[pyo3(signature = (out, fmt, channels=None, start=0, end=None))]
-    fn convert(&self, py: Python<'_>, out: &str, fmt: &str, channels: Option<Vec<usize>>, start: usize, end: Option<usize>) -> PyResult<(String, u64)> {
+    fn convert(
+        &self,
+        py: Python<'_>,
+        out: &str,
+        fmt: &str,
+        channels: Option<Vec<usize>>,
+        start: usize,
+        end: Option<usize>,
+    ) -> PyResult<(String, u64)> {
         use tlmbench_export::{Format, Options};
         let format = match fmt {
             "csv" => Format::Csv,
@@ -165,7 +186,9 @@ impl Rec {
             "arrow" => Format::Arrow,
             "hdf5" => Format::Hdf5,
             "mat" => Format::Mat,
-            other => return Err(PyValueError::new_err(format!("{other:?} isn't a format (csv, parquet, arrow, hdf5, mat)"))),
+            other => {
+                return Err(PyValueError::new_err(format!("{other:?} isn't a format (csv, parquet, arrow, hdf5, mat)")));
+            }
         };
         let o = self.opened.clone();
         let n = o.recording().info().samples;
@@ -178,10 +201,21 @@ impl Rec {
 
     /// Export to HTML: the same folder as `tlmbench export html`. `layout` is a shared view as JSON text or empty.
     #[pyo3(signature = (out, layout=None, channels=None, raw=None, mode="auto", budget=None))]
-    fn export_html(&self, py: Python<'_>, out: &str, layout: Option<&str>, channels: Option<Vec<usize>>, raw: Option<Vec<usize>>, mode: &str, budget: Option<u64>) -> PyResult<String> {
+    fn export_html(
+        &self,
+        py: Python<'_>,
+        out: &str,
+        layout: Option<&str>,
+        channels: Option<Vec<usize>>,
+        raw: Option<Vec<usize>>,
+        mode: &str,
+        budget: Option<u64>,
+    ) -> PyResult<String> {
         use tlmbench_export::html;
         let layout: serde_json::Value = match layout {
-            Some(t) if !t.trim().is_empty() => serde_json::from_str(t).map_err(|e| PyValueError::new_err(format!("the layout: {e}")))?,
+            Some(t) if !t.trim().is_empty() => {
+                serde_json::from_str(t).map_err(|e| PyValueError::new_err(format!("the layout: {e}")))?
+            }
             _ => serde_json::Value::Null,
         };
         let mode = match mode {

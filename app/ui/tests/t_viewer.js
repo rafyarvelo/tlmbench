@@ -35,7 +35,7 @@ writeFileSync(csv, 'time,rpm,temp\n' + Array.from({ length: 20000 }, (_, i) => `
 mkdirSync(join(work, 'cfg/checks'), { recursive: true });
 writeFileSync(join(work, 'cfg/checks/t.toml'), 'schema = 1\nname = "Test limits"\nruns_on_any_file = false\n\n[[check]]\nname = "RPM under 0.9"\nkind = "check"\ngroup = "Limits"\nexpect = "rpm < 0.9"\nseverity = "fail"\ngrace = 0\nsettle = 0\nenabled = true\n');
 writeFileSync(join(work, 'layout.json'), JSON.stringify({ schema: 1, name: 'Two panes', panes: [{ channels: ['rpm'], view: 'chart' }, { channels: ['temp'], view: 'chart' }] }));
-const site = join(work, 'site');
+let site = join(work, 'site');
 const r = spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'layout.json'), '--config', join(work, 'cfg'), '--checks', 'Test limits', '--cache', join(work, 'cache'), '--out', site, '--viewer', VIEWER], { encoding: 'utf8' });
 check('the CLI writes the export', r.status === 0 && existsSync(join(site, 'export.json')) && existsSync(join(site, 'index.html')), r.stderr);
 
@@ -81,6 +81,28 @@ try {
   check('the checks summary shows the set and its failure', await until(() => /Test limits/.test(document.querySelector('#checksBody')?.textContent ?? '') && /1 failed/.test(document.querySelector('#checksBody')?.textContent ?? '')), await p.$eval('#checksBody', (b) => b.textContent).catch(() => null));
   check('without the buttons that make sets', !(await p.isVisible('[data-cnew]')));
   check('no page errors', errs.length === 0, errs);
+
+  // Light: a chart-only channel has only its pyramid, a table channel its raw samples
+  writeFileSync(join(work, 'light.json'), JSON.stringify({ schema: 1, name: 'Light', panes: [{ channels: ['rpm'], view: 'chart' }, { channels: ['temp'], view: 'table' }] }));
+  const light = join(work, 'light');
+  const rl = spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'light.json'), '--mode', 'light', '--cache', join(work, 'cache'), '--out', light, '--viewer', VIEWER], { encoding: 'utf8' });
+  check('Light writes the chart-only channel as a pyramid alone', rl.status === 0 && !existsSync(join(light, 'data/f0/c0.0.bin')) && existsSync(join(light, 'data/f0/c1.0.bin')), rl.stderr);
+  site = light;
+  const q = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const errs2 = [];
+  q.on('pageerror', (e) => errs2.push(e.message));
+  await q.goto(url, { waitUntil: 'domcontentloaded' });
+  const untilQ = async (fn) => {
+    const t = Date.now();
+    while (Date.now() - t < 10000) {
+      if (await q.evaluate(fn).catch(() => false)) return true;
+      await q.waitForTimeout(60);
+    }
+    return false;
+  };
+  check('the chart-only channel draws from its summaries, labelled coarse', await untilQ(() => !!document.querySelector('[data-coarse]')), await q.$$eval('[data-coarse]', (x) => x.length));
+  check('the table shows the raw samples once they are here, never a pyramid value as one', await untilQ(() => /20\.00/.test(document.body.textContent ?? '') && !/—/.test(document.querySelector('.tbl, [role="grid"], table')?.textContent ?? '—')), await q.evaluate(() => document.body.textContent?.slice(0, 300)));
+  check('no page errors in Light', errs2.length === 0, errs2);
 } catch (e) {
   bad++;
   console.log('  FAIL threw', e.message);

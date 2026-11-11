@@ -80,7 +80,15 @@ pub fn dtype(s: &str) -> &'static str {
 }
 
 impl Ds {
-    pub fn new(path: &str, format: &str, part: Option<String>, len: usize, time: TimeSource, tm: Tm, channels: Vec<ChannelInfo>) -> Self {
+    pub fn new(
+        path: &str,
+        format: &str,
+        part: Option<String>,
+        len: usize,
+        time: TimeSource,
+        tm: Tm,
+        channels: Vec<ChannelInfo>,
+    ) -> Self {
         let n = channels.len();
         let mut ds = Ds {
             info: RecordingInfo {
@@ -93,6 +101,7 @@ impl Ds {
                 t_last: None,
                 channels,
                 skipped: Vec::new(),
+                notes: Vec::new(),
             },
             tm,
             cols: (0..n).map(|_| Col::default()).collect(),

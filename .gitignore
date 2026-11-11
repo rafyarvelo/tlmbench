@@ -30,3 +30,7 @@ app/ui/tests/out/
 /plugins/*/target/
 /crates/web/target/
 /app/viewer/
+/python/target/
+/python/tlmbench/_core*.so
+__pycache__/
+/app/browser/

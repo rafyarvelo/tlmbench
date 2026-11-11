@@ -161,7 +161,11 @@ fn total(plans: &[Plan], full: bool) -> u64 {
         .iter()
         .map(|p| {
             let t = if p.rate.is_some() { 0 } else { raw_bytes(p.times.len()) };
-            t + p.chans.iter().map(|c| pyr_bytes(c) + if full || c.raw { raw_bytes(c.values.len()) } else { 0 }).sum::<u64>()
+            t + p
+                .chans
+                .iter()
+                .map(|c| pyr_bytes(c) + if full || c.raw { raw_bytes(c.values.len()) } else { 0 })
+                .sum::<u64>()
         })
         .sum()
 }
@@ -253,7 +257,13 @@ pub fn export(out: &Path, files: &[File], extra: serde_json::Value, o: &Options)
                 "raw": keep_raw, "raw_chunks": if keep_raw { n.div_ceil(CHUNK) } else { 0 },
                 "pyramid": { "first_level": first_level, "levels": kept.iter().map(|l| l.len()).collect::<Vec<_>>() },
             }));
-            creports.push(ChannelReport { name: ch.name.clone(), raw: keep_raw, raw_bytes: rb, pyramid_bytes: pb.len() as u64, first_level });
+            creports.push(ChannelReport {
+                name: ch.name.clone(),
+                raw: keep_raw,
+                raw_bytes: rb,
+                pyramid_bytes: pb.len() as u64,
+                first_level,
+            });
         }
         // the levels a channel of n samples has, so the viewer can check what it reads
         debug_assert!(p.chans.iter().all(|c| c.values.is_empty() || c.levels.len() == level_lengths(n).len()));
@@ -266,7 +276,13 @@ pub fn export(out: &Path, files: &[File], extra: serde_json::Value, o: &Options)
         }));
         reports.push(FileReport { name: f.name.clone(), samples: n, bytes: file_bytes, channels: creports });
     }
-    let report = Report { mode: if full { Mode::Full } else { Mode::Light }, budget: o.budget, bytes: bytes_all, files: reports, trimmed };
+    let report = Report {
+        mode: if full { Mode::Full } else { Mode::Light },
+        budget: o.budget,
+        bytes: bytes_all,
+        files: reports,
+        trimmed,
+    };
     let mut manifest = serde_json::json!({
         "format": "tlmbench-export", "version": 1,
         "report": report, "files": manifest_files, "checksums": sums,
@@ -277,13 +293,14 @@ pub fn export(out: &Path, files: &[File], extra: serde_json::Value, o: &Options)
         }
     }
     let path: PathBuf = out.join("export.json");
-    fs::write(&path, serde_json::to_vec_pretty(&manifest).map_err(|e| Error::Write(e.to_string()))?).map_err(io_err(&path))?;
+    fs::write(&path, serde_json::to_vec_pretty(&manifest).map_err(|e| Error::Write(e.to_string()))?)
+        .map_err(io_err(&path))?;
     Ok(report)
 }
 
 fn bytemuck_bytes(l: &[Summary]) -> Vec<u8> {
     // Summary is plain old data (repr(C), 88 bytes): write its bytes as they are, little-endian on every target we ship
-    l.iter().flat_map(|s| summary_le(s)).collect()
+    l.iter().flat_map(summary_le).collect()
 }
 
 /// A summary's 88 bytes, little-endian, in field order.
@@ -323,7 +340,7 @@ pub fn unpack(mut b: &[u8]) -> Vec<(String, Vec<u8>)> {
     };
     let num = |b: &mut &[u8]| -> Option<usize> { Some(u32::from_le_bytes(take(b, 4)?.try_into().ok()?) as usize) };
     while !b.is_empty() {
-        let (Some(n), ) = (num(&mut b), ) else { break };
+        let (Some(n),) = (num(&mut b),) else { break };
         let Some(path) = take(&mut b, n) else { break };
         let Some(m) = num(&mut b) else { break };
         let Some(data) = take(&mut b, m) else { break };

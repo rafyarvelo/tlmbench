@@ -82,6 +82,8 @@ export interface RecordingInfo {
   time: { kind: 'column'; name: string } | { kind: 'rate'; hz: number } | { kind: 'index' };
   channels: ChannelInfo[];
   skipped: string[];
+  /** What to tell the person about how the file was read (time that goes backwards). */
+  notes?: string[];
 }
 
 type Status = { state: 'missing' } | { state: 'building'; done: number; total: number } | { state: 'built' };
@@ -1673,6 +1675,8 @@ async function openPath(path: string, part?: string): Promise<void> {
     const key = nextTab++;
     let file: OpenFile;
     let building: TabData['building'];
+    /** What to tell the person about how the file was read (time that goes backwards), once the tab is up. */
+    let notes: string[] = [];
     if (again && shown) {
       file = again;
       building = shown.key === tabs.active ? state.building : (tabData.get(shown.key)?.building ?? null);
@@ -1692,6 +1696,7 @@ async function openPath(path: string, part?: string): Promise<void> {
       }
       file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: o.derived ?? [], missing: o.missing ?? [], adjustKey: JSON.stringify(adjustList()) };
       for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
+      notes = (o.info.notes ?? []).map((n) => `${nameOf(path)}: ${n}`);
       building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
     }
     const n = file.info.channels.length - file.derived.length;
@@ -1716,6 +1721,7 @@ async function openPath(path: string, part?: string): Promise<void> {
     ui.note = '';
     ui.undo = null;
     await showTab(key);
+    if (notes.length) note(notes.join(' '));
   } catch (e) {
     // a file with several packet types opens as a tab for each
     if (part == null) {

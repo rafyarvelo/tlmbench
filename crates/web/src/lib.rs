@@ -5,8 +5,28 @@
 //!
 //! No wasm-bindgen: the ABI is `alloc`, `call` and `reply_len`, and `js/core.ts` is the whole glue.
 
+#![allow(clippy::chunks_exact_to_as_chunks)]
+
 mod data;
+mod import;
 mod ops;
+
+// The CSV reader is the decoder's own source, so a file opened in the page reads exactly as it does in the app.
+#[path = "../../decode/src/backwards.rs"]
+#[allow(dead_code)]
+mod backwards;
+#[path = "../../decode/src/csv.rs"]
+#[allow(dead_code)]
+mod csv;
+#[path = "../../decode/src/error.rs"]
+#[allow(dead_code)]
+mod error;
+#[path = "../../decode/src/profile.rs"]
+#[allow(dead_code)]
+mod profile;
+
+#[allow(unused_imports)]
+pub(crate) use error::Result;
 
 use std::cell::RefCell;
 
@@ -44,7 +64,14 @@ pub extern "C" fn reply_len() -> usize {
 /// # Safety
 /// Each pointer is an `alloc`ed buffer of the given length.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn call(cmd: *const u8, cmd_len: usize, args: *const u8, args_len: usize, bin: *const u8, bin_len: usize) -> *const u8 {
+pub unsafe extern "C" fn call(
+    cmd: *const u8,
+    cmd_len: usize,
+    args: *const u8,
+    args_len: usize,
+    bin: *const u8,
+    bin_len: usize,
+) -> *const u8 {
     let (cmd, args, bin) = unsafe {
         (
             std::slice::from_raw_parts(cmd, cmd_len),
@@ -70,7 +97,8 @@ pub enum Reply {
 
 fn run(cmd: &[u8], args: &[u8], bin: &[u8]) -> Result<Reply, String> {
     let cmd = std::str::from_utf8(cmd).map_err(|e| e.to_string())?;
-    let args: Value = if args.is_empty() { Value::Null } else { serde_json::from_slice(args).map_err(|e| format!("{cmd}: {e}"))? };
+    let args: Value =
+        if args.is_empty() { Value::Null } else { serde_json::from_slice(args).map_err(|e| format!("{cmd}: {e}"))? };
     STATE.with(|s| ops::dispatch(&mut s.borrow_mut(), cmd, &args, bin))
 }
 

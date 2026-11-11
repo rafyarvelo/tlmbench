@@ -2991,18 +2991,31 @@ async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlEx
 
 /// The sizes Export to HTML… shows for Full and Light, from the file's own sizes (nothing is written).
 #[tauri::command]
-async fn export_html_sizes(file: u32, channels: Vec<u32>, raw: Vec<u32>, files: State<'_, Files>) -> Result<HtmlSizes, String> {
+async fn export_html_sizes(
+    file: u32,
+    channels: Vec<u32>,
+    raw: Vec<u32>,
+    files: State<'_, Files>,
+) -> Result<HtmlSizes, String> {
     let o = files.get(file)?;
     spawn_blocking(move || {
         let info = o.recording().info();
         let n = info.channels.len();
         let samples = info.samples as u64;
-        let times = if matches!(info.time, tlmbench_core::TimeSource::Rate { .. } | tlmbench_core::TimeSource::Index) { 0 } else { samples * 8 };
+        let times = if matches!(info.time, tlmbench_core::TimeSource::Rate { .. } | tlmbench_core::TimeSource::Index) {
+            0
+        } else {
+            samples * 8
+        };
         // 88-byte summaries every 256 samples, and the coarser levels add a third
         let pyr = samples.div_ceil(256) * 88 * 4 / 3;
         let chans = channels.iter().filter(|&&c| (c as usize) < n).count() as u64;
         let raws = raw.iter().filter(|&&c| (c as usize) < n).count() as u64;
-        Ok(HtmlSizes { full: times + chans * (samples * 8 + pyr), light: times + chans * pyr + raws * samples * 8, budget: tlmbench_export::html::DEFAULT_BUDGET })
+        Ok(HtmlSizes {
+            full: times + chans * (samples * 8 + pyr),
+            light: times + chans * pyr + raws * samples * 8,
+            budget: tlmbench_export::html::DEFAULT_BUDGET,
+        })
     })
     .await
     .map_err(|e| e.to_string())?

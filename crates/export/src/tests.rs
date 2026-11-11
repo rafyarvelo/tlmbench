@@ -217,14 +217,26 @@ fn html_export_writes_data_files_and_trims_to_the_budget() {
     let (data, desc) = scaled_file(tmp.path());
     let src = tlmbench_decode::open(
         &data,
-        &OpenOptions { descriptor: Some(desc), part: None, profile: None, cache_dir: Some(tmp.path().join("cache")), adjust: Vec::new() },
+        &OpenOptions {
+            descriptor: Some(desc),
+            part: None,
+            profile: None,
+            cache_dir: Some(tmp.path().join("cache")),
+            adjust: Vec::new(),
+        },
     )
     .unwrap();
     let (times, values) = contents(src.as_ref());
     let file = |raw: Vec<usize>| html::File { name: "run".into(), rec: src.as_ref(), channels: vec![0, 1], raw };
 
     let out = tmp.path().join("site");
-    let r = html::export(&out, &[file(vec![])], serde_json::json!({ "layout": { "name": "L" } }), &html::Options::default()).unwrap();
+    let r = html::export(
+        &out,
+        &[file(vec![])],
+        serde_json::json!({ "layout": { "name": "L" } }),
+        &html::Options::default(),
+    )
+    .unwrap();
     assert_eq!(r.mode, Mode::Full);
     assert!(!r.trimmed);
     let m: serde_json::Value = serde_json::from_slice(&fs::read(out.join("export.json")).unwrap()).unwrap();
@@ -232,23 +244,43 @@ fn html_export_writes_data_files_and_trims_to_the_budget() {
     assert_eq!(m["layout"]["name"], "L");
     assert_eq!(m["files"][0]["samples"], 150_000);
     // the raw chunks hold the shown values exactly
-    let raw: Vec<f64> = fs::read(out.join("data/f0/c0.0.bin")).unwrap().chunks(8).map(|b| f64::from_le_bytes(b.try_into().unwrap())).collect();
+    let raw: Vec<f64> = fs::read(out.join("data/f0/c0.0.bin"))
+        .unwrap()
+        .chunks(8)
+        .map(|b| f64::from_le_bytes(b.try_into().unwrap()))
+        .collect();
     assert_eq!(raw[..], values[0][..raw.len()]);
     // times are in files unless a rate gives them
     let kind = m["files"][0]["time"]["kind"].as_str().unwrap().to_owned();
     if kind == "column" {
-        let t: Vec<i64> = fs::read(out.join("data/f0/t.0.bin")).unwrap().chunks(8).map(|b| i64::from_le_bytes(b.try_into().unwrap())).collect();
+        let t: Vec<i64> = fs::read(out.join("data/f0/t.0.bin"))
+            .unwrap()
+            .chunks(8)
+            .map(|b| i64::from_le_bytes(b.try_into().unwrap()))
+            .collect();
         assert_eq!(t[..], times[..t.len()]);
     }
     assert!(m["checksums"]["data/f0/c0.pyr.bin"].is_string());
 
     // Light keeps raw samples only for the marked channels, and a tiny budget drops the finest levels
     let light = tmp.path().join("light");
-    let r = html::export(&light, &[file(vec![1])], serde_json::json!({}), &html::Options { mode: Mode::Light, ..Default::default() }).unwrap();
+    let r = html::export(
+        &light,
+        &[file(vec![1])],
+        serde_json::json!({}),
+        &html::Options { mode: Mode::Light, ..Default::default() },
+    )
+    .unwrap();
     assert_eq!(r.mode, Mode::Light);
     assert!(!light.join("data/f0/c0.0.bin").exists() && light.join("data/f0/c1.0.bin").exists());
     let tiny = tmp.path().join("tiny");
-    let r = html::export(&tiny, &[file(vec![])], serde_json::json!({}), &html::Options { budget: 40_000, ..Default::default() }).unwrap();
+    let r = html::export(
+        &tiny,
+        &[file(vec![])],
+        serde_json::json!({}),
+        &html::Options { budget: 40_000, ..Default::default() },
+    )
+    .unwrap();
     assert!(r.trimmed && r.mode == Mode::Light);
     assert!(r.files[0].channels.iter().all(|c| c.first_level > 4));
 }

@@ -5,6 +5,8 @@
 // A viewer opens its files itself (the export names them), shows the layout it was exported with, and can't import,
 // edit layouts, rules or checks, or make derived channels.
 
+import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
+
 type Handler = (data: unknown) => void;
 
 interface ExportChannel {
@@ -36,42 +38,7 @@ export interface Manifest {
 /** What the page knows of the export, for the shell (title, the checks summary, the mode label). */
 export const viewer = { manifest: null as Manifest | null };
 
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-
 export const EXPORT_PREFIX = 'export://f';
-
-/** The core compiled to WASM behind one `call`. */
-async function loadCore(url: string) {
-  const res = await fetch(url);
-  const { instance } = await WebAssembly.instantiateStreaming(res, {});
-  const x = instance.exports as unknown as {
-    memory: WebAssembly.Memory;
-    alloc(n: number): number;
-    dealloc(p: number, n: number): void;
-    call(c: number, cl: number, a: number, al: number, b: number, bl: number): number;
-    reply_len(): number;
-  };
-  const put = (b: Uint8Array) => {
-    const p = x.alloc(b.length);
-    new Uint8Array(x.memory.buffer, p, b.length).set(b);
-    return p;
-  };
-  /** Runs a command: JSON replies parse, binary ones come back as an ArrayBuffer, errors throw. */
-  return function call(cmd: string, args: unknown = null, bin: Uint8Array = new Uint8Array(0)): unknown {
-    const c = enc.encode(cmd);
-    const a = args === null ? new Uint8Array(0) : enc.encode(JSON.stringify(args));
-    const [pc, pa, pb] = [put(c), put(a), put(bin)];
-    const p = x.call(pc, c.length, pa, a.length, pb, bin.length);
-    const out = new Uint8Array(x.memory.buffer, p, x.reply_len()).slice();
-    x.dealloc(pc, c.length);
-    x.dealloc(pa, a.length);
-    x.dealloc(pb, bin.length);
-    const body = out.subarray(1);
-    if (out[0] === 2) throw new Error(dec.decode(body));
-    return out[0] === 0 ? JSON.parse(dec.decode(body)) : body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
-  };
-}
 
 export async function installViewerCore(): Promise<void> {
   const base = new URL('.', document.baseURI).href;
@@ -85,8 +52,15 @@ export async function installViewerCore(): Promise<void> {
   const core = await loadCore(new URL('tlmbench_web.wasm', base).href);
   const bytes = async (path: string) => new Uint8Array(await (await get(path)).arrayBuffer());
 
-  const callbacks = new Map<number, Handler>();
-  let nextCb = 1;
+  // the internals are installed below; the channel callbacks `open` reports progress through live there
+  let callbacks: Map<number, (d: unknown) => void> = new Map();
+
+  /** Per file, per channel: resolves once its raw samples are in the core (at once for a channel that keeps none). */
+  const rawReady = new Map<number, Promise<void>[]>();
+  const waitRaw = async (file: unknown, channels: unknown) => {
+    const ps = rawReady.get(Number(file)) ?? [];
+    await Promise.all((channels as number[]).map((c) => ps[c]));
+  };
 
   /** Loads file k: times and pyramids first (the view opens on them), then the raw chunks, reporting progress. */
   async function openFile(k: number, progress: Handler | null) {
@@ -106,6 +80,16 @@ export async function installViewerCore(): Promise<void> {
       }),
     );
     const opened = core('opened', { file: k }) as Record<string, unknown>;
+    // what reads a channel's raw samples (a table, a value at a cursor, exact stats) waits for them: a missing sample is never
+    // shown for one that is merely not here yet
+    const gates = f.channels.map(() => {
+      let ok!: () => void;
+      let no!: (e: unknown) => void;
+      const p = new Promise<void>((res, rej) => ((ok = res), (no = rej)));
+      p.catch(() => {});
+      return { p, ok, no };
+    });
+    rawReady.set(k, gates.map((g, i) => (f.channels[i].raw ? g.p : Promise.resolve())));
     const wanted = f.channels.flatMap((c, i) => Array.from({ length: c.raw ? c.raw_chunks : 0 }, (_, j) => ({ i, j, c })));
     const total = f.samples * f.channels.filter((c) => c.raw).length;
     if (!wanted.length) return opened;
@@ -125,21 +109,20 @@ export async function installViewerCore(): Promise<void> {
             done += b.length / 8;
             send(done);
           }
+          gates[i].ok();
         }
         send(total);
         (window as unknown as { __tlmViewerLoaded?: boolean }).__tlmViewerLoaded = true;
       } catch (e) {
+        gates.forEach((g) => g.no(e));
         send(0, String(e));
       }
     })(), 30);
     return { ...opened, status: { state: 'building', done: 0, total } };
   }
 
-  const none = () => null;
-  const commands: Record<string, (a: Record<string, unknown>) => unknown | Promise<unknown>> = {
-    'plugin:event|listen': (a) => a.handler,
-    'plugin:event|unlisten': none,
-    'plugin:window|set_title': (a) => ((document.title = String(a.value)), null),
+  const commands: Commands = {
+    ...stubs,
     launch: () => ({ file: null, gate: null, gateMode: null, gateSeconds: null }),
     // what the page does on its own once the app is up (see app.ts, `viewerBoot`)
     viewer_boot: () => ({ files: manifest.files.map((f) => `${EXPORT_PREFIX}${f.k}`), layout: manifest.layout, events: manifest.events, checks: manifest.checks, report: manifest.report }),
@@ -157,56 +140,15 @@ export async function installViewerCore(): Promise<void> {
       (window as unknown as { __tlmFirstView?: number }).__tlmFirstView ??= performance.now();
       return r;
     },
-    values_at: (a) => core('values_at', a),
-    stats: (a) => core('stats', a),
-    rows: (a) => core('rows', a),
-    settings_get: none,
-    settings_save: none,
-    set_expr_env: none,
-    hold: none,
-    holders: () => [],
-    usage: () => ({ used: 0, budget: 0 }),
+    values_at: async (a) => (await waitRaw(a.file, a.channels), core('values_at', a)),
+    stats: async (a) => (await waitRaw(a.file, a.channels), core('stats', a)),
+    rows: async (a) => (await waitRaw(a.file, a.channels), core('rows', a)),
     events_list: (a) => (manifest.events.find((e) => e.file === Number(a.file) - 0)?.events ?? []),
     // the check sets the export ran, and their results as the app's Checks pane reads them
     check_sets_list: () => [...new Map(manifest.checks.map((c) => [c.set.name, { ...c.set, runs_on_any_file: true }])).values()],
     checks_run: (a) => manifest.checks.filter((c) => c.file === Number(a.file) && (a.sets as string[]).includes(c.set.name)).map((c) => ({ set: c.set.name, result: c.result, events: c.events, t_first: c.t_first })),
-    recipes_list: () => [],
-    plugins_list: () => [],
-    shared_views: () => [],
-    needs_descriptor: () => false,
-    packet_parts: () => [],
-    window_frame: none,
-    window_place: none,
-    window_at: none,
-    window_take: none,
-    group_state: none,
-    missing_between: () => [],
-    filter_check: none,
-    browser_access: () => ({ on: false }),
   };
 
-  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
-    metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
-    invoke: async (cmd: string, args?: Record<string, unknown>) => {
-      if (location.search.includes('debug')) console.log('invoke', cmd, JSON.stringify(args ?? {}).slice(0, 200));
-      // a real IPC reply comes on a task of its own: answering in microtasks alone would starve timers and fetches
-      await new Promise<void>((r) => setTimeout(r, 0));
-      const h = commands[cmd];
-      if (!h) throw new Error(`${cmd} is not available in an export`);
-      return h(args ?? {});
-    },
-    transformCallback(cb: Handler, once = false) {
-      const id = nextCb++;
-      callbacks.set(id, (d) => {
-        if (once) callbacks.delete(id);
-        return cb(d);
-      });
-      return id;
-    },
-    unregisterCallback: (id: number) => callbacks.delete(id),
-    runCallback: (id: number, d: unknown) => callbacks.get(id)?.(d),
-    convertFileSrc: (p: string) => p,
-  };
-  (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
+  callbacks = installInternals(commands, location.search.includes('debug')).callbacks;
   (window as unknown as Record<string, unknown>).__tlmViewer = true;
 }

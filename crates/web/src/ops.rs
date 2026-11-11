@@ -63,6 +63,18 @@ fn summaries(bin: &[u8]) -> Vec<Summary> {
 pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Reply, String> {
     match cmd {
         "open_export" => open_export(st, a),
+        // browser-only mode: a CSV from the page, and the columns the page keeps in its private storage
+        "import_csv" => crate::import::import_csv(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
+        "dump" => {
+            let (meta, data) = crate::import::dump(st, arg::<usize>(a, "file")?)?;
+            let json = serde_json::to_vec(&meta).map_err(|e| e.to_string())?;
+            Ok(Reply::Bytes([(json.len() as u64).to_le_bytes().to_vec(), json, data].concat()))
+        }
+        "load" => {
+            let n = u64::from_le_bytes(bin.get(..8).ok_or("empty")?.try_into().unwrap()) as usize;
+            let meta: Value = serde_json::from_slice(bin.get(8..8 + n).ok_or("short")?).map_err(|e| e.to_string())?;
+            crate::import::load(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, &meta, &bin[8 + n..])
+        }
         "opened" => {
             let k: u32 = arg(a, "file")?;
             Ok(Reply::Json(opened(ds(st, k)?, k)))
@@ -148,7 +160,15 @@ fn open_export(st: &mut State, a: &Value) -> Result<Reply, String> {
             category: c["category"].as_str().map(str::to_owned),
         })
         .collect();
-    let d = Ds::new(m["path"].as_str().unwrap_or(""), m["format"].as_str().unwrap_or("export"), m["part"].as_str().map(str::to_owned), len, time, tm, channels);
+    let d = Ds::new(
+        m["path"].as_str().unwrap_or(""),
+        m["format"].as_str().unwrap_or("export"),
+        m["part"].as_str().map(str::to_owned),
+        len,
+        time,
+        tm,
+        channels,
+    );
     let reply = opened(&d, k as u32);
     if st.files.len() <= k {
         st.files.resize_with(k + 1, || None);
@@ -186,7 +206,12 @@ fn view(st: &State, a: &Value) -> Result<Reply, String> {
     let n = d.info.channels.len();
     let mut parts = Vec::new();
     for e in entries {
-        let vp = Viewport { t0: time(&e.t0)?, t1: time(&e.t1)?, width_px: e.width_px.clamp(1, 16_384), raw_max: e.raw_max.min(RAW_MAX) };
+        let vp = Viewport {
+            t0: time(&e.t0)?,
+            t1: time(&e.t1)?,
+            width_px: e.width_px.clamp(1, 16_384),
+            raw_max: e.raw_max.min(RAW_MAX),
+        };
         let (lo, hi) = (d.lower_bound(vp.t0), d.lower_bound(vp.t1));
         let coarse_pays = hi.saturating_sub(lo) / vp.width_px.max(1) as usize >= MIN_BUCKET_SAMPLES;
         let mut views: Vec<(usize, Trace, Vec<u32>, bool, bool)> = Vec::new();
@@ -199,21 +224,67 @@ fn view(st: &State, a: &Value) -> Result<Reply, String> {
             let has_raw = d.cols[c].raw.as_ref().is_some_and(|r| r.len() == d.len);
             let (trace, coarse) = match &pyr {
                 // no raw samples: the pyramid answers at every zoom, labelled coarse past its finest level
+                Some(_) if !has_raw && !coarse_pays => (summary_trace(d, c, vp), true),
                 Some(p) if !has_raw => (d.view_coarse(c, vp, p, &breaks, &held), true),
                 Some(p) if coarse_first && coarse_pays => (d.view_coarse(c, vp, p, &breaks, &held), true),
                 p if has_raw => (d.view(c, vp, p.as_ref(), &breaks, &held), false),
                 _ => (Trace { kind: TraceKind::Raw, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] }, false),
             };
-            let (trace, dashed) = if e.connect_gaps { tlmbench_core::connect_gaps(&trace) } else { (trace, Vec::new()) };
+            let (trace, dashed) =
+                if e.connect_gaps { tlmbench_core::connect_gaps(&trace) } else { (trace, Vec::new()) };
             views.push((c, trace, dashed, coarse, pyr.is_some()));
         }
         let outs: Vec<wire::Out> = views
             .iter()
-            .map(|(c, t, dashed, coarse, from_pyramid)| wire::Out { channel: *c as u32, trace: t, reduce_us: 0, coarse: *coarse, from_pyramid: *from_pyramid, dashed })
+            .map(|(c, t, dashed, coarse, from_pyramid)| wire::Out {
+                channel: *c as u32,
+                trace: t,
+                reduce_us: 0,
+                coarse: *coarse,
+                from_pyramid: *from_pyramid,
+                dashed,
+            })
             .collect();
         parts.push((e.id, wire::encode(generation, vp, None, &outs)));
     }
     Ok(Reply::Bytes(wire::encode_batch(generation, &parts)))
+}
+
+/// A channel with no raw samples in a view of fewer samples per pixel than its finest summaries cover: each summary of 256
+/// samples contributes its lowest and highest value at their own times, in order (exact aggregates, never a sample that
+/// isn't there); a time jump over four median intervals breaks the line. Labelled coarse by the caller.
+fn summary_trace(d: &Ds, c: usize, vp: Viewport) -> Trace {
+    let empty = Trace { kind: TraceKind::M4, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] };
+    let Some(l4) = d.cols[c].levels.first().filter(|_| d.cols[c].first_level == tlmbench_core::pyramid::MIN_LEVEL) else { return empty };
+    let w = tlmbench_core::pyramid::span(tlmbench_core::pyramid::MIN_LEVEL);
+    let (lo, hi) = (d.lower_bound(vp.t0).saturating_sub(1), (d.lower_bound(vp.t1) + 1).min(d.len));
+    let (a, b) = (lo / w, hi.div_ceil(w).min(l4.len()));
+    let median = d.gaps.median_ns;
+    let (mut t, mut y) = (Vec::new(), Vec::new());
+    let mut prev_last: Option<i64> = None;
+    for s in l4.get(a..b).unwrap_or_default() {
+        if s.count == 0 {
+            continue;
+        }
+        if let Some(p) = prev_last
+            && median > 0
+            && s.t_first - p > 4 * median
+        {
+            t.push(p + 1);
+            y.push(f32::NAN);
+        }
+        let mut pairs = [(s.min_idx, s.min), (s.max_idx, s.max)];
+        pairs.sort_by_key(|p| p.0);
+        for (k, (idx, v)) in pairs.into_iter().enumerate() {
+            if k == 1 && idx == pairs[0].0 {
+                continue;
+            }
+            t.push(d.time_at(idx as usize));
+            y.push(v as f32);
+        }
+        prev_last = Some(s.t_last);
+    }
+    Trace { kind: TraceKind::M4, bucket_ns: vp.bucket_ns(), t, y }
 }
 
 fn nearest(d: &Ds, t: i64) -> Option<usize> {

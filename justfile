@@ -24,11 +24,12 @@ plugin-template:
       (cd plugins/$d && cargo build --release --target wasm32-wasip2); \
     done
 
-# The viewer an HTML export ships: the core compiled to WASM (crates/web), the UI built for it, both packed into
-# app/viewer/viewer.pack for the CLI and the app to embed. Run it before building them.
+# The viewer an HTML export ships, and browser-only mode: the core compiled to WASM (crates/web) and the UI built for each. The
+# viewer is packed into app/viewer/viewer.pack for the CLI and the app to embed (run this before building them); browser-only
+# mode is a static site in app/browser/dist.
 viewer:
     cd crates/web && cargo build --release --target wasm32-unknown-unknown
-    cd app/ui && npx vite build --config vite.viewer.config.ts
+    cd app/ui && npx vite build --config vite.viewer.config.ts && npx vite build --config vite.browser.config.ts
 
 # Gate 5, the v1 release: a folder check, and an HTML export of a 2 h flight within the 250 MB budget that opens in
 # under 2 s from a static host (needs `just viewer` before the build, and Playwright's Chromium)
@@ -54,6 +55,9 @@ lint: ui
     if [ -f Cargo.toml ]; then cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings; \
     else echo "lint: no Cargo workspace yet, skipping"; fi
     cd app/ui && npm run -s typecheck
+    # the crates outside the workspace (their own targets): the viewer's core for WASM, and the Python extension
+    cd crates/web && cargo fmt --check && cargo clippy --target wasm32-unknown-unknown -- -D warnings
+    cd python && cargo fmt --check && cargo clippy -- -D warnings
 
 # Rust unit, property and doc tests, then the Python binding tests
 test: ui
@@ -234,7 +238,7 @@ derived-bench:
     $py ci/derived_bench.py --bin target/release
 
 # Everything the Linux CI job runs (inside the CI image)
-ci-linux: lint test bench-smoke proto-test app-test ro-test fuzz-smoke app-build
+ci-linux: lint test viewer bench-smoke proto-test app-test ro-test fuzz-smoke app-build
 
 # Everything the macOS and Windows CI jobs run
 ci-native: lint test app-build

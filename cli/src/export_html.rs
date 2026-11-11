@@ -132,7 +132,9 @@ pub fn run(a: Args) -> Result<(), Fail> {
         .map(|ps| {
             ps.iter()
                 .map(|p| {
-                    let chans = p["channels"].as_array().map(|c| c.iter().filter_map(|x| x.as_str().map(String::from)).collect());
+                    let chans = p["channels"]
+                        .as_array()
+                        .map(|c| c.iter().filter_map(|x| x.as_str().map(String::from)).collect());
                     (chans.unwrap_or_default(), p["view"].as_str().unwrap_or("chart").to_owned())
                 })
                 .collect()
@@ -145,13 +147,15 @@ pub fn run(a: Args) -> Result<(), Fail> {
         let info = rec.info();
         let used = |slot: usize, name: &str, raw_only: bool| {
             panes.iter().any(|(chans, view)| {
-                (!raw_only || matches!(view.as_str(), "table" | "both" | "values" | "xy")) && chans.iter().any(|c| split_slot(c) == (slot, name))
+                (!raw_only || matches!(view.as_str(), "table" | "both" | "values" | "xy"))
+                    && chans.iter().any(|c| split_slot(c) == (slot, name))
             })
         };
         let channels: Vec<usize> = (0..info.channels.len())
             .filter(|&i| {
                 let n = info.channels[i].name.as_str();
-                !a.redact.iter().any(|r| r == n) && (a.all_channels || layout.is_none() || panes.is_empty() || used(k + 1, n, false))
+                !a.redact.iter().any(|r| r == n)
+                    && (a.all_channels || layout.is_none() || panes.is_empty() || used(k + 1, n, false))
             })
             .collect();
         let raw: Vec<usize> = (0..info.channels.len()).filter(|&i| used(k + 1, &info.channels[i].name, true)).collect();
@@ -176,7 +180,15 @@ pub fn run(a: Args) -> Result<(), Fail> {
         all.extend(Sets::new(&tlmbench_decode::cache::cache_root(a.common.cache.as_deref())).list());
         for n in &a.checks {
             let s = all.iter().find(|s| &s.name == n).cloned();
-            sets.push(s.ok_or_else(|| Fail(3, format!("no check set called {n:?} (found: {})", all.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", "))))?);
+            sets.push(s.ok_or_else(|| {
+                Fail(
+                    3,
+                    format!(
+                        "no check set called {n:?} (found: {})",
+                        all.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", ")
+                    ),
+                )
+            })?);
         }
     }
     let mut events_out = Vec::new();
@@ -200,7 +212,10 @@ pub fn run(a: Args) -> Result<(), Fail> {
         }
         events_out.push(json!({ "file": k, "events": evs }));
     }
-    let (from, until) = (a.span.from.is_some().then(|| span_notes[0].map(|s| s.0)).flatten(), a.span.until.is_some().then(|| span_notes[0].map(|s| s.1)).flatten());
+    let (from, until) = (
+        a.span.from.is_some().then(|| span_notes[0].map(|s| s.0)).flatten(),
+        a.span.until.is_some().then(|| span_notes[0].map(|s| s.1)).flatten(),
+    );
     let opts = html::Options {
         mode: match a.mode {
             None => Mode::Auto,
@@ -228,11 +243,24 @@ pub fn run(a: Args) -> Result<(), Fail> {
     if a.json {
         println!("{}", serde_json::to_string(&json!({ "out": a.out, "report": report })).unwrap());
     } else {
-        println!("{} ({:?}, {} of {} budget{})", a.out.display(), report.mode, crate::size(report.bytes), crate::size(report.budget), if report.trimmed { ", trimmed to fit" } else { "" });
+        println!(
+            "{} ({:?}, {} of {} budget{})",
+            a.out.display(),
+            report.mode,
+            crate::size(report.bytes),
+            crate::size(report.budget),
+            if report.trimmed { ", trimmed to fit" } else { "" }
+        );
         for f in &report.files {
             println!("  {}: {} samples, {}", f.name, crate::group(f.samples), crate::size(f.bytes));
             for c in &f.channels {
-                println!("    {:<24} raw {:>10}  pyramid {:>10}{}", c.name, crate::size(c.raw_bytes), crate::size(c.pyramid_bytes), if c.first_level > 4 { format!("  (finest level {})", c.first_level) } else { String::new() });
+                println!(
+                    "    {:<24} raw {:>10}  pyramid {:>10}{}",
+                    c.name,
+                    crate::size(c.raw_bytes),
+                    crate::size(c.pyramid_bytes),
+                    if c.first_level > 4 { format!("  (finest level {})", c.first_level) } else { String::new() }
+                );
             }
         }
     }
