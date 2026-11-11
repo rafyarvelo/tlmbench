@@ -528,7 +528,7 @@
   }
   :global(.tabmenu),
   :global(.addmenu) {
-    width: min(320px, calc(100vw - 32px));
+    width: min(380px, calc(100vw - 32px));
     max-height: min(520px, calc(100vh - 32px));
   }
   :global(.addmenu) .mi :global(svg) {

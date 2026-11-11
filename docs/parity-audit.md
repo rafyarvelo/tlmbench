@@ -619,15 +619,17 @@ lists the folder's layouts), which is the app having more, not less.
 
 **Ranked, what is really off** (by how often and how visible; sizes are the prototype's against the app's):
 
-1. **Menus: 71 of the 214.** Tab menu and new-tab menu are 320 px wide in the app and 380 px in the prototype (items 310
-   against 358); item icons, separators and group headings differ by a pixel or two throughout. One width token fixes the
-   widest part.
-2. **Explorer's header and filter: 33.** The heading row is 15.9 px tall against 24.7, the filter box has no fill and no border
-   (the prototype's has both: `rgb(21, 27, 36)` and `rgb(35, 43, 54)`), and is 92.6 px wide against 122.5; the open-file chip
-   is 146.9 px against 124.1 and a channel row 287 px against 244.5 (the app lists the unit and a pane badge in each row, the
-   prototype only on hover).
-3. **The channel tick: 6.** 14 px with the channel colour as a fill in the app, 24 px with no fill (the colour is a border)
-   in the prototype. In the main scene the app's rows read as busier than the prototype's.
+1. **Menus: 71 of the 214.** The tab menu and the new-tab menu were 320 px wide in the app and are 380 px in the prototype
+   (items 310 against 358); **fixed in this pass** (`TopBar.svelte`). Still different: the tab menu's content (the
+   prototype lists "Save layout ⌘S" and "Revert changes", disabled on a file tab, and numbers the file chip; the app has Move to
+   new window and Export file… instead), and item icons, separators and group headings off by a pixel or two throughout.
+2. **Explorer: 33, of which few are visible.** The heading row measures 15.9 px against 24.7 because the prototype's
+   includes its buttons' padding (in the screenshots the rows sit 3 px apart); the filter's fill and border show as differences
+   only because the harness maps the prototype's filter box to the app's inner input (the boxes look the same); the open-file
+   chip is wider in the app (147 px against 124: it names `.tlm`, the prototype `.bin`). Real: each channel row carries its unit
+   and a pane badge in the app and neither in the prototype's quiet default.
+3. **The channel tick: 6.** 14 px in the app; the prototype's element measures 24 px (its hit area) with the colour as a border
+   where the app fills it; in the screenshots both read as a 14 px checkbox, so this is a measure of the wrapper.
 4. **Pane geometry: about 12.** Panes are 204 px tall against 222 (a selected one 186 against 192) and 10 px wider than the
    prototype's; the overview's pane picker is 163 px against 260; the time range text 187 px against 218 (the app's decimals
    follow the zoom).
