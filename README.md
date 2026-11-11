@@ -77,6 +77,12 @@ app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in t
   keeps windows on one flight in step. Settings apply to every window at once, while sidebar layout is per window, and
   the windows come back on the next start. Browser access (Settings, or `tlmbench-app --browser`) and the standalone
   daemon (`tlmbench-app --daemon`) serve the same UI to browser tabs on this computer, with a token in the address.
+- **Plugins:** a format nothing built in reads can be decoded by a plugin, and files can be lined up by an alignment
+  plugin. Plugins are WASM components that run in a sandbox (no files, network or clock; a time and memory limit per
+  call), or native libraries that run with your rights and stay off until you turn them on. Settings › Plugins lists
+  them with tier and version and opens your plugins folder; `plugins/template-decoder` and `plugins/template-estimator`
+  are crates to start from; `tlmbench plugins` and `--plugins DIR` do the same on the command line, and `tlmbench plugins --check my.wasm file` tries a plugin on a file. A decoder's output
+  goes into the same column cache as CSV and Parquet, so everything else works on it unchanged.
 - **Analysis:** tables with sort and filter, XY plots, Gauges and widgets of your own, derived channels (expressions
   and recipes), channel display, limits and value labels, events, and rules and checks (also `tlmbench check` in CI).
 - **Formats:** CSV (delimiter, units and time column detected) and Parquet (typed columns), each converted once to

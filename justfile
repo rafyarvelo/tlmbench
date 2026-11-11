@@ -17,6 +17,13 @@ data := env("TLMBENCH_DATA", home_directory() / "tlmbench-data")
 default:
     @just --list --unsorted
 
+# Builds the plugin templates for wasm32-wasip2 and checks each keeps the app's copy of the WIT file
+plugin-template:
+    for d in template-decoder template-estimator test-hostile; do \
+      diff -q crates/plugin/wit/tlmbench.wit plugins/$d/wit/tlmbench.wit; \
+      (cd plugins/$d && cargo build --release --target wasm32-wasip2); \
+    done
+
 # Install the pinned toolchain, Playwright's Chromium and the Python venv
 setup *steps:
     ci/setup.sh {{steps}}

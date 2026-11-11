@@ -422,3 +422,36 @@ Windows other than the first take their tabs from a handoff the core keeps until
   step, so it only shows if two windows change different settings within a few milliseconds.
 - **Design notes to absorb:** the daemon's lifetime in the desktop app is the process (closing the last window quits);
   the drag of a tab onto another window's strip finds the window by the screen position of its top 84 px.
+
+## Left from step 5.9 (plugins)
+
+How it works now: `tlmbench_plugin::install(own, shared, native_on)` reads the plugins folders and replaces the loaded
+decoders (`tlmbench_decode::plugin::set_plugins`) and estimators (`tlmbench_store::align::set_estimators`). Your folder is
+`plugins/` in the app's data folder; the open folder's `.tlmbench/plugins/` adds sandboxed WASM plugins. A decoder's
+chunks become a cache entry, so a plugin runs once per file (and again when its version changes).
+
+- **A descriptor naming a plugin for one field or packet type** (the design's "most of a format stays declarative") is
+  not built: a plugin decodes a whole file. The descriptor would need a `plugin` key and a per-field call in the WIT.
+- **Plugins on live sources** (decoding a stream with a plugin) is not built: live decoding is by descriptor only.
+- **Trusting a folder's plugins** (owner, Nov 11: build the prompt): a folder's `.tlmbench/plugins/` is listed but not
+  loaded (not even compiled) until you trust that folder in Settings › Plugins (`trustedPluginFolders`, keyed by the
+  plugins folder's path, kept when settings are reset); opening a folder that shares plugins says so. The CLI trusts the
+  folders you name with `--config`. There is no dialog like the code widgets' trust prompt: the banner in Settings is the
+  one place, and a file only a waiting plugin decodes opens as an unknown format.
+- **`cargo generate`:** the templates are plain crates to copy (`plugins/README.md`), not a `cargo-generate` template.
+- **Hot reload:** a plugin is read again on Rescan, a native switch and a change of folder, not when its file changes.
+- **Compile time:** each scan compiles every `.wasm` (about 0.1–0.5 s each); caching the compiled form in the app cache
+  (`Engine::precompile_component`) would make starting instant.
+- **Determinism:** clocks and the "insecure" random numbers are fixed, but WASI's secure random still comes from the OS,
+  so a plugin that seeds a hash map from it can differ run to run.
+- **Native plugins** copy each chunk out of the plugin's buffers (the cache write needs it anyway); there is no
+  zero-copy path from a mapped file. A native plugin that crashes takes the app with it.
+- **Estimators** get the starts-aligned map as the hint (the target's current map isn't kept by the store), and two
+  plugins with the same name: the first one found wins.
+- **Browser-only mode** (5.10) must run WASM plugins in the browser's own engine; native ones can't load there.
+- **Windows and Linux:** the native tier is tested on the Mac only here (CI runs the same tests on all three).
+- **Design notes to absorb:** the WASM guest exports `start`, not `open` (a guest export named `open` collides with the C
+  library's symbol); `sniff` takes the first bytes and the file name; an estimator also exports `needs(params)` (the
+  channels it wants) and may return a `note`; limits are per call (decoder chunk 30 s and 1 GB; estimator 2 s and
+  256 MB); native plugins load only from your own folder and only once turned on; the files are found in
+  `plugins/` of the app's data folder.

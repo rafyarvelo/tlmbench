@@ -50,6 +50,22 @@ app's settings and cache. The desktop app serves the same with Settings › Brow
 (`cargo build -p tlmbench-app`, and `npm run build` in `app/ui`); with `TLMBENCH_GUI=1` it starts the desktop app
 instead (it opens its window). It keeps its settings and cache under a temporary `HOME`.
 
+## Plugins
+
+`crates/plugin` (`tlmbench-plugin`) hosts plugins; the interface is `crates/plugin/wit/tlmbench.wit` (WASM components, two
+worlds: `decoder` and `estimator`) and `crates/plugin/include/tlmbench_plugin.h` (native decoders, C). `plugins/` holds
+standalone crates that are not part of the workspace, each with its own `target/`: `template-decoder` and
+`template-estimator` (what a user copies to start a plugin), `test-hostile` (a decoder that loops, over-allocates, reads
+files and the clock, and returns a bad chunk, to test the sandbox) and `test-native` (a native decoder in Rust). Each
+WASM crate keeps its own copy of the WIT file; `just plugin-template` builds them and fails if a copy differs.
+
+The plugin tests (`cargo test -p tlmbench-plugin`, `-p tlmbench --test plugins`) build those crates themselves with a
+nested `cargo build --release` (the WASM ones for `wasm32-wasip2`, which `rust-toolchain.toml` installs), so the first
+run adds about a minute. A plugin exports `start`, not `open`: a guest's export named `open` collides with the C
+library's symbol. Where plugins are read from: `plugins/` in the app's data folder (yours; `tlmbench plugins` and
+Settings › Plugins show the path), the open folder's `.tlmbench/plugins/` (sandboxed WASM only) and, for the CLI,
+`--plugins DIR`.
+
 ## Pinned versions
 
 | What | Where |

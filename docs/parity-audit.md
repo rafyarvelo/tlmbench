@@ -293,6 +293,7 @@ The prototype's Settings panel (`1672-1740`, tidied by `tidySettings 6400`) and 
 | Show tips and extra controls | `1735` | Settings → hides the how-to notes | Ported | 3 | Fixed Nov 3 for the notes that exist (Measure's hint). |
 | Show performance details | `1736` | `shell/Settings.svelte:22` | Ported | 3 | |
 | UI layout: Reset UI layout | `1737` | Settings → Layout | Ported | 3 | Fixed Nov 3. |
+| Plugins | — (the prototype has no plugins) | Settings → Plugins: each plugin file with its name, version, kind and tier (WASM, sandboxed; Native, runs with your rights), why one failed, an On switch for your own native plugins, Trust this folder's plugins for a folder's shared ones, Open folder, Rescan; alignment plugins in the Alignment section's method list with a Parameters field | Ported | 5 | App only (step 5.9). No parity scene: the prototype has nothing to compare. |
 
 ## 8. Layouts, sharing, export, descriptor, derived, rules, events, widgets
 

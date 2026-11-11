@@ -37,9 +37,9 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Scale and offset per channel (before the pyramid) | v1 | ✓ | ◐ (from descriptors only) | 5.2 |
 | Missing values per channel (raw values, range, Missing when) | v1 | ✓ | ✓ (applied in the decoders' reads; the pyramid is rebuilt for them) | 5.2 |
 | Derived channels computed in the core, cached with a pyramid | v1 | sim | ✓ (`Store::open_derived`, `Store::join`, `tlmbench derive`, the app's ƒ rows) | |
-| WASM decoder plugins (wasmtime) | v1 | ✗ | ✗ | 5.9 |
-| Native decoder plugins | v1 | ✗ | ✗ | 5.9 |
-| Plugins listed in Settings | v1 | ✗ | ✗ | 5.9 |
+| WASM decoder plugins (wasmtime) | v1 | ✗ | ✓ (5.9: the `tlmbench-plugin` crate, the WIT package, `plugins/template-decoder`; a plugin's chunks go into the same columnar cache as CSV and Parquet; limits per call and no file, network or clock access; `tlmbench info`/`convert` read them too; `tlmbench plugins --check` tries one) | 5.9 |
+| Native decoder plugins | v1 | ✗ | ✓ (5.9: a C interface, `crates/plugin/include/tlmbench_plugin.h`; loaded only from your own folder and only once turned on; a folder's shared WASM plugins wait until you trust the folder) | 5.9 |
+| Plugins listed in Settings | v1 | ✗ | ✓ (Settings › Plugins and `tlmbench plugins`: name, version, kind, tier, why one failed) | 5.9 |
 
 ## 2. Rendering and performance
 
@@ -269,7 +269,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Align starts, Same clock, Manual offset | v1 | ✓ | ✓ | |
 | Time maps with knots; Sync points, Event matching | v1 | ✗ | ✓ (sync points from cursors A and B; event matching pairs the events you added) | |
 | Cross-correlation, time-source channels (GPS, PPS) | v1 | ◐ | ✓ (windowed, so drift is followed; a time channel both files record) | |
-| WASM alignment estimators | v1 | ✗ | ✗ | 5.9 |
+| WASM alignment estimators | v1 | ✗ | ✓ (5.9: the `estimator` WIT world, `Method::Plugin` in the store, `plugins/template-estimator`; chosen in the Alignment section with a Parameters field, kept with the pair and in shared views) | 5.9 |
 | Alignment section: residuals, quality, preview, nudge, lock | v1 | ◐ | ✓ (the preview is the result drawn, with Keep or Undo; the pointer readout adds the file's own clock) | |
 | Open together, Compare runs | v1 | ✓ | ✓ | |
 
