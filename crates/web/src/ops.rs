@@ -255,7 +255,10 @@ fn view(st: &State, a: &Value) -> Result<Reply, String> {
 /// isn't there); a time jump over four median intervals breaks the line. Labelled coarse by the caller.
 fn summary_trace(d: &Ds, c: usize, vp: Viewport) -> Trace {
     let empty = Trace { kind: TraceKind::M4, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] };
-    let Some(l4) = d.cols[c].levels.first().filter(|_| d.cols[c].first_level == tlmbench_core::pyramid::MIN_LEVEL) else { return empty };
+    let Some(l4) = d.cols[c].levels.first().filter(|_| d.cols[c].first_level == tlmbench_core::pyramid::MIN_LEVEL)
+    else {
+        return empty;
+    };
     let w = tlmbench_core::pyramid::span(tlmbench_core::pyramid::MIN_LEVEL);
     let (lo, hi) = (d.lower_bound(vp.t0).saturating_sub(1), (d.lower_bound(vp.t1) + 1).min(d.len));
     let (a, b) = (lo / w, hi.div_ceil(w).min(l4.len()));

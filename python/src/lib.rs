@@ -187,7 +187,9 @@ impl Rec {
             "hdf5" => Format::Hdf5,
             "mat" => Format::Mat,
             other => {
-                return Err(PyValueError::new_err(format!("{other:?} isn't a format (csv, parquet, arrow, hdf5, mat)")));
+                return Err(PyValueError::new_err(format!(
+                    "{other:?} isn't a format (csv, parquet, arrow, hdf5, mat)"
+                )));
             }
         };
         let o = self.opened.clone();
