@@ -1032,3 +1032,10 @@ html.dnd-no,
 html.dnd-no * {
   cursor: not-allowed !important;
 }
+
+/* An HTML export's viewer shows and measures; it edits nothing (see viewer.ts). */
+body.viewer .ckbar,
+body.viewer [data-cedit],
+body.viewer [data-cattach] {
+  display: none;
+}

@@ -103,7 +103,31 @@ export interface GlTrace {
   dashes: number[];
 }
 
-export class Renderer {
+/** What the UI asks of a trace renderer: the WebGL2 one below, or the Canvas 2D fallback (canvas2d.ts) when WebGL2 isn't there. */
+export interface PlotRenderer {
+  quads: boolean;
+  begin(): void;
+  upload(x: Float32Array, y: Float32Array, reuse?: GlTrace, dashed?: Uint32Array): GlTrace;
+  envelope(t: GlTrace, x: Float32Array, y: Float32Array): void;
+  dropEnvelope(t: GlTrace): void;
+  free(t: GlTrace): void;
+  draw(t: GlTrace, x: Axis, y: Axis, rgba: Rgba, rect: Rect, width?: number, clip?: Rect, dashed?: boolean, fill?: number): void;
+}
+
+/** The WebGL2 renderer, or the Canvas 2D one when this canvas can't give a WebGL2 context (`?renderer=2d` forces it). */
+export async function createRenderer(canvas: HTMLCanvasElement): Promise<PlotRenderer> {
+  const force = new URLSearchParams(location.search).get('renderer');
+  if (force !== '2d') {
+    try {
+      return new Renderer(canvas);
+    } catch (e) {
+      console.warn('WebGL2 is not available; drawing with Canvas 2D.', e);
+    }
+  }
+  return new (await import('./canvas2d')).Canvas2dRenderer(canvas);
+}
+
+export class Renderer implements PlotRenderer {
   private gl: WebGL2RenderingContext;
   private prog: WebGLProgram;
   private uX: WebGLUniformLocation;

@@ -2891,6 +2891,123 @@ async fn export_data(req: ExportRequest, files: State<'_, Files>) -> Result<Expo
     .map_err(|e| e.to_string())?
 }
 
+/// What Export to HTML… asks for: the open file with the layout in front, as the CLI's `export html` takes it.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HtmlRequest {
+    file: u32,
+    /// The folder to write (created).
+    out: String,
+    /// The layout in front as a shared view (`schema`, `name`, `panes`, `view`), or none.
+    layout: Option<serde_json::Value>,
+    /// Channels of the file to export, in order; those that keep raw samples in Light.
+    channels: Vec<u32>,
+    raw: Vec<u32>,
+    /// `auto`, `full` or `light`.
+    mode: String,
+    /// Bytes; none: the default (250 MB).
+    budget: Option<u64>,
+    from: Option<String>,
+    until: Option<String>,
+    /// Check sets to run on the file and include.
+    sets: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct HtmlExported {
+    out: String,
+    report: tlmbench_export::html::Report,
+    /// The viewer is in the folder (else it holds the data only: this build has none).
+    viewer: bool,
+}
+
+/// What Export to HTML… would write, without writing it: the size of Full and of Light and what each holds, for the
+/// dialog to show before you choose.
+#[derive(Serialize)]
+struct HtmlSizes {
+    full: u64,
+    light: u64,
+    budget: u64,
+}
+
+/// Export to HTML…: the same folder as `tlmbench export html` (the writer is shared), from the file in front.
+#[tauri::command]
+async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlExported, String> {
+    use tlmbench_export::html::{self, Mode};
+    let o = files.get(req.file)?;
+    let base = files.base(req.file)?;
+    let store = files.store.clone();
+    spawn_blocking(move || {
+        let rec = o.recording();
+        let info = rec.info();
+        let n = info.channels.len();
+        let channels: Vec<usize> = req.channels.iter().map(|&c| c as usize).filter(|&c| c < n).collect();
+        let raw: Vec<usize> = req.raw.iter().map(|&c| c as usize).filter(|&c| c < n).collect();
+        let name = info.path.file_name().map_or_else(|| "recording".into(), |n| n.to_string_lossy().into_owned());
+        let events = {
+            let mine = tlmbench_store::events::list(store.root(), base.identity()).map_err(|e| e.to_string())?;
+            with_shared(mine, &info.path.to_string_lossy(), base.identity())
+        };
+        let library = tlmbench_store::checks::Sets::new(store.root());
+        let recipes = tlmbench_store::Library::new(store.root()).list();
+        let mut checks = Vec::new();
+        for set in req.sets.iter().filter_map(|n| library.get(n)) {
+            let res = store.run_checks(&base, &set, &recipes).map_err(|e| e.to_string())?;
+            let marked = tlmbench_store::checks::events_of(&set, &res);
+            checks.push(serde_json::json!({
+                "file": 0, "set": set, "result": res, "events": marked,
+                "t_first": base.recording().info().t_first.unwrap_or(0).to_string(),
+            }));
+        }
+        let extra = serde_json::json!({
+            "layout": req.layout,
+            "events": [{ "file": 0, "events": events }],
+            "checks": checks,
+            "tool": { "name": "tlmbench-app", "version": env!("CARGO_PKG_VERSION") },
+        });
+        let opts = html::Options {
+            mode: match req.mode.as_str() {
+                "full" => Mode::Full,
+                "light" => Mode::Light,
+                _ => Mode::Auto,
+            },
+            budget: req.budget.unwrap_or(html::DEFAULT_BUDGET),
+            from: req.from.as_deref().map(parse_time).transpose()?,
+            until: req.until.as_deref().map(parse_time).transpose()?,
+        };
+        let out = Path::new(&req.out);
+        let f = html::File { name, rec, channels, raw };
+        let report = html::export(out, &[f], extra, &opts).map_err(|e| e.to_string())?;
+        let built_in = html::embedded_viewer();
+        let viewer = !built_in.is_empty();
+        if viewer {
+            html::write_viewer(out, &built_in).map_err(|e| e.to_string())?;
+        }
+        Ok(HtmlExported { out: req.out, report, viewer })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The sizes Export to HTML… shows for Full and Light, from the file's own sizes (nothing is written).
+#[tauri::command]
+async fn export_html_sizes(file: u32, channels: Vec<u32>, raw: Vec<u32>, files: State<'_, Files>) -> Result<HtmlSizes, String> {
+    let o = files.get(file)?;
+    spawn_blocking(move || {
+        let info = o.recording().info();
+        let n = info.channels.len();
+        let samples = info.samples as u64;
+        let times = if matches!(info.time, tlmbench_core::TimeSource::Rate { .. } | tlmbench_core::TimeSource::Index) { 0 } else { samples * 8 };
+        // 88-byte summaries every 256 samples, and the coarser levels add a third
+        let pyr = samples.div_ceil(256) * 88 * 4 / 3;
+        let chans = channels.iter().filter(|&&c| (c as usize) < n).count() as u64;
+        let raws = raw.iter().filter(|&&c| (c as usize) < n).count() as u64;
+        Ok(HtmlSizes { full: times + chans * (samples * 8 + pyr), light: times + chans * pyr + raws * samples * 8, budget: tlmbench_export::html::DEFAULT_BUDGET })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Save the view as an image…: writes the bytes the page made (a PNG or SVG) to the file the person chose.
 #[tauri::command]
 async fn save_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
@@ -3358,6 +3475,8 @@ macro_rules! commands {
             share_view,
             export_view,
             export_data,
+            export_html,
+            export_html_sizes,
             save_file,
             live_connect,
             live_state,

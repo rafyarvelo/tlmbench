@@ -297,6 +297,7 @@
     savePick: null,
     exported: [],
     dataExports: [],
+    htmlExports: [],
     saved_files: [],
     exportFails: null,
     /** Rows each `rows` call returned. */
@@ -1197,6 +1198,15 @@
       fake.dataExports.push(req);
       if (fake.exportFails) throw fake.exportFails;
       return { path: req.out, channelsFile: req.out.replace(/\.[^.]+$/, '.channels.csv'), rows: 1234, bytes: 99999 };
+    },
+    // Export to HTML…: the sizes it shows, and what the page asked the core to write
+    export_html_sizes({ file, channels, raw }) {
+      return { full: 1000 * channels.length * (fake.htmlSizeScale ?? 1), light: 100 * channels.length + 900 * raw.length, budget: 250 * 1024 * 1024 };
+    },
+    export_html({ req }) {
+      fake.htmlExports.push(req);
+      if (fake.exportFails) throw fake.exportFails;
+      return { out: req.out, viewer: true, report: { mode: req.mode === 'light' ? 'light' : 'full', bytes: 4_200_000, trimmed: false } };
     },
     save_file({ path, bytes }) {
       fake.saved_files.push({ path, bytes });

@@ -30,7 +30,7 @@ export interface Manifest {
   files: ExportFile[];
   layout: unknown;
   events: { file: number; events: unknown[] }[];
-  checks: { file: number; set: unknown; result: unknown }[];
+  checks: { file: number; set: { name: string }; result: unknown; events: unknown[]; t_first: string }[];
 }
 
 /** What the page knows of the export, for the shell (title, the checks summary, the mode label). */
@@ -127,6 +127,7 @@ export async function installViewerCore(): Promise<void> {
           }
         }
         send(total);
+        (window as unknown as { __tlmViewerLoaded?: boolean }).__tlmViewerLoaded = true;
       } catch (e) {
         send(0, String(e));
       }
@@ -150,7 +151,12 @@ export async function installViewerCore(): Promise<void> {
       return openFile(Number(path.slice(EXPORT_PREFIX.length)), id != null ? (callbacks.get(id) ?? null) : null);
     },
     close: (a) => core('close', { file: a.file }),
-    view: (a) => core('view', a),
+    view: (a) => {
+      const r = core('view', a);
+      // Gate 5 measures the open from the navigation to the first chart view
+      (window as unknown as { __tlmFirstView?: number }).__tlmFirstView ??= performance.now();
+      return r;
+    },
     values_at: (a) => core('values_at', a),
     stats: (a) => core('stats', a),
     rows: (a) => core('rows', a),
@@ -161,7 +167,9 @@ export async function installViewerCore(): Promise<void> {
     holders: () => [],
     usage: () => ({ used: 0, budget: 0 }),
     events_list: (a) => (manifest.events.find((e) => e.file === Number(a.file) - 0)?.events ?? []),
-    check_sets_list: () => [],
+    // the check sets the export ran, and their results as the app's Checks pane reads them
+    check_sets_list: () => [...new Map(manifest.checks.map((c) => [c.set.name, { ...c.set, runs_on_any_file: true }])).values()],
+    checks_run: (a) => manifest.checks.filter((c) => c.file === Number(a.file) && (a.sets as string[]).includes(c.set.name)).map((c) => ({ set: c.set.name, result: c.result, events: c.events, t_first: c.t_first })),
     recipes_list: () => [],
     plugins_list: () => [],
     shared_views: () => [],

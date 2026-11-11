@@ -29,4 +29,4 @@ app/src-tauri/gen/
 app/ui/tests/out/
 /plugins/*/target/
 /crates/web/target/
-/app/viewer/dist/
+/app/viewer/

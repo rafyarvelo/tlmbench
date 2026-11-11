@@ -48,13 +48,13 @@
 </script>
 
 <nav class="arail" aria-label="Views">
-  <button class="rlogo" id="b-start" aria-label="Start page" aria-pressed={ui.start} data-tip="Start page: open a folder or recording, or a recent one" onclick={() => (ui.start = !ui.start)}>{@html ICON.logo}</button>
+  {#if !ui.viewer}<button class="rlogo" id="b-start" aria-label="Start page" aria-pressed={ui.start} data-tip="Start page: open a folder or recording, or a recent one" onclick={() => (ui.start = !ui.start)}>{@html ICON.logo}</button>{:else}<span class="rlogo" aria-hidden="true">{@html ICON.logo}</span>{/if}
   <button class="rb" data-rail="explorer" aria-pressed={on('explorer')} aria-label="Explorer" data-tip="Explorer: the open file and its channels (Ctrl+B)" onclick={() => rail('explorer')}>{@html ICON.explorer}</button>
   <button class="rb" data-rail="events" aria-pressed={on('events')} aria-label="Events" data-tip="Events: markers and ranges you add to the recording" onclick={() => rail('events')}>{@html ICON.events}</button>
   <button class="rb" data-rail="checks" aria-pressed={on('checks')} aria-label="Rules & checks" data-tip="Rules & checks: what should hold in a recording, and where conditions mark events" onclick={() => rail('checks')}>{@html ICON.checks}{#if badge}<span class="rbadge" class:bad={badge.bad} data-rail-badge></span>{/if}</button>
-  <button class="rb" data-rail="layouts" aria-pressed={on('layouts')} aria-label="Layouts" data-tip="Layouts: your saved layouts and the ones shared in this folder" onclick={() => rail('layouts')}>{@html ICON.layout}</button>
+  {#if !ui.viewer}<button class="rb" data-rail="layouts" aria-pressed={on('layouts')} aria-label="Layouts" data-tip="Layouts: your saved layouts and the ones shared in this folder" onclick={() => rail('layouts')}>{@html ICON.layout}</button>{/if}
   <button class="rb" data-rail="measure" aria-pressed={on('measure')} aria-label="Measure" data-tip="Measure: values at the cursors and stats between them (Ctrl+Alt+B)" onclick={() => rail('measure')}>{@html ICON.measure}</button>
-  <button class="rb" data-rail="live" aria-pressed={live.connect} aria-label="Live" data-tip="Live: bring the live tab forward, or connect a source (TCP, UDP or a growing file)" onclick={goLive}>{@html ICON.live}{#if liveTab}<span class="rdot" data-live-dot></span>{/if}</button>
+  {#if !ui.viewer}<button class="rb" data-rail="live" aria-pressed={live.connect} aria-label="Live" data-tip="Live: bring the live tab forward, or connect a source (TCP, UDP or a growing file)" onclick={goLive}>{@html ICON.live}{#if liveTab}<span class="rdot" data-live-dot></span>{/if}</button>{/if}
   <button class="rb" id="b-settings" data-rail="settings" aria-pressed={on('settings')} aria-label="Settings" data-tip="Settings" onclick={() => rail('settings')}>{@html ICON.settings}</button>
   <span class="rsp"></span>
 </nav>

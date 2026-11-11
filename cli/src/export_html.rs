@@ -40,7 +40,7 @@ pub struct Args {
     /// default Full when it fits the budget, else Light
     #[arg(long, value_enum)]
     pub mode: Option<ModeArg>,
-    /// The viewer folder to copy (default: $TLMBENCH_VIEWER, then `viewer/` next to this program, then the repository's)
+    /// A viewer folder to copy instead of the one built into this program (also $TLMBENCH_VIEWER)
     #[arg(long)]
     pub viewer: Option<PathBuf>,
     /// Write the data only, without the viewer
@@ -145,7 +145,7 @@ pub fn run(a: Args) -> Result<(), Fail> {
         let info = rec.info();
         let used = |slot: usize, name: &str, raw_only: bool| {
             panes.iter().any(|(chans, view)| {
-                (!raw_only || matches!(view.as_str(), "table" | "values" | "xy")) && chans.iter().any(|c| split_slot(c) == (slot, name))
+                (!raw_only || matches!(view.as_str(), "table" | "both" | "values" | "xy")) && chans.iter().any(|c| split_slot(c) == (slot, name))
             })
         };
         let channels: Vec<usize> = (0..info.channels.len())
@@ -194,8 +194,8 @@ pub fn run(a: Args) -> Result<(), Fail> {
             let (recipes, _) = recipe_library(&info.path, &a.common, true, true)?;
             for set in &sets {
                 let res = store.run_checks(o, set, &recipes)?;
-                evs.extend(checks::events_of(set, &res));
-                checks_out.push(json!({ "file": k, "set": set, "result": res }));
+                let marked = checks::events_of(set, &res);
+                checks_out.push(json!({ "file": k, "set": set, "result": res, "events": marked, "t_first": info.t_first.unwrap_or(0).to_string() }));
             }
         }
         events_out.push(json!({ "file": k, "events": evs }));
@@ -214,10 +214,16 @@ pub fn run(a: Args) -> Result<(), Fail> {
     let extra = json!({ "layout": layout, "events": events_out, "checks": checks_out, "tool": { "name": "tlmbench", "version": env!("CARGO_PKG_VERSION") } });
     let report = html::export(&a.out, &files, extra, &opts).map_err(|e| Fail(2, e.to_string()))?;
     if !a.no_viewer {
-        let src = viewer_dir(a.viewer.as_deref()).ok_or_else(|| {
-            Fail(2, "no viewer found: build it with `just viewer`, or pass --viewer <folder> (--no-viewer writes the data only)".into())
-        })?;
-        copy_dir(&src, &a.out).map_err(|e| Fail(2, format!("{}: {e}", src.display())))?;
+        match viewer_dir(a.viewer.as_deref()) {
+            Some(src) => copy_dir(&src, &a.out).map_err(|e| Fail(2, format!("{}: {e}", src.display())))?,
+            None => {
+                let built_in = html::embedded_viewer();
+                if built_in.is_empty() {
+                    return Err(Fail(2, "this build has no viewer: run `just viewer` and build again, or pass --viewer <folder> (--no-viewer writes the data only)".into()));
+                }
+                html::write_viewer(&a.out, &built_in).map_err(|e| Fail(2, e.to_string()))?;
+            }
+        }
     }
     if a.json {
         println!("{}", serde_json::to_string(&json!({ "out": a.out, "report": report })).unwrap());

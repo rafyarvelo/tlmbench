@@ -21,6 +21,7 @@
   import SlotPicker from './shell/SlotPicker.svelte';
   import WidgetTrust from './shell/WidgetTrust.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
+  import HtmlExportDialog from './shell/HtmlExportDialog.svelte';
   import CheckEditor from './shell/CheckEditor.svelte';
   import FolderRun from './shell/FolderRun.svelte';
   import Checks from './shell/Checks.svelte';
@@ -130,6 +131,7 @@
 <ImportDialog />
 <DescriptorForm />
 <ExportDialog />
+<HtmlExportDialog />
 <DeriveDialog />
 <ChannelEditor />
 <RecipesDialog />

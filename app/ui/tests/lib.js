@@ -32,7 +32,7 @@ function serve() {
 
 export async function open(opts = {}) {
   const server = await serve();
-  const b = await chromium.launch();
+  const b = await chromium.launch(opts.launchArgs ? { args: opts.launchArgs } : {});
   const ctx = await b.newContext({ viewport: opts.viewport ?? { width: 1440, height: 900 }, deviceScaleFactor: opts.dpr ?? 1, colorScheme: opts.colorScheme ?? 'dark' });
   const p = await ctx.newPage();
   const files = opts.files ?? { [DEFAULT_FILE]: {} };
@@ -50,7 +50,7 @@ export async function open(opts = {}) {
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message + ' @ ' + String(e.stack || '').split('\n')[1]));
   p.on('console', (m) => m.type() === 'error' && errs.push('console: ' + m.text()));
-  await p.goto(`http://127.0.0.1:${server.address().port}/`);
+  await p.goto(`http://127.0.0.1:${server.address().port}/${opts.query ?? ''}`);
   await p.waitForTimeout(opts.wait ?? 600);
   return { b, p, errs, server };
 }

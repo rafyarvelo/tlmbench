@@ -274,7 +274,9 @@
   </div>
   <div class="exbody" hidden={closed}>
   <div class="exrow">
-    {#if ui.folder}
+    {#if ui.viewer}
+      <span class="exfolder viewer" data-tip="This is an export: it holds what was chosen when it was made">{@html ICON.folder}<span>Export</span></span>
+    {:else if ui.folder}
       <button class="exfolder" id="exFolder" aria-haspopup="menu" aria-expanded={!!fold} data-tip="Folders: open a folder of recordings, expand or collapse, close all files" onclick={(e) => ((more = null), (fold = fold ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.folder}<span>{ui.folder.name}</span>{@html ICON.chev}</button>
     {:else}
       <button class="exfolder" id="exFolder" data-tip="Open a folder of recordings (only read)" onclick={actions.openFolder}>{@html ICON.folder}<span>Open folder</span></button>

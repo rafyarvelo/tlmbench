@@ -57,6 +57,8 @@ export interface SlotRow {
 }
 
 export const ui = $state({
+  /** An HTML export's viewer: it opens only what its export holds and edits nothing. */
+  viewer: !!(globalThis as { __tlmViewer?: boolean }).__tlmViewer,
   /** A layout that names files this tab doesn't have (`accel_x·2` needs file 2): the picker asks for them first. */
   slotPick: null as null | { name: string; need: number[]; pick: Record<number, string> },
   /** The files of the tab in front when it holds several (empty: one file). */
@@ -210,6 +212,10 @@ export const actions = {
   recipesExport: () => {},
   recipesImport: (_text: string) => {},
   exportOpen: () => {},
+  htmlOpen: () => {},
+  htmlGo: () => {},
+  htmlClose: () => {},
+  htmlSizes: () => {},
   exportGo: () => {},
   exportClose: () => {},
   imageOpen: () => {},

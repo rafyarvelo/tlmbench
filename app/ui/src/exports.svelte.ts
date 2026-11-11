@@ -31,4 +31,19 @@ export const exp = $state({
   ctx: null as ExportContext | null,
 });
 
+/** Export to HTML…: the sizes the core estimates for Full and Light, and the outcome. */
+export const html = $state({
+  open: false,
+  busy: false,
+  error: '',
+  result: '',
+  ctx: null as ExportContext | null,
+  /** Bytes of the folder in each mode for the chosen channels, and the budget. */
+  sizes: null as { full: number; light: number; budget: number } | null,
+  /** Channels of the layout in front, and those it shows as a table, values or XY (raw samples in Light). */
+  layout: [] as number[],
+  raw: [] as number[],
+  sets: [] as string[],
+});
+
 export const img = $state({ open: false, busy: false, error: '', result: '', panes: 0, sel: 0, base: '' });

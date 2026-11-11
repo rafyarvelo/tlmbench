@@ -110,6 +110,7 @@
     { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: !stack.panes.length, run: clearPanes },
     { heading: 'Export' },
     { label: 'Export data…', data: { more: 'exportdata' }, disabled: !ui.file, run: actions.exportOpen },
+    { label: 'Export to HTML…', data: { more: 'exporthtml' }, disabled: !ui.file || ui.viewer, tip: 'A folder of static files that opens in any browser with nothing to install', run: actions.htmlOpen },
     { label: 'Save the view as an image…', data: { more: 'exportimage' }, disabled: !ui.file || !stack.panes.length, run: actions.imageOpen },
     { heading: 'Window' },
     { label: settings.panelsClosed.length >= PANELS.length ? 'Expand all sidebar panels' : 'Collapse all sidebar panels', data: { more: 'panels' }, run: toggleAllPanels },
@@ -209,7 +210,7 @@
         >
       </div>
     {/each}
-    <button
+    {#if !ui.viewer}<button
       class="tnew"
       id="wsTabNew"
       aria-label="New tab"
@@ -221,7 +222,7 @@
         addMenu = addMenu ? null : { anchor: e.currentTarget as HTMLElement };
         if (addMenu) actions.loadShared();
       }}>+</button
-    >
+    >{/if}
   </div>
   {#if tabsOver}<button class="tb tscroll" id="tabsRight" aria-label="Scroll tabs right" disabled={tabsAt >= tabsMax - 1} onclick={() => tabsEl?.scrollBy({ left: 200, behavior: 'smooth' })}>›</button>{/if}
   <div class="rangebar">

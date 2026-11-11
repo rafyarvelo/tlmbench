@@ -307,3 +307,43 @@ pub fn summary_le(s: &Summary) -> [u8; 88] {
     put(s.count.to_le_bytes());
     b
 }
+
+/// The viewer built into this program: `(path, bytes)` pairs, empty when `just viewer` hasn't run before the build.
+/// A pack is, per file, a u32 LE path length, the path, a u32 LE data length and the data.
+pub fn embedded_viewer() -> Vec<(String, Vec<u8>)> {
+    unpack(include_bytes!(concat!(env!("OUT_DIR"), "/viewer.pack")))
+}
+
+pub fn unpack(mut b: &[u8]) -> Vec<(String, Vec<u8>)> {
+    let mut out = Vec::new();
+    let take = |b: &mut &[u8], n: usize| -> Option<Vec<u8>> {
+        let (x, rest) = b.split_at_checked(n)?;
+        *b = rest;
+        Some(x.to_vec())
+    };
+    let num = |b: &mut &[u8]| -> Option<usize> { Some(u32::from_le_bytes(take(b, 4)?.try_into().ok()?) as usize) };
+    while !b.is_empty() {
+        let (Some(n), ) = (num(&mut b), ) else { break };
+        let Some(path) = take(&mut b, n) else { break };
+        let Some(m) = num(&mut b) else { break };
+        let Some(data) = take(&mut b, m) else { break };
+        out.push((String::from_utf8_lossy(&path).into_owned(), data));
+    }
+    out
+}
+
+/// Writes `files` (a viewer pack's contents) into `out`.
+pub fn write_viewer(out: &Path, files: &[(String, Vec<u8>)]) -> Result<()> {
+    for (rel, data) in files {
+        // a pack never names a path outside the folder
+        if rel.split('/').any(|p| p == ".." || p.is_empty()) {
+            return Err(Error::Write(format!("the viewer names {rel:?}")));
+        }
+        let path = out.join(rel);
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(io_err(dir))?;
+        }
+        fs::write(&path, data).map_err(io_err(&path))?;
+    }
+    Ok(())
+}

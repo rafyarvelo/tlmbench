@@ -24,6 +24,22 @@ plugin-template:
       (cd plugins/$d && cargo build --release --target wasm32-wasip2); \
     done
 
+# The viewer an HTML export ships: the core compiled to WASM (crates/web), the UI built for it, both packed into
+# app/viewer/viewer.pack for the CLI and the app to embed. Run it before building them.
+viewer:
+    cd crates/web && cargo build --release --target wasm32-unknown-unknown
+    cd app/ui && npx vite build --config vite.viewer.config.ts
+
+# Gate 5, the v1 release: a folder check, and an HTML export of a 2 h flight within the 250 MB budget that opens in
+# under 2 s from a static host (needs `just viewer` before the build, and Playwright's Chromium)
+gate5:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just viewer
+    cargo build -q --release -p tlmbench -p tlmbench-gen
+    py="python3"; [ -x .venv/bin/python3 ] && py=".venv/bin/python3"
+    $py ci/gate5.py --bin target/release
+
 # Install the pinned toolchain, Playwright's Chromium and the Python venv
 setup *steps:
     ci/setup.sh {{steps}}

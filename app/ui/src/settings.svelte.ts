@@ -91,6 +91,13 @@ export interface ExportOpts {
   time: 'auto' | 'seconds' | 'iso' | 'ns';
   raw: boolean;
 }
+/** Export to HTML…: what was chosen last. */
+export interface HtmlOpts {
+  mode: 'auto' | 'full' | 'light';
+  range: 'view' | 'all';
+  channels: 'layout' | 'all';
+  checks: boolean;
+}
 export interface ImageOpts {
   format: 'png' | 'svg';
   what: 'all' | 'sel';
@@ -172,6 +179,7 @@ export interface Settings {
   /** Export data…: what was chosen last, and Save the view as an image…. */
   exportData: ExportOpts;
   exportImage: ImageOpts;
+  exportHtml: HtmlOpts;
   /** Derived channels: the recipes added to one file (by path, in the order they were added), and the automatic ones left out of it. */
   fileRecipes: Record<string, string[]>;
   fileRecipesOff: Record<string, string[]>;
@@ -284,6 +292,7 @@ export const DEFAULTS: Settings = {
   importWhere: 'tabs',
   exportData: { format: 'csv', range: 'view', channels: 'tab', layout: 'wide', resample: false, hz: 100, time: 'auto', raw: false },
   exportImage: { format: 'png', what: 'all', scale: 2 },
+  exportHtml: { mode: 'auto', range: 'all', channels: 'layout', checks: true },
   fileRecipes: {},
   fileRecipesOff: {},
   filePrefix: {},
@@ -451,7 +460,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 /** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
+const KEEP: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'exportHtml', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 export function resetSettings(): void {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {

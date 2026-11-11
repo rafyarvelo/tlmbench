@@ -15,7 +15,7 @@ import { ask, open as openDialog, save as saveDialog } from '@tauri-apps/plugin-
 
 import { type AxesStyle, drawAxes, duration, fileTime, frequency, PAD, readoutTime, setTimeFormat, spanText, timeLabel, type YAxis } from './axes';
 import { type LiveHealth, runGate, runGate2, runGate3, runGate4 } from './gate';
-import { type Axis, type GlTrace, LINE_WIDTH, type Rect, Renderer, type Rgba } from './gl';
+import { type Axis, createRenderer, type GlTrace, LINE_WIDTH, type Rect, type Rgba } from './gl';
 
 /** How opaque the min/max band under a reduced line is. */
 const ENVELOPE_ALPHA = 0.16;
@@ -53,7 +53,7 @@ import {
 } from './stack.svelte';
 import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
 import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
-import { type ExportContext, exp, FORMATS, img } from './exports.svelte';
+import { type ExportContext, exp, FORMATS, html, img } from './exports.svelte';
 import { derive, type DerivedInfo, manager, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
 import { SvgContext, svg } from './svgctx';
 import type { CustomWidget } from './widgets';
@@ -149,7 +149,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const center = $<HTMLDivElement>('center');
 const stackEl = $<HTMLDivElement>('stack');
 const overlay = $<HTMLCanvasElement>('overlay');
-const renderer = new Renderer($<HTMLCanvasElement>('gl'));
+const renderer = await createRenderer($<HTMLCanvasElement>('gl'));
 
 // ---------- state ----------
 
@@ -3363,6 +3363,7 @@ function checkShow(start: string, end: string): void {
 
 /** Opens the editor on a set (a new empty one: `null`), at a row. */
 function checkEditor(name: string | null, focus = -1, rule = false): void {
+  if (ui.viewer) return;
   const found = name ? checks.sets.find((s) => s.name === name) : null;
   const set = found ? structuredClone(plain(found)) : newSet(rule ? EVENT_RULES : 'New set');
   checks.editor = { set, was: found?.name ?? null, focus, cats: false };
@@ -4088,6 +4089,74 @@ async function exportGo(): Promise<void> {
     exp.error = `Couldn't export: ${e}`;
   } finally {
     exp.busy = false;
+  }
+}
+
+// ---------- Export to HTML… ----------
+
+/** The channels the tab's panes show, and those shown as a table, values or XY (they keep raw samples in a Light export). */
+function htmlChannels(): { layout: number[]; raw: number[] } {
+  const f = state.file;
+  const n = f?.info.channels.length ?? 0;
+  const inPanes = (keep: (p: (typeof stack.panes)[number]) => boolean) => [...new Set(stack.panes.filter(keep).flatMap((p) => p.channels))].filter((c) => c < n).sort((a, b) => a - b);
+  return { layout: inPanes(() => true), raw: inPanes((p) => !!p.mode && p.mode !== 'chart') };
+}
+
+function htmlSetsRunning(): string[] {
+  const f = state.file;
+  return f ? setsFor(f.info.path, layoutNow()).map((s) => s.name) : [];
+}
+
+/** Export to HTML…: what the tab shows, and the sizes of the two modes before anything is written. */
+function htmlOpen(): void {
+  const ctx = exportContext();
+  if (!ctx) return;
+  const { layout, raw } = htmlChannels();
+  Object.assign(html, { open: true, busy: false, error: '', result: '', ctx, sizes: null, layout, raw, sets: htmlSetsRunning() });
+  void htmlSizes();
+}
+
+async function htmlSizes(): Promise<void> {
+  const f = state.file;
+  if (!f || !html.ctx) return;
+  const o = settings.exportHtml;
+  const chans = o.channels === 'all' ? f.info.channels.map((_, c) => c) : html.layout;
+  const raw = html.raw.filter((c) => chans.includes(c));
+  try {
+    const s = await invoke<{ full: number; light: number; budget: number }>('export_html_sizes', { file: f.id, channels: chans, raw });
+    if (html.open) html.sizes = s;
+  } catch {
+    html.sizes = null;
+  }
+}
+
+/** Export…: asks where, then the core writes the folder (the viewer and the data) there. */
+async function htmlGo(): Promise<void> {
+  const ctx = html.ctx;
+  const f = state.file;
+  if (!ctx || !f || html.busy) return;
+  const o = settings.exportHtml;
+  const folder = await openDialog({ directory: true, title: 'Export to' });
+  if (typeof folder !== 'string') return;
+  html.busy = true;
+  html.error = '';
+  html.result = '';
+  try {
+    const chans = o.channels === 'all' ? f.info.channels.map((_, c) => c) : html.layout;
+    const raw = html.raw.filter((c) => chans.includes(c));
+    const secs = (t: bigint) => Number(t - f.first) / 1e9;
+    const layout = { ...toWorkspace(frontTab()?.ws ?? ctx.base, stack.panes, channelNames()), view: [secs(state.t0), secs(state.t1)] };
+    const span = o.range === 'all' ? null : ctx.view;
+    const out = `${folder.replace(/[\\/]$/, '')}${sep(folder)}${ctx.base}-export`;
+    const w = await invoke<{ out: string; viewer: boolean; report: { mode: string; bytes: number; trimmed: boolean } }>('export_html', {
+      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [] },
+    });
+    const mb = (w.report.bytes / 1048576).toFixed(w.report.bytes > 1e7 ? 0 : 1);
+    html.result = `Wrote ${mb} MB (${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}) to ${nameOf(w.out)} in ${folder}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
+  } catch (e) {
+    html.error = `Couldn't export: ${e}`;
+  } finally {
+    html.busy = false;
   }
 }
 
@@ -4934,6 +5003,12 @@ Object.assign(actions, {
   },
   recipesImport: (text: string) => void recipesImport(text),
   exportOpen,
+  htmlOpen,
+  htmlGo: () => void htmlGo(),
+  htmlSizes: () => void htmlSizes(),
+  htmlClose: () => {
+    html.open = false;
+  },
   exportGo: () => void exportGo(),
   exportClose: () => {
     exp.open = false;
@@ -5192,9 +5267,12 @@ if ((window as unknown as { __tlmViewer?: boolean }).__tlmViewer) {
   for (const p of boot.files) await openPath(p);
   if (boot.files.length && boot.layout?.panes) {
     // the layout is of the first file
-    const first = tabs.list.find((t) => t.path === boot.files[0] || t.path.startsWith('export://'));
+    const first = tabs.list[0];
     if (first) await showTab(first.key);
     await openLayout(boot.layout, boot.layout.name);
+    // the layout's tab is the view; the file's own tab behind it only repeats it
+    const plain = tabs.list.findIndex((t) => t.key === first?.key);
+    if (plain >= 0 && tabs.list.some((t) => t.ws)) tabs.list.splice(plain, 1);
   }
   ui.start = false;
 }
