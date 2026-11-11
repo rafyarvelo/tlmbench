@@ -16,6 +16,7 @@
 mod columnar;
 mod csv;
 mod hdf;
+pub mod html;
 
 use std::fs;
 use std::path::{Path, PathBuf};

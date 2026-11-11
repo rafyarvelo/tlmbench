@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 mod check;
+mod export_html;
 
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
@@ -168,6 +169,11 @@ enum Command {
         #[command(flatten)]
         common: Common,
     },
+    /// Export a view to a static folder that opens from any static host
+    Export {
+        #[command(subcommand)]
+        what: ExportCmd,
+    },
     /// Run check sets on recordings and report: exit 0 all pass, 1 a check failed, 2 a file or check couldn't run, 3 a
     /// configuration error (the highest applies)
     Check(check::Args),
@@ -208,6 +214,12 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum ExportCmd {
+    /// The viewer, the decoded data for a layout and the checks summary, as static files (size budget 250 MB)
+    Html(export_html::Args),
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
@@ -394,6 +406,7 @@ fn main() -> ExitCode {
             let c = ConvertArgs { to, out, channels, span, resample, layout, time, raw, delimiter, units_row, json };
             convert(&files, &c, jobs, &common)
         }
+        Command::Export { what: ExportCmd::Html(a) } => export_html::run(a),
         Command::Check(a) => check::run(a),
         Command::Validate { dir } => validate(dir),
         Command::Config { action, common } => config(action, &common),

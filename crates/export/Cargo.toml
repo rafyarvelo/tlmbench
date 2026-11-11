@@ -16,6 +16,9 @@ parquet.workspace = true
 hdf5.workspace = true
 ndarray.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+blake3.workspace = true
 
 [dev-dependencies]
 tlmbench-decode.workspace = true
