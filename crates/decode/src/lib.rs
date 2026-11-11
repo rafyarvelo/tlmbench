@@ -8,6 +8,8 @@
 //! - Packet files: a descriptor with `[packets]` frames records in packets, compressed or not; a packet index is
 //!   built once in the cache and packets are decompressed on demand (see [`packets`]).
 //!
+//! - Plugins: a format nothing above claims can be decoded by a plugin (see [`plugin`]), into the same cache.
+//!
 //! Nothing here writes next to the data: the only writes are cache files under the cache root.
 
 mod bytes;
@@ -19,6 +21,7 @@ pub mod fixed;
 pub mod packets;
 pub mod parquet;
 mod parquet_pages;
+pub mod plugin;
 pub mod preview;
 pub mod profile;
 pub mod reference;
@@ -111,6 +114,10 @@ pub fn open_all(path: &Path, opts: &OpenOptions) -> Result<Vec<Box<dyn Recording
     let root = cache::cache_root(opts.cache_dir.as_deref());
     if let Some(desc) = descriptor::discover(path, &root) {
         return open_all(path, &OpenOptions { descriptor: Some(desc), ..opts.clone() });
+    }
+    if let Some(p) = plugin::find(path, &head) {
+        let root = cache::cache_root(opts.cache_dir.as_deref());
+        return Ok(vec![boxed(plugin::open_with(path, &root, p.as_ref())?, opts)]);
     }
     if parquet::looks_like_parquet(&head) {
         let root = cache::cache_root(opts.cache_dir.as_deref());
