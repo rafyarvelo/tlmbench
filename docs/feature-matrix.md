@@ -29,7 +29,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Descriptor `files = [...]` name patterns | v1 | ✓ | ◐ (core and CLI find descriptors in `.tlmbench/decoders/` and the app cache's `decoders/`; the app's open path uses it) | 4.3 |
 | Bitfields in descriptors | v1 | ✗ | ✓ (core, CLI and the form's Bits column) | |
 | Time bases: column, rate, counter, arrival, index | v1 | sim | ✓ (column, rate, counter with wraparound, index; arrival for live) | |
-| Time going backwards flagged in the index | v1 | ✗ | ✗ (an error, as decided for now) | 5.10 |
+| Time going backwards flagged in the index | v1 | ✗ | ✓ (CSV and Parquet: flagged, kept in file order, said on opening; fixed-width, packet and plugin files still fail on it) | 5.10 |
 | Min/max pyramid, resumable background build | v1 | n/a | ✓ | |
 | M4 views, pixel-exact, gaps from the gap index | v1 | n/a | ✓ | |
 | LRU chunk store | v1 | n/a | ✓ | |
@@ -54,7 +54,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Min/max envelope fill under a line | v1 | ✗ | ✓ (a setting, on; a visual check with a spiky channel on the Mac is left) | 5.4 |
 | Markers when zoomed past ~6 px per sample | v1 | ✓ | ✓ |  |
 | Draw every sample (setting) | v1 | ✓ | ✓ (core: `Viewport::raw_max`; CLI `--raw-max`) |  |
-| Canvas 2D fallback renderer | v1 | n/a | ✗ (thin lines on software GL only) | 5.10 |
+| Canvas 2D fallback renderer | v1 | n/a | ✓ (`canvas2d.ts` when WebGL2 isn't there; `?renderer=2d` forces it; unmeasured) | 5.10 |
 | Stack that scrolls when panes don't fit (GL scissored to the stack) | — | ✓ | ✓ |  |
 | Gates 1–3 (100M points at 60 fps; 10 GB first paint; 4M samples/s live) | v1 | n/a | ✓ | |
 | Benchmark tracking across commits | — | n/a | ✓ (`just bench-record` / `bench-compare`, local) | 4.1 |
@@ -76,7 +76,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Event markers toggle (top bar, E) | v1 | ✓ | ✓ | 5.2 |
 | Remove every channel / every pane (top bar) | v1 | ✓ | ✓ (icons at 1300 px and wider, ⋯ otherwise) |  |
 | ⋯ menu: View, All panes, Window groups | v1 | ✓ | ✓ | |
-| ⋯ menu: Export group (data, image, HTML) | v1 | ✓ | ◐ (data and image; HTML waits) | 5.10 |
+| ⋯ menu: Export group (data, image, HTML) | v1 | ✓ | ✓ | 5.10 |
 | Narrow window moves groups into ⋯ | v1 | ✓ | ✓ | |
 | Menus: one style, grow from their button, keys, Esc, outside close | v1 | ✓ | ✓ | |
 | Tooltips: data-tip, retire after 3 uses, Short / Full / Off | v1 | ✓ | ✓ | |
@@ -210,7 +210,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Session restore (tabs, files, time range, cursors), per folder | v1 | ✓ | ✓ (a session per folder, Reset session in Settings) | |
 | Export data… (CSV, Parquet, Arrow, HDF5, MAT; view, cursors or all) | v1 | ✓ | ✓ (the core's `convert` writers) | |
 | Save the view as an image (PNG, SVG) | v1 | ✓ | ✓ (panes scrolled out of the stack aren't drawn) | |
-| Export to HTML (static viewer, Full and Light) | v1 | ✓ (simulated) | ✗ | 5.10 |
+| Export to HTML (static viewer, Full and Light) | v1 | ✓ (simulated) | ◐ (Full and Light with the 250 MB budget and the checks summary; Light's raw windows around events, a trimmed export in the viewer, several files in the viewer and `--single-file` are left) | 5.10 |
 
 ## 10. Derived channels
 
@@ -280,9 +280,9 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Multiple windows sharing one core; tabs between windows; Link time view | v1 | ✗ | ✓ (5.8a: Move to new window, drag a tab out or onto another strip, live sources shown in two windows, Link time view and cursors, windows restored) | 5.8 |
 | Daemon with clients over a socket; browser tabs; per-session token | v1 | ✗ | ✓ (`tlmbench-app --daemon`; Settings › Browser access) | 5.8 |
 | `.tlmbench/` for every object (events, checks, categories, recipes, profiles, decoders, widgets, icons, time maps) | v1 | ◐ (views, events, checks, categories) | ✓ (views, events, check sets, categories, recipes, profiles, decoders, widgets, icons, time maps) | 5.7 |
-| `tlmbench config export`; `tlmbench validate`; nearest `.tlmbench/` or `--config` | v1 | n/a | ✓ (CLI and app; Python bindings are 5.10) | 5.7 |
+| `tlmbench config export`; `tlmbench validate`; nearest `.tlmbench/` or `--config` | v1 | n/a | ✓ (CLI and app; the Python package reads the nearest `.tlmbench/` for checks) | 5.7 |
 | CLI: info, build, query, record, convert | v1 | n/a | ✓ | |
-| CLI: `check` with JUnit, CSV, JSON, HTML reports | v1 | n/a | ✓ (the HTML report's cells don't link to an exported view until 5.10) | 5.3 |
-| CLI: `export html` | v1 | n/a | ✗ | 5.10 |
-| Python bindings | v1 | n/a | ✗ | 5.10 |
-| Browser-only mode (core in WASM) | v1 | n/a | ✗ | 5.10 |
+| CLI: `check` with JUnit, CSV, JSON, HTML reports | v1 | n/a | ✓ (the HTML report's cells don't link to an exported view yet: left from 5.10) | 5.3 |
+| CLI: `export html` | v1 | n/a | ✓ (the embedded viewer, `--layout`, `--checks`, `--budget`, `--mode`, `--redact`) | 5.10 |
+| Python bindings | v1 | n/a | ◐ (`python/`: read, NumPy and Arrow, view, values, stats, checks, convert, export html; no wheels on PyPI yet) | 5.10 |
+| Browser-only mode (core in WASM) | v1 | n/a | ◐ (CSV files from the picker or a drop, charts, tables, values, Measure, the cache in the browser's private storage; no other formats, derived channels, checks, folders or several files) | 5.10 |

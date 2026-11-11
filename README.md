@@ -33,8 +33,9 @@ learns about a file lives in its own cache, so a read-only network share works a
   "coarse". It still shows every extreme, and the exact view replaces it a moment later.
 - **Gaps are honest.** Time jumps longer than a channel's gap factor × its median interval break the line, and
   missing samples are gaps, never interpolated.
-- **One core everywhere.** The Rust core behind the app also powers the `tlmbench` CLI (and, in v1, Python
-  bindings), so the numbers in a CI report are the numbers on screen.
+- **One core everywhere.** The Rust core behind the app also powers the `tlmbench` CLI, the Python package, the
+  HTML export's viewer (compiled to WASM) and browser-only mode, so the numbers in a CI report are the numbers on
+  screen.
 
 ## Measured (MacBook Air M1, 8 GB)
 
@@ -102,8 +103,21 @@ app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in t
   tlmbench record replay://flight.tlm?speed=10    # replay a recording through the live path (a demo, no hardware)
   tlmbench check runs/ --set acceptance.toml       # exit 0 all pass, 1 a check failed, 2 couldn't run, 3 configuration
   tlmbench convert flight.tlm --to parquet --out out/ -c "motor_*,battery_v"   # also csv, arrow, hdf5, mat
+  tlmbench export html flight.tlm --layout "Flight review" --checks "Flight acceptance" --out site/   # a static folder
   ```
 
+- **Export to HTML:** the ⋯ menu's Export › Export to HTML… and `tlmbench export html` write the same folder: the
+  viewer, the data for a layout (Full, with raw samples for every channel, when it fits the 250 MB budget, else Light with
+  the exact summaries and raw samples where a table, values or XY pane needs them), and the checks summary with violations
+  marked. It opens from any static host or file share with nothing to install, and draws the first chart in about 0.2 s.
+  The viewer is the app's own UI over the core compiled to WASM; it opens, measures and switches views, and edits nothing.
+- **Python:** `pip install`-able from `python/` (`maturin develop`): `tlmbench.open("flight.bin")`, then `read` (NumPy),
+  `to_arrow`, `view` (what the app draws), `stats` (exact), `check`, `convert` and `export_html` over the same core and
+  cache. The app never runs Python; scripts run outside it.
+- **In a browser, no install:** `app/browser/dist` (after `just viewer`) is the same UI with the core in WASM: drop CSV
+  files on the page. What it reads is kept in the browser's private storage; nothing leaves the machine. It reads CSV
+  only for now, and has the app's charts, tables, values and Measure; the rest is the app's.
+- **When WebGL2 isn't there** (an old browser, a remote desktop, some virtual machines) the traces draw with Canvas 2D.
 - **Read-only by design,** tested in CI against a read-only mount: nothing is written beside the data.
 
 ## Where it's going

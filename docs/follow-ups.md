@@ -472,3 +472,79 @@ None of these showed in the headless tests, which run Chromium on a fake core. W
 - **Table click-to-sort** is off by default (owner, Nov 11); the setting is Settings › Click a column header to sort.
 - **Parity:** `just app-parity` reports 214 differences over 23 scenes (211 at 5.7). `docs/parity-audit.md`'s status
   counts are stale: many rows still say Missing for things built in 5.2–5.4. Redo the audit before Gate 5.
+
+## Left from step 5.10 (HTML export, Python, browser mode, Gate 5)
+
+What is built: `tlmbench_export::html` (the folder writer: Full, Light, the 250 MB budget, trimming the finest pyramid
+levels), `tlmbench export html` and the app's Export to HTML… over the same writer, the viewer (the app's UI over the core
+compiled to WASM, `crates/web`), the embedded viewer in the CLI and the app (`just viewer`, `crates/export/build.rs`), the
+checks summary and violation marks in the viewer, the Python package (`python/`), browser-only mode (`app/browser/dist`),
+the Canvas 2D fallback renderer, time going backwards flagged in the index, `just gate5`. What is left:
+
+- **Light mode's raw windows around events and violations.** The design has Light ship raw samples for 30 s (3× the event's
+  duration, capped at 10 min) around every event and check violation, so stepping to a failure is exact. The writer ships the
+  pyramid for chart-only channels and raw samples for table, values and XY ones, but no windows. A viewer past the finest
+  level of a chart-only channel draws from the level-4 summaries (labelled coarse) and has no values at a cursor for it.
+  Needs a sparse raw store in the WASM core (chunks present or absent) and the plan for which chunks a view reads.
+- **A trimmed export in the viewer.** When Light doesn't fit, the writer leaves out the finest levels of the biggest channels
+  and records it (`first_level`), but the viewer's core needs level 4 to build a pyramid and ignores a channel whose
+  pyramid starts higher: the channel shows nothing. The design says the viewer then says "finer detail not in this export" past
+  that zoom; that needs a pyramid that starts at any level.
+- **Several files in one export.** `export html` takes several files (slots filled in order) and the writer writes each,
+  but the viewer opens each as its own tab: it has no group (alignment, `accel_x·2` channels, tables with other files'
+  columns). The groups live in `tlmbench-store`, which doesn't build for WASM.
+- **The viewer is the whole UI with the editing hidden, not a reduced bundle.** The page is 0.4 MB of JavaScript (130 KB
+  gzipped) plus the 0.7 MB core; opening is dominated by fetching the pyramids and the first view arrives in about 0.2 s from
+  a local server. The design says "a reduced frontend bundle": cutting the dialogs and menus out of the bundle is left.
+- **No `--single-file` variant** (one HTML file for email or `file://`, 25 MB, Light, coarse levels only). `file://` doesn't
+  work for the folder either: the browser refuses to fetch the WASM core and the data from a file URL.
+- **No `--redact` check against checks and events**: a redacted channel stays in the checks summary's expressions and in
+  event channel lists (the data itself is left out). **User SVG widgets and code widgets are not exported**: the layout's
+  widgets show as ordinary panes; the design's sanitised SVG and value-card versions are left.
+- **The HTML check report's cells don't link to an exported view** (the design's CI recipe). `tlmbench check --report html`
+  and `tlmbench export html --checks` write what such a link needs (the export's `checks[].result` and events), the link
+  itself isn't written.
+- **Time-range views in the viewer.** The export keeps the whole layout's time range as a `view`; `--from/--until` cut the
+  data, the shared view's range is applied as `openLayout` does for a shared tab.
+- **Browser-only mode reads CSV only**, in the page's main thread (a big file freezes the tab while it parses; a worker is
+  left), with no Parquet, `.tlm`, packets, descriptors or WASM plugins (the decoder crate doesn't build for WASM: the page
+  includes its CSV reader as source). No derived channels, events, checks, folders, live sources, several files or
+  exports: those need `tlmbench-store`, which doesn't build for WASM either. The cache in the browser's private storage
+  (OPFS) holds the parsed columns per file (name, size, a hash of its first and last megabyte) and is cleared from
+  Settings. A reload forgets which files were open (the page holds no handle to them).
+- **The viewer and browser-only mode ship from the repository's build, not from a package**: `just viewer`, then the static
+  site is `app/browser/dist` (any static host). A GitHub Pages or release-asset recipe is left.
+- **Python**: wheels aren't built or published (the PyPI part of the design); `maturin develop` installs it for the
+  tests. The package reads, views, stats, values, checks (by TOML text or the name of a set in the nearest `.tlmbench/`),
+  converts and exports to HTML; it can't derive channels, add events or read `.tlmbench/` settings as objects yet. Arrow
+  output goes through pyarrow built from the NumPy arrays (a copy), not the Arrow C interface.
+- **The Canvas 2D renderer is drawn from the same uploads but isn't measured**: thousands of points per pane are fine; the
+  core's reduction keeps a view to a few points per pixel column.
+- **Time that goes backwards** in a CSV or Parquet file is flagged and kept in file order (see below). Fixed-width and
+  packet files with a time field still fail on it, and so do plugin decoders (their own check).
+- **Gate 5 ran on the Mac, headless**: a 20-channel 2 h flight (720k samples per channel at 100 Hz) exports Full at
+  117.6 MB and its first chart view arrives in 0.2 s from a local static server (against 2 s). A remote host adds the
+  network: the data fetches are the pyramids (4 % of the raw size) first. CI doesn't run the gate (it needs the viewer
+  built and Chromium); `just gate5` does.
+
+### Step 5.10: for the design doc (Nov 11)
+
+- **Export folder format.** `export.json` (the manifest: format version, the report of what each channel holds and its
+  size, the layout as a shared view, events, check results with their events, a blake3 checksum per file), and
+  `data/f<k>/`: `t.<j>.bin` (i64 ns, chunks of 2^20 samples; none when the times come from a rate), `c<n>.<j>.bin` (f64
+  shown values, NaN missing; absent for a Light chart-only channel), `c<n>.pyr.bin` (88-byte summaries, finest stored level
+  first). Values are shown values (scale, offset and adjustments applied) and the pyramid is over them. Light chooses raw
+  channels from the panes' views (`table`, `both`, `values`, `xy`).
+- **The viewer.** The page loads the manifest and the WASM core, fetches each file's times and pyramids (the first view
+  draws from them, labelled coarse) and then the raw chunks in the background (the build progress shows as the file
+  building); `window.__tlmFirstView` records when the first view arrived (Gate 5 reads it). It answers the app's commands
+  `open`, `view`, `values_at`, `stats`, `rows`, `events_list`, `check_sets_list` and `checks_run` and refuses the rest.
+- **Embedding.** `just viewer` builds the core (`crates/web`, its own workspace and target folder) and the page, and packs
+  the page into `app/viewer/viewer.pack`; `crates/export/build.rs` embeds the pack, so the CLI and the app need no files
+  beside them. A plain `cargo build` without it writes the data only and says so.
+- **Time going backwards.** A CSV or Parquet row that reads earlier than a row before it takes the latest time before it
+  (rows stay in file order, nothing is reordered), the file's manifest keeps the count and the first hundred places, and
+  opening says so ("Time goes backwards in N rows (first at data row R …)"; `tlmbench info` prints a Note line). This
+  replaces the earlier decision that it is an error.
+- **Browser-only mode** includes the decoder's CSV reader as source (`crates/web` `#[path]` modules), so what a file's
+  header, units and time column mean is the same code as the app's.

@@ -37,6 +37,8 @@ About 9–10 GB at first: toolchains ~3–4 GB, `target/` ~5 GB (it grows; `just
 | `just gate [file]` | the Phase 1 gate in the release app (below) |
 | `just gen-gate2`, `just gate2 [file] [keep]` | write the 10 GB Gate 2 recording; run the Phase 2 gate over it (below) |
 | `just gate3 [core\|app] [seconds]` | the Phase 3 gate: 4M samples/s streamed to the recorder, or to a live tab in the app, and checked (below) |
+| `just viewer` | the viewer an HTML export ships and browser-only mode: builds the core for WASM (`crates/web`, its own target folder) and the UI for each; packs the viewer into `app/viewer/viewer.pack`, which the CLI and the app embed (run it before building them); browser-only mode is the static site in `app/browser/dist` |
+| `just gate5` | the v1 gate: a folder check, and an HTML export of a 2 h, 20-channel flight within 250 MB that opens in under 2 s from a static host (below) |
 | `just ci-linux`, `just ci-native` | everything a CI job runs |
 
 Recipes for code that doesn't exist yet (no Cargo workspace, no `app/`, no `python/`) say so and skip.
@@ -187,3 +189,22 @@ Last run (MacBook Air M1, 8 GB):
 | Read in place (before) | 20.1 ms | 82–88 ms |
 | Decoding the chunks | 10.5 ms | 44–52 ms |
 | Chunks decoded | 3.5 ms | — |
+
+## The viewer, browser-only mode and Python
+
+`crates/web` (`tlmbench-web`) is the core compiled to WASM: `tlmbench-core` plus a small store of columns in memory, one `call`
+entry (no wasm-bindgen), and the decoder's CSV reader included as source (`#[path]` modules). It is outside the workspace (its own
+`Cargo.lock` and `target/`; it needs the `wasm32-unknown-unknown` target that `rust-toolchain.toml` lists). `just viewer` builds it,
+then the UI twice with Vite (`app/ui/vite.viewer.config.ts` and `vite.browser.config.ts`: relative paths, so a folder of either
+opens from any place on a static host). `t_viewer` and `t_browseronly` (`app/ui`) test them from a plain file server and skip when
+the build isn't there.
+
+`python/` is the `tlmbench` package (pyo3, abi3, built by maturin; its own workspace and target folder too). `just test` runs
+`maturin develop -m python/Cargo.toml` into the venv and then `pytest python`; if `VIRTUAL_ENV` and `CONDA_PREFIX` are both set,
+unset one (maturin refuses). The package is the same core as the CLI: `python/tests` compares its HTML export with the CLI's
+checksums.
+
+Gate 5 (`just gate5`, `ci/gate5.py`): writes a 2 h flight (20 channels at 100 Hz) and two short ones, runs a check set over the
+folder, exports the flight with every channel and its checks, requires it to fit 250 MB in Full mode, serves the folder with a plain
+static file server and opens it in headless Chromium (`ci/gate5_open.mjs`), requiring the first chart view in under 2 s and no page
+errors. CI doesn't run it (it needs the viewer built and Chromium); run it on the Mac.
