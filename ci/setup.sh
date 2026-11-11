@@ -51,10 +51,11 @@ playwright() {
 }
 
 python() {
-  local py; py=$(command -v python3.12) || { echo "python3.12 not found (brew bundle installs it)" >&2; return 1; }
-  [[ -x "$VENV/bin/python" ]] || "$py" -m venv "$VENV"
-  "$VENV/bin/pip" install -q --upgrade pip
-  "$VENV/bin/pip" install -q -r requirements-dev.txt
+  local py; py=$(command -v python3.12 || command -v python) || { echo "python3.12 not found (brew bundle installs it)" >&2; return 1; }
+  [[ -d "$VENV" ]] || "$py" -m venv "$VENV"
+  local vpy="$VENV/bin/python"; [[ -x "$vpy" ]] || vpy="$VENV/Scripts/python.exe"   # Windows venvs use Scripts/
+  "$vpy" -m pip install -q --upgrade pip
+  "$vpy" -m pip install -q -r requirements-dev.txt
 }
 
 # the desktop app's web UI packages

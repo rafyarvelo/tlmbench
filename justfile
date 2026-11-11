@@ -5,7 +5,7 @@ set dotenv-path := "ci/versions.env"
 set dotenv-load
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-python := env("TLMBENCH_VENV", ".venv") / "bin/python"
+python := env("TLMBENCH_VENV", ".venv") / if os_family() == "windows" { "Scripts/python.exe" } else { "bin/python" }
 # The data folder `ro-test` proves untouched, and whether it must be read-only (CI mounts it read-only)
 ro_dir := env("TLMBENCH_RO_DIR", "prototype/tests/fold")
 ro_required := env("TLMBENCH_RO_REQUIRED", "")

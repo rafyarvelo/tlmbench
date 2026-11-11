@@ -116,6 +116,10 @@ jobs:
           cache-dependency-path: app/ui/package-lock.json
       - run: npm ci --no-audit --no-fund
         working-directory: app/ui
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: ci/setup.sh python
       - uses: taiki-e/install-action@v2
         with:
           tool: just@${{ env.JUST_VERSION }},cargo-nextest@${{ env.NEXTEST_VERSION }},tauri-cli@${{ env.TAURI_CLI_VERSION }}
