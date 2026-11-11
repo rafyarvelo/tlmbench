@@ -1004,3 +1004,31 @@ input[role='switch']:checked::after {
 .nohints .howto {
   display: none;
 }
+
+/* in-page drags in the desktop app (dnd.ts) */
+.dnd-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 9999;
+  max-width: 260px;
+  padding: 2px 8px;
+  overflow: hidden;
+  border: 1px solid var(--accent-line);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+html.dnd-active,
+html.dnd-active * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+html.dnd-no,
+html.dnd-no * {
+  cursor: not-allowed !important;
+}
