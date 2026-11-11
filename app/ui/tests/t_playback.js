@@ -71,6 +71,10 @@ run(
     check('it joins the first one\'s session', typeof c1.addTo === 'number' && c1.endpoint.startsWith('replay://'), c1);
     if (!(await p.$('#lvSources'))) await p.click('#lvSrcBtn');
     check('the strip counts two sources, with a card each', (await until(() => /2 sources/.test(document.getElementById('lvSrcBtn')?.textContent ?? ''))) && (await p.$$('#lvSources [data-card]')).length === 2);
+    // Explorer: each source is a numbered slot with its channels and its state; the Open list names each by its source
+    await p.click('[data-rail="explorer"]');
+    check('Explorer lists both sources as numbered slots with their state', await until(() => document.querySelectorAll('#explorer .row.slot').length === 2 && document.querySelectorAll('#explorer .row.slot [data-lvstate]').length === 2), await p.$$eval('#explorer .tree .row', (r) => r.map((x) => x.className.split(' ')[1])));
+    check('the Open list names each source, not a synthetic file', (await p.$$eval('#openFiles .ofnm', (b) => b.map((x) => x.textContent))).every((n) => !/^source-\d/.test(n ?? '')), await p.$$eval('#openFiles .ofnm', (b) => b.map((x) => x.textContent)));
     check('Remove closes the source, not the tab', await (async () => {
       await p.click('#lvSources [data-card]:last-child [data-sremove]');
       return (await until(() => document.querySelectorAll('#lvSources [data-card]').length === 1)) && (await p.$$eval('#wsTabs .wstab[data-tip^="replay://"]', (t) => t.length)) === 1;

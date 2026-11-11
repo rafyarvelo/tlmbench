@@ -1869,6 +1869,8 @@ async function pollLive(): Promise<void> {
     live.name = st.name;
     // Explorer names the source as the session does, not by its file
     if (st.name && ui.file !== st.name) ui.file = st.name;
+    const lt = tabs.list.find((t) => t.key === tabs.active);
+    if (lt?.live && st.name && lt.name !== st.name) lt.name = st.name;
     live.recording = st.recording;
     live.stopped = st.stopped;
     live.replay = isReplay(st.health.endpoint);

@@ -4,6 +4,7 @@
      or collapses everything; the filter matches files and channels (a regex with .*); the open-files strip closes
      them. The folder is only read. -->
 <script lang="ts">
+  import { live, stateOf } from '../live.svelte';
   import { untrack } from 'svelte';
   import { groupChannels } from '../groups';
   import { ICON } from '../icons';
@@ -46,6 +47,16 @@
   /** Channels used by a failing check on the open file. */
   const failing = $derived(ui.path ? failingChannels(ui.path) : new Map());
   const inTab = (path: string) => tabs.list.some((t) => t.path === path) || ui.slots.some((s) => s.path === path);
+  /** A live source's state word (Streaming, Paused, Stopped, Ended), by its id in the core. */
+  const WORD = { streaming: 'Streaming', paused: 'Paused', stopped: 'Stopped', ended: 'Ended' } as const;
+  const stateById = (id: number) => {
+    const c = live.cards.find((x) => x.file === id);
+    return c ? stateOf(c.health, c.stopped) : null;
+  };
+  const frontState = $derived.by(() => {
+    const c = live.cards.find((x) => x.key === tabs.active && x.primary);
+    return c ? stateOf(c.health, c.stopped) : null;
+  });
   const slotOf = (path: string) => ui.slots.find((s) => s.path === path);
   /** The file whose Alignment is showing (its slot number). */
   let alignOpen = $state<number | null>(null);
@@ -54,11 +65,12 @@
     const name = (path: string) => path.split(/[\\/]/).pop() ?? path;
     const out = [...new Set(tabs.list.map((t) => t.path))].map((path) => {
       const on = tabs.list.filter((t) => t.path === path);
-      return { path, name: name(path), tab: on.find((t) => !t.ws) ?? on[0], front: on.some((t) => t.key === tabs.active) };
+      const tab = on.find((t) => !t.ws) ?? on[0];
+      return { path, name: tab.live ? tab.name : name(path), tab, front: on.some((t) => t.key === tabs.active) };
     });
     // the other files of the tab in front (Add to tab, Open together) are open too: listed after it, a click shows the tab
     const front = tabs.list.find((t) => t.key === tabs.active);
-    if (front) for (const s of ui.slots) if (s.slot > 1 && !out.some((f) => f.path === s.path)) out.push({ path: s.path, name: name(s.path), tab: front, front: true });
+    if (front) for (const s of ui.slots) if (s.slot > 1 && !out.some((f) => f.path === s.path)) out.push({ path: s.path, name: front.live ? s.name : name(s.path), tab: front, front: true });
     return out;
   });
   /** A file shows when its name, or (the open one) one of its channels, matches. */
@@ -419,7 +431,7 @@
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span><CheckBadge {path} />{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span><CheckBadge {path} />{#if open && ui.slots.length < 2 && frontState}{@const fs = frontState}<span class="meta lvst" data-state={fs} data-lvstate>{WORD[fs]}</span>{/if}{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
@@ -467,7 +479,7 @@
   <div class="row slot" role="treeitem" aria-selected="false" tabindex="0" style="--d: {depth}" data-slot={sl.slot} data-tip={sl.path}
     onclick={() => sl.slot > 1 && (alignOpen = alignOpen === sl.slot ? null : sl.slot)}
     onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), sl.slot > 1 && (alignOpen = alignOpen === sl.slot ? null : sl.slot))}>
-    <b class="slotn">{sl.slot}</b><span class="nm">{sl.name}</span>
+    <b class="slotn">{sl.slot}</b><span class="nm">{sl.name}</span>{#if stateById(sl.file)}{@const ss = stateById(sl.file)!}<span class="meta lvst" data-state={ss} data-lvstate>{WORD[ss]}</span>{/if}
     {#if sl.slot === 1}<span class="meta" data-primary>primary</span>{:else}<span class="meta" data-asum>{sl.align.locked ? 'locked · ' : ''}{({ starts: 'starts aligned', clock: 'same clock', timesrc: 'time channel', xcorr: 'correlated', events: 'events', sync: 'sync points', manual: 'offset', plugin: sl.align.plugin ?? 'plugin' })[sl.align.method]}</span>{/if}
     <span class="slotact">
       {#if sl.slot > 1}<button class="linkbtn" data-makeprimary data-tip="Make this file the primary: file 1 keeps plain channel names and defines time zero" onclick={(e) => (e.stopPropagation(), actions.makePrimary(sl.slot))}>Make primary</button>{/if}
@@ -783,6 +795,12 @@
   .chev :global(svg) {
     width: 12px;
     height: 12px;
+  }
+  .lvst[data-state='streaming'] {
+    color: var(--danger);
+  }
+  .lvst[data-state='paused'] {
+    color: var(--warn);
   }
   .meta,
   .miss {
