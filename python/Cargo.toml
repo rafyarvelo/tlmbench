@@ -23,6 +23,11 @@ serde_json = "1.0.154"
 # Its own workspace and target folder, like the plugin crates: an extension module links only through maturin.
 [workspace]
 
+# opt-level 2, not 0: at 0 rustc shares generic instances across crates, and on Windows the extension then fails to
+# link (LNK2019 on instances the upstream crates didn't emit). Debug builds are what `maturin develop` makes.
+[profile.dev]
+opt-level = 2
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
