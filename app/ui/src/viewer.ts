@@ -13,7 +13,8 @@ interface ExportChannel {
   index: number;
   name: string;
   raw: boolean;
-  raw_chunks: number;
+  /** `[first sample, samples]` per file `c<n>.<j>.bin`: every sample (Full), or the windows (Light). */
+  raw_chunks: [number, number][];
   pyramid: { first_level: number; levels: number[] };
 }
 interface ExportFile {
@@ -23,6 +24,8 @@ interface ExportFile {
   samples: number;
   chunk: number;
   time: { kind: 'rate' | 'column'; chunks?: number };
+  t_first: string | null;
+  t_last: string | null;
   channels: ExportChannel[];
 }
 export interface Manifest {
@@ -33,6 +36,8 @@ export interface Manifest {
   layout: unknown;
   events: { file: number; events: unknown[] }[];
   checks: { file: number; set: { name: string }; result: unknown; events: unknown[]; t_first: string }[];
+  /** BLAKE3 (hex) of every data file, by its path in the export. */
+  checksums: Record<string, string>;
 }
 
 /** What the page knows of the export, for the shell (title, the checks summary, the mode label). */
@@ -50,7 +55,17 @@ export async function installViewerCore(): Promise<void> {
   const manifest = (await (await get('export.json')).json()) as Manifest;
   viewer.manifest = manifest;
   const core = await loadCore(new URL('tlmbench_web.wasm', base).href);
-  const bytes = async (path: string) => new Uint8Array(await (await get(path)).arrayBuffer());
+  const fetched = async (path: string) => new Uint8Array(await (await get(path)).arrayBuffer());
+  /** A data file, checked against the export's checksum before anything uses it: a truncated upload or a stale cached
+   * chunk shows an error, never data. */
+  const bytes = async (path: string) => {
+    const b = await fetched(path);
+    const want = manifest.checksums?.[path];
+    if (!want) throw new Error(`${path}: the export has no checksum for it`);
+    const got = core('hash', {}, b) as string;
+    if (got !== want) throw new Error(`${path}: doesn't match the export (the file is damaged or from another export)`);
+    return b;
+  };
 
   // the internals are installed below; the channel callbacks `open` reports progress through live there
   let callbacks: Map<number, (d: unknown) => void> = new Map();
@@ -60,6 +75,18 @@ export async function installViewerCore(): Promise<void> {
   const waitRaw = async (file: unknown, channels: unknown) => {
     const ps = rawReady.get(Number(file)) ?? [];
     await Promise.all((channels as number[]).map((c) => ps[c]));
+  };
+
+  /** The sample the last view was centred on (file k's), so the raw windows nearest it load first. */
+  const looked = new Map<number, { t0: string; t1: string }>();
+  const viewMid = (f: ExportFile) => {
+    const v = looked.get(f.k);
+    if (!v || !f.t_first || !f.t_last) return 0;
+    // times are nanoseconds past 2^53: take the differences as BigInts first
+    const span = Number(BigInt(f.t_last) - BigInt(f.t_first));
+    if (!(span > 0)) return 0;
+    const mid = Number((BigInt(v.t0) + BigInt(v.t1)) / 2n - BigInt(f.t_first));
+    return Math.max(0, Math.min(f.samples, ((mid / span) * f.samples) | 0));
   };
 
   /** Loads file k: times and pyramids first (the view opens on them), then the raw chunks, reporting progress. */
@@ -90,8 +117,8 @@ export async function installViewerCore(): Promise<void> {
       return { p, ok, no };
     });
     rawReady.set(k, gates.map((g, i) => (f.channels[i].raw ? g.p : Promise.resolve())));
-    const wanted = f.channels.flatMap((c, i) => Array.from({ length: c.raw ? c.raw_chunks : 0 }, (_, j) => ({ i, j, c })));
-    const total = f.samples * f.channels.filter((c) => c.raw).length;
+    const wanted = f.channels.flatMap((c, i) => (c.raw_chunks ?? []).map(([start, len], j) => ({ i, j, c, start, len })));
+    const total = wanted.reduce((n, w) => n + w.len, 0);
     if (!wanted.length) return opened;
     // the raw chunks arrive in the background; the view draws from the pyramid until a channel is whole
     const send = (done: number, error: string | null = null) => (location.search.includes('debug') && console.log('progress', done, total, error), progress?.({ message: { done, total, builtUntil: null, error }, index: sent++ }));
@@ -100,17 +127,32 @@ export async function installViewerCore(): Promise<void> {
     setTimeout(() => void (async () => {
       let done = 0;
       try {
-        const per = f.channels.map(() => [] as Promise<Uint8Array>[]);
-        for (const w of wanted) per[w.i][w.j] = bytes(`${dir}c${w.c.index}.${w.j}.bin`);
-        for (let i = 0; i < per.length; i++) {
-          for (const p of per[i]) {
-            const b = await p;
-            core('put_raw', { file: k, chan: i, chunk: 0 }, b);
+        // nearest the view first, then outward, a few at a time; a channel's gate opens when all its chunks are in
+        const left = wanted.map((w) => ({ ...w, got: false }));
+        const remaining = f.channels.map((c) => (c.raw_chunks ?? []).length);
+        f.channels.forEach((_c, i) => remaining[i] === 0 && gates[i].ok());
+        const next = () => {
+          const mid = viewMid(f);
+          let best = -1;
+          let bestD = Infinity;
+          left.forEach((w, n) => {
+            if (w.got) return;
+            const d = Math.abs(w.start + w.len / 2 - mid);
+            if (d < bestD) [best, bestD] = [n, d];
+          });
+          if (best >= 0) left[best].got = true;
+          return best >= 0 ? left[best] : null;
+        };
+        const worker = async () => {
+          for (let w = next(); w; w = next()) {
+            const b = await bytes(`${dir}c${w.c.index}.${w.j}.bin`);
+            core('put_raw', { file: k, chan: w.i, start: w.start }, b);
             done += b.length / 8;
             send(done);
+            if (--remaining[w.i] === 0) gates[w.i].ok();
           }
-          gates[i].ok();
-        }
+        };
+        await Promise.all([worker(), worker(), worker()]);
         send(total);
         (window as unknown as { __tlmViewerLoaded?: boolean }).__tlmViewerLoaded = true;
       } catch (e) {
@@ -135,6 +177,8 @@ export async function installViewerCore(): Promise<void> {
     },
     close: (a) => core('close', { file: a.file }),
     view: (a) => {
+      const es = (a.entries as { t0: string; t1: string }[] | undefined) ?? [];
+      if (es.length) looked.set(Number(a.file), { t0: es[0].t0, t1: es[0].t1 });
       const r = core('view', a);
       // Gate 5 measures the open from the navigation to the first chart view
       (window as unknown as { __tlmFirstView?: number }).__tlmFirstView ??= performance.now();

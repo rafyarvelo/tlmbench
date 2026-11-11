@@ -227,7 +227,13 @@ fn html_export_writes_data_files_and_trims_to_the_budget() {
     )
     .unwrap();
     let (times, values) = contents(src.as_ref());
-    let file = |raw: Vec<usize>| html::File { name: "run".into(), rec: src.as_ref(), channels: vec![0, 1], raw };
+    let file = |raw: Vec<usize>| html::File {
+        name: "run".into(),
+        rec: src.as_ref(),
+        channels: vec![0, 1],
+        raw,
+        windows: Vec::new(),
+    };
 
     let out = tmp.path().join("site");
     let r = html::export(
@@ -283,4 +289,61 @@ fn html_export_writes_data_files_and_trims_to_the_budget() {
     .unwrap();
     assert!(r.trimmed && r.mode == Mode::Light);
     assert!(r.files[0].channels.iter().all(|c| c.first_level > 4));
+
+    // Light with windows: a channel without raw keeps the samples inside them, as whole files named in the manifest
+    let n = times.len();
+    let (t0, t1) = (times[n / 3], times[n / 3 + 5_000]);
+    let (u0, u1) = (times[n / 3 + 4_000], times[n / 3 + 9_000]); // overlaps the first: one window
+    let (v0, v1) = (times[n - 2_000], times[n - 1] + 1);
+    let w = tmp.path().join("windows");
+    let f = html::File {
+        name: "run".into(),
+        rec: src.as_ref(),
+        channels: vec![0, 1],
+        raw: vec![1],
+        windows: vec![(t0, t1), (u0, u1), (v0, v1)],
+    };
+    html::export(&w, &[f], serde_json::json!({}), &html::Options { mode: Mode::Light, ..Default::default() }).unwrap();
+    let m: serde_json::Value = serde_json::from_slice(&fs::read(w.join("export.json")).unwrap()).unwrap();
+    let chunks = m["files"][0]["channels"][0]["raw_chunks"].as_array().unwrap();
+    let spans: Vec<(usize, usize)> =
+        chunks.iter().map(|c| (c[0].as_u64().unwrap() as usize, c[1].as_u64().unwrap() as usize)).collect();
+    let (a, b, c, d) = (n / 3, n / 3 + 9_000, n - 2_000, n);
+    assert_eq!(spans, vec![(a, b - a), (c, d - c)], "overlapping windows join; each is one file");
+    // every held sample is the shown value at its index, and nothing else is held
+    for (j, &(s, len)) in spans.iter().enumerate() {
+        let got: Vec<f64> = fs::read(w.join(format!("data/f0/c0.{j}.bin")))
+            .unwrap()
+            .chunks(8)
+            .map(|x| f64::from_le_bytes(x.try_into().unwrap()))
+            .collect();
+        assert_eq!(got[..], values[0][s..s + len]);
+    }
+    assert!(!w.join("data/f0/c0.2.bin").exists());
+    // the marked channel keeps every sample
+    let all = m["files"][0]["channels"][1]["raw_chunks"].as_array().unwrap();
+    assert_eq!(all.iter().map(|c| c[1].as_u64().unwrap()).sum::<u64>(), n as u64);
+    assert!(m["checksums"]["data/f0/c0.1.bin"].is_string());
+}
+
+#[test]
+fn raw_windows_are_centred_capped_and_parsed() {
+    use crate::html::Window;
+    let s = 1_000_000_000i64;
+    let w = Window::default();
+    // an instant: 30 s centred on it
+    assert_eq!(w.around(100 * s, 0), (85 * s, 115 * s));
+    // 3x the duration when longer than 30 s: a 20 s event gets 60 s, centred on it
+    assert_eq!(w.around(100 * s, 20 * s), (80 * s, 140 * s));
+    // capped at 10 minutes, but the event is always inside
+    assert_eq!(w.around(1000 * s, 400 * s), (1000 * s + 200 * s - 300 * s, 1000 * s + 200 * s + 300 * s));
+    let (a, b) = w.around(0, 900 * s);
+    assert!(a <= 0 && b >= 900 * s);
+    // --detail
+    assert_eq!(Window::parse("0").unwrap(), None);
+    assert_eq!(Window::parse("3x,30s,10min").unwrap(), Some(Window::default()));
+    assert_eq!(Window::parse("45s").unwrap().unwrap().min_ns, 45 * s);
+    let custom = Window::parse("2x,10s,2min").unwrap().unwrap();
+    assert_eq!((custom.factor, custom.min_ns, custom.cap_ns), (2.0, 10 * s, 120 * s));
+    assert!(Window::parse("soon").is_err() && Window::parse("1s,2s,3s").is_err());
 }

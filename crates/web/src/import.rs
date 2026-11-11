@@ -35,7 +35,7 @@ pub fn import_csv(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
         .collect();
     let mut d = Ds::new(path, "CSV", None, n, time, tm, channels);
     for (col, values) in d.cols.iter_mut().zip(rows.columns) {
-        col.raw = Some(values);
+        col.raw = crate::data::Raw::whole(values);
     }
     d.info.skipped =
         schema.columns.iter().filter(|c| matches!(c.kind, Kind::Text | Kind::Skip)).map(|c| c.name.clone()).collect();
@@ -68,7 +68,7 @@ pub fn dump(st: &crate::data::State, k: usize) -> Result<(Value, Vec<u8>), Strin
     };
     let mut chans = Vec::new();
     for (c, col) in d.info.channels.iter().zip(&d.cols) {
-        col.raw.iter().flatten().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
+        col.raw.slice(d.len).into_iter().flatten().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
         chans.push(json!({ "name": c.name, "unit": c.unit, "category": c.category }));
     }
     let meta = json!({
@@ -113,7 +113,9 @@ pub fn load(st: &mut crate::data::State, k: usize, path: &str, meta: &Value, bin
         .collect();
     let mut d = Ds::new(path, meta["format"].as_str().unwrap_or("CSV"), None, n, time, tm, channels);
     for col in d.cols.iter_mut() {
-        col.raw = Some(take(n)?.chunks_exact(8).map(|b| f64::from_le_bytes(b.try_into().unwrap())).collect());
+        col.raw = crate::data::Raw::whole(
+            take(n)?.chunks_exact(8).map(|b| f64::from_le_bytes(b.try_into().unwrap())).collect(),
+        );
     }
     d.info.skipped = meta["skipped"]
         .as_array()

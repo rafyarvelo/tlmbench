@@ -2911,6 +2911,8 @@ struct HtmlRequest {
     until: Option<String>,
     /// Check sets to run on the file and include.
     sets: Vec<String>,
+    /// Light's raw windows (`30s`, `3x,30s,10min`, `0` for none); none: the default.
+    detail: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2976,7 +2978,24 @@ async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlEx
             until: req.until.as_deref().map(parse_time).transpose()?,
         };
         let out = Path::new(&req.out);
-        let f = html::File { name, rec, channels, raw };
+        let window = html::Window::parse(req.detail.as_deref().unwrap_or("3x,30s,10min"))?;
+        // raw windows around every event and every violation the sets marked
+        let windows = window
+            .map(|w| {
+                let evs = extra["events"][0]["events"].as_array().into_iter().flatten();
+                let marked = extra["checks"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|c| c["events"].as_array().into_iter().flatten());
+                evs.chain(marked)
+                    .filter_map(|e| {
+                        Some(w.around(e["start"].as_str()?.parse().ok()?, e["duration"].as_str()?.parse().ok()?))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let f = html::File { name, rec, channels, raw, windows };
         let report = html::export(out, &[f], extra, &opts).map_err(|e| e.to_string())?;
         let built_in = html::embedded_viewer();
         let viewer = !built_in.is_empty();

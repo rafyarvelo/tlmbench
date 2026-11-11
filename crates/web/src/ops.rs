@@ -4,8 +4,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tlmbench_core::chunks::Held;
 use tlmbench_core::gaps::{DEFAULT_FACTOR, MIN_FACTOR};
-use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Summary};
-use tlmbench_core::recording::{ChannelInfo, TimeSource};
+use tlmbench_core::pyramid::{MIN_BUCKET_SAMPLES, Stats, Summary, span};
+use tlmbench_core::recording::{ChannelInfo, ChannelOp, Channels, TimeSource};
 use tlmbench_core::wire;
 use tlmbench_core::{RateTimes, Recording, Trace, TraceKind, Viewport};
 
@@ -14,6 +14,8 @@ use crate::data::{Ds, State, Tm, dtype};
 
 const RAW_MAX: u32 = 10_000_000;
 const MAX_ROWS: usize = 10_000;
+/// The most raw samples a view reduces without a pyramid to help.
+const EXACT_RAW_MAX: usize = 4_000_000;
 
 fn time(s: &str) -> Result<i64, String> {
     s.parse::<i64>().map_err(|_| format!("{s:?} is not a time"))
@@ -93,7 +95,12 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
             let d = ds_mut(st, arg(a, "file")?)?;
             let c: usize = arg(a, "chan")?;
             let col = d.cols.get_mut(c).ok_or("no such channel")?;
-            col.raw.get_or_insert_with(Vec::new).extend(f64s(bin));
+            // `start`: the first sample of these values; without it they continue the channel's last span
+            let start = match a.get("start") {
+                Some(_) => arg::<usize>(a, "start")?,
+                None => col.raw.next(),
+            };
+            col.raw.put(start, f64s(bin))?;
             Ok(Reply::Json(Value::Null))
         }
         "put_pyr" => {
@@ -127,6 +134,8 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
             }
             Ok(Reply::Json(Value::Null))
         }
+        // the BLAKE3 of the bytes sent, as hex: the page checks each file it fetches against `export.json`
+        "hash" => Ok(Reply::Json(Value::String(blake3::hash(bin).to_hex().to_string()))),
         "view" => view(st, a),
         "values_at" => values_at(st, a),
         "stats" => stats(st, a),
@@ -221,13 +230,21 @@ fn view(st: &State, a: &Value) -> Result<Reply, String> {
             let breaks = d.gaps.breaks(factor);
             let held = Held::default();
             let pyr = d.pyramid(c);
-            let has_raw = d.cols[c].raw.as_ref().is_some_and(|r| r.len() == d.len);
+            let col = &d.cols[c];
+            let whole = col.raw.slice(d.len).is_some();
+            // the samples the view reads (and one either side) are all here: an exact view
+            let covered = whole || col.raw.covers(lo.saturating_sub(1), (hi + 1).min(d.len));
+            // a trimmed pyramid (its finest level is above 4) never goes through the core's; a view of very many raw
+            // samples without one is answered from the summaries
+            let exact_ok = covered && (pyr.is_some() || hi.saturating_sub(lo) <= EXACT_RAW_MAX);
             let (trace, coarse) = match &pyr {
-                // no raw samples: the pyramid answers at every zoom, labelled coarse past its finest level
-                Some(_) if !has_raw && !coarse_pays => (summary_trace(d, c, vp), true),
-                Some(p) if !has_raw => (d.view_coarse(c, vp, p, &breaks, &held), true),
-                Some(p) if coarse_first && coarse_pays => (d.view_coarse(c, vp, p, &breaks, &held), true),
-                p if has_raw => (d.view(c, vp, p.as_ref(), &breaks, &held), false),
+                // raw samples missing for the view: the pyramid answers, labelled coarse
+                Some(_) if !exact_ok && !coarse_pays => (summary_trace(d, c, vp), true),
+                Some(p) if !exact_ok => (d.view_coarse(c, vp, p, &breaks, &held), true),
+                Some(p) if coarse_first && coarse_pays && whole => (d.view_coarse(c, vp, p, &breaks, &held), true),
+                p if exact_ok => (d.view(c, vp, p.as_ref(), &breaks, &held), false),
+                // a trimmed pyramid: its finest level that fits, every value an exact aggregate
+                None if !col.levels.is_empty() => (summary_trace(d, c, vp), true),
                 _ => (Trace { kind: TraceKind::Raw, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] }, false),
             };
             let (trace, dashed) =
@@ -250,22 +267,26 @@ fn view(st: &State, a: &Value) -> Result<Reply, String> {
     Ok(Reply::Bytes(wire::encode_batch(generation, &parts)))
 }
 
-/// A channel with no raw samples in a view of fewer samples per pixel than its finest summaries cover: each summary of 256
-/// samples contributes its lowest and highest value at their own times, in order (exact aggregates, never a sample that
-/// isn't there); a time jump over four median intervals breaks the line. Labelled coarse by the caller.
+/// A channel whose raw samples aren't all here, in a view of fewer samples than the raw samples it would need: the
+/// stored level that fits (the finest with about two summaries a pixel, or the finest there is), each non-empty
+/// summary contributing its lowest and highest value at their own times, in order (exact aggregates, never a sample
+/// that isn't there); a time jump over four median intervals breaks the line. Labelled coarse by the caller.
 fn summary_trace(d: &Ds, c: usize, vp: Viewport) -> Trace {
     let empty = Trace { kind: TraceKind::M4, bucket_ns: vp.bucket_ns(), t: vec![], y: vec![] };
-    let Some(l4) = d.cols[c].levels.first().filter(|_| d.cols[c].first_level == tlmbench_core::pyramid::MIN_LEVEL)
-    else {
+    let col = &d.cols[c];
+    if col.levels.is_empty() {
         return empty;
-    };
-    let w = tlmbench_core::pyramid::span(tlmbench_core::pyramid::MIN_LEVEL);
+    }
+    let (first, top) = (col.first_level, col.first_level + col.levels.len() as u32 - 1);
     let (lo, hi) = (d.lower_bound(vp.t0).saturating_sub(1), (d.lower_bound(vp.t1) + 1).min(d.len));
-    let (a, b) = (lo / w, hi.div_ceil(w).min(l4.len()));
+    let per_px = (hi.saturating_sub(lo) / vp.width_px.max(1) as usize).max(1);
+    let k = (first..=top).rev().find(|&k| 2 * span(k) <= per_px).unwrap_or(first);
+    let (w, lk) = (span(k), &col.levels[(k - first) as usize]);
+    let (a, b) = (lo / w, hi.div_ceil(w).min(lk.len()));
     let median = d.gaps.median_ns;
     let (mut t, mut y) = (Vec::new(), Vec::new());
     let mut prev_last: Option<i64> = None;
-    for s in l4.get(a..b).unwrap_or_default() {
+    for s in lk.get(a..b).unwrap_or_default() {
         if s.count == 0 {
             continue;
         }
@@ -290,6 +311,48 @@ fn summary_trace(d: &Ds, c: usize, vp: Viewport) -> Trace {
     Trace { kind: TraceKind::M4, bucket_ns: vp.bucket_ns(), t, y }
 }
 
+/// The summary of the samples `lo..hi` of a channel: whole summaries of the stored levels between, and the raw samples
+/// of the two ragged edges (up to the finest stored level's grid). `None` unless every raw sample an edge needs is here,
+/// or the channel has no pyramid: exact or nothing.
+fn exact_summary(d: &Ds, c: usize, lo: usize, hi: usize) -> Option<Summary> {
+    struct Edge(usize, usize);
+    impl ChannelOp for Edge {
+        type Out = Summary;
+        fn run<T: tlmbench_core::Times + ?Sized, S: tlmbench_core::Samples + ?Sized>(
+            self,
+            times: &T,
+            values: &S,
+        ) -> Summary {
+            Summary::of(times, values, self.0, self.1)
+        }
+    }
+    let col = &d.cols[c];
+    if col.levels.is_empty() || lo >= hi {
+        return None;
+    }
+    let (first, top) = (col.first_level, col.first_level + col.levels.len() as u32 - 1);
+    let w = span(first);
+    let a1 = lo.next_multiple_of(w).min(hi);
+    let b1 = (if hi == d.len { hi } else { hi / w * w }).max(a1);
+    let mut acc: Option<Summary> = None;
+    let mut add = |s: Summary| acc = Some(acc.map_or(s, |p| p.merge(&s)));
+    if lo < a1 {
+        col.raw.covers(lo, a1).then_some(())?;
+        add(d.dispatch(c, Edge(lo, a1)));
+    }
+    let mut i = a1;
+    while i < b1 {
+        let k = (first..=top).rev().find(|&k| i.is_multiple_of(span(k)) && (i + span(k)).min(d.len) <= b1)?;
+        add(*col.levels[(k - first) as usize].get(i >> (2 * k))?);
+        i = (i + span(k)).min(d.len);
+    }
+    if b1 < hi {
+        col.raw.covers(b1, hi).then_some(())?;
+        add(d.dispatch(c, Edge(b1, hi)));
+    }
+    acc
+}
+
 fn nearest(d: &Ds, t: i64) -> Option<usize> {
     let n = d.len;
     if n == 0 || !d.times_ready() {
@@ -310,10 +373,6 @@ fn nearest(d: &Ds, t: i64) -> Option<usize> {
     })
 }
 
-fn raw_of(d: &Ds, c: usize) -> Option<&[f64]> {
-    d.cols[c].raw.as_deref().filter(|r| r.len() == d.len)
-}
-
 fn values_at(st: &State, a: &Value) -> Result<Reply, String> {
     let d = ds(st, arg(a, "file")?)?;
     let channels: Vec<u32> = arg(a, "channels")?;
@@ -325,7 +384,7 @@ fn values_at(st: &State, a: &Value) -> Result<Reply, String> {
         .iter()
         .filter(|&&c| (c as usize) < d.info.channels.len())
         .filter_map(|&c| {
-            let v = raw_of(d, c as usize)?[i];
+            let v = d.cols[c as usize].raw.get(i)?;
             Some(json!({ "channel": c, "index": i, "t": ts, "value": (!v.is_nan()).then_some(v) }))
         })
         .collect();
@@ -342,13 +401,21 @@ fn stats(st: &State, a: &Value) -> Result<Reply, String> {
     let mut out = Vec::new();
     for &c in channels.iter().filter(|&&c| (c as usize) < d.info.channels.len()) {
         let c = c as usize;
-        // exact stats need raw samples at the span's ragged edges
-        let (Some(_), Some(py)) = (raw_of(d, c), d.pyramid(c)) else { continue };
+        if d.cols[c].levels.is_empty() {
+            continue;
+        }
         if lo >= hi {
             out.push(json!({ "channel": c, "count": 0, "min": null, "minT": null, "max": null, "maxT": null, "mean": null, "std": null }));
             continue;
         }
-        let s = d.stats(c, &py, lo, hi, &Held::default());
+        // exact stats need raw samples at the span's ragged edges: a channel without them is left out
+        let s = match d.pyramid(c) {
+            Some(py) if d.cols[c].raw.slice(d.len).is_some() => d.stats(c, &py, lo, hi, &Held::default()),
+            _ => match exact_summary(d, c, lo, hi) {
+                Some(s) => Stats::from(s),
+                None => continue,
+            },
+        };
         let at = |m: Option<(f64, usize)>| m.map(|(_, i)| d.time_at(i).to_string());
         out.push(json!({ "channel": c, "count": s.count, "min": s.min.map(|m| m.0), "minT": at(s.min), "max": s.max.map(|m| m.0), "maxT": at(s.max), "mean": num(s.mean), "std": num(s.std) }));
     }
@@ -379,10 +446,153 @@ fn rows(st: &State, a: &Value) -> Result<Reply, String> {
         out.extend_from_slice(&t.to_le_bytes());
     }
     for &c in &chans {
-        match raw_of(d, c) {
-            Some(r) => r[start..end].iter().for_each(|v| out.extend_from_slice(&v.to_le_bytes())),
-            None => (0..k).for_each(|_| out.extend_from_slice(&f64::NAN.to_le_bytes())),
-        }
+        // a sample the export doesn't hold is a blank cell
+        (start..end).for_each(|i| out.extend_from_slice(&d.cols[c].raw.get(i).unwrap_or(f64::NAN).to_le_bytes()));
     }
     Ok(Reply::Bytes(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::Raw;
+    use tlmbench_core::pyramid::{build_levels, summarize};
+
+    const N: usize = 100_000;
+
+    fn value(i: usize) -> f64 {
+        ((i as f64) * 0.013).sin() * 50.0 + (i % 97) as f64 * 0.25
+    }
+
+    /// A 1 kHz channel of `N` samples whose pyramid has its `dropped` finest levels left out and whose raw samples
+    /// are the `windows` only.
+    fn trimmed(dropped: usize, windows: &[(usize, usize)]) -> Ds {
+        let mut d = Ds::new(
+            "t",
+            "export",
+            None,
+            N,
+            TimeSource::Rate { hz: 1000.0 },
+            Tm::Rate(RateTimes::from_rate(0, 1000.0, N)),
+            vec![ChannelInfo { name: "x".into(), unit: None, dtype: "f64", category: None }],
+        );
+        let vals: Vec<f64> = (0..N).map(value).collect();
+        let Tm::Rate(t) = &d.tm else { unreachable!() };
+        let levels = build_levels(summarize(t, &vals, 0, N));
+        d.cols[0].levels = levels.into_iter().skip(dropped).collect();
+        d.cols[0].first_level = 4 + dropped as u32;
+        for &(a, b) in windows {
+            d.cols[0].raw.put(a, vals[a..b].to_vec()).unwrap();
+        }
+        d
+    }
+
+    fn brute(a: usize, b: usize) -> (f64, f64, f64) {
+        let v: Vec<f64> = (a..b).map(value).collect();
+        (
+            v.iter().cloned().fold(f64::INFINITY, f64::min),
+            v.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+            v.iter().sum(),
+        )
+    }
+
+    #[test]
+    fn stats_are_exact_with_raw_edges_on_a_trimmed_pyramid() {
+        // level 6 is the finest kept: whole summaries are 4096 samples, so edges up to 4095 samples are raw
+        let d = trimmed(2, &[(10_000, 14_096), (60_000, 70_000)]);
+        for (lo, hi) in [(10_300, 13_900), (10_300, 12_000), (61_000, 66_000)] {
+            let s = exact_summary(&d, 0, lo, hi);
+            // 10_300..13_900 and 10_300..12_000 contain no whole level-6 summary, so they need only raw
+            let s = s.unwrap_or_else(|| panic!("{lo}..{hi} should be exact"));
+            let (mn, mx, sum) = brute(lo, hi);
+            assert_eq!((s.count as usize, s.min, s.max), (hi - lo, mn, mx), "{lo}..{hi}");
+            assert!((s.sum - sum).abs() < 1e-6 * sum.abs().max(1.0), "{lo}..{hi}");
+        }
+        // a span whose edge falls where no raw sample is held is not answered, never approximated
+        assert!(exact_summary(&d, 0, 20_000, 40_000).is_none());
+        assert!(exact_summary(&d, 0, 10_300, 30_000).is_none());
+    }
+
+    #[test]
+    fn a_whole_pyramid_with_raw_only_at_the_edges_answers_whole_spans() {
+        let d = trimmed(0, &[(0, 300), (N - 300, N)]);
+        let s = exact_summary(&d, 0, 100, N).expect("edges held");
+        let (mn, mx, _) = brute(100, N);
+        assert_eq!((s.count as usize, s.min, s.max), (N - 100, mn, mx));
+        assert!(exact_summary(&d, 0, 5_000, 6_000).is_none(), "its edges are not held");
+    }
+
+    #[test]
+    fn the_summary_view_shows_only_values_the_data_has() {
+        let d = trimmed(3, &[]);
+        let vp = Viewport { t0: 0, t1: 100_000_000_000, width_px: 200, raw_max: 0 };
+        let tr = summary_trace(&d, 0, vp);
+        assert!(!tr.t.is_empty());
+        // every point is a sample's own time and value: a summary extreme, at the time of the sample that made it
+        for (t, y) in tr.t.iter().zip(&tr.y) {
+            if y.is_nan() {
+                continue;
+            }
+            let i = d.lower_bound(*t);
+            assert_eq!(d.time_at(i), *t);
+            assert_eq!(*y, value(i) as f32, "sample {i}");
+        }
+    }
+
+    #[test]
+    fn hash_is_blake3_hex() {
+        let mut st = State::default();
+        let Reply::Json(Value::String(h)) = dispatch(&mut st, "hash", &Value::Null, b"abc").unwrap() else { panic!() };
+        assert_eq!(h, blake3::hash(b"abc").to_hex().to_string());
+        assert_eq!(h.len(), 64);
+    }
+
+    #[test]
+    fn values_come_only_from_held_raw_samples() {
+        let d = trimmed(2, &[(1_000, 2_000)]);
+        let mut st = State::default();
+        st.files.push(Some(d));
+        let at = |t_ms: i64| {
+            let a = json!({ "file": 0, "channels": [0], "t": (t_ms * 1_000_000).to_string() });
+            match values_at(&st, &a).unwrap() {
+                Reply::Json(Value::Array(v)) => v,
+                _ => unreachable!(),
+            }
+        };
+        let inside = at(1_500);
+        assert_eq!(inside.len(), 1);
+        assert_eq!(inside[0]["value"].as_f64(), Some(value(1_500)));
+        assert!(at(5_000).is_empty(), "a sample not in the export has no value, and a summary is never one");
+    }
+
+    #[test]
+    fn a_view_inside_a_window_is_exact_and_outside_it_is_coarse() {
+        let d = trimmed(2, &[(20_000, 30_000)]);
+        let mut st = State::default();
+        st.files.push(Some(d));
+        let view_of = |t0_ms: i64, t1_ms: i64| {
+            let a = json!({ "file": 0, "generation": 1, "entries": [{ "id": 7, "channels": [0],
+                "t0": (t0_ms * 1_000_000).to_string(), "t1": (t1_ms * 1_000_000).to_string(), "widthPx": 300 }] });
+            let Reply::Bytes(b) = view(&st, &a).unwrap() else { unreachable!() };
+            b
+        };
+        let (inside, outside) = (view_of(22_000, 25_000), view_of(40_000, 80_000));
+        assert_ne!(inside, outside);
+        // the wire format marks a coarse channel: decode both and compare the flag
+        let flag = |b: &[u8]| {
+            tlmbench_core::wire::decode_batch(b)
+                .map(|bt| bt.entries[0].1.traces.iter().map(|t| t.coarse).collect::<Vec<_>>())
+        };
+        assert_eq!(flag(&inside), Some(vec![false]));
+        assert_eq!(flag(&outside), Some(vec![true]));
+        // no window and no pyramid: nothing to draw, and not called coarse
+        let mut d2 = trimmed(0, &[]);
+        d2.cols[0].levels.clear();
+        let mut st2 = State::default();
+        st2.files.push(Some(d2));
+        let a = json!({ "file": 0, "generation": 1, "entries": [{ "id": 7, "channels": [0], "t0": "0", "t1": "100000000000", "widthPx": 300 }] });
+        let Reply::Bytes(b) = view(&st2, &a).unwrap() else { unreachable!() };
+        let tr = &tlmbench_core::wire::decode_batch(&b).unwrap().entries[0].1.traces[0];
+        assert!(tr.x.is_empty() && !tr.coarse);
+    }
 }

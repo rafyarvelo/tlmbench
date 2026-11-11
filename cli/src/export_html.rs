@@ -40,6 +40,10 @@ pub struct Args {
     /// default Full when it fits the budget, else Light
     #[arg(long, value_enum)]
     pub mode: Option<ModeArg>,
+    /// Light's raw windows around events and violations: `30s` (the minimum width), or `3x,30s,10min` (the factor of the
+    /// event's duration, the minimum and the cap); `0` turns them off. Default 3x,30s,10min
+    #[arg(long, default_value = "3x,30s,10min")]
+    pub detail: String,
     /// A viewer folder to copy instead of the one built into this program (also $TLMBENCH_VIEWER)
     #[arg(long)]
     pub viewer: Option<PathBuf>,
@@ -165,6 +169,7 @@ pub fn run(a: Args) -> Result<(), Fail> {
             rec,
             channels,
             raw,
+            windows: Vec::new(),
         });
     }
     // events: shared, personal, and what the check sets mark
@@ -191,6 +196,7 @@ pub fn run(a: Args) -> Result<(), Fail> {
             })?);
         }
     }
+    let window = html::Window::parse(&a.detail).map_err(|e| Fail(3, format!("--detail: {e}")))?;
     let mut events_out = Vec::new();
     let mut checks_out = Vec::new();
     for (k, o) in opened.iter().enumerate() {
@@ -209,6 +215,24 @@ pub fn run(a: Args) -> Result<(), Fail> {
                 let marked = checks::events_of(set, &res);
                 checks_out.push(json!({ "file": k, "set": set, "result": res, "events": marked, "t_first": info.t_first.unwrap_or(0).to_string() }));
             }
+        }
+        if let Some(w) = window {
+            // raw windows around every event, and around the violations the check sets marked (a check's events)
+            let marked = checks_out
+                .iter()
+                .filter(|c| c["file"] == k)
+                .flat_map(|c| c["events"].as_array().cloned().unwrap_or_default());
+            let evs_json: Vec<Value> = marked.collect();
+            files[k].windows = evs
+                .iter()
+                .map(|e| (e.start.as_str(), e.duration.as_str()))
+                .chain(
+                    evs_json
+                        .iter()
+                        .map(|e| (e["start"].as_str().unwrap_or("0"), e["duration"].as_str().unwrap_or("0"))),
+                )
+                .filter_map(|(s, d)| Some(w.around(s.parse().ok()?, d.parse().ok()?)))
+                .collect();
         }
         events_out.push(json!({ "file": k, "events": evs }));
     }

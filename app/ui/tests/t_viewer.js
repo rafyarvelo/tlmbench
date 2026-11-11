@@ -3,7 +3,7 @@
 // the layout's panes draw, channels list, the checks summary shows with the violations marked, and nothing edits.
 // Needs the CLI (cargo build -p tlmbench) and the built viewer (just viewer); without either the test says so and passes.
 import { spawnSync } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -103,6 +103,64 @@ try {
   check('the chart-only channel draws from its summaries, labelled coarse', await untilQ(() => !!document.querySelector('[data-coarse]')), await q.$$eval('[data-coarse]', (x) => x.length));
   check('the table shows the raw samples once they are here, never a pyramid value as one', await untilQ(() => /20\.00/.test(document.body.textContent ?? '') && !/—/.test(document.querySelector('.tbl, [role="grid"], table')?.textContent ?? '—')), await q.evaluate(() => document.body.textContent?.slice(0, 300)));
   check('no page errors in Light', errs2.length === 0, errs2);
+
+  // Light with a check set: raw windows around the violations, and the chart-only channel holds only those samples
+  const win = join(work, 'win');
+  const rw = spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'light.json'), '--mode', 'light', '--config', join(work, 'cfg'), '--checks', 'Test limits', '--detail', '2s', '--cache', join(work, 'cache'), '--out', win, '--viewer', VIEWER], { encoding: 'utf8' });
+  const mw = existsSync(join(win, 'export.json')) ? JSON.parse(readFileSync(join(win, 'export.json'), 'utf8')) : null;
+  const held = (mw?.files[0].channels[0].raw_chunks ?? []).reduce((n, c) => n + c[1], 0);
+  check('Light keeps raw windows around the violations for a chart-only channel', rw.status === 0 && held > 0 && held < 20000 && mw.files[0].channels[0].raw === true, [rw.stderr, held]);
+  check('--detail 0 turns the windows off', (() => {
+    const off = join(work, 'nowin');
+    spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'light.json'), '--mode', 'light', '--config', join(work, 'cfg'), '--checks', 'Test limits', '--detail', '0', '--cache', join(work, 'cache'), '--out', off, '--viewer', VIEWER], { encoding: 'utf8' });
+    return JSON.parse(readFileSync(join(off, 'export.json'), 'utf8')).files[0].channels[0].raw_chunks.length === 0;
+  })());
+  site = win;
+  const w = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const errs3 = [];
+  w.on('pageerror', (e) => errs3.push(e.message));
+  await w.goto(url, { waitUntil: 'domcontentloaded' });
+  check('a Light export with windows opens and draws', await (async () => {
+    for (let i = 0; i < 150; i++) {
+      if (await w.evaluate(() => window.__tlmViewerLoaded === true && !!document.querySelector('[data-coarse]')).catch(() => false)) return true;
+      await w.waitForTimeout(60);
+    }
+    return false;
+  })());
+  check('no page errors with windows', errs3.length === 0, errs3);
+
+  // a trimmed export (the finest pyramid levels left out) still draws, from the levels it has
+  const trim = join(work, 'trim');
+  const rt = spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'layout.json'), '--mode', 'light', '--budget', '2KB', '--cache', join(work, 'cache'), '--out', trim, '--viewer', VIEWER], { encoding: 'utf8' });
+  const mt = existsSync(join(trim, 'export.json')) ? JSON.parse(readFileSync(join(trim, 'export.json'), 'utf8')) : null;
+  check('a tiny budget trims the pyramid', rt.status === 0 && mt?.report.trimmed === true && mt.files[0].channels.every((c) => c.pyramid.first_level > 4), [rt.stderr, mt?.files[0].channels.map((c) => c.pyramid)]);
+  site = trim;
+  const tp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const errs4 = [];
+  tp.on('pageerror', (e) => errs4.push(e.message));
+  await tp.goto(url, { waitUntil: 'domcontentloaded' });
+  check('a trimmed channel draws from its coarser levels, labelled coarse', await (async () => {
+    for (let i = 0; i < 150; i++) {
+      if (await tp.evaluate(() => !!document.querySelector('[data-coarse]')).catch(() => false)) return true;
+      await tp.waitForTimeout(60);
+    }
+    return false;
+  })());
+  check('no page errors when trimmed', errs4.length === 0, errs4);
+
+  // a damaged chunk is an error, never data
+  const bad1 = join(work, 'damaged');
+  spawnSync(CLI, ['export', 'html', csv, '--layout', join(work, 'layout.json'), '--cache', join(work, 'cache'), '--out', bad1, '--viewer', VIEWER], { encoding: 'utf8' });
+  const chunk = join(bad1, 'data/f0/c0.0.bin');
+  const buf = readFileSync(chunk);
+  buf[buf.length >> 1] ^= 0xff;
+  writeFileSync(chunk, buf);
+  site = bad1;
+  const dp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  await dp.goto(url, { waitUntil: 'domcontentloaded' });
+  await dp.waitForTimeout(2500);
+  check('a chunk that doesn\'t match its checksum is refused: the raw samples never finish loading', await dp.evaluate(() => window.__tlmViewerLoaded !== true), null);
+  check('and the page says so', await dp.evaluate(() => /doesn.t match the export|damaged/i.test(document.body.textContent ?? '')), await dp.evaluate(() => document.body.textContent?.slice(0, 200)));
 } catch (e) {
   bad++;
   console.log('  FAIL threw', e.message);

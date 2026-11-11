@@ -20,6 +20,11 @@ csv-core = "0.1.13"
 lexical-core = "1.0.6"
 memchr = "2.8.3"
 
+[dev-dependencies]
+# the decoder's CSV reader is included as source, with its tests
+proptest = "1.12.0"
+tempfile = "3.27.0"
+
 # Its own workspace and target folder: the WASM build must not share the native one.
 [workspace]
 

@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 194 · **Partial** 46 · **Missing** 18 · **Diverged** 7 · **Unverified** 26 · **Owner pass** 14 (305 rows).
+Counts: **Done** 195 · **Partial** 47 · **Missing** 17 · **Diverged** 6 · **Unverified** 26 · **Owner pass** 14 (305 rows).
 
 How to read the evidence. A test named here was run in this review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -296,9 +296,9 @@ on a real window). The last column names the step of `docs/release/release-plan.
 | D-cli-03 | design CLI | Multi-rate conversion writes a file per rate group; `--resample` and `--layout long` on request. | Done | `tlmbench::packet_types::info_and_convert_work_per_type`, `tlmbench-export::resampling_holds_the_last_value`, `tlmbench-export::long_layout_and_arrow` | |
 | D-cli-04 | design CLI | `convert` streams with flat memory on 100 GB inputs; `convert` and `check` on a 10 GB file run at disk-read speed. | Unverified | none | The CLI's own gate in the design; no run is recorded. R6 |
 | D-cli-05 | design CLI | `--single-file`: one HTML file, 25 MB, Light, coarse levels. | Missing | `cli/src/export_html.rs` | R2.1 |
-| D-cli-06 | design CLI | Light's raw windows are configurable (`--detail`, the dialog's three fields, a default per set). | Missing | `cli/src/export_html.rs` | R2.1 |
+| D-cli-06 | design CLI | Light's raw windows are configurable (`--detail`, the dialog's three fields, a default per set). | Partial | `tlmbench-export::tests::raw_windows_are_centred_capped_and_parsed`, `t_viewer` | The CLI has `--detail` (default 3x,30s,10min; 0 is off) and the writer keeps the windows. Still to do: the export dialog's three fields and a default per rule and check set. R2.1 |
 | D-cli-07 | design CLI | Every export and report records the command line, config hash, core version and input file hashes. | Missing | `crates/export/src/html.rs:287` (format and version only) | R2.1 |
-| D-cli-08 | design CLI | `export.json` lists the SHA-256 of every file and the viewer checks each chunk as it loads. | Diverged | `crates/export/src/html.rs:179` (BLAKE3 sums are written) | The hash differs from the design, and nothing in `app/ui/src/viewer.ts` or `crates/web` verifies it. Owner decision 2 in review.md; R2.1 |
+| D-cli-08 | design CLI | `export.json` lists the SHA-256 of every file and the viewer checks each chunk as it loads. | Done | `t_viewer`, `crates/web/src/ops.rs::tests::hash_is_blake3_hex` | Decision 2: BLAKE3, not SHA-256 (design doc to say BLAKE3). The viewer hashes every file it fetches and refuses a mismatch (t_viewer: a damaged chunk). Nov 11, 2026 |
 | D-cli-09 | design CLI | The viewer does Play, cursors and Measure, and switches a pane between chart, table, values, gauges and XY where the data allows. | Partial | `t_viewer`, `crates/web/src/ops.rs:130` | The viewer's core answers views, values, stats and rows only: no gauges, XY or spectrum; Play and the event chips are untested there. R2.1 |
 | D-cli-10 | design CLI | `--redact` leaves channels out everywhere; SVG widgets are sanitised and code widgets export as value cards. | Partial | `tlmbench::export_html::writes_the_layout_channels_and_nothing_beside_the_input` | A redacted channel stays in check expressions and event channel lists; widgets export as ordinary panes. R2.1 |
 | D-cli-11 | design CLI | An export of several files keeps their slots and alignment. | Partial | `cli/src/export_html.rs` | Each file opens as its own tab in the viewer. R2.1 |

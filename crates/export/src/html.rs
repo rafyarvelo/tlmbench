@@ -3,7 +3,9 @@
 //! ```text
 //! export.json            what the export holds: files, channels, sizes, the layout, events, the checks summary, checksums
 //! data/f<k>/t.<j>.bin    file k's sample times (i64 LE ns), chunks of CHUNK samples; none when the times come from a rate
-//! data/f<k>/c<n>.<j>.bin channel n's shown values (f64 LE, NaN for missing), chunks of CHUNK samples (Full, or raw channels)
+//! data/f<k>/c<n>.<j>.bin channel n's shown values (f64 LE, NaN for missing): one file per entry of `raw_chunks` in
+//!                        the manifest, `[first sample, samples]`. Full and raw channels hold every sample in chunks of
+//!                        CHUNK; in Light a channel holds only its windows (around events and violations)
 //! data/f<k>/c<n>.pyr.bin channel n's pyramid levels (88-byte summaries, finest stored level first, levels end to end)
 //! ```
 //!
@@ -50,6 +52,101 @@ pub struct File<'a> {
     pub channels: Vec<usize>,
     /// Channels that keep raw samples in Light (shown in a table, values or XY).
     pub raw: Vec<usize>,
+    /// Stretches of time (start inclusive, end exclusive) every channel keeps its raw samples for in Light: around
+    /// events and check violations (see [`Window`]).
+    pub windows: Vec<(Timestamp, Timestamp)>,
+}
+
+/// How much raw data Light keeps around an event or a violation: a window centred on it, `factor` times its duration
+/// wide or `min_ns` if that is more, at most `cap_ns` (the event itself is always inside).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Window {
+    pub min_ns: i64,
+    pub factor: f64,
+    pub cap_ns: i64,
+}
+
+impl Default for Window {
+    /// 30 s, or 3 times the event's duration when that is longer, at most 10 minutes (the design's raw windows).
+    fn default() -> Self {
+        Self { min_ns: 30_000_000_000, factor: 3.0, cap_ns: 600_000_000_000 }
+    }
+}
+
+impl Window {
+    /// The window (start inclusive, end exclusive) around an event that starts at `start` and lasts `duration_ns` (0:
+    /// an instant).
+    pub fn around(&self, start: Timestamp, duration_ns: i64) -> (Timestamp, Timestamp) {
+        let dur = duration_ns.max(0);
+        let width = (((dur as f64) * self.factor) as i64).max(self.min_ns).min(self.cap_ns.max(self.min_ns));
+        let centre = start.saturating_add(dur / 2);
+        let (a, b) = (centre.saturating_sub(width / 2), centre.saturating_add(width - width / 2));
+        (a.min(start), b.max(start.saturating_add(dur)).max(start.saturating_add(1)))
+    }
+
+    /// `--detail`: a duration is the minimum (`30s`), or `3x,30s,10min` give the factor, the minimum and the cap in any
+    /// order; `0` is no windows (`None`).
+    pub fn parse(text: &str) -> std::result::Result<Option<Window>, String> {
+        let t = text.trim();
+        if t == "0" || t.eq_ignore_ascii_case("off") || t.eq_ignore_ascii_case("none") {
+            return Ok(None);
+        }
+        let mut w = Window::default();
+        let (mut seen_min, mut seen_cap) = (false, false);
+        for part in t.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+            if let Some(f) = part.strip_suffix(['x', 'X', '×']) {
+                w.factor = f
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|f| *f >= 0.0)
+                    .ok_or_else(|| format!("{part:?} is not a factor like 3x"))?;
+            } else {
+                let ns = duration_ns(part)?;
+                // the first duration is the minimum, the second the cap
+                if !seen_min {
+                    (w.min_ns, seen_min) = (ns, true);
+                } else if !seen_cap {
+                    (w.cap_ns, seen_cap) = (ns, true);
+                } else {
+                    return Err(format!("{text:?} has more than a factor, a minimum and a cap"));
+                }
+            }
+        }
+        if w.cap_ns < w.min_ns {
+            w.cap_ns = w.min_ns;
+        }
+        Ok(Some(w))
+    }
+}
+
+/// `30s`, `500ms`, `10min`, `2h` or plain seconds, in nanoseconds.
+fn duration_ns(text: &str) -> std::result::Result<i64, String> {
+    let t = text.trim().to_ascii_lowercase();
+    let (num, unit) = [("ms", 1e6), ("min", 6e10), ("m", 6e10), ("h", 3.6e12), ("s", 1e9)]
+        .iter()
+        .find_map(|(u, m)| t.strip_suffix(u).map(|n| (n, *m)))
+        .unwrap_or((&t, 1e9));
+    num.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|n| *n >= 0.0)
+        .map(|n| (n * unit) as i64)
+        .ok_or_else(|| format!("{text:?} is not a duration (30s, 500ms, 10min)"))
+}
+
+/// `spans` sorted, with those that overlap or touch joined.
+fn merged(mut spans: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    spans.retain(|(a, b)| a < b);
+    spans.sort_unstable();
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    for (a, b) in spans {
+        match out.last_mut() {
+            Some(last) if a <= last.1 => last.1 = last.1.max(b),
+            _ => out.push((a, b)),
+        }
+    }
+    out
 }
 
 #[derive(Debug)]
@@ -109,9 +206,25 @@ struct Chan {
     index: usize,
     values: Vec<f64>,
     levels: Vec<Vec<Summary>>,
+    /// Whether Light keeps every raw sample of this channel (it is shown in a table, values or XY).
     raw: bool,
+    /// The sample ranges Light keeps (the windows), when it doesn't keep them all.
+    windows: Vec<(usize, usize)>,
     /// Levels dropped from the finest end.
     dropped: usize,
+}
+
+impl Chan {
+    /// The samples held raw: every one (`full`, or a raw channel), else the windows.
+    fn spans(&self, full: bool) -> Vec<(usize, usize)> {
+        if self.values.is_empty() {
+            Vec::new()
+        } else if full || self.raw {
+            vec![(0, self.values.len())]
+        } else {
+            self.windows.clone()
+        }
+    }
 }
 
 fn shown(rec: &dyn Recording, ch: usize, a: usize, b: usize) -> Vec<f64> {
@@ -131,6 +244,13 @@ fn plan(f: &File, o: &Options) -> Plan {
         TimeSource::Index if !times.is_empty() => Some((times[0], 1.0)),
         _ => None,
     };
+    // the windows as sample ranges of the exported span
+    let windows = merged(
+        f.windows
+            .iter()
+            .map(|&(t0, t1)| (times.partition_point(|&t| t < t0), times.partition_point(|&t| t < t1)))
+            .collect(),
+    );
     let chans = f
         .channels
         .iter()
@@ -142,7 +262,7 @@ fn plan(f: &File, o: &Options) -> Plan {
                 // level 4 over the shown values with the exported times, then each coarser level
                 build_levels(pyramid::summarize(times.as_slice(), values.as_slice(), 0, values.len()))
             };
-            Chan { index, values, levels, raw: f.raw.contains(&index), dropped: 0 }
+            Chan { index, values, levels, raw: f.raw.contains(&index), windows: windows.clone(), dropped: 0 }
         })
         .collect();
     Plan { range: (a, b), times, rate, chans }
@@ -164,7 +284,7 @@ fn total(plans: &[Plan], full: bool) -> u64 {
             t + p
                 .chans
                 .iter()
-                .map(|c| pyr_bytes(c) + if full || c.raw { raw_bytes(c.values.len()) } else { 0 })
+                .map(|c| pyr_bytes(c) + c.spans(full).iter().map(|(a, b)| raw_bytes(b - a)).sum::<u64>())
                 .sum::<u64>()
         })
         .sum()
@@ -238,13 +358,18 @@ pub fn export(out: &Path, files: &[File], extra: serde_json::Value, o: &Options)
         let mut creports = Vec::new();
         for (c, ci) in p.chans.iter().zip(&f.channels) {
             let ch = &info.channels[*ci];
-            let keep_raw = full || c.raw;
+            let spans = c.spans(full);
+            let keep_raw = !spans.is_empty();
             let mut rb = 0;
-            if keep_raw {
-                for (j, v) in c.values.chunks(CHUNK).enumerate() {
-                    let b = f64_bytes(v);
-                    rb += b.len() as u64;
-                    write(&dir.join(format!("c{}.{j}.bin", c.index)), &b, &mut sums, out)?;
+            // one file per chunk of a span: `[first sample, samples]` in the manifest, in file order
+            let mut raw_chunks = Vec::new();
+            for &(a, b) in &spans {
+                for s in (a..b).step_by(CHUNK) {
+                    let e = (s + CHUNK).min(b);
+                    let bytes = f64_bytes(&c.values[s..e]);
+                    rb += bytes.len() as u64;
+                    write(&dir.join(format!("c{}.{}.bin", c.index, raw_chunks.len())), &bytes, &mut sums, out)?;
+                    raw_chunks.push([s, e - s]);
                 }
             }
             let kept: Vec<&Vec<Summary>> = c.levels.iter().skip(c.dropped).collect();
@@ -254,7 +379,7 @@ pub fn export(out: &Path, files: &[File], extra: serde_json::Value, o: &Options)
             let first_level = pyramid::MIN_LEVEL + c.dropped as u32;
             chans.push(serde_json::json!({
                 "index": c.index, "name": ch.name, "unit": ch.unit, "dtype": ch.dtype, "category": ch.category,
-                "raw": keep_raw, "raw_chunks": if keep_raw { n.div_ceil(CHUNK) } else { 0 },
+                "raw": keep_raw, "raw_chunks": raw_chunks,
                 "pyramid": { "first_level": first_level, "levels": kept.iter().map(|l| l.len()).collect::<Vec<_>>() },
             }));
             creports.push(ChannelReport {
