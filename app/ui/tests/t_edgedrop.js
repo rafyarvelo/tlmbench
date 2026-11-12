@@ -43,6 +43,32 @@ run('edgedrop', async ({ p, check, until, fake }) => {
   const lay = await app('layout');
   check('and on the left a pane before it', (await app('panes')).length === n0 + 2 && lay[0] === 'row' && lay[1] === 'beside' && lay[2] === 'beside', lay);
 
+  // a pane placed into a row takes its height, and a row holds four
+  const gp = await p.locator('#stack [data-pane="0"] .hgrip').boundingBox();
+  await p.mouse.move(gp.x + gp.width / 2, gp.y + 3);
+  await p.mouse.down();
+  await p.mouse.move(gp.x + gp.width / 2, gp.y + 43, { steps: 4 });
+  await p.mouse.up();
+  const hs = () => p.evaluate(() => [...document.querySelectorAll('#stack .plot')].map((e) => Math.round(e.getBoundingClientRect().height)));
+  const taller = await hs();
+  check('the row was made taller', taller.slice(0, 3).every((x) => x === 190), taller);
+  const last = await p.locator('#stack [data-pane="2"]').boundingBox();
+  await p.mouse.move(c.x, c.y);
+  await p.mouse.down();
+  await p.mouse.move(c.x + 20, c.y + 20, { steps: 3 });
+  await p.mouse.move(last.x + last.width * 0.95, last.y + last.height / 2, { steps: 6 });
+  await p.mouse.up();
+  const four = await hs();
+  check('a fourth pane fits in the row and takes its height', (await app('layout')).slice(0, 4).join() === 'row,beside,beside,beside' && four.slice(0, 4).every((x) => x === 190), [await app('layout'), four]);
+  const mid = await p.locator('#stack [data-pane="1"]').boundingBox();
+  await p.mouse.move(c.x, c.y);
+  await p.mouse.down();
+  await p.mouse.move(c.x + 20, c.y + 20, { steps: 3 });
+  await p.mouse.move(mid.x + mid.width * 0.5, mid.y + mid.height / 2, { steps: 6 });
+  check('a fifth has no room: no edge zone', (await p.getAttribute('#stack [data-pane="1"]', 'data-side')) === null);
+  await p.keyboard.press('Escape');
+  await p.mouse.up();
+
   // the last channel dragged out of a pane takes the pane with it
   const nBefore = (await app('panes')).length;
   const chip = await p.locator('#stack [data-pane="0"] .chip').first().boundingBox();

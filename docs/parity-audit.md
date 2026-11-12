@@ -118,7 +118,7 @@ Prototype references are `plotter.html` line numbers. App references are paths u
 
 | Item | Prototype | App | Status | Phase | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Rows, columns, stacks | A row holds up to 3 columns (`MAX_PER_ROW 2719`) | A row holds up to 3 columns | Ported | 3 | Fixed Nov 3. |
+| Rows, columns, stacks | A row holds up to 4 columns (`MAX_PER_ROW 2719`; was 3, raised Nov 11) | A row holds up to 4 columns | Ported | 3 | Fixed Nov 3; 4 columns Nov 11. |
 | Pane height | Fixed by row count: 150, 125 or 105 px plots (`paneHeight 3758`) | Same: 150 px up to 3 rows, 125 for 4 or 5, 105 for more, the bottom chart with room for its time labels; the stack scrolls when they don't fit, GL scissored to it (`PaneStack.svelte`, `app.ts`) | Ported | 3 | Fixed Nov 8 (step 4.1). |
 | Chart height grip | Drag under a chart to resize, side-by-side panes follow, double-click resets, arrows step (`3838`, `5183-5200`) | Drag under a chart, side-by-side panes follow, double-click resets, ↑ ↓ step; saved with the layout (`PaneStack.svelte`) | Ported | 3 | Fixed Nov 3. |
 | Pane number | Drag handle; a grip shows on hover; accent when selected; tooltip (`3864-3871`) | Accent when selected, a grip on hover, draggable | Ported | 3 | Fixed Nov 3. |

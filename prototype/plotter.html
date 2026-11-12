@@ -2716,7 +2716,7 @@ let overview = null, rafPending = false, statsPending = false;
 // of the previous pane in the same row; under = sits below the previous pane in the same column.
 // A row is a run of columns; a column is a stack of panes, so a tall pane can sit beside two stacked
 // ones (a row span). Rows hold up to MAX_PER_ROW columns.
-const MAX_PER_ROW = 3;
+const MAX_PER_ROW = 4;
 // the columns of a row, as lists of pane indexes
 function rowCols(r) { const out = []; r.forEach(i => { if (state.panes[i].under && out.length) out[out.length - 1].push(i); else out.push([i]); }); return out; }
 function colOf(i) { const r = rows().find(r => r.includes(i)) || [i]; return rowCols(r).find(c => c.includes(i)) || [i]; }

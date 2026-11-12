@@ -72,7 +72,7 @@ export interface WidgetCfg {
 }
 
 /** Columns a row holds at most. */
-export const MAX_PER_ROW = 3;
+export const MAX_PER_ROW = 4;
 
 export const stack = $state({
   panes: [] as Pane[],
@@ -189,6 +189,15 @@ export function normalize(): void {
 
 /** Whether a locked view stops tables sorting and filtering. */
 export const sortLocked = () => settings.locked && !settings.lockSortFilter;
+
+/** A pane placed into a row takes the row's height, so panes side by side stay level (the others' height wins). */
+function levelRow(p: Pane): void {
+  const row = rows().find((r) => r.some((k) => stack.panes[k] === p));
+  const other = row?.map((k) => stack.panes[k]).find((q) => q !== p);
+  if (!other) return;
+  if (other.h == null) delete p.h;
+  else p.h = other.h;
+}
 
 function edit(f: () => void, viewOnly = false): void {
   if (!viewOnly && settings.locked && settings.lockLayout) {
@@ -343,6 +352,7 @@ export function newPaneBeside(chs: number[], to: number, side: 'left' | 'right',
     arr.splice(k, 0, made);
     stack.panes = arr;
     stack.sel = k;
+    levelRow(stack.panes[k]);
   });
 }
 
@@ -434,6 +444,7 @@ export function dropPane(from: number, to: number, zone: Zone, copy = false): vo
     }
     stack.panes = arr;
     stack.sel = arr.indexOf(placed);
+    if (zone === 'left' || zone === 'right') levelRow(stack.panes[stack.sel]);
   });
 }
 
