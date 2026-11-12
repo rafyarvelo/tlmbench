@@ -243,6 +243,11 @@ ci-linux: lint test viewer bench-smoke proto-test app-test ro-test fuzz-smoke ap
 # Everything the macOS and Windows CI jobs run
 ci-native: lint test app-build
 
+# Small test recordings, a shared .tlmbench/ (checks, layout, widgets, events) and a growing-CSV script for the release test
+# sheet, into ~/tlmbench-testdata (or the folder given); `just testdata big` adds the 100M-sample .tlm
+testdata *args:
+    python3 tools/testdata/make.py {{args}}
+
 # Write synthetic recordings: just gen --samples 10M --channels 4 (see tools/gen)
 gen *args:
     cargo run -q --release -p tlmbench-gen -- {{args}}

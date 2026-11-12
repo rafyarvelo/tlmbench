@@ -6,8 +6,23 @@ clean pass write what you saw after `Notes:` in plain words. Optional: add `Seve
 Then use "Other things I noticed" at the end for anything the list didn't ask about. When done, hand this file to the next
 agent (`docs/release/next-agent-prompt.md` says what it does with it). You don't need to explain a fix, only what you saw.
 
-Test data: your own folder `/Users/rafy/workspace/test` (AAPL.csv, GOOG.csv, FB.csv, IBM.csv, example.csv, run.parquet) is
-enough for most of it. Two checks want a file with a time gap or a live source; they say so.
+**Test data:** run `just testdata` (or `python3 tools/testdata/make.py`). It writes `~/tlmbench-testdata/` and never touches your
+own folders:
+
+| File | Use it for |
+| --- | --- |
+| `flights/flight-1.csv` | a good run, 60 s at 100 Hz (altitude, speed, battery_v, temp); every check passes |
+| `flights/flight-2.csv` | the same channels an hour later: the second file in a tab (D1, D2, F6) |
+| `flights/flight-bad.csv` | battery under 12 V for 10 s and a temperature spike: the checks fail here (E2, F7, F9) |
+| `flights/flight-gap.csv` | a 30 s hole in the times: gap breaks and "connect gaps" (B1, F5) |
+| `flights/.tlmbench/` | shared config: the check set "Flight limits", the layout "Altitude and battery", two widgets (an SVG dial and a code widget), two events on flight-1 (E1, F8) |
+| `grow.py` | `python3 ~/tlmbench-testdata/grow.py ~/tlmbench-testdata/live.csv` adds a row a second, for Live (G1) |
+| `just testdata big` | also writes a 100M-sample `.tlm` (about 400 MB) under `big/`, for B4 and H5 (needs `cargo build --release -p tlmbench-gen` first) |
+
+Open the folder `~/tlmbench-testdata/flights` in Explorer. Your own folder `/Users/rafy/workspace/test` (AAPL.csv, GOOG.csv, …,
+run.parquet) is good for A5 (Parquet) and for a messier look.
+
+In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/flights/flight-1.csv` and `<set>` with `Flight limits`.
 
 ```
 Date:
@@ -84,7 +99,7 @@ Result:
 Notes:
 
 ### B4. A file that is still building
-Do: Open the biggest file you have (or `just gen --samples 100M --channels 1` and open it).
+Do: Open the 100M-sample file (`just testdata big`, then `~/tlmbench-testdata/big/big-100M.tlm`).
 Expect: hatching while the pyramid builds, then the chart fills in; the min/max band shows on a spiky channel. (L: X-win-06)
 Result:
 Notes:
@@ -119,7 +134,7 @@ Notes:
 ## D. Several files in one tab
 
 ### D1. Add a second file to the tab
-Do: With AAPL open, add GOOG to the tab (import dialog "This tab", or the tab menu).
+Do: With flight-1 open, add flight-2 to the tab (import dialog "This tab", or the tab menu).
 Expect: channels from both, the second named `…·2` or by file name; the time axis spans both; alignment shown.
 Result:
 Notes:
@@ -137,13 +152,13 @@ Result:
 Notes:
 
 ### E2. Run a check set and click a failing cell
-Do: Rules & checks › add a simple check (`Close > 0` should pass; `Close < 1` should fail), run it.
+Do: With `flights` open as the folder, Rules & checks › the "Flight limits" set (it is shared in the folder) › run it on flight-bad.csv.
 Expect: pass and fail show with counts; clicking a failure frames the first violation.
 Result:
 Notes:
 
 ### E3. Derived channel
-Do: Add a derived channel (`Close * 2`) from the + in Explorer.
+Do: Add a derived channel (`altitude * 2`) from the + in Explorer.
 Expect: it appears as a channel, charts, and survives closing and reopening the file.
 Result:
 Notes:
@@ -163,7 +178,7 @@ Result:
 Notes:
 
 ### F3. One HTML file
-Do: In a terminal: `target/release/tlmbench export html /Users/rafy/workspace/test/AAPL.csv --single-file --out ~/Desktop/aapl.html`
+Do: In a terminal: `target/release/tlmbench export html ~/tlmbench-testdata/flights/flight-1.csv --single-file --out ~/Desktop/flight-1.html`
 then double-click the file.
 Expect: it opens straight from the Desktop with the chart, under 25 MB, nothing fetched from the network.
 Result:
@@ -190,7 +205,7 @@ Result:
 Notes:
 
 ### F7. A check report that links to the failure
-Do: In a terminal, with a folder of CSVs and a failing set: `tlmbench check <folder> --set "<name>" --report html --views --out ~/Desktop/report`
+Do: In a terminal, with a folder of CSVs and a failing set: `target/release/tlmbench check ~/tlmbench-testdata/flights --set "Flight limits" --report html --views --out ~/Desktop/report`
 then open `report.html` through a web server (as F1) and click a red cell.
 Expect: the cell opens an export of that file, already zoomed on the first violation.
 Result:
@@ -203,8 +218,8 @@ Result:
 Notes:
 
 ### F9. Redaction
-Do: `tlmbench export html <file> --all-channels --redact Close --checks "<set>" --out ~/Desktop/r`
-Expect: no `Close` data in the folder; a check that read it is gone from the report; open it and confirm.
+Do: `target/release/tlmbench export html <file> --all-channels --redact battery_v --checks "Flight limits" --out ~/Desktop/r`
+Expect: no `battery_v` data in the folder; the check "Battery above 12 V" is gone from the summary; open it through a web server and confirm.
 Result:
 Notes:
 
