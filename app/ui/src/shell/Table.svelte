@@ -24,7 +24,7 @@
   import { decodeRows, type Rows } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
 
-  let { i, height = null }: { i: number; height?: number | null } = $props();
+  let { i, height = null, alone = false }: { i: number; height?: number | null; alone?: boolean } = $props();
 
   const ROW_H = 26;
   /** The header's height: names, then the filter row. */
@@ -592,33 +592,15 @@
 
   // ---------- height (a chart with its table) ----------
 
-  let grip: null | { y: number; h: number } = null;
+  let box = $state<HTMLElement | null>(null);
+  let grip: null | { y: number; h: number; sign: number } = null;
   let dragH = $state<number | null>(null);
   const h = $derived(dragH ?? height);
 </script>
 
-<div class="ptable" data-table={i} style={h != null ? `flex: 0 1 ${h}px; min-height: 90px` : ''}>
-  {#if height != null}
-    <div
-      class="tgrip"
-      role="separator"
-      aria-orientation="horizontal"
-      aria-label="Table height"
-      data-tip="Drag to make the table taller or shorter. Double-click to reset."
-      onpointerdown={(e) => {
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-        grip = { y: e.clientY, h: h ?? 210 };
-      }}
-      onpointermove={(e) => {
-        if (grip) dragH = Math.max(90, Math.min(800, grip.h - (e.clientY - grip.y)));
-      }}
-      onpointerup={() => {
-        if (grip && dragH != null) setTable(i, { tableH: Math.round(dragH) });
-        grip = null;
-        dragH = null;
-      }}
-      ondblclick={() => setTable(i, { tableH: undefined })}
-    ></div>
+<div class="ptable" data-table={i} bind:this={box} style={alone ? (h != null ? `flex: none; height: ${h}px` : '') : h != null ? `flex: 0 1 ${h}px; min-height: 90px` : ''}>
+  {#if height != null && !alone}
+    {@render gripBar(-1)}
   {/if}
   <div class="tbar">
     <span class="tstat" role="status" data-tstat
@@ -788,7 +770,42 @@
       </div>
     </div>
   </div>
+  {#if alone}
+    {@render gripBar(1)}
+  {/if}
 </div>
+
+{#snippet gripBar(sign: number)}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+  <div
+    class="tgrip"
+    class:bottom={sign > 0}
+    role="separator"
+    aria-orientation="horizontal"
+    aria-label="Table height"
+    tabindex="0"
+    data-tip="Drag to make the table taller or shorter. Double-click to reset."
+    onpointerdown={(e) => {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      grip = { y: e.clientY, h: h ?? box?.getBoundingClientRect().height ?? 210, sign };
+    }}
+    onpointermove={(e) => {
+      if (grip) dragH = Math.max(90, Math.min(800, grip.h + grip.sign * (e.clientY - grip.y)));
+    }}
+    onpointerup={() => {
+      if (grip && dragH != null) setTable(i, { tableH: Math.round(dragH) });
+      grip = null;
+      dragH = null;
+    }}
+    ondblclick={() => setTable(i, { tableH: undefined })}
+    onkeydown={(e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const cur = h ?? box?.getBoundingClientRect().height ?? 210;
+      setTable(i, { tableH: Math.round(Math.max(90, Math.min(800, cur + sign * (e.key === 'ArrowDown' ? 26 : -26)))) });
+    }}
+  ></div>
+{/snippet}
 
 {#if rowMenu}
   <Menu class="rowmenu" at={rowMenu.at} label="Row" onclose={() => (rowMenu = null)} items={rowItems(rowMenu.t)} />
@@ -1244,7 +1261,8 @@
     background: var(--border);
     content: '';
   }
-  .tgrip:hover::before {
+  .tgrip:hover::before,
+  .tgrip:focus-visible::before {
     background: var(--accent);
   }
 </style>

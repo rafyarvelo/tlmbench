@@ -274,18 +274,29 @@ export function addChannels(chs: number[], i = stack.sel): void {
   });
 }
 
+/** Takes `ch` out of pane `from`; a pane that has none left is removed, its column carried on (the prototype's). Returns the panes. */
+function leave(arr: Pane[], ch: number, from: number): Pane[] {
+  const src = arr[from];
+  if (!src) return arr;
+  src.channels = src.channels.filter((c) => c !== ch);
+  if (src.channels.length) return arr;
+  const next = arr[from + 1];
+  if (next?.under && !src.under) Object.assign(next, { under: undefined, beside: src.beside });
+  return arr.filter((_, k) => k !== from);
+}
+
 /** Moves (or, with `copy`, copies) channel `ch` from pane `from` to pane `to`, before channel `before` there (the end when null). */
 export function moveChannel(ch: number, from: number, to: number, before: number | null = null, copy = false): void {
   edit(() => {
     const src = stack.panes[from];
     const dst = stack.panes[to];
     if (!src || !dst) return;
-    if (!copy) src.channels = src.channels.filter((c) => c !== ch);
     dst.channels = dst.channels.filter((c) => c !== ch);
     const at = before == null ? -1 : dst.channels.indexOf(before);
     if (at >= 0) dst.channels.splice(at, 0, ch);
     else dst.channels.push(ch);
-    stack.sel = to;
+    if (!copy && from !== to) stack.panes = leave(stack.panes.slice(), ch, from);
+    stack.sel = stack.panes.indexOf(dst);
   });
 }
 
@@ -302,10 +313,36 @@ export function removeChannels(chs: number[]): void {
 }
 
 /** A new pane (a chart, or a table) at the end of the stack with these channels, selected. */
-export function newPaneWith(chs: number[], mode?: PaneMode): void {
+export function newPaneWith(chs: number[], mode?: PaneMode, out?: { ch: number; from: number }): void {
   edit(() => {
+    if (out) stack.panes = leave(stack.panes.slice(), out.ch, out.from);
     stack.panes.push({ channels: [...chs], ...(mode && mode !== 'chart' ? { mode } : {}) });
     stack.sel = stack.panes.length - 1;
+  });
+}
+
+/** A new pane with these channels on the left or right of pane `to`, in its row (a column of its own). */
+export function newPaneBeside(chs: number[], to: number, side: 'left' | 'right', mode?: PaneMode, out?: { ch: number; from: number }): void {
+  if (!stack.panes[to]) return newPaneWith(chs, mode, out);
+  edit(() => {
+    const target = stack.panes[to];
+    const arr = out && out.from !== to ? leave(stack.panes.slice(), out.ch, out.from) : stack.panes.slice();
+    to = arr.indexOf(target);
+    if (to < 0) return;
+    const made: Pane = { channels: [...chs], ...(mode && mode !== 'chart' ? { mode } : {}) };
+    let k = to;
+    if (side === 'right') {
+      k++;
+      while (k < arr.length && arr[k].under) k++;
+      made.beside = true;
+    } else {
+      while (k > 0 && arr[k].under) k--;
+      made.beside = arr[k].beside;
+      arr[k].beside = true;
+    }
+    arr.splice(k, 0, made);
+    stack.panes = arr;
+    stack.sel = k;
   });
 }
 

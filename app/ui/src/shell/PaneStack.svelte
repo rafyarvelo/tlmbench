@@ -7,6 +7,8 @@
   import { chCss, chLimits, chName, chUnit, limitText, openChannelEditor } from '../display.svelte';
   import {
     addChannels,
+  newPaneBeside,
+  MAX_PER_ROW,
     addPaneBelow,
     canSplitRight,
     closeBelow,
@@ -72,21 +74,37 @@
       return [];
     }
   };
+  /** Over a pane's left or right edge a dragged channel would get a pane of its own there (when the row has room). */
+  let chanSide = $state<null | 'left' | 'right'>(null);
+  function sideOf(e: DragEvent, to: number): null | 'left' | 'right' {
+    if (to < 0 || !stack.panes[to]) return null;
+    const row = rows().find((r) => r.includes(to)) ?? [to];
+    const chip = chipOf(e);
+    // a chip that is alone in its own column frees that column when it moves
+    const freed = chip && !e.altKey && columns(row).some((c) => c.length === 1 && c[0] === chip.from && stack.panes[chip.from].channels.length === 1) ? 1 : 0;
+    if (columns(row).length - freed >= MAX_PER_ROW) return null;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const f = (e.clientX - r.left) / r.width;
+    return f < 0.22 ? 'left' : f > 0.78 ? 'right' : null;
+  }
   function overChans(e: DragEvent, to: number) {
     if (!isChans(e) && !isChip(e)) return;
     e.preventDefault();
     e.stopPropagation();
     chanOver = to;
+    chanSide = sideOf(e, to);
   }
   function dropChans(e: DragEvent, to: number) {
     if (isChip(e)) return dropChip(e, to);
     if (!isChans(e)) return;
     e.preventDefault();
     e.stopPropagation();
-    chanOver = null;
+    const side = sideOf(e, to);
+    chanOver = chanSide = null;
     const chs = chansOf(e);
     if (!chs.length) return;
     if (to < 0) newPaneWith(chs);
+    else if (side) newPaneBeside(chs, to, side);
     else addChannels(chs, to);
   }
   /** Dragging the grip under a chart: its pane, where it started and the height then. */
@@ -120,14 +138,17 @@
     if (!isChip(e)) return;
     e.preventDefault();
     e.stopPropagation();
-    chanOver = null;
+    const side = before == null ? sideOf(e, to) : null;
+    chanOver = chanSide = null;
     const c = chipOf(e);
     if (!c) return;
-    if (to < 0) {
+    if (side) {
+      const mode = settings.dropNewView === 'same' ? stack.panes[c.from]?.mode : undefined;
+      newPaneBeside([c.ch], to, side, mode, e.altKey ? undefined : c);
+    } else if (to < 0) {
       // onto empty space: a new pane, a chart or the view it came from; the channel leaves the old one unless Alt copies
       const mode = settings.dropNewView === 'same' ? stack.panes[c.from]?.mode : undefined;
-      if (!e.altKey) removeChannel(c.ch, c.from);
-      newPaneWith([c.ch], mode);
+      newPaneWith([c.ch], mode, e.altKey ? undefined : c);
     } else moveChannel(c.ch, c.from, to, before, e.altKey);
   }
   /** Panes whose header can't show every chip: how many are folded into "+N", and the open list. */
@@ -255,14 +276,14 @@
 <svelte:document onpointerdown={outside} />
 <svelte:window onkeydowncapture={key} />
 
-<div id="stack" class="stack" class:nopanes={!stack.panes.length} class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length <= 5 ? 125 : 105}px">
+<div id="stack" class="stack" class:nopanes={!stack.panes.length} class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = chanSide = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length <= 5 ? 125 : 105}px">
   {#each rows() as row, r (r)}
     <div class="prow">
       {#each columns(row) as col, c (c)}
         <div class="pcol">
           {#each col as i (i)}
             {@const p = stack.panes[i]}
-            <section class="pane" class:tablemode={p.mode === 'table'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => zoneAt?.i === i && (zoneAt = null)} ondrop={(e) => paneDrop(e, i)} role="presentation">
+            <section class="pane" class:tablemode={p.mode === 'table'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} data-side={chanOver === i ? (chanSide ?? undefined) : undefined} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => (zoneAt?.i === i && (zoneAt = null), chanOver === i && (chanSide = null))} ondrop={(e) => paneDrop(e, i)} role="presentation">
               <div
                 class="phead"
                 use:fitChips={i}
@@ -336,7 +357,7 @@
               {#if p.mode === 'values'}
                 {@render tileGrid(p)}
               {:else if p.mode === 'table'}
-                <Table {i} />
+                <Table {i} alone height={p.tableH ?? null} />
               {:else if p.mode === 'spectrum'}
                 <Spectrum {i} />
               {:else if p.mode === 'checks'}
@@ -386,8 +407,8 @@
   {#if !stack.panes.length && ui.file}
     <div class="nopanes" data-nopanes>
       <p class="np-title">No channels plotted</p>
-      <p class="muted">Add a pane, then tick channels in Explorer or drag them here.</p>
-      <button class="btn primary" id="addFirst" onclick={() => addPaneBelow(0)}>{@html ICON.plus}Add pane</button>
+      <p class="muted">Drag a channel here, click a channel in Explorer, or use its Chart and Table buttons.</p>
+      <button class="addpane big" id="addFirst" onclick={() => addPaneBelow(0)}>{@html ICON.plus}Add pane</button>
     </div>
   {/if}
   <!-- in the stack, as the prototype's: it scrolls with the panes, and a channel dropped on it makes a new pane -->
@@ -488,6 +509,10 @@
     gap: 6px;
     margin: 40px 0;
   }
+  .addpane.big {
+    margin: 10px 0 0;
+    border-style: solid;
+  }
   .np-title {
     margin: 0;
     font-size: 15px;
@@ -584,6 +609,36 @@
   }
   .stack.chanover {
     box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  /* a channel over a pane's edge: "Place on the left / right" in a box on that side, as the prototype's */
+  .pane[data-side]::after {
+    content: 'Place on the left';
+    position: absolute;
+    z-index: 5;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22%;
+    border: 1.5px dashed var(--accent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 16%, var(--plot-bg));
+    color: var(--fg);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: center;
+    pointer-events: none;
+  }
+  .pane[data-side='right']::after {
+    content: 'Place on the right';
+    right: 4px;
+    left: auto;
+  }
+  .pane.chanover[data-side] {
+    background: none;
+    outline: none;
   }
   .pane.zone {
     background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
