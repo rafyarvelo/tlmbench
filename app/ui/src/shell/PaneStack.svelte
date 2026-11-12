@@ -8,6 +8,7 @@
   import {
     addChannels,
   newPaneBeside,
+  newPaneBefore,
   MAX_PER_ROW,
     addPaneBelow,
     canSplitRight,
@@ -74,6 +75,30 @@
       return [];
     }
   };
+  /** A channel (or chip) is being dragged: "Drop here for a new pane" shows before every row. */
+  let carrying = $state(false);
+  let gapOver = $state<number | null>(null);
+  const dragStart = (e: DragEvent) => (carrying = isChans(e) || isChip(e));
+  function overGap(e: DragEvent, r: number) {
+    if (!isChans(e) && !isChip(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    gapOver = r;
+  }
+  function dropGap(e: DragEvent, first: number) {
+    if (!isChans(e) && !isChip(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    gapOver = chanOver = chanSide = null;
+    carrying = false;
+    if (isChip(e)) {
+      const c = chipOf(e);
+      if (c) newPaneBefore([c.ch], first, settings.dropNewView === 'same' ? stack.panes[c.from]?.mode : undefined, e.altKey ? undefined : c);
+    } else {
+      const chs = chansOf(e);
+      if (chs.length) newPaneBefore(chs, first);
+    }
+  }
   /** Over a pane's left or right edge a dragged channel would get a pane of its own there (when the row has room). */
   let chanSide = $state<null | 'left' | 'right'>(null);
   function sideOf(e: DragEvent, to: number): null | 'left' | 'right' {
@@ -273,11 +298,14 @@
                 </div>
 {/snippet}
 
-<svelte:document onpointerdown={outside} />
+<svelte:document onpointerdown={outside} ondragstart={dragStart} ondragend={() => (carrying = false)} />
 <svelte:window onkeydowncapture={key} />
 
 <div id="stack" class="stack" class:nopanes={!stack.panes.length} class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = chanSide = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length <= 5 ? 125 : 105}px">
   {#each rows() as row, r (r)}
+    {#if carrying}
+      <div class="dropgap" class:over={gapOver === r} data-dropgap={r} role="presentation" ondragover={(e) => overGap(e, r)} ondragleave={() => (gapOver = null)} ondrop={(e) => dropGap(e, row[0])}>Drop here for a new pane</div>
+    {/if}
     <div class="prow">
       {#each columns(row) as col, c (c)}
         <div class="pcol">
@@ -508,6 +536,23 @@
     align-items: center;
     gap: 6px;
     margin: 40px 0;
+  }
+  .dropgap {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    margin: 0 0 6px;
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    color: var(--fg-muted);
+    font-size: 12px;
+  }
+  .dropgap.over {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--fg);
   }
   .addpane.big {
     margin: 10px 0 0;

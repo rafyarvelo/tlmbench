@@ -330,6 +330,19 @@ export function newPaneWith(chs: number[], mode?: PaneMode, out?: { ch: number; 
   });
 }
 
+/** A new pane, a row of its own, before pane `before` (a row's first pane). */
+export function newPaneBefore(chs: number[], before: number, mode?: PaneMode, out?: { ch: number; from: number }): void {
+  const target = stack.panes[before];
+  if (!target) return newPaneWith(chs, mode, out);
+  edit(() => {
+    const arr = out ? leave(stack.panes.slice(), out.ch, out.from) : stack.panes.slice();
+    const k = Math.max(0, arr.indexOf(target));
+    arr.splice(k, 0, { channels: [...chs], ...(mode && mode !== 'chart' ? { mode } : {}) });
+    stack.panes = arr;
+    stack.sel = k;
+  });
+}
+
 /** A new pane with these channels on the left or right of pane `to`, in its row (a column of its own). */
 export function newPaneBeside(chs: number[], to: number, side: 'left' | 'right', mode?: PaneMode, out?: { ch: number; from: number }): void {
   if (!stack.panes[to]) return newPaneWith(chs, mode, out);

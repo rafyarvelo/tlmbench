@@ -69,7 +69,7 @@ CI sets it once it builds what those tests need (the CLI and `just viewer`).
 | t_time | the menu on the time range (ten formats) changing the range, readouts and cursor tiles, Time decimals, Time labels on every chart, all saved; Wall clock (only for a file with an absolute start), sample numbers for a file with no time |
 | t_fileopen | Settings → When a file opens and Files opened for the first time (starter charts, tables, values, none; Remember), Forget layouts, Clicking a row (Act at once), Quiet interface |
 | t_height | the grip under a chart (drag, side-by-side panes follow, ↓ steps, double-click resets, saved) |
-| t_edgedrop | a channel dragged onto a pane's left or right edge shows "Place on the left / right" and makes a pane there; a table-only pane's grip resizes it (double-click resets) |
+| t_edgedrop | a channel dragged onto a pane's left or right edge shows "Place on the left / right" and makes a pane there; "Drop here for a new pane" shows before every row while dragging (also above the top pane); the last channel dragged out takes its pane; four panes per row and a placed pane takes the row's height; a table-only pane's grip resizes it (double-click resets) |
 | t_chips | a pane's chips: × to take out, drag to reorder or move (Alt copies), "· L" / "· R", "+N" and its list |
 | t_narrow | the top bar under 900 px (Clear, Back, Fit, Play, Lock in ⋯), tabs scrolling with ‹ › |
 | t_zones | dropping a pane on another's edges (beside, above, below) or middle (merge), the + between rows, Add pane ▾ kinds, Duplicate beside, the empty states |

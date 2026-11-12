@@ -69,6 +69,21 @@ run('edgedrop', async ({ p, check, until, fake }) => {
   await p.keyboard.press('Escape');
   await p.mouse.up();
 
+  // while a channel is dragged a drop zone shows above the top pane; dropping there makes a pane of its own at the top
+  const top0 = (await app('panes'))[0].join();
+  const nTop = (await app('panes')).length;
+  await p.mouse.move(c.x, c.y);
+  await p.mouse.down();
+  await p.mouse.move(c.x + 20, c.y + 20, { steps: 3 });
+  check('the zones show while dragging', (await p.locator('#stack [data-dropgap]').count()) >= 2);
+  const gap = await p.locator('#stack [data-dropgap="0"]').boundingBox();
+  await p.mouse.move(gap.x + gap.width / 2, gap.y + gap.height / 2, { steps: 6 });
+  check('and the one above the top pane lights up', await p.locator('#stack [data-dropgap="0"].over').count() === 1);
+  await p.mouse.up();
+  const lay2 = await app('layout');
+  check('dropping there adds a pane at the top, in a row of its own', (await app('panes')).length === nTop + 1 && lay2[0] === 'row' && lay2[1] === 'row' && (await app('panes'))[1].join() === top0, [await app('panes'), lay2]);
+  check('and the zones go away', (await p.locator('#stack [data-dropgap]').count()) === 0);
+
   // the last channel dragged out of a pane takes the pane with it
   const nBefore = (await app('panes')).length;
   const chip = await p.locator('#stack [data-pane="0"] .chip').first().boundingBox();
