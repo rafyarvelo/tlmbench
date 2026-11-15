@@ -32,8 +32,8 @@ state of its own in the table, not "done".
 | R1 Review and the ledger | Done Nov 11 (`ledger.md`, `review.md`, `ci/ledger_check.py`) |
 | R2.1 Exports | Built Nov 11 (ledger rows naming R2.1; `docs/exports.md`, `docs/viewer-store.md`); CI with the Nov 15 push |
 | R2.1a The owner's first pass | Built Nov 14 and 15: the owner's 11 fixes, all nine decisions (owner-decisions memory, `follow-ups.md`), the sheet's R3 (Reset app), R12 (the viewer Locked, with Unlock) and B4 (`TLMBENCH_SLOW_BUILD`), the first UI audit. **The owner's re-test is open**: R12, B4, S1 to S4 and the older untested items on the sheet |
-| R3.0 Classification audit (new, moved up) | **Next.** Parity with the prototype and the start-of-R3 apple-design audit, classification only, no code (below) |
-| R2.2 Browser-only mode | **Half built** (D-brow-01 to -07: Worker, reload, static-host recipe, a tab offering only what it can do, `.tlm`, Parquet). Left, by the owner's scope of Nov 15: descriptors and packets, WASM decoder plugins, read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit |
+| R3.0 Classification audit (new, moved up) | **Done Nov 15** (`parity-classes.md`: 11 Port rows, 16 App is better, the rest Noise; apple-design audit in `ui-audits.md`; ledger D-ui-36 to D-ui-41, D-live-11). **Open with the owner:** approve B10 to B16 and the ⋯ menu trim (P3) |
+| R2.2 Browser-only mode | **Next.** Half built (D-brow-01 to -07: Worker, reload, static-host recipe, a tab offering only what it can do, `.tlm`, Parquet). Left, by the owner's scope of Nov 15: descriptors and packets, WASM decoder plugins, read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit |
 | R2.3 Decoders · R2.4 Python · R2.5 Core's Partial rows | Not started |
 | R3.1 to R3.4 Parity | Not started; their lists come from R3.0 |
 | R4 to R9 | Not started; release decisions 1 to 10 below are still the owner's to make (needed by R4) |
@@ -68,7 +68,7 @@ runs a step, keep the step smaller and have it stop and report at the first desi
 
 ## Where things stand (checked Nov 15)
 
-- Ledger: Done 228 · Partial 45 · Missing 15 · Diverged 4 · Unverified 26 · Owner pass 17 (335 rows).
+- Ledger: Done 228 · Partial 46 · Missing 21 · Diverged 4 · Unverified 26 · Owner pass 17 (342 rows).
 - Tests at the last full local run (Nov 15): 104 of 104 app UI tests, `cargo nextest run --workspace` 283 passed (1
   skipped), clippy clean. On CI: see the status table.
 - **Nothing for release exists yet:** `bundle.active` is `false` in `app/src-tauri/tauri.conf.json`; no release workflow;

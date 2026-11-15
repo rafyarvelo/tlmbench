@@ -111,3 +111,30 @@ dark, 1440 × 900 (`{light,dark}-{locked,unlocked}.png` from a scratch script; n
 - **Whether an unlocked arrangement is kept across reloads** (sheet R12). Recommendation: no. A reload is the exported
   view, which is what a reader expects of a shared link, and nothing is stored. If you want it kept, it would go in that
   browser's storage only, with a "Back to the exported view" action.
+
+## Nov 15, 2026: R3.0, the whole app against the prototype (dark, 1440 × 900)
+
+Scope: every scene of `just app-parity` (the app on the fake core against `prototype/plotter.html`), read side by side for
+the main view, start page, Connect, Import, the tab and ⋯ menus and the table; the README screenshots (`node
+app/ui/tests/shots.js`, including the viewer and browser-only mode). The `anthropic-skills:apple-design` skill was loaded;
+headings from its principles. Nothing changed in this pass: each finding is a Port row in `parity-classes.md`, where it
+is ranked with the parity differences.
+
+1. **Simplicity and hierarchy: the start page is a small panel over the workspace** (`start_app.png`). The tab and the
+   Explorer behind it compete with it, and the three ways in are equal-weight buttons without saying what each opens. The
+   prototype's full page with cards and two columns answers "where can I go" at a glance. P1.
+2. **Restraint: the ⋯ menu is 19 items and scrolls at 900 px** (`more-menu_app_crop.png`), and half of it is now in the top
+   bar's Export menu or the menu bar. P3.
+3. **Restraint: every Explorer row shows its unit and pane** (`main_app.png`). Useful on hover, noise as a column of
+   "pane 3 rpm" on every row. P2.
+4. **Feedback: a mouse-opened menu shows the keyboard focus ring on its first item** (`tab-menu_app_crop.png`). It reads as
+   a selection the user didn't make. P9.
+5. **Craft, spatial consistency: the time range changes width as you zoom** (its decimals follow the zoom), so the text and
+   its neighbours shift. P10.
+6. **Familiarity: rates read as "1000.000 Hz" and "0.04167 /hour"** (table, import). People say "1 kHz" and "daily". P5, P6.
+7. **Legibility: the viewer's tab cuts a long layout name at the left** ("ltitude and …", `app-viewer.png`). P11.
+
+Checked, no change: dialogs share one frame, open centred over a scrim and close the way they came (B1); pane actions and
+XY's controls appear on hover only (B5); sizes and radii stay on the tokens; reduced motion is honoured (earlier audits).
+
+For the owner: the "App is better" rows B10 to B16 and the ⋯ menu trim (P3) in `parity-classes.md`.

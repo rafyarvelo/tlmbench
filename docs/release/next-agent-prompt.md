@@ -14,18 +14,14 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
-**R3.0, the classification audit** (release plan, R3), unless the status table says it is done; then the next step in
-"Order and dependencies" (R2.2's remaining items, in the order the plan gives).
-
-The plan's "Recommended model per step" says which model suits each step (Opus for R3.0).
-
-R3.0 changes no code. Re-run `just app-parity`, compare the app and `prototype/plotter.html` side by side (screenshots of
-both), run the `anthropic-skills:apple-design` audit on the whole app in the same pass, and write
-`docs/release/parity-classes.md`: every difference as **Port**, **App is better** (one-line reason and a screenshot, for the
-owner to approve; never ported back) or **Noise**. The owner's decisions of Nov 14 and 15 are already approved. Then ask the
-owner to approve the "App is better" list in one message, with a recommendation for each.
+**R2.2's remaining items** (release plan, R2.2, in the order it gives: descriptors and packets, WASM decoder plugins,
+folders, leaving out the post-v1 controls; then the end-of-R2.2 UI audit). The plan's "Recommended model per step" says
+which model suits each item. R3.0, the parity classification, is done (`docs/release/parity-classes.md`): parity work
+later (R3.1 to R3.3) ports only its Port rows and never touches an "App is better" row.
 
 ## Open with the owner
+
+- Approve the "App is better" rows B10 to B16 and the ⋯ menu trim (P3) in `parity-classes.md`.
 
 - The re-test on the owner test sheet (R12, B4, S1 to S4 and the older items). When the owner confirms an item, remove it.
 - Sheet R12's question: keep an unlocked viewer arrangement across reloads? Recommendation: no. Build nothing until answered.
