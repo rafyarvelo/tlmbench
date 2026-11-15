@@ -38,6 +38,148 @@ Started with my usual settings, or a fresh profile?:
 
 ---
 
+## R. Confirm the Nov 14 changes against your comments
+
+Build `2778484` (`target/release/tlmbench-app`). Each item quotes what you wrote, says what changed and how to check it.
+Type `PASS` or `FAIL` after `Result:` as above; under `Notes:` say what still isn't right, in your words. Your original
+answers in sections A to H stay as they were.
+
+### R1. Dialogs in the corner (E2, F1)
+You wrote: "the rules and checks dialog has the same issue as the other dialogs, it's clamped to the top left corner."
+Changed: every dialog opens centred near the top (one shared rule), with the same close button; Export to HTML is styled
+like Export data.
+Check: open Rules and checks, Export to HTML, Export data, Recipes, Settings › Reset app….
+Result:
+Notes:
+
+### R2. "Show only these" (A2)
+You wrote: "only shows up after opening a file … I recommend this option be always visible as an icon."
+Changed: a funnel icon in the Explorer header beside Expand all and Collapse all, always there. With it on and nothing open,
+Explorer says "Showing only open files" with Show all. Opening a different folder turns it off.
+Check: with no file open, click the funnel; open a file; click it again.
+Result:
+Notes:
+
+### R3. Reset to defaults and clear everything (A3)
+You wrote: "There should be a clear way for the user to 'Reset to default settings' and clear all of the cache. A warning
+dialog is appropriate."
+Changed: Settings › Reset app… lists what goes (settings, import profiles, recipes, rules and checks, layouts, your events,
+widgets, alignments, the cache), all ticked; untick what to keep. Settings › Import profiles lists each profile with a
+button to forget one. Clear cache's tooltip says what it keeps.
+Check: open a CSV you opened before; in Settings forget its profile (or Reset app… with Import profiles ticked); open it
+again: the import dialog comes back.
+Result:
+Notes:
+
+### R4. Dropping a folder (A4)
+You wrote: "dropping a folder … gave the error … Is a directory (os error 21)."
+Changed: a dropped folder opens in Explorer, as Open folder… does.
+Check: drag `~/tlmbench-testdata` from Finder onto the window.
+Result:
+Notes:
+
+### R5. Share on a read-only folder (A6)
+You wrote: "Got a 'Couldn't share' error, no option to export was offered."
+Changed: two causes were fixed. Share… failed whenever a file of the folder was open; and the app only found out the folder
+was read-only when a write failed. Now the tab menu shows "Export file… · Folder is read-only" in place of Share, and
+Explorer's Share… opens as Export configuration.
+Check: make a folder read-only (Get Info › Sharing & Permissions › Read only, or `chmod -R a-w <folder>`), open it in
+Explorer, open a CSV in it, then the tab menu and Explorer's folder menu › Share….
+Result:
+Notes:
+
+### R6. ⌘Z (B1)
+You wrote: "⌘Z did not work, but the Backspace key and 'Previous view' button work to go back to a view."
+Changed (your decision 3): ⌘Z and ⇧⌘Z undo and redo the last change (a channel moved, a pane closed, …); Backspace still
+goes back a view. In a text field ⌘Z undoes the typing.
+Check: take a channel out of a pane, ⌘Z, ⇧⌘Z; close a pane, ⌘Z.
+Result:
+Notes:
+
+### R7. A default line style (B3)
+You wrote: "Is there a global setting for the default? … in case a user want to make all channels 'thin' or 'heavy'."
+Changed (decision 4): Settings › All settings › Display › Default line width and Default line style. A channel's own
+choice (its Display… dialog) wins; there the first choice reads "Default (…)".
+Check: set Heavy and Dashed, look at the charts; give one channel Thin and Solid.
+Result:
+Notes:
+
+### R8. Pane modes (B5)
+You wrote: "the '...' menu from the gauges doesn't match the UI of the prototype … the handle is in the middle of the pane …
+The 'XY Plot' … header is messed up … resizing for the 'XY Plot' doesn't seem to work at all."
+Changed: the gauges' ⋯ menu is the prototype's compact one. Chart and values has its resize grip at the pane's bottom; Chart
+and table has the chart's grip under the chart and the table's at the pane's bottom. XY's X picker, 1:1 and Fit sit in the
+pane header on hover, and XY resizes with a grip under the plot.
+Check: switch a pane to each of those views and resize it; open a gauge's ⋯.
+Result:
+Notes:
+
+### R9. Copy while dragging (C1)
+You wrote: "Dragging a channel while holding Ctrl or Cmd is supposed to 'Copy' the channel to another pane instead of moving it."
+Changed (decision 2): ⌘ or Option copies on the Mac (Ctrl on Windows and Linux); a "+" shows on the drag while the key is down.
+Check: drag a chip to another pane holding ⌘, then Option, then nothing.
+Result:
+Notes:
+
+### R10. Rules and checks explained, and events on one pane (E1)
+You wrote: "need a better explanation of what each one does … allow users to easily enable events for a single pane."
+Changed: each row says what its kind does, and an empty set says it too:
+  "Check: passes or fails. Expect says what should hold, for example battery_v > 21; failures are counted and listed."
+  "Rule: marks events. Wherever Mark when holds, it adds an event in its category to the charts and the table."
+When, Grace and Settle have tooltips. Each pane has an Events toggle (the flag) among its hover controls; E in the top bar
+is the default for panes you haven't set (decision 5).
+Check: Rules & checks › New set; turn E off, then turn one pane's flag on.
+Result:
+Notes:
+
+### R11. Category colours (E2)
+You wrote: "Is it possible to edit the Colors for Check categories? it should be."
+Changed: the Rules and checks editor's Event categories has a colour picker and a Charts switch per category (Settings ›
+Event categories has them too).
+Check: Rules & checks › edit a set › Event categories.
+Result:
+Notes:
+
+### R12. Export to HTML: findable, feedback, read-only (F1)
+You wrote: "the export icon should be way easier to find … The visual feedback was also weak … the dialog didn't close
+immediately after … it was not obvious that the export is read only."
+Changed (decision 6): an Export button in the top bar (HTML, data, image). Export closes the dialog at once and shows a
+progress bar under the top bar, then "Exported to …" with Show in Finder. An export's viewer says "Read-only view" with the
+file, the date and the app version.
+Check: export flight-1 to HTML, then open it through a web server.
+Result:
+Notes:
+
+### R13. The web server note (F2)
+You wrote: "it didn't provide the exact python command needed."
+Changed: opened from a file, a folder export shows the exact command for its folder with a Copy button, the address to
+open, and that One file opens anywhere.
+Check: double-click the exported folder's `index.html`.
+Result:
+Notes:
+Not done yet: export tiers (Folder or One file in the dialog, raw data when it fits, a size field) and drawing coarse data
+like the app (your decision 7; F2, F3). Opening folders and CSVs in a browser like the prototype is the next step (R2.2).
+
+### R14. Dragging table columns ("Other" #1)
+You wrote: "Dragging the columns onto another pane would work same as dropping channels on other panes."
+Changed: a column header drags like a chip: onto another pane to move it (⌘ or Option copies), onto another header to
+reorder.
+Check: switch a pane to Table and drag a column header onto another pane.
+Result:
+Notes:
+
+### R15. Your v1 ideas
+You wrote: (1) the menu bar should have File › Open and every action; (2) a file system watcher or a refresh in Explorer;
+(3) all the icons that fit should show on a pane when hovering.
+Changed: (2) Explorer follows its folder (new and removed files appear by themselves) and the folder menu has Refresh, for
+network shares. (3) On hover a pane shows, in the prototype's order: view, axis settings, Events, Duplicate, Split, ⋯ and
+Close; the ones that don't fit stay in ⋯. (1) The menu bar is not done yet (your decision 8).
+Check: add a CSV to the open folder from Finder; hover a pane, then make panes narrow (four in a row).
+Result:
+Notes:
+
+---
+
 ## A. Open things and the Explorer
 
 ### A1. Open a folder
