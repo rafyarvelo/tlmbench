@@ -29,7 +29,7 @@ import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
 import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
-import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, lineOf, type Limits, limitsOf, openChannelEditor } from './display.svelte';
+import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, lineOf, type Limits, limitsOf, openChannelEditor, twinIn } from './display.svelte';
 import {
   addChannels,
   addPaneBelow,
@@ -50,6 +50,8 @@ import {
   note,
   paneEvents,
   paneTitle,
+  swapChannel,
+  addChannelsTo,
   onStackChange,
   type Pane,
   redoLayout,
@@ -68,7 +70,7 @@ import type { CustomWidget } from './widgets';
 import { cfg, choices, defaultPick, type Problem, rowKey, share as shareDlg, type ShareRow } from './share.svelte';
 import { pluginsState, readPlugins } from './plugins.svelte';
 import { tabs, type TabInfo } from './tabs.svelte';
-import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, ui } from './ui.svelte';
+import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, ui, viewLocked } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 import { slotsUsed, fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
 
@@ -4839,13 +4841,28 @@ function place(el: HTMLElement, x: number, y: number): void {
   el.style.top = `${Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, y))}px`;
 }
 
-function channelMenu(ch: number, x: number, y: number): void {
+/** In a tab with several files, a chip's From file ▸ (the file it reads, matched by name) and Add from every file (owner, Nov 15). */
+function filesItems(ch: number, pane: number | null): MenuItem[] {
+  if (pane == null || ui.slots.length < 2 || !stack.panes[pane]) return [];
+  const own = ui.slots.find((s) => ch >= s.first && ch < s.first + s.count);
+  const twins = ui.slots.flatMap((sl) => (sl.slot === own?.slot ? [] : [{ sl, to: twinIn(ch, sl) }])).filter((t): t is { sl: (typeof ui.slots)[number]; to: number } => t.to != null);
+  if (!twins.length) return [];
+  const lk = viewLocked();
+  return [
+    ...twins.map((t): MenuItem => ({ label: `From file ${t.sl.slot} · ${t.sl.name}`, data: { cm: `from${t.sl.slot}` }, disabled: lk, tip: lk ? 'Unlock the view to change panes' : 'Read this channel from that file instead', run: () => swapChannel(pane, ch, t.to) })),
+    { label: 'Add from every file', data: { cm: 'every' }, disabled: lk, tip: lk ? 'Unlock the view to change panes' : "Put every file's version of this channel in the pane", run: () => addChannelsTo(pane, twins.map((t) => t.to)) },
+    { sep: true },
+  ];
+}
+
+function channelMenu(ch: number, x: number, y: number, pane: number | null = null): void {
   const f = state.file;
   if (!f) return;
   closePopup();
   const name = f.info.channels[ch].name;
   const items: MenuItem[] = [
     { heading: name },
+    ...filesItems(ch, pane),
     { label: 'Move to a category…', meta: groupChannels(f.info.path, f.info.channels).find((g) => g.chs.includes(ch))?.name ?? '', data: { cat: '' }, run: () => categoryDialog(ch, x, y) },
     { label: 'Display…', data: { cm: 'display' }, run: () => openChannelEditor(ch) },
     { label: 'Value labels…', data: { cm: 'labels' }, run: () => openChannelEditor(ch, 'labels') },
@@ -4950,7 +4967,9 @@ function onChannelContext(e: MouseEvent): void {
   const hit = (e.target as HTMLElement).closest<HTMLElement>('[data-ch]');
   if (!hit) return;
   e.preventDefault();
-  channelMenu(Number(hit.dataset.ch), e.clientX, e.clientY);
+  // a chip in a pane knows which pane it is in (From file ▸ and Add from every file change that pane)
+  const paneAt = hit.closest<HTMLElement>('[data-pane]')?.dataset.pane;
+  channelMenu(Number(hit.dataset.ch), e.clientX, e.clientY, paneAt != null && hit.classList.contains('chip') ? Number(paneAt) : null);
 }
 $('side').addEventListener('contextmenu', onChannelContext);
 stackEl.addEventListener('contextmenu', onChannelContext);

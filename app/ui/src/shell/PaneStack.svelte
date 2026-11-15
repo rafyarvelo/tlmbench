@@ -5,7 +5,7 @@
   import { PAD } from '../axes';
   import { COPY_KEY, isCopy } from '../dnd';
   import { ICON } from '../icons';
-  import { chCss, chLimits, chName, chUnit, limitText, openChannelEditor } from '../display.svelte';
+  import { chCss, chLimits, chName, chUnit, limitText, openChannelEditor, twinIn } from '../display.svelte';
   import {
     addChannels,
   newPaneBeside,
@@ -41,6 +41,7 @@
     xyEqualOf,
     paneEvents,
     renamePane,
+    duplicateFor,
   } from '../stack.svelte';
   import { failingChannels } from '../checks.svelte';
   import { settings } from '../settings.svelte';
@@ -57,6 +58,18 @@
   /** the pane menu: under its ⋯ button, or at the pointer on a right-click */
   const lk = $derived(viewLocked());
   const LOCKED = 'Unlock the view to change panes';
+  /** The pane ⋯ menu's Duplicate for file N items: shown for a file that has at least one of the pane's channels. */
+  const duplicateForItems = (i: number): MenuItem[] =>
+    ui.slots.length < 2
+      ? []
+      : ui.slots.flatMap((sl): MenuItem[] => {
+          const chs = stack.panes[i]?.channels ?? [];
+          const mapped = chs.map((c) => twinIn(c, sl));
+          const have = [...new Set(mapped.filter((c): c is number => c != null))];
+          if (!have.length || (have.length === chs.length && have.every((c, k) => c === chs[k]))) return [];
+          const left = mapped.length - mapped.filter((c) => c != null).length;
+          return [{ label: `Duplicate for file ${sl.slot} · ${sl.name}`, meta: left ? `${left} left out` : undefined, data: { pm: `dupfor${sl.slot}` }, disabled: lk, tip: lk ? LOCKED : undefined, run: () => duplicateFor(i, have) }];
+        });
   /** The pane whose name is being typed (owner, Nov 15: a pane can have a name of its own), and the text so far. */
   let renaming = $state<number | null>(null);
   let renameText = $state('');
@@ -271,6 +284,7 @@
     { sep: true },
     { label: 'Duplicate', run: () => duplicate(i), disabled: !stack.panes[i]?.channels.length },
     { label: 'Duplicate beside', run: () => duplicate(i, true), disabled: !stack.panes[i]?.channels.length || !canSplitRight(i) },
+    ...duplicateForItems(i),
     { label: 'Split right', run: () => splitRight(i), disabled: !canSplitRight(i) },
     { label: 'Split down', run: () => splitDown(i) },
     { label: 'Add a pane below', run: () => addPaneBelow(i) },

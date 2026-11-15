@@ -285,6 +285,34 @@ export function duplicate(i: number, beside = false): void {
   });
 }
 
+/** A copy of pane `i` with `channels` in place of its own, below it (Duplicate for ▸ file N). */
+export function duplicateFor(i: number, channels: number[]): void {
+  const p = stack.panes[i];
+  edit(() => {
+    stack.panes.splice(i + 1, 0, { ...p, channels: [...channels], beside: undefined, under: p.under, ...(p.name ? { name: `${p.name} copy` } : {}) });
+    stack.sel = i + 1;
+  });
+}
+
+/** Pane `i` reads channel `to` where it read `from` (From file ▸); where it has `to` already, `from` just goes. */
+export function swapChannel(i: number, from: number, to: number): void {
+  edit(() => {
+    const p = stack.panes[i];
+    const at = p.channels.indexOf(from);
+    if (at < 0) return;
+    if (p.channels.includes(to)) p.channels.splice(at, 1);
+    else p.channels[at] = to;
+  });
+}
+
+/** Adds the channels pane `i` doesn't have yet (Add from every file). */
+export function addChannelsTo(i: number, chs: number[]): void {
+  edit(() => {
+    const p = stack.panes[i];
+    for (const c of chs) if (!p.channels.includes(c)) p.channels.push(c);
+  });
+}
+
 /** A pane's name where it is told apart from the others (the overview's picker): its own, else its number. */
 export const paneTitle = (i: number): string => stack.panes[i]?.name?.trim() || `pane ${i + 1}`;
 

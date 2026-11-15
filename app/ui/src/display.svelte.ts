@@ -29,6 +29,14 @@ export const chBase = (ch: number): string => {
   return s && s.slot > 1 && c.name.endsWith(`·${s.slot}`) ? c.name.slice(0, -`·${s.slot}`.length) : c.name;
 };
 
+/** Channel `ch`'s same-named channel in the tab's file `sl` (its number), or null where that file has none. */
+export const twinIn = (ch: number, sl: { first: number; count: number }): number | null => {
+  if (ch >= sl.first && ch < sl.first + sl.count) return ch;
+  const base = chBase(ch);
+  for (let k = sl.first; k < sl.first + sl.count; k++) if (chBase(k) === base) return k;
+  return null;
+};
+
 /** The unit shown for channel `ch`: the label set for it, else the recording's. */
 export const chUnit = (ch: number): string => {
   const c = info(ch);
@@ -62,7 +70,8 @@ export const openChannelEditor = (ch: number, tab: 'display' | 'limits' | 'label
 export const closeChannelEditor = (): void => void (editor.ch = null);
 
 // ---------- limits ----------
-// Warn and alarm limits, low and high, by channel name (so a limit applies in every pane and file). Common channels
+// Warn and alarm limits, low and high, by channel name (so a limit applies in every pane and file: `temp`, `temp·2` and every
+// file's copy of a derived channel share the limits of `temp`). Common channels
 // start with sensible ones; once a channel has an entry of its own, even an empty one, the starting ones are gone.
 
 /** Alarm at or below / above, warn at or below / above. */
@@ -113,7 +122,7 @@ export const limitText = (lim: Limits): string =>
     .join(' · ');
 
 /** The limits of channel `ch` of the open file. */
-export const chLimits = (ch: number): Limits => limitsOf(ui.channels[ch]?.name ?? '');
+export const chLimits = (ch: number): Limits => limitsOf(chBase(ch));
 /** Where value `v` of channel `ch` stands against its limits. */
 export const chLevel = (ch: number, v: number | null | undefined): Level => levelOf(chLimits(ch), v);
 

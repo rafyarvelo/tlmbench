@@ -3,7 +3,7 @@
 <script lang="ts">
   import { ICON } from '../icons';
   import { settings, setSetting } from '../settings.svelte';
-  import { closeChannelEditor, dispOf, editor, limitsOf, setDisplay, setLimits } from '../display.svelte';
+  import { chBase, closeChannelEditor, dispOf, editor, limitsOf, setDisplay, setLimits } from '../display.svelte';
   import { ui } from '../ui.svelte';
 
   const info = $derived(editor.ch == null ? null : ui.channels[editor.ch]);
@@ -11,13 +11,15 @@
   const set = (patch: Record<string, unknown>) => info && setDisplay(info.name, { ...d, ...patch });
   const num = (v: string) => (v === '' || !Number.isFinite(+v) ? undefined : +v);
   const custom = $derived(typeof d.color === 'string' ? d.color : '');
-  const lim = $derived(info ? limitsOf(info.name) : {});
+  /** Limits go by the channel's own name, so every file's copy of it shares them. */
+  const limKey = $derived(editor.ch == null ? '' : chBase(editor.ch));
+  const lim = $derived(info ? limitsOf(limKey) : {});
   const setLim = (k: string, v: string) => {
     if (!info) return;
     const next = { ...lim } as Record<string, number | undefined>;
     if (v.trim() === '' || !Number.isFinite(+v)) delete next[k];
     else next[k] = +v;
-    setLimits(info.name, next);
+    setLimits(limKey, next);
   };
   const LIMS: [string, string][] = [['al', 'Alarm at or below'], ['ah', 'Alarm at or above'], ['wl', 'Warn at or below'], ['wh', 'Warn at or above']];
   const mapText = $derived(Object.entries(info ? (settings.valueMaps[info.name] ?? {}) : {}).map(([k, l]) => `${k} = ${l}`).join('\n'));
@@ -81,9 +83,9 @@
       <div class="lvrow">{#each LIMS.slice(0, 2) as [k, t] (k)}<label class="lvf"><span>{t}</span><input class="sel" type="number" step="any" data-lim={k} value={lim[k as 'al'] ?? ''} placeholder="none" oninput={(e) => setLim(k, e.currentTarget.value)} /></label>{/each}</div>
       <div class="lvrow">{#each LIMS.slice(2) as [k, t] (k)}<label class="lvf"><span>{t}</span><input class="sel" type="number" step="any" data-lim={k} value={lim[k as 'al'] ?? ''} placeholder="none" oninput={(e) => setLim(k, e.currentTarget.value)} /></label>{/each}</div>
       <p class="hint">Charts draw each limit as a dashed line with shading beyond it: yellow past warn, red past alarm. Value tiles turn green, yellow or red.</p>
-      <p class="hint">Saved in settings for “{info.name}”, in every pane and file.</p>
+      <p class="hint" data-limscope>{ui.slots.length > 1 ? `Applies to every file with “${limKey}”, in every pane.` : `Saved in settings for “${limKey}”, in every pane and file.`}</p>
     </div>
-    <footer><button class="linkbtn" data-clear onclick={() => setLimits(info.name, {})}>No limits</button><span class="spacer"></span><button class="tbtn primary" data-close onclick={closeChannelEditor}>Done</button></footer>
+    <footer><button class="linkbtn" data-clear onclick={() => setLimits(limKey, {})}>No limits</button><span class="spacer"></span><button class="tbtn primary" data-close onclick={closeChannelEditor}>Done</button></footer>
     {:else}
     <div class="chbody">
       <label class="lvf"><span>Name shown</span>
