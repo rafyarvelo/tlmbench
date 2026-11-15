@@ -1143,7 +1143,7 @@
     'plugin:dialog|save': () => fake.savePick,
     config_use({ folder }) {
       fake.cfgCalls.push({ cmd: 'use', folder });
-      return { dir: folder ? `${folder}/.tlmbench` : null, from: fake.cfgFrom, recipes: fake.cfgRecipes, checks: fake.cfgChecks, problems: [] };
+      return { dir: folder ? `${folder}/.tlmbench` : null, from: fake.cfgFrom, recipes: fake.cfgRecipes, checks: fake.cfgChecks, problems: [], writable: !fake.readOnly.includes(folder) };
     },
     config_scan({ folder, own }) {
       fake.cfgCalls.push({ cmd: 'scan', folder, own });

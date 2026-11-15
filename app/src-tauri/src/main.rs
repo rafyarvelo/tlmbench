@@ -2463,6 +2463,8 @@ struct ConfigFolder {
     checks: Vec<String>,
     /// Files in it that don't read, with why.
     problems: Vec<tlmbench_store::config::Problem>,
+    /// False when the folder looks read-only: Share offers Export file… from the start (sheet A6).
+    writable: bool,
 }
 
 /// Points the app at a folder's shared configuration: recipes, check sets, import profiles, decoders and events of
@@ -2479,6 +2481,9 @@ async fn config_use<R: tauri::Runtime>(folder: Option<String>, app: AppHandle<R>
         if files.plugins.set_shared(dir.as_ref().map(|d| d.join("plugins"))) {
             files.plugins.scan(plugins::own_dir(&app));
         }
+        // where Share writes: the folder's own .tlmbench/ (as config_scan), not the nearest one above it
+        let writable =
+            folder.as_deref().filter(|f| !f.is_empty()).is_some_and(|f| tlmbench_store::config::writable(&tlm_dir(f)));
         let Some(d) = dir else {
             return ConfigFolder {
                 dir: None,
@@ -2486,6 +2491,7 @@ async fn config_use<R: tauri::Runtime>(folder: Option<String>, app: AppHandle<R>
                 recipes: vec![],
                 checks: vec![],
                 problems: vec![],
+                writable,
             };
         };
         let dirs = std::slice::from_ref(&d);
@@ -2495,6 +2501,7 @@ async fn config_use<R: tauri::Runtime>(folder: Option<String>, app: AppHandle<R>
             recipes: tlmbench_store::config::shared_recipes(dirs).into_iter().map(|r| r.name).collect(),
             checks: tlmbench_store::config::shared_sets(dirs).into_iter().map(|s| s.name).collect(),
             problems: tlmbench_store::config::validate(&d),
+            writable,
         }
     })
     .await

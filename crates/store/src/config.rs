@@ -144,8 +144,10 @@ pub struct View {
     pub view: serde_json::Value,
 }
 
-/// A recording whose events are shared: its path relative to the folder and its identity (the cache key).
+/// A recording whose events are shared: its path relative to the folder and its identity (the cache key). The app
+/// sends the name and the open file's id, and the identity is filled in from the file.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Recording {
     pub name: String,
     pub identity: String,
@@ -1021,19 +1023,21 @@ pub fn dirs_for(path: &Path, config: &[PathBuf]) -> Vec<PathBuf> {
     if config.is_empty() { nearest(path).into_iter().collect() } else { config.to_vec() }
 }
 
-/// Whether `dir` (a `.tlmbench/` or the folder that would hold one) looks writable. The permission bits only say so
-/// much, so a write that still fails is reported where it happens (Share then offers Export).
+/// Whether `dir` (a `.tlmbench/` or the folder that would hold one) looks writable by this user, without writing
+/// anything: on Unix `access(W_OK)`, which also says no for a read-only volume (a disk image, a read-only mount). A
+/// network share can still refuse a write, so a write that fails is reported where it happens (Share then offers Export).
 pub fn writable(dir: &Path) -> bool {
     let probe = if dir.exists() { dir.to_owned() } else { dir.parent().unwrap_or(dir).to_owned() };
-    let Ok(m) = fs::metadata(&probe) else { return false };
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        m.permissions().mode() & 0o200 != 0
+        use std::os::unix::ffi::OsStrExt;
+        let Ok(c) = std::ffi::CString::new(probe.as_os_str().as_bytes()) else { return false };
+        // SAFETY: `c` is a valid C string; access only reads it.
+        unsafe { libc::access(c.as_ptr(), libc::W_OK) == 0 }
     }
     #[cfg(not(unix))]
     {
-        !m.permissions().readonly()
+        fs::metadata(&probe).is_ok_and(|m| !m.permissions().readonly())
     }
 }
 
@@ -1096,5 +1100,39 @@ mod tests {
         };
         assert_eq!(t.file_name(), "a--b-2.toml");
         assert_eq!(timemap_from_toml(&timemap_to_toml(&t)).unwrap(), t);
+    }
+
+    /// The app sends each open recording as its name and file id; the identity is filled in later (sheet A6: Share…
+    /// refused the app's request with "missing field `identity`" whenever a file of the folder was open).
+    #[test]
+    fn own_reads_what_the_app_sends() {
+        let own: Own = serde_json::from_str(
+            r#"{"categories":[],"widgets":[],"icons":[],"views":[],"recordings":[{"name":"runs/a.csv","file":3}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            own.recordings,
+            vec![Recording { name: "runs/a.csv".into(), identity: String::new(), file: Some(3) }]
+        );
+    }
+
+    /// A folder this user can't write is not writable, without anything written to find out (sheet A6).
+    #[cfg(unix)]
+    #[test]
+    fn a_locked_folder_is_not_writable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("locked");
+        fs::create_dir(&folder).unwrap();
+        assert!(writable(&folder));
+        assert!(writable(&folder.join(".tlmbench")), "a .tlmbench/ not made yet asks its folder");
+        fs::set_permissions(&folder, fs::Permissions::from_mode(0o555)).unwrap();
+        let root = unsafe { libc::geteuid() } == 0;
+        if !root {
+            assert!(!writable(&folder));
+            assert!(!writable(&folder.join(".tlmbench")));
+        }
+        assert_eq!(fs::read_dir(&folder).unwrap().count(), 0);
+        fs::set_permissions(&folder, fs::Permissions::from_mode(0o755)).unwrap();
     }
 }

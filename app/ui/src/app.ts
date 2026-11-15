@@ -2513,6 +2513,7 @@ function share(key: number, raw: string): string | null {
       }
       void loadShared();
     } catch (e) {
+      // the folder looked writable but refused (a network share, a lock): say so and offer Export file… instead
       note(`Couldn't share "${name}": ${e}`, () => exportWs(key, name), 'Export file…');
     }
   });
@@ -2566,8 +2567,8 @@ function ownConfig(): Record<string, unknown> {
  * read besides yours, and its categories and widgets are used where yours don't say otherwise. */
 async function configUse(): Promise<void> {
   try {
-    const r = await invoke<{ dir: string | null; from: { categories: typeof cfg.categories; widgets: Record<string, unknown>[] }; recipes: string[]; checks: string[]; problems: Problem[] }>('config_use', { folder: settings.folder || null });
-    Object.assign(cfg, { dir: r.dir, recipes: r.recipes, checks: r.checks, problems: r.problems, categories: r.from.categories });
+    const r = await invoke<{ dir: string | null; from: { categories: typeof cfg.categories; widgets: Record<string, unknown>[] }; recipes: string[]; checks: string[]; problems: Problem[]; writable: boolean }>('config_use', { folder: settings.folder || null });
+    Object.assign(cfg, { dir: r.dir, recipes: r.recipes, checks: r.checks, problems: r.problems, categories: r.from.categories, writable: r.writable !== false });
     cfg.widgets = r.from.widgets.map((w) => widgetFrom(w, r.dir ?? ''));
     await Promise.all([refreshRecipes(), loadCheckSets()]);
     if (state.file) void loadEvents();

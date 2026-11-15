@@ -9,6 +9,7 @@
   import { TIME_FORMATS } from '../axes';
   import { addPaneBelow, allMode, clearChannels, clearPanes, setAllModes, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
+  import { cfg } from '../share.svelte';
   import CheckBadge from './CheckBadge.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
   import { slotsUsed, type Workspace } from '../workspaces';
@@ -315,7 +316,11 @@
         {#if menuTab?.ws}
           <button class="mi" role="menuitem" data-ws="revert" disabled={!menuTab.dirty} onclick={() => tabAct(actions.revertWs)}><span class="nm">Revert changes</span></button>
         {/if}
-        {#if !menuTab?.live}
+        {#if !menuTab?.live && !cfg.writable}
+          <button class="mi" role="menuitem" data-ws="share" data-tip="This folder is read-only, so the layout can't be shared into it. Export file… writes it where you choose." onclick={() => tabAct(actions.exportWs)}
+            ><span class="nm">Export file…</span><span class="hint">Folder is read-only</span></button
+          >
+        {:else if !menuTab?.live}
           <button
             class="mi"
             role="menuitem"

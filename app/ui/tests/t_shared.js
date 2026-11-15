@@ -20,7 +20,7 @@ const REVIEW = {
 
 run(
   'shared',
-  async ({ p, check, fake, until, settingsLS, wait }) => {
+  async ({ p, check, fake, until, settingsLS, wait, text }) => {
     const app = (f) => p.evaluate((f) => window.__tlmApp[f](), f);
     const names = () => p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.querySelector('.nm').textContent + (x.getAttribute('aria-selected') === 'true' ? '*' : '')));
     const front = () => p.$eval('#wsTabs .wstab[aria-selected=true]', (t) => t.dataset.tab);
@@ -82,6 +82,23 @@ run(
     const ex = await until(() => window.__tlmFake.exported[0]);
     const exported = await fake(() => window.__tlmFake.exported[0]);
     check('Export file… writes where you chose', ex && exported.path === '/Users/me/motors.tlmview.json' && exported.view.name === 'Again', exported);
+
+    // a folder known to be read-only when it opens: the tab menu offers Export file… in place of Share (sheet A6)
+    await fake(() => Object.assign(window.__tlmFake, { savePick: '/Users/me/ro.tlmview.json', pickFolder: '/rec' }));
+    await p.click('#exFolder');
+    await p.click('.exmenu [data-ex="open-folder"]');
+    await until(() => window.__tlmFake.cfgCalls.filter((c) => c.cmd === 'use').length >= 2);
+    await wait(200);
+    await tabMenu();
+    const roItem = await text('.tabmenu [data-ws="share"]');
+    check('a read-only folder: the tab menu says so and offers Export file… instead of Share', /Export file…/.test(roItem) && /read-only/.test(roItem) && !/Share with/.test(roItem), roItem);
+    check('with no second Export file… item', !(await p.$('.tabmenu [data-ws="export"]')));
+    await p.click('.tabmenu [data-ws="share"]');
+    check('one click exports the layout where you chose', await until(() => window.__tlmFake.exported.some((e) => e.path === '/Users/me/ro.tlmview.json')));
+    await fake(() => (window.__tlmFake.readOnly = []));
+    await p.click('#exFolder');
+    await p.click('.exmenu [data-ex="open-folder"]');
+    await until(() => window.__tlmFake.cfgCalls.filter((c) => c.cmd === 'use').length >= 3);
 
     // a file outside the folder
     await fake((f) => window.__tlmFake.drop([f]), OUT);
