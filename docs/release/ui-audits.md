@@ -158,3 +158,17 @@ read (`tests/out/start.png`); the rest from the code and the tests. Principles f
 6. **Owner pass (real window):** the ⋯ height at 900 px, the focus ring after a click in WebKit (Tauri's engine decides
    `:focus-visible` differently from Chromium; the menu now sets it itself), the viewer tab's name, the start page at a
    narrow width.
+
+## Nov 15, 2026: R2.2's folders and hidden controls, and R3.3's UI rows (run by Sonnet; the Opus pass is owed)
+
+Scope: the browser page's start page, Explorer and menus; pane names; Open together; the pane and chip menus for several files;
+the event tooltip; Stop at. From the code, the tests and the existing screenshots; no new screenshots of the browser page.
+
+1. **Restraint, done:** a browser tab hides what comes after v1 (rail, Explorer, channel, file and tab menus, Events editing, ⋯, Reset
+   app); nothing is greyed. The Events panel stays but is empty there: **question for the owner** (U2) whether it goes too.
+2. **Honesty, done:** where the browser has no folder picker the start page and the Explorer say so, once, and keep Open recording….
+3. **Feedback, done:** a pane's name is typed in the header (Enter keeps, Escape leaves, blur keeps); a pane's name and the event tip
+   use the existing tokens (12 px, the tip's own style). Stop at keeps its menu open while categories are ticked.
+4. **Finding, left:** Duplicate for file N, From file N and Add from every file are menu items (one per file), not the submenu the
+   owner's wording has (Menu doesn't nest). Fine up to a few files; with many files the menu gets long.
+5. **Owner pass (real window):** U1 to U5 on the sheet.

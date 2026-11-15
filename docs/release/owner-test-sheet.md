@@ -167,6 +167,52 @@ Notes:
 
 ---
 
+## U. The Nov 15 build after R3.2 (browser-only folders, a tab's hidden controls, R3.3's UI rows)
+
+Rebuild first (`just viewer`, `cargo build --release -p tlmbench`, `cargo tauri build --no-bundle` in `app/src-tauri`) and, for U1
+and U2, `just browser-site` and serve it (`python3 -m http.server --directory app/browser/dist`). Fill in as above.
+
+### U1. Browser-only mode opens a folder (D-brow-10)
+Do: in Chrome or Edge, open http://localhost:8000, click Open folder…, choose `~/tlmbench-testdata/flights`. Open a CSV from the list.
+Then reload the page. Then open it in Safari or Firefox.
+Expect: the folder lists in Explorer (sub-folders first, no `.tlmbench`), nothing is written to it, the CSV opens; after a reload the
+browser asks permission again (or remembers it); in Safari and Firefox the start page says folders aren't available and offers Open
+recording…. The folder's `.tlmbench/` isn't read yet.
+Result:
+Notes:
+
+### U2. A browser tab shows only what it can do (D-brow-05)
+Do: with a file open in the browser page, look at the rail, Explorer (a channel's right-click, the file's right-click, ⋯), the tab
+menu, the Events panel, a pane's view menu, Settings › Reset app.
+Expect: no Layouts or Rules & checks; no Derive, Compare, Open together, Add to tab, Open with layout, Mark when, Add check; no Save,
+Share or window items in the tab menu; Events has no Marker, Range or Rules and says events come after v1. (Question for you:
+should the Events panel go from the rail too, since it is empty there?)
+Result:
+Notes:
+
+### U3. Pane names (D-ui-43)
+Do: a pane's ⋯ › Rename pane…, a double-click on its number, a name of 60+ characters, an empty name, Duplicate, Save as a layout,
+export to HTML and open it.
+Expect: the name shows before the chips, a copy is "… copy", the saved layout and the export keep it.
+Result:
+Notes:
+
+### U4. Several files in one tab (D-ui-46 to D-ui-49)
+Do: Open together on flight-1 and flight-2 (not open yet); a pane's ⋯ › Duplicate for file 2; right-click a chip › From file 2 and
+Add from every file; set a limit on a channel and look at the same channel of file 2.
+Expect: one pane per shared channel with both traces, then each file's own charts; the copies and swaps do what they say; the
+limit applies to both files' copies and the editor says so.
+Result:
+Notes:
+
+### U5. Event tooltips and Stop at (D-ui-11, S5.2-15)
+Do: add a marker and a range at cursors; hover them. Open Play, Stop at: tick two categories, play.
+Expect: a tip with name, category, start and length; playback pauses at the first event of either category.
+Result:
+Notes:
+
+---
+
 ## B. Reading a chart
 
 ### B4. A file that is still building

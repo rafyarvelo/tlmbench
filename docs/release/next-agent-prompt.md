@@ -23,37 +23,37 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
    layout ▸, the start page, rates and filters.
 3. **This prompt is written for Sonnet** (release plan, "Recommended model per step"). Do, in this order, the work that
    suits Sonnet, and **stop and report at the first design question or at the first step that needs Opus**; never decide
-   a design question yourself:
-   1. **R2.2, the Sonnet part:** read-only folders (`showDirectoryPicker`) and leaving out the post-v1 controls
-      (D-brow-05, -08, -09, -10: hide them by a known rule). Several files, derived channels, events and checks in a
-      browser tab are post-v1 (owner, Nov 15). Never touch an "App is better" row.
-   2. **R2.3 Decoders**, following the CSV and Parquet path (`backwards.rs`).
-   3. **R2.4 Python:** wheels, the CI matrix, trusted publishing. If the Arrow C interface fights you, stop: Opus.
-   4. **R3.3's UI-only rows, pulled forward by the owner (Nov 15)** so Sonnet has them before Opus is needed: pane names
-      (D-ui-43), Open together draws every file (D-ui-46), Duplicate for ▸ file N (D-ui-47), From file ▸ and Add from every
-      file (D-ui-48), limits shared by every file's copy of a channel (D-ui-49), and the table's Event column, dimmed slower
-      channels and status line (S5.2-13, S4.2-09), plus the other UI-only Port rows of `parity-classes.md` (edge drops
-      D-ui-17 and -18, event marker tooltips D-ui-11, Stop at several categories S5.2-15, Play's lost test D-ui-13 and -14).
-      Anything that needs the core (recipes or events across the files of a tab: D-derive-03, S5.6-12; the profiles tab)
-      stays with R2.5. Do these after 1 to 3, or first if 1 to 3 block.
-   5. The ledger rows each step closes (evidence you ran), the tests README, the status table, the sheet.
-   After each: run the apple-design audit of the area and record it in `ui-audits.md`, saying it was run by Sonnet (the
-   Opus pass is owed).
-4. **What needs Opus; don't start it** (it is Opus in the plan: judgement across many files or hard debugging): R2.2's
-   descriptors and packets and WASM decoder plugins (splitting `packets.rs` for WASM, a streaming zstd shim, WIT
-   components in the browser), then the end-of-R2.2 UI audit; **R2.5** (the core's Partial rows: the import dialog's
-   sections and Derived list S5.1-10, D-share-01, Connect's reconnect D-live-11, the profile's starter layout, recipes
-   and events across the files of a tab D-derive-03, S5.6-12); **R3.4** and everything from R4 on except R7 and R9 (Sonnet)
-   and R8 (Haiku). The rest of R3.3 (its core-dependent rows) follows R2.5. When your Sonnet work is done, report what the next Opus step is and why, and stop.
+   a design question yourself. **Built Nov 15 by the previous Sonnet agent** (ledger rows and tests named there; pushed or not:
+   see the status table): R2.2's folders and hidden controls, time going backwards in every format (S5.10-06), and R3.3's
+   UI-only rows D-ui-43, -46, -47, -48, -49, -11, -13, -14, S5.2-15. What is left for Sonnet:
+   1. **R3.3's table rows:** the Event column and the stronger tint on the channels an event concerns (S5.2-13), slower
+      channels held and dimmed where unchanged and the status line saying so (S4.2-09). `app/ui/src/shell/Table.svelte` is
+      1,300 lines: read `t_eventstop`, `t_slots` and the prototype's table (`prototype/plotter.html`, `proto:t_events`) first.
+   2. **Drag outlines and edge drops** (D-ui-17, D-ui-18): add a parity scene holding a drag in progress
+      (`app/ui/tests/parity/scenes.js`) and match the prototype's outline styles; the owner checks it in R5.
+   3. **R2.4 Python:** wheels for each platform (`maturin build`, abi3, manylinux 2_28, macOS universal2 or two wheels,
+      Windows x64), a PyPI trusted-publishing job, an sdist, docs generated from the docstrings, and the objects the ledger
+      lists as missing (S5.7-07, S5.10-03: derive channels, add events, read `.tlmbench/` objects). Prove a wheel in a clean
+      venv here (`python -m maturin build`, `pip install`, `python3 -m pytest python`); the other OSes are proved by CI after
+      the push. If the Arrow C interface fights you, stop: Opus.
+   After each: the ledger rows (evidence you ran), the tests README, the status table, the owner sheet, and the
+   apple-design audit of the area in `ui-audits.md`, saying it was run by Sonnet (the Opus pass is owed).
+4. **What needs Opus; don't start it** (judgement across many files, or a design call): R2.2's descriptors and packets
+   (D-brow-08) and WASM decoder plugins (D-brow-09) and reading the folder's `.tlmbench/` in the browser (the store's config
+   reader works on paths; it needs one over a file listing), then the end-of-R2.2 UI audit; R2.3's D-ingest-09 (a
+   descriptor naming a plugin for one field: needs a field-level call in the plugin interface), D-ingest-10, D-ingest-11
+   (live packets and plugins), S5.1-06 (causal filters on live data); **R2.5** (the core's Partial rows: the import
+   dialog's sections and Derived list S5.1-10, D-share-01, Connect's reconnect D-live-11, the profile's starter layout,
+   recipes and events across the files of a tab D-derive-03, S5.6-12) and the core-dependent rest of R3.3; **R3.4** and
+   everything from R4 on except R7 and R9 (Sonnet) and R8 (Haiku). When your Sonnet work is done, report what the next Opus
+   step is and why, and stop.
 
-Built, pushed and CI-green Nov 15: R3.1 (D-ui-37, -39, -40, -41, -44, S4.4-04) and R3.2 (D-ui-36, -38, -42, -45,
-D-derive-02; D-ui-01 and D-ui-10 Partial). The release app was rebuilt for the owner from that code; its leftover-slot-numbers
-fix is on the sheet as T1.
+Built Nov 15, with CI-green pushes at `fd076bd` (R3.1, R3.2): see the status table for what is pushed since.
 
 ## Open with the owner
 
-- The re-test of the owner test sheet: section T (T1 to T5), R12, B4, S1 to S4 and the older items. When the owner confirms
-  an item, remove it.
+- The re-test of the owner test sheet: sections T (T1 to T5) and U (U1 to U5), R12, B4, S1 to S4 and the older items. When the
+  owner confirms an item, remove it.
 - Real-window looks no test can give (ledger and `ui-audits.md`): the ⋯ height at 900 px, the focus ring after a click in
   WebKit, Open with layout ▸ reading as a submenu, the start page narrow.
 
