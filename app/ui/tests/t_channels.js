@@ -1,6 +1,7 @@
 // Explorer's channels: the swatch checkbox (check in the selected pane, colour wherever it's plotted, "pane N" for
 // other panes), multi-select (Ctrl/Cmd-click, Shift-click, Ctrl+A, Esc) and the selection bar (Add to pane N, Chart,
-// Table, Remove), dragging channels onto a pane or onto empty space, the file right-click menu, Show only these, and
+// Table, Remove), dragging channels onto a pane or onto empty space, the file right-click menu, Show only these (the header
+// icon; with nothing open it says so, with Show all), and
 // Undo on Close all files.
 import { run } from './lib.js';
 
@@ -75,11 +76,15 @@ run('channels', async ({ p, check, text, visible, fake, paneCount, until, wait }
   check('a file has a right-click menu', (await p.$$eval('.filemenu .mi', (e) => e.map((x) => x.textContent))).join() === 'Open,Open only this,Import settings…,Format descriptor…,Compare with flight.tlm,Add to this tab,Make primary,Alignment and channel prefix…,Close this file,Close all files');
   await p.click('.filemenu [data-fm="open"]');
   check('Open opens it', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'hover.csv'));
+  check('Show only these is an icon in the Explorer header, there with or without a file open (sheet A2)', await p.isVisible('.phd #onlyOpen'));
   await p.click('#onlyOpen');
   check('Show only these lists only the open files', (await p.$$('#explorer .row.file')).length === 2 && (await p.getAttribute('#onlyOpen', 'aria-pressed')) === 'true');
   await p.click('#explorer .row.file[data-path$="hover.csv"]', { button: 'right' });
   await p.click('.filemenu [data-fm="closeall"]');
   check('Close all files closes every tab and says so', await until(() => document.querySelectorAll('#wsTabs .wstab').length === 0) && /Closed 2 files/.test(await text('#wsNote')), await text('#wsNote'));
+  check('with nothing open, Explorer says it shows only open files instead of an empty list', await until(() => /Showing only open files/.test(document.querySelector('#exOnlyNote')?.textContent ?? '')));
+  await p.click('#exShowAll');
+  check('Show all lists every file again', await until(() => document.querySelectorAll('#explorer .row.file').length === 2 && !document.querySelector('#exOnlyNote')) && (await p.getAttribute('#onlyOpen', 'aria-pressed')) === 'false');
   await p.click('#wsNote button:has-text("Undo")');
   check('Undo reopens them', await until(() => document.querySelectorAll('#wsTabs .wstab').length === 2), await text('#wsTabs'));
 }, { files, launch: null });

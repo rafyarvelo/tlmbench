@@ -42,6 +42,8 @@ export const ICON = {
   folder: s('<path d="M3 7h6l2 2h10v10H3z"/>'),
   expand: s('<path d="M7 15l5 5 5-5M7 9l5-5 5 5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   collapse: s('<path d="M7 20l5-5 5 5M7 4l5 5 5-5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  /** Explorer: list only the open files (a funnel) */
+  onlyOpen: s('<path d="M4 5h16l-6 7.5V18l-4 2v-7.5z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   /** move a sidebar panel to the other side */
   swap: s('<path d="M4 8h14l-3-3M20 16H6l3 3"/>'),
   events: s('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),

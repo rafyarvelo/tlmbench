@@ -268,6 +268,7 @@
     <button class="ibtn exall" id="exCats" aria-label="Show categories" aria-pressed={settings.exCategories} data-tip={settings.exCategories ? 'Showing categories. Click for a flat list' : 'Showing a flat list. Click to group channels into categories'} onclick={() => setSetting('exCategories', !settings.exCategories)}>{@html ICON.cats}</button>
     <button class="ibtn exall" id="exDerive" aria-label="New derived channel" disabled={!ui.file} data-tip="New derived channel: compute one from this file's channels" onclick={() => actions.deriveOpen(picked.length ? picked : sel?.startsWith('ch:') ? [+sel.slice(3)] : [])}>ƒ</button>
     <span class="exsep" aria-hidden="true"></span>
+    <button class="ibtn exall" id="onlyOpen" aria-label="Show only open files" aria-pressed={settings.exOnlyOpen} data-tip={settings.exOnlyOpen ? 'Showing only the open files. Click to list every file' : 'List only the open files'} onclick={() => setSetting('exOnlyOpen', !settings.exOnlyOpen)}>{@html ICON.onlyOpen}</button>
     <button class="ibtn exall" id="treeExpand" aria-label="Expand all" data-tip="Expand all folders and channel groups" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
     <button class="ibtn exall" id="treeCollapse" aria-label="Collapse all" data-tip="Collapse all channel groups, and the folders without an open file" onclick={collapseAll}>{@html ICON.collapse}</button>
     <button class="ibtn pmove" id="swapSides" data-pmove aria-label="Move Explorer to the {otherSide} sidebar" data-tip="Move to the {otherSide} sidebar" onclick={() => movePanel('explorer', otherSide)}>{@html ICON.swap}</button>
@@ -292,7 +293,6 @@
     <div class="exopen">
       <div class="exoh">
         <span>Open · {openFiles.length}</span><span class="spacer"></span>
-        <button class="exotog" class:on={settings.exOnlyOpen} id="onlyOpen" aria-pressed={settings.exOnlyOpen} data-tip="List only the open files" onclick={() => setSetting('exOnlyOpen', !settings.exOnlyOpen)}>{settings.exOnlyOpen ? 'Show all' : 'Show only these'}</button>
         <button class="linkbtn" id="closeAll" onclick={actions.closeFile}>Close all</button>
       </div>
       <div class="exol" id="openFiles">
@@ -340,6 +340,9 @@
       {/if}
       {#if outsideFolder}{@render file(ui.path, ui.file!, 0)}{/if}
       {@render dir(ui.folder, 0)}
+      {#if settings.exOnlyOpen && !openFiles.length}
+        <p class="exnone" id="exOnlyNote">Showing only open files, and none is open. <button class="linkbtn" id="exShowAll" onclick={() => setSetting('exOnlyOpen', false)}>Show all</button></p>
+      {/if}
     {:else if ui.file}
       {@render file(ui.path, ui.file, 0)}
     {:else}
@@ -660,29 +663,6 @@
     font: 500 12px var(--font-ui);
     letter-spacing: 0;
     text-transform: none;
-  }
-  .exotog {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: 22px;
-    padding: 0 8px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: transparent;
-    color: var(--accent);
-    font: 500 12px var(--font-ui);
-    letter-spacing: 0;
-    text-transform: none;
-    cursor: pointer;
-  }
-  .exotog:hover {
-    background: var(--accent-soft);
-  }
-  .exotog.on {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--on-accent, #fff);
   }
   .exol {
     display: flex;

@@ -2752,6 +2752,8 @@ async function listFolder(path: string): Promise<void> {
     if (settings.folder !== path) {
       setSetting('folder', path);
       setSetting('exExpanded', ui.folder.children.filter((c) => c.dir).map((c) => c.path));
+      // a different folder lists everything: "only the open files" would hide all of it
+      setSetting('exOnlyOpen', false);
     }
     // the views shared in it count under Explorer's .tlmbench row and fill Layouts; its other shared objects are read too
     void loadShared().catch(() => (ui.shared = []));

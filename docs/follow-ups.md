@@ -559,6 +559,8 @@ folder it writes (`t_exportreal`), the viewer and browser-only mode from static 
 
 ## Suggested by the owner's real-window pass (Nov 11, 2026)
 
+- **Built Nov 14 (sheet A2):** the toggle is an icon in the Explorer header, always there; with nothing open the list says
+  "Showing only open files" with Show all; a different folder turns the filter off (`t_channels`, `t_open`).
 - **Explorer looks empty when "Show only these" is on and nothing is open** (`exOnlyOpen`, which is saved in settings). The
   owner opened a folder and saw the Explorer header and no files; `list_folder` had returned all 33 entries, the filter hid them
   all. Proposed (not decided; the owner decides): when the filter is on and no file is open, say "Showing only open files" with a
