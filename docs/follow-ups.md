@@ -150,3 +150,7 @@ removed Nov 15; git history keeps them.
 - **Rates (D-ui-38).** "1 kHz", "daily · median interval 1 d", "median interval 2.5 s"; the table's filters show "e.g. > 1.5".
 
 - **Time going backwards in binary files (S5.10-06).** Fixed-width, packet and plugin files no longer fail to open: the records stay in file order and each that reads earlier takes the latest time before it, with a note (as CSV and Parquet). The places are kept, not a time column (`strided::Ordering`), and a packet index remembers them (index version 2: older entries rebuild).
+- **Pane names (D-ui-43).** Rename pane… in a pane's ⋯ menu or a double-click on its number or name; the name (up to 60 characters) shows before the chips, is saved with the layout (optional `name` per pane), travels with Share… and HTML exports, and is used by the overview's picker and Duplicate ("… copy").
+- **Open together draws every file (D-ui-46).** A new tab gets a pane per shared channel (each holding every file's copy, spread like a starter's), then each file's own starter charts; a tab that was open already keeps its panes.
+- **Duplicate for file N, From file N, Add from every file (D-ui-47, -48).** Items in the pane's ⋯ menu and the channel's right-click menu, one per other file that has the channel, rather than a submenu.
+- **Limits belong to the channel's own name (D-ui-49).** `temp`, `temp·2` and every file's copy of a derived channel share them.
