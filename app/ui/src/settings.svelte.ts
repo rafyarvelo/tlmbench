@@ -230,6 +230,10 @@ export interface Settings {
   drawRaw: string;
   /** What a line does at a gap (a time jump, a missing value, rows Apply to charts leaves out): break, or connect with a dashed segment. */
   gapLines: 'break' | 'connect';
+  /** Every channel's line without a width of its own: '1' thin, '0' normal, '2' thick, '3' heavy (owner, Nov 14; sheet B3). */
+  lineWidth: '0' | '1' | '2' | '3';
+  /** Every channel's line without a style of its own. */
+  lineStyle: 'solid' | 'dashed';
   /** Settings shows every setting, not just the everyday ones. */
   settingsAll: boolean;
   /** The folder Explorer lists, and its folders (and open files) shown expanded. */
@@ -323,6 +327,8 @@ export const DEFAULTS: Settings = {
   showPerf: false,
   drawRaw: '0',
   gapLines: 'break',
+  lineWidth: '0',
+  lineStyle: 'solid',
   settingsAll: false,
   folder: '',
   exExpanded: [],

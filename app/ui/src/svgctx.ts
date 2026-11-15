@@ -66,7 +66,7 @@ export class SvgContext {
 /** Parts of an SVG a caller adds around what the context recorded. */
 export const svg = {
   rect: (x: number, y: number, w: number, h: number, fill: string) => `<rect x="${num(x)}" y="${num(y)}" width="${num(w)}" height="${num(h)}" fill="${esc(fill)}"/>`,
-  polyline: (points: string, color: string, width = 1.25) => `<polyline points="${points}" fill="none" stroke="${esc(color)}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"/>`,
+  polyline: (points: string, color: string, width = 1.25, dash = false) => `<polyline points="${points}" fill="none" stroke="${esc(color)}" stroke-width="${width}"${dash ? ' stroke-dasharray="6 4"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`,
   text: (s: string, x: number, y: number, fill: string, size = 12, mono = false) => `<text x="${num(x)}" y="${num(y)}" fill="${esc(fill)}" font-size="${size}"${mono ? ' font-family="monospace"' : ''} dominant-baseline="central">${esc(s)}</text>`,
   group: (x: number, y: number, inner: string[], clip?: [number, number, number, number], id = '') =>
     `<g transform="translate(${num(x)} ${num(y)})"${clip ? ` clip-path="url(#${id})"` : ''}>${clip ? `<clipPath id="${id}"><rect x="${num(clip[0])}" y="${num(clip[1])}" width="${num(clip[2])}" height="${num(clip[3])}"/></clipPath>` : ''}${inner.join('')}</g>`,

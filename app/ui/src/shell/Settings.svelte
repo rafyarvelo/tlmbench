@@ -49,6 +49,8 @@
     { key: 'timeDecimals', section: 'Display', label: 'Time decimals', options: [['auto', 'Automatic'], ...[0, 1, 2, 3, 4, 5, 6].map((n) => [String(n), String(n)] as [string, string])] },
     { key: 'timeAxis', section: 'Display', label: 'Time labels', hint: 'Which charts show the time axis labels. Charts share one time axis.', options: [['auto', 'Automatic (every chart on a narrow window)'], ['bottom', 'Bottom chart only'], ['every', 'Every chart']] },
     { key: 'drawRaw', section: 'Display', label: 'Draw every sample', hint: 'Automatic draws each sample only when there are at most 4 per pixel column, and reduces the rest to min/max per column (M4), which looks the same. Raise it to see every point drawn; slower with millions.', options: [['0', 'Automatic'], ['100000', 'Up to 100k per channel'], ['1000000', 'Up to 1M per channel'], ['10000000', 'Always (slow)']] },
+    { key: 'lineWidth', section: 'Display', label: 'Default line width', hint: 'Every line without a width of its own. A channel\'s own width (Display… on its chip) wins.', options: [['1', 'Thin'], ['0', 'Normal'], ['2', 'Thick'], ['3', 'Heavy']] },
+    { key: 'lineStyle', section: 'Display', label: 'Default line style', hint: 'Every line without a style of its own. A channel\'s own style wins.', options: [['solid', 'Solid'], ['dashed', 'Dashed']] },
     { key: 'gapLines', section: 'Display', label: 'Gaps in lines', hint: 'Break the line where data is missing (a time jump, a missing value, rows that Apply to charts leaves out), or connect across it with a dashed segment so a gap is never mistaken for data.', options: [['break', 'Break the line'], ['connect', 'Connect with a dashed line']] },
     { key: 'envelope', section: 'Display', label: 'Min/max band under reduced lines', hint: 'When a view has more samples than pixels, a line shows the lowest and highest value of each pixel column. This shades between them, so a spike or a noisy stretch reads as an area.' },
     { key: 'overviewTop', section: 'Display', label: 'Overview above the panes' },
@@ -123,7 +125,7 @@
     if (d?.color != null) parts.push('colour');
     if (d?.dec != null) parts.push(`${d.dec} decimals`);
     if (d?.unit) parts.push(`unit ${d.unit}`);
-    if (d?.width || d?.dash || d?.step) parts.push('line style');
+    if (d?.width != null || d?.dash != null || d?.step) parts.push('line style');
     if (settings.limits[n]) parts.push(limitText(settings.limits[n]) || 'no limits');
     if (settings.valueMaps[n]) parts.push(`${Object.keys(settings.valueMaps[n]).length} value labels`);
     return parts.join(' · ');

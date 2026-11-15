@@ -28,7 +28,7 @@ run(
 
     await p.selectOption('#chEditor [data-d="dec"]', '1');
     check('decimals are kept', await until(() => true) && (await settingsLS()).chdisp?.accel_x?.dec === 1);
-    await p.check('#chEditor [data-d="dash"]');
+    await p.selectOption('#chEditor [data-d="dash"]', 'dashed');
     check('line style is kept', (await settingsLS()).chdisp?.accel_x?.dash === true);
 
     // Settings › Channels lists what is customised, with a reset per channel

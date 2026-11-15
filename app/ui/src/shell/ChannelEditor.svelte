@@ -47,7 +47,9 @@
     else m[k] = +raw;
     set({ missing: Object.keys(m).length ? m : undefined });
   };
-  const WIDTHS: [string, string][] = [['', 'Normal'], ['1', 'Thin'], ['2', 'Thick'], ['3', 'Heavy']];
+  const WIDTHS: [string, string][] = [['1', 'Thin'], ['0', 'Normal'], ['2', 'Thick'], ['3', 'Heavy']];
+  /** The defaults in Settings › Display, named in the first choice (sheet B3). */
+  const defWidth = $derived(WIDTHS.find(([v]) => v === settings.lineWidth)?.[1] ?? 'Normal');
   function key(e: KeyboardEvent) {
     if (e.key !== 'Escape') return;
     e.stopPropagation();
@@ -126,10 +128,13 @@
       <div class="lvrow">
         <label class="lvf"><span>Line width</span>
           <select class="sel" data-d="width" value={d.width == null ? '' : String(d.width)} onchange={(e) => set({ width: num(e.currentTarget.value) })}>
+            <option value="">Default ({defWidth.toLowerCase()})</option>
             {#each WIDTHS as [v, t] (v)}<option value={v}>{t}</option>{/each}
           </select></label>
         <div class="lvf"><span>Style</span>
-          <label class="chk"><input type="checkbox" data-d="dash" checked={!!d.dash} onchange={(e) => set({ dash: e.currentTarget.checked })} />Dashed</label>
+          <select class="sel" data-d="dash" value={d.dash == null ? '' : d.dash ? 'dashed' : 'solid'} onchange={(e) => set({ dash: e.currentTarget.value === '' ? undefined : e.currentTarget.value === 'dashed' })}>
+            <option value="">Default ({settings.lineStyle})</option><option value="solid">Solid</option><option value="dashed">Dashed</option>
+          </select>
           <label class="chk"><input type="checkbox" data-d="step" checked={!!d.step} onchange={(e) => set({ step: e.currentTarget.checked })} />Steps (flags, modes)</label></div>
       </div>
       <p class="hint">Saved in settings for “{info.name}”, in every pane and file.</p>

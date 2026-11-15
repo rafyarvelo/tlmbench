@@ -45,7 +45,8 @@ export function chColor(ch: number): string | null {
 /** Changes channel `name`'s display; empty values go back to the default, and nothing left removes the entry. */
 export function setDisplay(name: string, d: ChannelDisplay): void {
   const clean: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(d)) if (v !== '' && v != null && v !== false) clean[k] = v;
+  // dash: false is a choice (Solid over a Dashed default); other false values are the default
+  for (const [k, v] of Object.entries(d)) if (v !== '' && v != null && (v !== false || k === 'dash')) clean[k] = v;
   const all = { ...settings.chdisp };
   if (Object.keys(clean).length) all[name] = clean as ChannelDisplay;
   else delete all[name];
@@ -120,6 +121,11 @@ export const chLevel = (ch: number, v: number | null | undefined): Level => leve
 export const chDisp = (ch: number): ChannelDisplay => dispOf(ui.channels[ch]?.name ?? '');
 /** Line width factors by the editor's setting (1 thin, 2 thick, 3 heavy; normal is 1). */
 export const WIDTHS: Record<number, number> = { 1: 0.7, 2: 1.8, 3: 2.8 };
+/** A channel's line as drawn: its own width and dash, else the defaults in Settings (sheet B3). */
+export const lineOf = (ch: number): { width: number; dash: boolean } => {
+  const d = chDisp(ch);
+  return { width: WIDTHS[d.width ?? Number(settings.lineWidth)] ?? 1, dash: d.dash ?? settings.lineStyle === 'dashed' };
+};
 
 /** What the core applies to channels' stored values, from the display settings: scale and offset, missing values. */
 export interface AdjustOut {

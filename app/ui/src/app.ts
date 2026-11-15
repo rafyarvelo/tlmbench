@@ -28,7 +28,7 @@ import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
 import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
-import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, type Limits, limitsOf, openChannelEditor, WIDTHS } from './display.svelte';
+import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, lineOf, type Limits, limitsOf, openChannelEditor } from './display.svelte';
 import {
   addChannels,
   addPaneBelow,
@@ -808,8 +808,7 @@ function draw(): void {
         const yr = ranges[keyOf.get(ch)!];
         if (!t || t.log !== !!yr.log) continue;
         const y: Axis = { a: 2 / (yr.max - yr.min), b: (-2 * yr.min) / (yr.max - yr.min) - 1 };
-        const cd = chDisp(ch);
-        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r, LINE_WIDTH * (WIDTHS[cd.width ?? 0] ?? 1), clip, !!cd.dash, settings.envelope ? ENVELOPE_ALPHA : 0);
+        renderer.draw(t.gl, x, y, rgba(colorOf(ch)), r, LINE_WIDTH * lineOf(ch).width, clip, lineOf(ch).dash, settings.envelope ? ENVELOPE_ALPHA : 0);
       }
       markers[i] = chans.length === 1 ? drawMarkers(ctx, r, main, chans[0], ranges[keyOf.get(chans[0])!], tk) : 0;
       for (const key of keys) if (axisOf(i, key).range === 'robust') drawClipped(ctx, r, main, chans.filter((ch) => keyOf.get(ch) === key), ranges[key], tk);
@@ -4310,7 +4309,7 @@ function imageSvg(boxes: ReturnType<typeof imagePanes>): string {
           const yb = (-2 * yr.min) / (yr.max - yr.min) - 1;
           let run: string[] = [];
           const flush = () => {
-            if (run.length > 1) lines.push(svg.polyline(run.join(' '), colorOf(ch)));
+            if (run.length > 1) lines.push(svg.polyline(run.join(' '), colorOf(ch), LINE_WIDTH * lineOf(ch).width, lineOf(ch).dash));
             run = [];
           };
           for (let p = 0; p < t.x.length; p++) {
