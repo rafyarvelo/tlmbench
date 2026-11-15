@@ -121,8 +121,10 @@ pub fn import_tlm(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
             bits: tf.bits,
             scale_ns,
             t0_ns,
+            plateaus: &[],
         }
     };
+    let mut found = Backwards::default();
     let (time, tm) = match &desc.time {
         TimeSpec::Rate { rate_hz, t0_ns } => {
             (TimeSource::Rate { hz: *rate_hz }, Tm::Rate(RateTimes::from_rate(*t0_ns, *rate_hz, n)))
@@ -130,20 +132,20 @@ pub fn import_tlm(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
         TimeSpec::Index => (TimeSource::Index, Tm::Rate(RateTimes::from_rate(0, 1.0, n))),
         TimeSpec::Field { field, unit, t0_ns } => {
             let t = times_of(field, unit.ns(), *t0_ns);
-            let v: Vec<i64> = (0..n).map(|i| t.at(i)).collect();
-            if let Some(i) = (1..n).find(|&i| v[i] < v[i - 1]) {
-                return Err(bad(format!("time goes backwards at record {i}")));
-            }
+            let mut v: Vec<i64> = (0..n).map(|i| t.at(i)).collect();
+            // time that goes backwards is flagged and held, never reordered (the decoder's rule for every format)
+            clamp_backwards(&mut v, &mut None, 1, &mut found);
             (TimeSource::Column { name: field.clone() }, Tm::Col(v))
         }
         TimeSpec::Counter { field, clock_hz, wraps_at, t0_ns } => {
             let tf = desc.fields.iter().find(|x| &x.name == field).expect("validated");
             let range = counter_range(tf, *wraps_at).expect("validated");
             let raw = times_of(field, 1, 0);
-            let wraps = wrap_positions(n, range, |i| raw.raw(i))
-                .map_err(|i| bad(format!("the time counter goes backwards at record {i}")))?;
-            let t = CounterTimes { raw, wraps: &wraps, range, clock_hz: *clock_hz, t0_ns: *t0_ns };
-            (TimeSource::Column { name: field.clone() }, Tm::Col((0..n).map(|i| t.at(i)).collect()))
+            let wraps = wrap_positions(n, range, |i| raw.raw(i));
+            let t = CounterTimes { raw, wraps: &wraps, range, clock_hz: *clock_hz, t0_ns: *t0_ns, plateaus: &[] };
+            let mut v: Vec<i64> = (0..n).map(|i| t.at(i)).collect();
+            clamp_backwards(&mut v, &mut None, 1, &mut found);
+            (TimeSource::Column { name: field.clone() }, Tm::Col(v))
         }
     };
     let fields: Vec<_> = desc.channels().map(|(_, f)| f).collect();
@@ -152,6 +154,7 @@ pub fn import_tlm(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
         .map(|f| ChannelInfo { name: f.name.clone(), unit: f.unit.clone(), dtype: f.dtype.name(), category: None })
         .collect();
     let mut d = Ds::new(path, "tlmbench reference", None, n, time, tm, channels);
+    d.info.notes = found.note_of("record", "record").into_iter().collect();
     for (col, f) in d.cols.iter_mut().zip(&fields) {
         col.raw = crate::data::Raw::whole(field_values(records, stride, f.offset as usize, f.dtype, big, f));
     }
@@ -313,10 +316,15 @@ offset = 6
     }
 
     #[test]
-    fn a_tlm_whose_time_goes_backwards_says_where() {
-        let bytes = tlm(&[(10, 0, 0), (5, 0, 0)], FIELD_TIME);
-        let e = import_file(&mut State::default(), 0, "local://x.tlm", &bytes).err().unwrap();
-        assert!(e.contains("x.tlm") && e.contains("backwards at record 1"), "{e}");
+    fn a_tlm_whose_time_goes_backwards_is_flagged_and_held() {
+        let bytes = tlm(&[(10, 0, 0), (5, 0, 0), (20, 0, 0)], FIELD_TIME);
+        let mut st = State::default();
+        import_file(&mut st, 0, "local://x.tlm", &bytes).unwrap();
+        let d = st.files[0].as_ref().unwrap();
+        let Tm::Col(t) = &d.tm else { panic!("a time field gives a time column") };
+        assert_eq!(t, &[10_000, 10_000, 20_000]);
+        let note = d.info.notes.join(" ");
+        assert!(note.contains("Time goes backwards in 1 record (first at record 2"), "{note}");
     }
 
     #[test]

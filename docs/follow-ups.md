@@ -148,3 +148,5 @@ removed Nov 15; git history keeps them.
 - **Every file of a tab marked in Explorer (D-ui-45).** The folder tree's rows carry the slot number and "primary" or the alignment word.
 - **Duplicate recipe… and Save as new (D-derive-02).** Duplicate opens the Derive dialog prefilled as a new recipe; Save as new keeps the edited recipe and adds the changes under a "… copy" name. The colour is the channel's display setting and isn't copied.
 - **Rates (D-ui-38).** "1 kHz", "daily · median interval 1 d", "median interval 2.5 s"; the table's filters show "e.g. > 1.5".
+
+- **Time going backwards in binary files (S5.10-06).** Fixed-width, packet and plugin files no longer fail to open: the records stay in file order and each that reads earlier takes the latest time before it, with a note (as CSV and Parquet). The places are kept, not a time column (`strided::Ordering`), and a packet index remembers them (index version 2: older entries rebuild).

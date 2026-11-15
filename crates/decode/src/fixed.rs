@@ -17,7 +17,7 @@ use crate::bytes::{self, Bytes, read_exact_at};
 use crate::descriptor::{Bits, DType, Descriptor, Endian, Field, TimeSpec, counter_range};
 use crate::error::{Result, format_err};
 use crate::reference;
-use crate::strided::{CounterTimes, FieldTimes, Pod, Strided, decode, wrap_positions};
+use crate::strided::{CounterTimes, FieldTimes, Ordering, Pod, Strided, decode, wrap_positions};
 
 #[derive(Debug)]
 pub struct FixedWidth {
@@ -38,6 +38,9 @@ pub struct FixedWidth {
     time_index: OnceLock<TimeIndex>,
     /// The records where a counter time base wrapped, found once when the file opens.
     counter_wraps: Vec<usize>,
+    /// Where time went backwards, found once when the file opens: the records stay in file order and each place holds
+    /// at the latest time before it (`strided::Ordering`).
+    plateaus: Vec<(usize, i64)>,
 }
 
 /// Records `start..` read on another thread.
@@ -96,6 +99,7 @@ impl FixedWidth {
             spare_columns: Mutex::default(),
             time_index: OnceLock::new(),
             counter_wraps: Vec::new(),
+            plateaus: Vec::new(),
             info: RecordingInfo {
                 path: path.to_owned(),
                 format: format.to_owned(),
@@ -129,20 +133,22 @@ impl FixedWidth {
             let tf = me.desc.fields.iter().find(|x| &x.name == field).expect("validated");
             let range = counter_range(tf, *wraps_at).expect("validated");
             let raw = me.field_times(tf, 1, 0);
-            me.counter_wraps = wrap_positions(Times::len(&raw), range, |i| raw.raw(i))
-                .map_err(|i| format_err(path, format!("the time counter goes backwards at record {i}")))?;
+            me.counter_wraps = wrap_positions(Times::len(&raw), range, |i| raw.raw(i));
         }
-        // fixed-rate and index times can't go backwards; a time field is checked record by record
-        let check = matches!(me.desc.time, TimeSpec::Field { .. });
-        let (first, last) = me
-            .with_times(|t| {
-                if check && let Some(i) = (1..t.len()).find(|&i| t.at(i) < t.at(i - 1)) {
-                    return Err(i);
+        // fixed-rate and index times can't go backwards; a time field or counter is read once, record by record, and the
+        // places where it does go backwards are kept (the records stay in file order, never reordered)
+        if matches!(me.desc.time, TimeSpec::Field { .. } | TimeSpec::Counter { .. }) {
+            let order = me.with_times(|t| {
+                let mut o = Ordering::default();
+                for i in 0..t.len() {
+                    o.push(i, t.at(i));
                 }
-                Ok((t.len() > 0).then(|| (t.at(0), t.at(t.len() - 1))))
-            })
-            .map_err(|i| format_err(path, format!("time goes backwards at record {i}")))?
-            .unzip();
+                o
+            });
+            me.info.notes.extend(order.note());
+            me.plateaus = order.plateaus;
+        }
+        let (first, last) = me.with_times(|t| (t.len() > 0).then(|| (t.at(0), t.at(t.len() - 1)))).unzip();
         (me.info.t_first, me.info.t_last) = (first, last);
         Ok(me)
     }
@@ -187,13 +193,14 @@ impl FixedWidth {
             bits: tf.bits,
             scale_ns,
             t0_ns,
+            plateaus: &self.plateaus,
         }
     }
 
     fn counter_times<'a>(&'a self, field: &str, clock_hz: f64, wraps_at: Option<u64>, t0_ns: i64) -> CounterTimes<'a> {
         let tf = self.desc.fields.iter().find(|x| x.name == field).expect("validated");
         let range = counter_range(tf, wraps_at).expect("validated");
-        CounterTimes { raw: self.field_times(tf, 1, 0), wraps: &self.counter_wraps, range, clock_hz, t0_ns }
+        CounterTimes { raw: self.field_times(tf, 1, 0), wraps: &self.counter_wraps, range, clock_hz, t0_ns, plateaus: &self.plateaus }
     }
 
     /// Calls `f` with this file's sample times, whichever kind they are.
@@ -776,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    fn backwards_time_is_an_error() {
+    fn backwards_time_is_flagged_and_held_not_reordered() {
         let desc = Descriptor {
             sequence: None,
             files: Vec::new(),
@@ -792,12 +799,27 @@ mod tests {
         };
         let mut data = Vec::new();
         reference::write_header(&mut data, &desc).unwrap();
-        for t in [0i64, 10, 5] {
+        for t in [0i64, 10, 5, 20, 15, 30] {
             data.extend(t.to_le_bytes());
             data.extend(1.0f64.to_le_bytes());
         }
-        let err = FixedWidth::from_reference_bytes(data).unwrap_err().to_string();
-        assert!(err.contains("backwards at record 2"), "{err}");
+        let f = FixedWidth::from_reference_bytes(data).unwrap();
+        // the records stay in file order; one that reads earlier takes the latest time before it
+        let times = f.with_times(|t| (0..t.len()).map(|i| t.at(i)).collect::<Vec<_>>());
+        assert_eq!(times, [0, 10, 10, 20, 20, 30]);
+        assert_eq!(f.info().t_last, Some(30));
+        let note = f.info().notes.join(" ");
+        assert!(note.contains("Time goes backwards in 2 records (first at record 3"), "{note}");
+        // a search by time still works on the held times
+        f.with_times(|t| assert_eq!(t.len(), 6));
+        // a file that never goes backwards has no note
+        let mut ok = Vec::new();
+        reference::write_header(&mut ok, &f.desc).unwrap();
+        for t in [0i64, 10, 20] {
+            ok.extend(t.to_le_bytes());
+            ok.extend(1.0f64.to_le_bytes());
+        }
+        assert!(FixedWidth::from_reference_bytes(ok).unwrap().info().notes.is_empty());
     }
 
     #[test]
@@ -896,7 +918,7 @@ mod tests {
             let want: Vec<i64> = (a - 1..=b).map(at).collect(); // and the sample before the window
             assert_eq!(&tr.t[..want.len()], &want[..], "around record {centre}");
         }
-        // an explicit range counts in its own ticks, and a counter that steps back a little is an error
+        // an explicit range counts in its own ticks, and a counter that steps back a little is time going backwards
         let mut d = desc.clone();
         d.time = TimeSpec::Counter { field: "c".into(), clock_hz: 1000.0, wraps_at: Some(300), t0_ns: 0 };
         let g = file(&d, (0..1000usize).map(|i| [((i * 3 % 300) as u16).to_le_bytes().to_vec(), vec![0; 4]].concat()));
@@ -905,8 +927,11 @@ mod tests {
         let mut data = Vec::new();
         reference::write_header(&mut data, &desc).unwrap();
         data.extend(bad.concat());
-        let err = FixedWidth::from_reference_bytes(data).unwrap_err().to_string();
-        assert!(err.contains("counter goes backwards at record 2"), "{err}");
+        let f = FixedWidth::from_reference_bytes(data).unwrap();
+        // a step back of less than half the range is time going backwards, not a wrap: the time holds, and says so
+        let times = f.with_times(|t| (0..t.len()).map(|i| t.at(i)).collect::<Vec<_>>());
+        assert_eq!(times, [1_000_011, 9_000_011, 9_000_011]);
+        assert!(f.info().notes.join(" ").contains("Time goes backwards in 1 record (first at record 3"), "{:?}", f.info().notes);
         // a 64-bit counter needs its range
         let mut d = desc.clone();
         (d.fields[0].dtype, d.record_size) = (DType::U64, 12);

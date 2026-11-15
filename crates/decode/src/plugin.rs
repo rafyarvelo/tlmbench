@@ -15,7 +15,7 @@ use std::sync::{Arc, RwLock};
 
 use serde::Serialize;
 
-use crate::cache::{self, CachedRecording, MANIFEST_VERSION, Manifest, ManifestChannel, Source};
+use crate::cache::{self, Backwards, CachedRecording, MANIFEST_VERSION, Manifest, ManifestChannel, Source, clamp_backwards};
 use crate::descriptor::DType;
 use crate::error::{Result, format_err, io_err};
 
@@ -134,7 +134,8 @@ fn build(path: &Path, source: &Source, plugin: &dyn DecoderPlugin, tmp: &Path) -
         (0..schema.channels.len()).map(|k| format!("c{k}.{}", schema.channels[k].dtype.name())).collect();
     let mut outs = names.iter().map(|n| create(n)).collect::<Result<Vec<_>>>()?;
     let (mut rows, mut t_first, mut t_last) = (0usize, None, None::<i64>);
-    while let Some(chunk) = session.next(CHUNK_ROWS).map_err(fail)? {
+    let mut backwards = Backwards::default();
+    while let Some(mut chunk) = session.next(CHUNK_ROWS).map_err(fail)? {
         if chunk.rows == 0 {
             break;
         }
@@ -160,11 +161,8 @@ fn build(path: &Path, source: &Source, plugin: &dyn DecoderPlugin, tmp: &Path) -
             if chunk.time.len() != chunk.rows {
                 return Err(fail(format!("a chunk has {} times for {} rows", chunk.time.len(), chunk.rows)));
             }
-            let backwards = chunk.time.windows(2).position(|w| w[1] < w[0]).map(|i| rows + i + 2);
-            let seam = t_last.zip(chunk.time.first()).filter(|&(p, f)| *f < p).map(|_| rows + 1);
-            if let Some(row) = backwards.or(seam) {
-                return Err(fail(format!("time goes backwards at row {row}")));
-            }
+            // time that goes backwards is flagged and held, never reordered, as for a CSV file (`backwards.rs`)
+            clamp_backwards(&mut chunk.time, &mut t_last, rows + 1, &mut backwards);
             t_first = t_first.or(chunk.time.first().copied());
             t_last = chunk.time.last().copied().or(t_last);
             t_out.as_mut().unwrap().write_all(bytemuck::cast_slice(&chunk.time)).map_err(io_err(tmp))?;
@@ -199,6 +197,6 @@ fn build(path: &Path, source: &Source, plugin: &dyn DecoderPlugin, tmp: &Path) -
         t_first,
         t_last,
         rate: None,
-        backwards: Default::default(),
+        backwards,
     })
 }

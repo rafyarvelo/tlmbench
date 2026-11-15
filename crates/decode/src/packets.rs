@@ -33,9 +33,10 @@ use crate::descriptor::{
 };
 use crate::error::{Result, format_err, io_err};
 use crate::fixed::gather_tile;
-use crate::strided::{Pod, decode, wrapped};
+use crate::backwards::Backwards;
+use crate::strided::{Ordering, Pod, clamp, decode, wrapped};
 
-const INDEX_VERSION: u32 = 1;
+const INDEX_VERSION: u32 = 2;
 /// The most a packet's payload may hold, stored or decompressed.
 const MAX_PAYLOAD: u64 = 1 << 30;
 /// Decoded packets kept for reads outside decoded chunks.
@@ -46,7 +47,8 @@ const SCAN_BATCH: usize = 4096;
 /// A packet decoded by the index build: its records, their first and last times (with a time field; a counter's
 /// raw first and last), whether its times are in order, and where a counter wrapped inside it (record numbers
 /// within the packet).
-type Scanned = (u32, Option<(i64, i64)>, bool, Vec<usize>);
+/// A packet's record count and, when time is a field or a counter, each record's time (a counter's raw ticks).
+type Scanned = (u32, Vec<i64>);
 
 /// Turns a raw time field and a record number into a time.
 type ToTime<'a> = Box<dyn Fn(i64, usize) -> Timestamp + Sync + 'a>;
@@ -74,6 +76,12 @@ struct IndexManifest {
     /// The records where a counter time base wrapped.
     #[serde(default)]
     wraps: Vec<usize>,
+    /// Where time went backwards (`strided::Ordering`): the records stay in file order, each place holding at the latest
+    /// time before it.
+    #[serde(default)]
+    plateaus: Vec<(usize, i64)>,
+    #[serde(default)]
+    backwards: Backwards,
 }
 
 /// A packet file, read through its packet index.
@@ -95,6 +103,8 @@ pub struct PacketFile {
     time_index: OnceLock<TimeIndex>,
     /// The records where a counter time base wrapped.
     wraps: Vec<usize>,
+    /// Where time went backwards, from the index (see `IndexManifest`).
+    plateaus: Vec<(usize, i64)>,
     /// The packet type this recording holds, in a file with several.
     part: Option<Part>,
 }
@@ -410,6 +420,7 @@ impl PacketFile {
             decoded: Mutex::default(),
             time_index: OnceLock::new(),
             wraps: Vec::new(),
+            plateaus: Vec::new(),
             desc,
             part,
         };
@@ -440,6 +451,8 @@ impl PacketFile {
             TimeSpec::Index => TimeSource::Index,
         };
         me.wraps = manifest.wraps;
+        me.plateaus = manifest.plateaus;
+        me.info.notes.extend(manifest.backwards.note_of("record", "record"));
         let n = me.info.samples;
         (me.info.t_first, me.info.t_last) = match &me.desc.time {
             TimeSpec::Field { .. } | TimeSpec::Counter { .. } => (manifest.t_first, manifest.t_last),
@@ -492,7 +505,7 @@ impl PacketFile {
         let (field, convert): (&String, ToTime) = match &self.desc.time {
             TimeSpec::Field { field, unit, t0_ns } => {
                 let (scale, t0) = (unit.ns(), *t0_ns);
-                (field, Box::new(move |raw, _| t0.saturating_add(raw.saturating_mul(scale))))
+                (field, Box::new(move |raw, i| clamp(&self.plateaus, i, t0.saturating_add(raw.saturating_mul(scale)))))
             }
             TimeSpec::Counter { field, clock_hz, wraps_at, t0_ns } => {
                 let f = self.desc.fields.iter().find(|f| &f.name == field).expect("validated");
@@ -503,7 +516,7 @@ impl PacketFile {
                     Box::new(move |raw, i| {
                         let wraps = self.wraps.partition_point(|&p| p <= i) as i64;
                         let ticks = raw.saturating_add(wraps.saturating_mul(range));
-                        t0.saturating_add((ticks as f64 * 1e9 / hz).round() as i64)
+                        clamp(&self.plateaus, i, t0.saturating_add((ticks as f64 * 1e9 / hz).round() as i64))
                     }),
                 )
             }
@@ -546,84 +559,51 @@ impl PacketFile {
             _ => None,
         };
         let mut wraps = Vec::new();
-        let (mut first_raw, mut last_raw) = (None, 0i64);
+        let mut last_raw: Option<i64> = None;
+        let mut order = Ordering::default();
+        let ticks_ns = |ticks: i64| match &self.desc.time {
+            TimeSpec::Counter { clock_hz, t0_ns, .. } => t0_ns.saturating_add((ticks as f64 * 1e9 / clock_hz).round() as i64),
+            _ => 0,
+        };
         let mut records_so_far = 0usize;
         for batch in framing.packets.chunks(SCAN_BATCH) {
+            // each packet is decompressed on its own thread; the times then run through one scan, in file order
             let decoded: Vec<Option<Scanned>> = batch
                 .par_iter()
                 .map(|f| {
                     let recs = self.records_of(f.offset, f.stored)?;
                     let n = u32::try_from(recs.len() / self.stride()).ok()?;
-                    if let Some(range) = counter {
-                        let raws = self.raws_of(&recs);
-                        let (mut inside, mut ordered) = (Vec::new(), true);
-                        for (j, w) in raws.windows(2).enumerate() {
-                            match wrapped(w[0], w[1], range) {
-                                Ok(true) => inside.push(j + 1),
-                                Ok(false) => {}
-                                Err(()) => ordered = false,
-                            }
-                        }
-                        let span = raws.first().zip(raws.last()).map(|(a, b)| (*a, *b));
-                        return Some((n, span, ordered, inside));
+                    if counter.is_some() {
+                        return Some((n, self.raws_of(&recs)));
                     }
-                    if !field_time || n == 0 {
-                        return Some((n, None, true, Vec::new()));
-                    }
-                    let t = self.times_of(&recs, 0);
-                    let ordered = t.windows(2).all(|w| w[0] <= w[1]);
-                    Some((n, Some((t[0], t[t.len() - 1])), ordered, Vec::new()))
+                    Some((n, if field_time { self.times_of(&recs, 0) } else { Vec::new() }))
                 })
                 .collect();
             for (f, d) in batch.iter().zip(decoded) {
-                let Some((records, span, ordered, inside)) = d else {
+                let Some((records, vals)) = d else {
                     bad += 1;
                     continue;
                 };
-                if let Some((a, b)) = span {
-                    if let Some(range) = counter {
-                        let crossed = match first_raw {
-                            None => false,
-                            Some(_) => wrapped(last_raw, a, range).map_err(|()| {
-                                format_err(
-                                    &path,
-                                    format!("the time counter goes backwards in the packet at byte {}", f.offset),
-                                )
-                            })?,
-                        };
-                        if !ordered {
-                            return Err(format_err(
-                                &path,
-                                format!("the time counter goes backwards in the packet at byte {}", f.offset),
-                            ));
+                if let Some(range) = counter {
+                    for (j, &raw) in vals.iter().enumerate() {
+                        // a drop of more than half the range is a wrap; a smaller one is time going backwards
+                        if last_raw.is_some_and(|p| wrapped(p, raw, range) == Ok(true)) {
+                            wraps.push(records_so_far + j);
                         }
-                        if crossed {
-                            wraps.push(records_so_far);
-                        }
-                        wraps.extend(inside.iter().map(|j| records_so_far + j));
-                        first_raw.get_or_insert(a);
-                        last_raw = b;
-                    } else {
-                        if !ordered || t_last.is_some_and(|l| a < l) {
-                            return Err(format_err(
-                                &path,
-                                format!("time goes backwards in the packet at byte {}", f.offset),
-                            ));
-                        }
-                        t_first = t_first.or(Some(a));
-                        t_last = Some(b);
+                        last_raw = Some(raw);
+                        order.push(records_so_far + j, ticks_ns(raw.saturating_add(range.saturating_mul(wraps.len() as i64))));
+                    }
+                } else {
+                    for (j, &t) in vals.iter().enumerate() {
+                        order.push(records_so_far + j, t);
                     }
                 }
                 records_so_far += records as usize;
                 index.push(Entry { offset: f.offset, stored: f.stored as u32, records });
             }
         }
-        if let (Some(first), TimeSpec::Counter { clock_hz, t0_ns, .. }) = (first_raw, &self.desc.time) {
-            let range = counter.expect("a counter");
-            let at = |ticks: i64| t0_ns.saturating_add((ticks as f64 * 1e9 / clock_hz).round() as i64);
-            t_first = Some(at(first));
-            t_last = Some(at(last_raw.saturating_add(range.saturating_mul(wraps.len() as i64))));
-        }
+        (t_first, t_last) = (order.first(), order.last());
+        self.plateaus = order.plateaus.clone();
         let other_bytes = framing.other_bytes;
         let used: u64 = index.iter().map(|e| p.header_size + p.checksum.size() + u64::from(e.stored)).sum::<u64>();
         let records: usize = index.iter().map(|e| e.records as usize).sum();
@@ -637,6 +617,8 @@ impl PacketFile {
             t_first,
             t_last,
             wraps: wraps.clone(),
+            plateaus: order.plateaus,
+            backwards: order.found,
         };
         write_index(dir, &manifest, &index)?;
         self.set_index(index);

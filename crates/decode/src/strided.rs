@@ -1,5 +1,6 @@
 //! Fields read in place from fixed-width records: every `stride` bytes, at `offset` within the record.
 
+use crate::backwards::Backwards;
 use std::marker::PhantomData;
 
 use tlmbench_core::{Samples, Times, Timestamp, Value};
@@ -115,6 +116,8 @@ pub(crate) struct FieldTimes<'a> {
     pub bits: Option<Bits>,
     pub scale_ns: i64,
     pub t0_ns: i64,
+    /// Where time went backwards (see [`Ordering`]): from each record on, no time reads earlier than its plateau.
+    pub plateaus: &'a [(usize, i64)],
 }
 
 impl FieldTimes<'_> {
@@ -147,7 +150,7 @@ impl Times for FieldTimes<'_> {
 
     #[inline]
     fn at(&self, i: usize) -> Timestamp {
-        self.t0_ns.saturating_add(self.raw(i).saturating_mul(self.scale_ns))
+        clamp(self.plateaus, i, self.t0_ns.saturating_add(self.raw(i).saturating_mul(self.scale_ns)))
     }
 
     fn lower_bound(&self, t: Timestamp) -> usize {
@@ -164,6 +167,59 @@ impl Times for FieldTimes<'_> {
     }
 }
 
+/// Time that goes backwards in a binary file, found once when it opens. The records stay in file order and a record that
+/// reads earlier than the ones before it takes their latest time, as in a CSV file (`backwards.rs`), but the times are
+/// read from the file's bytes as they are asked for, so only the places are kept: `plateaus` holds, for each record
+/// that read earlier, the latest time reached before it. A time is then the larger of what the record says and the
+/// plateau of the last such place at or before it (an exact running maximum, and it needs no more memory than the places).
+#[derive(Debug, Default)]
+pub(crate) struct Ordering {
+    first: Option<i64>,
+    prev: Option<i64>,
+    pub found: Backwards,
+    pub plateaus: Vec<(usize, i64)>,
+}
+
+impl Ordering {
+    /// Takes the time `t` of record `i` (counting from 0); `row` is the number the person is told.
+    pub fn push(&mut self, i: usize, t: i64) {
+        self.first.get_or_insert(t);
+        match self.prev {
+            Some(p) if t < p => {
+                self.found.record(i + 1, p, t);
+                self.plateaus.push((i, p));
+            }
+            _ => self.prev = Some(t),
+        }
+    }
+
+    /// The first time, and the latest (what the last record reads, held): none before the first push.
+    pub fn first(&self) -> Option<i64> {
+        self.first
+    }
+
+    pub fn last(&self) -> Option<i64> {
+        self.prev
+    }
+
+    /// The note for the person, if time went backwards anywhere.
+    pub fn note(&self) -> Option<String> {
+        self.found.note_of("record", "record")
+    }
+}
+
+/// `t`, the time record `i` says, held at the plateau of the last place at or before `i` where time went backwards.
+#[inline]
+pub(crate) fn clamp(plateaus: &[(usize, i64)], i: usize, t: i64) -> i64 {
+    if plateaus.is_empty() {
+        return t;
+    }
+    match plateaus.partition_point(|&(r, _)| r <= i) {
+        0 => t,
+        k => t.max(plateaus[k - 1].1),
+    }
+}
+
 /// Whether a counter that read `prev` and then `now` wrapped (it dropped by more than half its `range`); `Err` when
 /// it went back by less, which is time going backwards.
 pub(crate) fn wrapped(prev: i64, now: i64, range: i64) -> std::result::Result<bool, ()> {
@@ -176,23 +232,19 @@ pub(crate) fn wrapped(prev: i64, now: i64, range: i64) -> std::result::Result<bo
     }
 }
 
-/// The record numbers where a counter wrapped (the first one after each drop); the `Err` is the first record that
-/// went back without wrapping.
-pub(crate) fn wrap_positions(
-    n: usize,
-    range: i64,
-    raw: impl Fn(usize) -> i64,
-) -> std::result::Result<Vec<usize>, usize> {
+/// The record numbers where a counter wrapped (the first one after each drop). A drop of less than half the range is
+/// not a wrap: it is time going backwards, and is found afterwards from the times.
+pub(crate) fn wrap_positions(n: usize, range: i64, raw: impl Fn(usize) -> i64) -> Vec<usize> {
     let mut out = Vec::new();
     let mut prev = if n > 0 { raw(0) } else { 0 };
     for i in 1..n {
         let now = raw(i);
-        if wrapped(prev, now, range).map_err(|()| i)? {
+        if wrapped(prev, now, range) == Ok(true) {
             out.push(i);
         }
         prev = now;
     }
-    Ok(out)
+    out
 }
 
 /// Sample times from a wrapping tick counter: the counter's ticks plus `range` for every wrap at or before the
@@ -204,6 +256,7 @@ pub(crate) struct CounterTimes<'a> {
     pub range: i64,
     pub clock_hz: f64,
     pub t0_ns: i64,
+    pub plateaus: &'a [(usize, i64)],
 }
 
 impl Times for CounterTimes<'_> {
@@ -215,7 +268,7 @@ impl Times for CounterTimes<'_> {
     fn at(&self, i: usize) -> Timestamp {
         let wraps = self.wraps.partition_point(|&p| p <= i) as i64;
         let ticks = self.raw.raw(i).saturating_add(wraps.saturating_mul(self.range));
-        self.t0_ns.saturating_add((ticks as f64 * 1e9 / self.clock_hz).round() as i64)
+        clamp(self.plateaus, i, self.t0_ns.saturating_add((ticks as f64 * 1e9 / self.clock_hz).round() as i64))
     }
 
     fn lower_bound(&self, t: Timestamp) -> usize {

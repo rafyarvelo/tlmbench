@@ -98,7 +98,7 @@ fn a_plugins_chunks_open_as_a_recording_and_are_cached() {
 }
 
 #[test]
-fn a_file_no_plugin_claims_stays_unknown_and_bad_chunks_are_errors() {
+fn a_file_no_plugin_claims_stays_unknown_and_time_going_backwards_is_flagged_not_an_error() {
     let _g = ONE.lock().unwrap_or_else(|e| e.into_inner());
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("run.cnt");
@@ -107,7 +107,11 @@ fn a_file_no_plugin_claims_stays_unknown_and_bad_chunks_are_errors() {
     set_plugins(vec![]);
     assert!(open(&file, &opts).is_err());
     set_plugins(vec![plugin(true)]);
-    let e = open(&file, &opts).unwrap_err().to_string();
-    assert!(e.contains("time goes backwards at row 6"), "{e}");
+    // row 6 says time 0 after 4 ms: the rows stay in file order, that one takes the latest time before it, and the file says so
+    let rec = open(&file, &opts).unwrap();
+    assert_eq!(rec.info().samples, 10);
+    assert_eq!(rec.info().t_last, Some(9_000_000));
+    let notes = rec.info().notes.join(" ");
+    assert!(notes.contains("Time goes backwards in 1 row (first at data row 6"), "{notes}");
     set_plugins(vec![]);
 }

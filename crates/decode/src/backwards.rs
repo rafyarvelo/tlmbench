@@ -21,12 +21,26 @@ impl Backwards {
         self.count == 0
     }
 
-    /// The note for the person: how many places, and the first.
+    /// Notes one more place: the row that read earlier, the time reached so far and the time it said.
+    pub fn record(&mut self, row: usize, reached: i64, said: i64) {
+        self.count += 1;
+        if self.first.len() < Self::KEPT {
+            self.first.push((row, reached, said));
+        }
+    }
+
+    /// The note for the person: how many places, and the first (a CSV or Parquet file's rows).
     pub fn note(&self) -> Option<String> {
+        self.note_of("row", "data row")
+    }
+
+    /// The same note for what a file calls its rows: `("record", "record")` for a binary file. `many` names them,
+    /// `first_at` says where the first is.
+    pub fn note_of(&self, many: &str, first_at: &str) -> Option<String> {
         let &(row, reached, said) = self.first.first()?;
         let s = |ns: i64| format!("{} s", ns as f64 / 1e9);
         Some(format!(
-            "Time goes backwards in {} row{} (first at data row {row}: it says {}, after {}). The rows stay in file order and each takes the latest time before it, so they stack at one instant; the file isn't reordered.",
+            "Time goes backwards in {} {many}{} (first at {first_at} {row}: it says {}, after {}). The {many}s stay in file order and each takes the latest time before it, so they stack at one instant; the file isn't reordered.",
             self.count,
             if self.count == 1 { "" } else { "s" },
             s(said),
@@ -41,10 +55,7 @@ pub fn clamp_backwards(t: &mut [i64], prev: &mut Option<i64>, first_row: usize, 
     for (i, x) in t.iter_mut().enumerate() {
         match *prev {
             Some(p) if *x < p => {
-                found.count += 1;
-                if found.first.len() < Backwards::KEPT {
-                    found.first.push((first_row + i, p, *x));
-                }
+                found.record(first_row + i, p, *x);
                 *x = p;
             }
             _ => *prev = Some(*x),

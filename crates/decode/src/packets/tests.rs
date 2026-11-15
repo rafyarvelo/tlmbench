@@ -145,7 +145,7 @@ fn the_index_is_built_once() {
 }
 
 #[test]
-fn backwards_time_is_an_error() {
+fn backwards_time_is_flagged_and_held_not_reordered() {
     let tmp = tempfile::tempdir().unwrap();
     let d = desc(Compression::None, Checksum::None);
     let mut data = bytes(&d, 2, 3);
@@ -153,12 +153,20 @@ fn backwards_time_is_an_error() {
     data.extend_from_within(..second); // packet 0 again, after packet 1
     let path = tmp.path().join("back.bin");
     fs::write(&path, &data).unwrap();
-    let err = PacketFile::open(&path, d, None, "bench", &tmp.path().join("cache")).unwrap_err().to_string();
-    assert!(err.contains("time goes backwards"), "{err}");
-    assert!(
-        !tmp.path().join("cache/packets").exists()
-            || fs::read_dir(tmp.path().join("cache/packets")).unwrap().count() == 0
-    );
+    let f = PacketFile::open(&path, d.clone(), None, "bench", &tmp.path().join("cache")).unwrap();
+    // nine records in file order: the three that read earlier take the latest time before them
+    assert_eq!(f.info().samples, 9);
+    let notes = f.info().notes.join(" ");
+    assert!(notes.contains("Time goes backwards in 3 records (first at record 7"), "{notes}");
+    let times: Vec<i64> = (0..9).map(|i| Times::at(&PacketTimes { file: &f }, i)).collect();
+    assert!(times.windows(2).all(|w| w[0] <= w[1]), "{times:?}");
+    assert_eq!(times[6], times[5]);
+    assert_eq!(f.info().t_last, Some(times[8]));
+    // reopened from the index: the places and the note come back with it
+    let again = PacketFile::open(&path, d, None, "bench", &tmp.path().join("cache")).unwrap();
+    assert_eq!(again.info().notes, f.info().notes);
+    let again_times: Vec<i64> = (0..9).map(|i| Times::at(&PacketTimes { file: &again }, i)).collect();
+    assert_eq!(again_times, times);
 }
 
 /// The TOML the prototype's descriptor form writes for the ESC logger: fixed 24-byte frames (sync, CRC-16, no length).
@@ -378,12 +386,15 @@ fn a_counter_time_base_is_unwrapped_across_and_inside_packets() {
     let again =
         PacketFile::open(&tmp.path().join("counter.bin"), d.clone(), None, "bench", &tmp.path().join("cache")).unwrap();
     assert_eq!(again.info().t_last, f.info().t_last);
-    // a counter that goes back by less than half its range is time going backwards
+    // a counter that goes back by less than half its range is time going backwards: flagged and held
     let bad = bytes_with(&d, 2, 3, |i| [10u64, 20, 5, 6, 7, 8][i as usize] * 1000);
     let path = tmp.path().join("bad.bin");
     fs::write(&path, &bad).unwrap();
-    let err = PacketFile::open(&path, d, None, "bench", &tmp.path().join("cache")).unwrap_err().to_string();
-    assert!(err.contains("counter goes backwards"), "{err}");
+    let f = PacketFile::open(&path, d, None, "bench", &tmp.path().join("cache")).unwrap();
+    // it holds at the latest time before it, and says so
+    assert_eq!(f.info().t_last, Some(20_000_000 + 7));
+    let notes = f.info().notes.join(" ");
+    assert!(notes.contains("Time goes backwards in 4 records (first at record 3"), "{notes}");
 }
 
 #[test]
