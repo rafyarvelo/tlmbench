@@ -36,7 +36,8 @@ state of its own in the table, not "done".
 | R3.0 Classification audit (new, moved up) | **Done Nov 15** (`parity-classes.md`: 11 Port rows, 16 App is better, the rest Noise; apple-design audit in `ui-audits.md`; ledger D-ui-36 to D-ui-41, D-live-11). The owner approved every "App is better" row Nov 15 (ledger A-05 to A-11). The owner decided P3 (trim the ⋯ menu) and P10 (a fixed-width time range) as recommended, Nov 15 |
 | R2.2 Browser-only mode | After R3.2 (owner, Nov 15). Half built (D-brow-01 to -07: Worker, reload, static-host recipe, a tab offering only what it can do, `.tlm`, Parquet). Left, by the owner's scope of Nov 15: descriptors and packets, WASM decoder plugins, read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit |
 | R2.3 Decoders · R2.4 Python · R2.5 Core's Partial rows | Not started |
-| R3.1 Menus and shell, R3.2 Explorer, start page, dialogs | **Next** (moved before R2.2 by the owner, Nov 15, so the owner's re-tests meet the improved app). Lists: `parity-classes.md` Port rows and the owner's Nov 15 decisions (below, R3) |
+| R3.1 Menus and shell | **Built Nov 15, not pushed** (D-ui-37, -39, -40, -41, -44, S4.4-04 Done; app UI tests green; apple-design audit of the area still to run; ask the owner to push) |
+| R3.2 Explorer, start page, dialogs | **Next** (moved before R2.2 by the owner, Nov 15, so the owner's re-tests meet the improved app). Lists: `parity-classes.md` Port rows and the owner's Nov 15 decisions (below, R3) |
 | R3.3 Panes, charts and tables · R3.4 | Not started; after R2.5 |
 | R4 to R9 | Not started. Every release decision is made (Nov 15) |
 | CI | Green on `main` at the status-table push (run 43746056639). Later commits are docs only, pushed by the next agent |

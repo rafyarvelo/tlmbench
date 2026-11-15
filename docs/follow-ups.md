@@ -140,3 +140,6 @@ removed Nov 15; git history keeps them.
   and violations (`--detail`). `docs/viewer-store.md` describes the viewer's sparse store.
 - `just viewer` packs the page into `app/viewer/viewer.pack`, which `crates/export/build.rs` embeds, so the CLI and the
   app need no files beside them.
+
+- **Rename a layout (D-ui-44, owner Nov 15).** Tab menu Rename… and a double-click in Layouts; open tabs follow, Undo in the note. Not in the design or the prototype: design-doc note owed. A copy shared in a folder keeps its name until the next Share….
+- **The ⋯ menu (D-ui-37).** Trimmed to View (the bar's buttons when narrow, links, overview), All panes and Window; New pane, Remove every channel/pane and Export are the menu bar's and the top bar's. A browser page and the viewer have no menu bar and keep New pane and Remove in ⋯.
