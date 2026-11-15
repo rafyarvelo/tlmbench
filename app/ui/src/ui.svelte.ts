@@ -112,6 +112,8 @@ export const ui = $state({
   /** Undoes what the note says was done (or, with `noteAction`, does what that names). */
   undo: null as null | (() => void),
   noteAction: 'Undo',
+  /** The note says something finished well (an export): its dot is the accent colour, not the warning one. */
+  noteOk: false,
   /** Work that runs on after its dialog closed (an HTML export): shown under the top bar with a progress bar. */
   task: null as null | { label: string; done: number; total: number },
   /** The views shared in Explorer's folder (`.tlmbench/views/`): each file's layout, or why it can't be read. */

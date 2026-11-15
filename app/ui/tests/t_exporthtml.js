@@ -51,6 +51,7 @@ run(
     check('the windows go with it', r.detail === '3x,60s,600s', r.detail);
     check('the layout in front goes with it', r.layout?.schema === 1 && Array.isArray(r.layout?.panes) && Array.isArray(r.layout?.view), r.layout);
     check('when done the progress goes and the note says where it went', await until(() => !document.querySelector('#wsTask') && /Exported to flight-export in \/out\/dir: 4\.0 MB, Light\./.test(document.querySelector('#wsNote .txt')?.textContent ?? ''), null, 8000), await text('#wsNote'));
+    check('a finished export\'s dot is the accent colour, not a warning (UI audit, R2.1a)', await p.$eval('#wsNote .dot', (e) => e.classList.contains('ok')));
     const reveal = p.locator('#wsNote button', { hasText: /Show in (Finder|Explorer|folder)/ });
     check('with Show in Finder', (await reveal.count()) === 1, await text('#wsNote'));
     await reveal.click();
@@ -63,6 +64,7 @@ run(
     await until(() => !!document.querySelector('#htmlDlg'));
     await p.click('#htmlGo');
     check('a failure is shown', await until(() => /Couldn't export: disk full/.test(document.querySelector('#wsNote .txt')?.textContent ?? '')), await text('#wsNote'));
+    check('with the usual warning dot', !(await p.$eval('#wsNote .dot', (e) => e.classList.contains('ok'))));
     await p.locator('#wsNote button', { hasText: 'Try again' }).click();
     check('Try again opens the dialog again', await until(() => !!document.querySelector('#htmlDlg')));
     await p.keyboard.press('Escape');

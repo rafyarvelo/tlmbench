@@ -647,6 +647,7 @@ export function note(text: string, undo?: () => void, action = 'Undo'): void {
   ui.note = text;
   ui.undo = undo ?? null;
   ui.noteAction = action;
+  ui.noteOk = false;
   clearTimeout(noteTimer);
   noteTimer = window.setTimeout(() => {
     if (ui.note === text) {

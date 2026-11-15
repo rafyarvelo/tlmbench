@@ -11,6 +11,7 @@ run(
     // one click away in the top bar too (owner decision 6, sheet F1)
     await p.click('#b-export');
     check('the top bar\'s Export button lists HTML, data and an image', (await p.$$eval('.exportmenu .mi', (e) => e.map((x) => x.dataset.xm))).join() === 'html,data,image', await text('.exportmenu'));
+    check('its items are plain names, the hints in tooltips (UI audit: inline hints were cut off)', await p.$$eval('.exportmenu .mi', (e) => e.every((x) => !x.querySelector('small'))));
     await p.click('.exportmenu [data-xm="html"]');
     check('its Export to HTML… opens that dialog', await until(() => !!document.querySelector('#htmlDlg')));
     await p.keyboard.press('Escape');

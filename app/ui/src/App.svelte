@@ -160,7 +160,7 @@
     {/if}
     {#if ui.note}
       <div class="wsnote" id="wsNote" role="status">
-        <span class="dot"></span><span class="txt">{ui.note}</span>
+        <span class="dot" class:ok={ui.noteOk}></span><span class="txt">{ui.note}</span>
         {#if ui.undo}
           <button
             class="tbtn"
@@ -338,7 +338,16 @@
     flex: 1;
     min-width: 0;
   }
-  /* work running on after its dialog closed (an HTML export): the label, a bar and the percentage */
+  /* work running on after its dialog closed (an HTML export): the label, then its bar and the percentage beside it */
+  .wstask .txt {
+    flex: 0 1 auto;
+  }
+  .wstask .tpct {
+    margin-right: auto;
+  }
+  .wsnote .dot.ok {
+    background: var(--accent);
+  }
   .wstask .dot {
     background: var(--accent);
     animation: tpulse 1.2s ease-in-out infinite;

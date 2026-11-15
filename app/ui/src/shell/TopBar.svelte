@@ -442,9 +442,9 @@
       anchor={exportBtn}
       onclose={() => (exporting = false)}
       items={[
-        { label: 'Export to HTML…', note: 'A page anyone can open, with nothing to install', data: { xm: 'html' }, run: actions.htmlOpen },
-        { label: 'Export data…', note: 'CSV, Parquet, HDF5, MAT or Arrow, for other tools', data: { xm: 'data' }, run: actions.exportOpen },
-        { label: 'Save the view as an image…', note: 'PNG or SVG of the panes', data: { xm: 'image' }, disabled: !stack.panes.length, run: actions.imageOpen },
+        { label: 'Export to HTML…', tip: 'A page anyone can open, with nothing to install', data: { xm: 'html' }, run: actions.htmlOpen },
+        { label: 'Export data…', tip: 'CSV, Parquet, HDF5, MAT or Arrow, for other tools', data: { xm: 'data' }, run: actions.exportOpen },
+        { label: 'Save the view as an image…', tip: 'PNG or SVG of the panes', data: { xm: 'image' }, disabled: !stack.panes.length, run: actions.imageOpen },
       ]}
     />
   {/if}

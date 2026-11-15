@@ -4187,6 +4187,7 @@ async function htmlGo(): Promise<void> {
     const mb = (w.report.bytes / 1048576).toFixed(w.report.bytes > 1e7 ? 0 : 1);
     html.result = `Exported to ${nameOf(w.out)} in ${folder}: ${mb} MB, ${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
     note(html.result, () => void invoke('reveal_path', { path: w.out }).catch((e) => note(`Couldn't show it: ${e}`)), REVEAL);
+    ui.noteOk = true;
   } catch (e) {
     html.error = `Couldn't export: ${e}`;
     note(html.error, htmlOpen, 'Try again');
