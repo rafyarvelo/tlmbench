@@ -527,6 +527,9 @@ pub(crate) fn build(op: &Opened, progress: &mut dyn FnMut(u64, u64)) -> Result<b
     } else {
         Vec::new()
     };
+    // `TLMBENCH_SLOW_BUILD=<ms>` waits that long after each block (about a million samples), so a build that takes a second
+    // can be watched for ten: the hatching, the chart filling in (owner test sheet B4). Unset, nothing waits.
+    let slow = std::env::var("TLMBENCH_SLOW_BUILD").ok().and_then(|v| v.parse::<u64>().ok()).filter(|&ms| ms > 0).map(std::time::Duration::from_millis);
     for b in start..n.div_ceil(block) {
         if op.cancel.load(Ordering::Relaxed) {
             return Ok(false);
@@ -548,6 +551,9 @@ pub(crate) fn build(op: &Opened, progress: &mut dyn FnMut(u64, u64)) -> Result<b
             l.done = e;
         }
         progress(e as u64, n as u64);
+        if let Some(d) = slow {
+            std::thread::sleep(d);
+        }
     }
 
     // the levels above a block, from the last per-block level

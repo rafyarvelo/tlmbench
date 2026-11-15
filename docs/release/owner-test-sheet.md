@@ -42,15 +42,22 @@ Started with my usual settings, or a fresh profile?:
 
 R12 failed on the Nov 15 build; the next agent fixes it (`docs/release/next-agent-prompt.md`), then asks you to re-test.
 
-### R12. Export to HTML: findable, feedback, read-only (F1)
-You wrote: "the export icon should be way easier to find … The visual feedback was also weak … the dialog didn't close
-immediately after … it was not obvious that the export is read only."
-Changed (decision 6): an Export button in the top bar (HTML, data, image). Export closes the dialog at once and shows a
-progress bar under the top bar, then "Exported to …" with Show in Finder. An export's viewer says "Read-only view" with the
-file, the date and the app version.
-Check: export flight-1 to HTML, then open it through a web server.
-Result: FAIL. The share icon is good, and the visual feedback is a little better, but the exported view isn't really "read-only" since some of the panes "duplicate" actions work, but the dragging options don't work so it's awkward.
-Notes: Since the prototype shows dragging works fine in html, is it possible to just allow exported views to have the user be able to move and drag channels like that app. Having the exported view start "locked" and having the user click unlock is probably a good idea. There doesn't have to be 100% parity in the browser version, but clean it up so it's consistent at least; it doesn't make sense to make the view read-only when it clearly at least works allowing the user to rearrange panes. Also the Events tab shows the rules buttons but they don't work and there's no visual indication to the user as to why, either hide them or disable and put some UI indication as to why.
+### R12. An export's viewer: locked, with Unlock (F1)
+You wrote: the exported view "isn't really 'read-only' since some of the panes 'duplicate' actions work, but the dragging
+options don't work … is it possible to just allow exported views to have the user be able to move and drag channels like
+the app. Having the exported view start 'locked' and having the user click unlock … Also the Events tab shows the rules
+buttons but they don't work and there's no visual indication … either hide them or disable and put some UI indication."
+Changed: the viewer opens **Locked** (the pill in the top bar; its tooltip keeps the file, date and app version). Click it to
+**Unlock**: drag channels between panes (Option or ⌘ copies), from the Explorer, reorder panes by their number, split,
+duplicate, close, resize, change a pane's view. Click again to lock. Nothing is written into the export; a reload is the
+exported view again. Locked, those controls are greyed with "Unlock the view to…". Everything else either works or is left
+out: the Events panel's Marker, Range and Rules are greyed and say an export is static; Settings shows only display
+settings; the tab menu has no Save or Share.
+Do: export flight-1 to HTML (One file), open it. Try dragging a channel while Locked, then Unlock and drag it, with Option
+held, split, duplicate, close, resize. Open the Events panel and Settings. Open it in Safari too if you can.
+Expect: locked nothing moves and the greyed controls say why; unlocked it behaves like the app; no button that does nothing.
+Result:
+Notes:
 
 ---
 
@@ -114,10 +121,17 @@ Notes:
 ## B. Reading a chart
 
 ### B4. A file that is still building
-Do: Settings › Cache › Clear cache first (a file opened before has its pyramid in the cache and opens at once). Then open the 100M-sample file (`just testdata big`, then `~/tlmbench-testdata/big/big-100M.tlm`).
-Expect: hatching while the pyramid builds, then the chart fills in; the min/max band shows on a spiky channel. (L: X-win-06)
-Result: The file opened pretty much instantly, so I couldn't really tell....
-Notes: Not verified, need a better test case
+Why it showed nothing: on this Mac the 100M-sample file builds its pyramid in about a second, so the hatching was gone before
+you could look. The app now has a slow-motion build for looking at it: `TLMBENCH_SLOW_BUILD=<ms>` waits that long after each
+block of about a million samples (100 ms makes the 100M file take about ten seconds).
+Do: quit the app. In a terminal: `target/release/tlmbench cache clear` (a file opened before has its pyramid in the cache and
+opens at once), then
+`TLMBENCH_SLOW_BUILD=100 target/release/tlmbench-app ~/tlmbench-testdata/big/big-100M.tlm`
+(`just testdata big` first if the file isn't there).
+Expect: for about ten seconds the chart is hatched where it isn't built yet and fills in left to right; the min/max band shows
+on a spiky channel; "coarse" shows after 0.3 s; afterwards zoom is smooth. Without the variable it still opens in about a second. (L: X-win-06, X-win-11)
+Result:
+Notes:
 
 ### B6. Text and fonts
 Do: Compare a screen of the app with the prototype (`prototype/plotter.html`, or the published copy) side by side.
