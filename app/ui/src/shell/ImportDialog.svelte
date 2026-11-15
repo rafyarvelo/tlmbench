@@ -180,8 +180,6 @@
 
 <style>
   .livedlg {
-    top: 6%;
-    left: 50%;
     display: flex;
     flex-direction: column;
     width: min(1000px, calc(100vw - 32px));
@@ -192,7 +190,6 @@
     border-radius: 12px;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
     font-size: 13px;
-    transform: translateX(-50%);
   }
   .livedlg > header,
   .livedlg > footer {

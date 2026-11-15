@@ -799,7 +799,13 @@ kbd {
   animation: fadein 220ms ease-out;
 }
 
+/* Every dialog is centred near the top, as the prototype's .slotdlg; `translate` (not `transform`) so the rise
+   animation doesn't undo it. A dialog placed at the pointer (the axis popover) sets its own left and top. */
 .dlg {
+  top: 8%;
+  left: 50%;
+  translate: -50% 0;
+  max-height: 88vh;
   animation: dlgin 220ms ease-out;
   width: min(320px, calc(100vw - 32px));
 }

@@ -82,6 +82,7 @@
   /* the prototype's .chpop.axpop: 360 px, a header row with a rule, small buttons */
   .axdlg {
     width: min(360px, calc(100vw - 32px));
+    translate: none;
   }
   .axdlg header {
     align-items: center;

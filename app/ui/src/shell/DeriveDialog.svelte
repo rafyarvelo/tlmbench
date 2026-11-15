@@ -114,7 +114,6 @@
 <style>
   .recdlg {
     width: min(620px, calc(100vw - 32px));
-    max-height: calc(100vh - 64px);
   }
   .dclose {
     display: grid;

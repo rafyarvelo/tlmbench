@@ -48,7 +48,14 @@
     set({ missing: Object.keys(m).length ? m : undefined });
   };
   const WIDTHS: [string, string][] = [['', 'Normal'], ['1', 'Thin'], ['2', 'Thick'], ['3', 'Heavy']];
+  function key(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    closeChannelEditor();
+  }
 </script>
+
+<svelte:window onkeydowncapture={(e) => info && key(e)} />
 
 {#if info}
   <div class="scrim" role="presentation" onclick={closeChannelEditor}></div>
@@ -134,8 +141,9 @@
 
 <style>
   .chdlg {
+    display: flex;
+    flex-direction: column;
     width: min(380px, calc(100vw - 32px));
-    max-height: calc(100vh - 64px);
   }
   .dclose {
     display: grid;
