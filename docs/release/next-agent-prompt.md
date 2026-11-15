@@ -5,9 +5,8 @@ here for a new pane"). **The owner has now filled in part of `docs/release/owner
 the list below, before R2.2.** It is already triaged and ordered, so don't re-triage it from scratch. Check it against the
 sheet, then go.
 
-One agent works at a time. Leave a clean `main`. Nothing is pushed: pushing is the owner's call. The sheet, this prompt and
-`release-plan.md` may be uncommitted when you start: read `git status`, then commit them as "Docs: the owner's test sheet
-(first pass) and the next agent's list" before your first code commit.
+One agent works at a time: start from a clean `main` (the sheet and this list are in `8c6ef01`) and leave a clean `main`.
+Nothing is pushed: pushing is the owner's call.
 
 ## First, in this order
 
