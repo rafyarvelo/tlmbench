@@ -1,0 +1,46 @@
+[package]
+name = "tlmbench-web-parquet"
+description = "Browser-only mode's Parquet reader: a WASM module the page loads only when a Parquet file is opened. It reads by the decoder's own rules (parquet_core.rs) and answers in the form the page's core loads."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "UNLICENSED"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tlmbench-core = { path = "../core" }
+# pure-Rust codecs only: snappy, LZ4, gzip (miniz_oxide) and brotli; Zstandard is read by ruzstd through the shim below
+parquet = { version = "60.1.0", default-features = false, features = ["arrow", "snap", "zstd", "lz4", "flate2-rust_backened", "brotli"] }
+arrow-array = "60.1.0"
+arrow-schema = "60.1.0"
+bytes = "1.12.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+blake3 = "1.8.7"
+csv-core = "0.1.13"
+lexical-core = "1.0.6"
+memchr = "2.8.3"
+toml = "1.1.8"
+bytemuck = "1.25.2"
+
+[dev-dependencies]
+proptest = "1.12.0"
+tempfile = "3.27.0"
+
+# Its own workspace and target folder, like crates/web: the WASM build must not share the native one.
+[workspace]
+
+# the parquet crate's zstd, which binds to C, is the shim: ruzstd decodes
+[patch.crates-io]
+zstd = { path = "zstd-shim" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

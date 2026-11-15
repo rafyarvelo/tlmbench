@@ -1,0 +1,10 @@
+[package]
+name = "zstd"
+description = "Stands in for the zstd crate in the browser-only Parquet module: the parquet crate's calls, answered by ruzstd (pure Rust, decode only) so the module needs no C compiler"
+version = "0.14.0"
+edition = "2024"
+license = "UNLICENSED"
+publish = false
+
+[dependencies]
+ruzstd = "0.8.3"

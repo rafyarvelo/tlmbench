@@ -2,7 +2,7 @@
 // picker or dropped on the page opens and draws (the decoder's own CSV reader, so a name's unit, the time column and time that
 // goes backwards are read as in the app); what was read is kept in the browser's private storage, and the same file opens
 // from it next time. Needs the built page (just viewer); without it the test says so and passes.
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import http from 'node:http';
 import { createRequire } from 'node:module';
 import { extname, join } from 'node:path';
@@ -88,6 +88,8 @@ try {
   const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
+  const fetched = [];
+  p.on('request', (r) => fetched.push(new URL(r.url()).pathname.split('/').pop()));
   const until = async (fn, arg, ms = 10000) => {
     const t = Date.now();
     while (Date.now() - t < ms) {
@@ -166,7 +168,31 @@ try {
     check('a .tlm opens in a tab', await until(() => [...document.querySelectorAll('#wsTabs .wstab')].some((t) => /flight\.tlm/.test(t.textContent ?? ''))), await p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
     check('its fields list as channels, the time field left out, with the unit from its descriptor', await until(() => { const r = [...document.querySelectorAll('#explorer .tree .row.chan')].map((x) => x.textContent ?? ''); return r.length === 2 && /volts/.test(r[0]) && /armed/.test(r[1]); }), await p.$$eval('#explorer .tree .row.chan', (r) => r.map((x) => x.textContent)));
     check('read in the Worker', (await p.evaluate(() => window.__tlmParse)) === 'worker');
-    check('with all 4000 samples', await until(() => /4[,\s\u202f]?000/.test(document.body.textContent ?? '')));
+    const w = await until(() => window.__tlmApp.view().t0 !== window.__tlmApp.view().t1) && (await p.evaluate(() => window.__tlmApp.view()));
+    check('its time field gives the times: 4,000 records a millisecond apart (the view ends 1 ns after the last)', w && w.t0 === '0' && w.t1 === '3999000001', w);
+  }
+
+  // Parquet: its reader is a module of its own, fetched only now; every codec reads the same file (files from tools/testdata/parquet_codecs.py)
+  {
+    check('the Parquet module was not fetched before a Parquet file was opened', !fetched.includes('tlmbench_parquet.wasm'), fetched);
+    for (const codec of ['snappy', 'zstd', 'brotli', 'gzip', 'lz4', 'none']) {
+      const name = `codecs-${codec}.parquet`;
+      const buffer = readFileSync(join(ROOT, 'crates/web-parquet/tests/fixtures', name));
+      await p.evaluate(([name, bytes]) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([new Uint8Array(bytes)], name));
+        window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true, cancelable: true }));
+        window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      }, [name, [...buffer]]);
+      check(`a ${codec}-compressed Parquet file opens`, await until((n) => [...document.querySelectorAll('#wsTabs .wstab')].some((t) => t.textContent?.includes(n)), name), await p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
+      if (codec === 'snappy') {
+        check('its numeric columns are channels, the time column and the text column left out, units from the field and the name', await until(() => { const r = [...document.querySelectorAll('#explorer .tree .row.chan')].map((x) => x.textContent ?? ''); return r.length === 3 && /speed/.test(r[0]) && /Temp/.test(r[1]) && /armed/.test(r[2]); }), await p.$$eval('#explorer .tree .row.chan', (r) => r.map((x) => x.textContent)));
+        check('read in the Worker', (await p.evaluate(() => window.__tlmParse)) === 'worker');
+        const v = await until(() => window.__tlmApp.view().t0 !== window.__tlmApp.view().t1) && (await p.evaluate(() => window.__tlmApp.view()));
+        check('its time runs from the first row to the last one that has a time (1,999 ms: the microsecond column read right)', v && v.t0 === '0' && v.t1 === '1999000001', v);
+      }
+    }
+    check('the Parquet module was fetched when one was opened', fetched.includes('tlmbench_parquet.wasm'), fetched);
   }
 
   // a file the page can't read says so
@@ -175,7 +201,7 @@ try {
     dt.items.add(new File([new Uint8Array(64)], 'flight.bin'));
     window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   });
-  check('a binary file it can’t read says what browser-only mode reads', await until(() => /Browser-only mode reads CSV and \.tlm files/.test(document.body.textContent ?? '')));
+  check('a binary file it can’t read says what browser-only mode reads', await until(() => /Browser-only mode reads CSV, Parquet and \.tlm files/.test(document.body.textContent ?? '')));
   // the viewer's rule (sheet R12) holds here too: what a tab can't do is left out, not a button that does nothing
   check('no Live in the rail (a tab has no live sources)', !(await p.$('[data-rail="live"]')));
   await p.click('[data-rail="settings"]');

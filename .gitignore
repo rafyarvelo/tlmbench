@@ -29,6 +29,7 @@ app/src-tauri/gen/
 app/ui/tests/out/
 /plugins/*/target/
 /crates/web/target/
+/crates/web-parquet/target/
 /app/viewer/
 /python/target/
 /python/tlmbench/_core*.so

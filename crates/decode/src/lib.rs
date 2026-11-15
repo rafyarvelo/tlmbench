@@ -21,6 +21,7 @@ mod error;
 pub mod fixed;
 pub mod packets;
 pub mod parquet;
+mod parquet_core;
 mod parquet_pages;
 pub mod plugin;
 pub mod preview;

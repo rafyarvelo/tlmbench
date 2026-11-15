@@ -3,9 +3,10 @@
 // in the browser's private file storage (OPFS) so opening the same file again skips the parse. Nothing is written beside the
 // data, and nothing leaves the machine. (Design: Export to HTML › browser-only mode.)
 //
-// What it reads and does is smaller than the app's: CSV and .tlm files, charts, tables, values and Measure. Binary formats, packet files,
+// What it reads and does is smaller than the app's: CSV, Parquet and .tlm files, charts, tables, values and Measure. Binary formats, packet files,
 // descriptors, plugins, folders, live sources, derived channels and checks are the app's (see docs/follow-ups.md).
 
+import { isParquet, parquetDump } from './parquet-wasm';
 import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
 
 export const LOCAL_PREFIX = 'local://';
@@ -63,7 +64,7 @@ async function writeCache(key: string, bytes: Uint8Array<ArrayBuffer>): Promise<
 }
 
 /** Parses a file in a Worker: what the core keeps of it (its dump), or null where there is no Worker. A parse error throws. */
-async function parseInWorker(file: File, path: string, wasm: string): Promise<ArrayBuffer | null> {
+async function parseInWorker(file: File, path: string, wasm: string, parquetWasm: string): Promise<ArrayBuffer | null> {
   if (typeof Worker === 'undefined') return null;
   let w: Worker;
   try {
@@ -81,7 +82,7 @@ async function parseInWorker(file: File, path: string, wasm: string): Promise<Ar
       w.terminate();
       done(null);
     };
-    w.postMessage({ wasm, file, path });
+    w.postMessage({ wasm, parquetWasm, file, path });
   });
 }
 
@@ -91,7 +92,7 @@ function pick(files: Map<string, File>, multiple: boolean): Promise<string[] | n
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = multiple;
-    input.accept = '.csv,.tsv,.txt,.tlm,text/csv';
+    input.accept = '.csv,.tsv,.txt,.tlm,.parquet,text/csv';
     input.onchange = () => done(register(files, [...(input.files ?? [])]));
     input.oncancel = () => done(null);
     input.click();
@@ -178,7 +179,7 @@ export async function installBrowserOnly(): Promise<void> {
       }
       throw new Error(`${path.slice(LOCAL_PREFIX.length)} isn't open in this tab: choose it again, or drop it on the page.`);
     }
-    if (!/\.(csv|tsv|txt|tlm)$/i.test(f.name)) throw new Error('Browser-only mode reads CSV and .tlm files; the app reads more (Parquet, packets, descriptors).');
+    if (!/\.(csv|tsv|txt|tlm|parquet)$/i.test(f.name)) throw new Error('Browser-only mode reads CSV, Parquet and .tlm files; the app reads more (packets, descriptors).');
     const k = nextId++;
     ids.set(path, k);
     const key = await keyOf(f);
@@ -197,12 +198,13 @@ export async function installBrowserOnly(): Promise<void> {
     note(0, f.size);
     // the parse runs in a Worker, so the tab keeps drawing and answering while a big file is read; where there is no Worker it
     // runs here, on the page's thread
-    const dump = await parseInWorker(f, path, new URL('tlmbench_web.wasm', base).href);
+    const dump = await parseInWorker(f, path, new URL('tlmbench_web.wasm', base).href, new URL('tlmbench_parquet.wasm', base).href);
     let r: unknown;
     if (dump) r = core('load', { file: k, path }, new Uint8Array(dump));
     else {
       await new Promise((res) => setTimeout(res, 0));
-      r = core('import_file', { file: k, path }, new Uint8Array(await f.arrayBuffer()));
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      r = isParquet(bytes) ? core('load', { file: k, path }, new Uint8Array(await parquetDump(new URL('tlmbench_parquet.wasm', base).href, bytes, path))) : core('import_file', { file: k, path }, bytes);
     }
     (window as unknown as { __tlmCache?: string; __tlmParse?: string }).__tlmCache = 'miss';
     (window as unknown as { __tlmParse?: string }).__tlmParse = dump ? 'worker' : 'page';
