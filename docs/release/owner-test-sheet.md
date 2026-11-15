@@ -26,7 +26,7 @@ In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/fligh
 
 ```
 Date:
-App: release build from commit (agent fills in): 18d127d (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). What is new since the Nov 14 build is section S below. Items you confirmed good are removed.
+App: release build from commit (agent fills in): 18d127d (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
@@ -38,27 +38,9 @@ Started with my usual settings, or a fresh profile?:
 
 ---
 
-## R. Confirm the Nov 14 changes against your comments
+## R. Still open from the Nov 14 changes
 
-Build `18d127d` (`target/release/tlmbench-app`). What you confirmed good (R1, R2, R4 to R11, and A1, A2, A4 to A6, B1 to B3, B5, C1, E1 to E3) is removed; what is left is open. Each item quotes what you wrote, says what changed and how to check it.
-Type `PASS` or `FAIL` after `Result:` as above; under `Notes:` say what still isn't right, in your words. Your original
-answers in sections A to H stay as they were.
-
-### R3. Reset to defaults and clear everything (A3)
-You wrote: "There should be a clear way for the user to 'Reset to default settings' and clear all of the cache. A warning
-dialog is appropriate."
-Changed: Settings › Reset app… lists what goes (settings, import profiles, recipes, rules and checks, layouts, your events,
-widgets, alignments, the cache), all ticked; untick what to keep. Settings › Import profiles lists each profile with a
-button to forget one. Clear cache's tooltip says what it keeps.
-Check: open a CSV you opened before; in Settings forget its profile (or Reset app… with Import profiles ticked); open it
-again: the import dialog comes back.
-Result: This works better now, but it's not clear on the difference between "Reset app..." and "Reset to defaults"
-Notes: Is "Reset to defaults" needed anymore or is it redundant?
-Changed since (Nov 15, after your answer): Reset to defaults is gone. Reset app… has one more choice, "Things the app
-remembers" (recent files, each file's panes and channel display, the sidebars, export choices, saved connections),
-unticked to start; with only Settings ticked it does what Reset to defaults did. Needs a rebuild of the app to see.
-Result:
-Notes:
+R12 failed on the Nov 15 build; the next agent fixes it (`docs/release/next-agent-prompt.md`), then asks you to re-test.
 
 ### R12. Export to HTML: findable, feedback, read-only (F1)
 You wrote: "the export icon should be way easier to find … The visual feedback was also weak … the dialog didn't close
@@ -67,36 +49,8 @@ Changed (decision 6): an Export button in the top bar (HTML, data, image). Expor
 progress bar under the top bar, then "Exported to …" with Show in Finder. An export's viewer says "Read-only view" with the
 file, the date and the app version.
 Check: export flight-1 to HTML, then open it through a web server.
-Result: The share icon is good, and the visual feedback is a little better, but the exported view isn't really "read-only" since some of the panes "duplicate" actions work, but the dragging options don't work so it's awkward.
+Result: FAIL. The share icon is good, and the visual feedback is a little better, but the exported view isn't really "read-only" since some of the panes "duplicate" actions work, but the dragging options don't work so it's awkward.
 Notes: Since the prototype shows dragging works fine in html, is it possible to just allow exported views to have the user be able to move and drag channels like that app. Having the exported view start "locked" and having the user click unlock is probably a good idea. There doesn't have to be 100% parity in the browser version, but clean it up so it's consistent at least; it doesn't make sense to make the view read-only when it clearly at least works allowing the user to rearrange panes. Also the Events tab shows the rules buttons but they don't work and there's no visual indication to the user as to why, either hide them or disable and put some UI indication as to why.
-
-### R13. The web server note (F2)
-You wrote: "it didn't provide the exact python command needed."
-Changed: opened from a file, a folder export shows the exact command for its folder with a Copy button, the address to
-open, and that One file opens anywhere.
-Check: double-click the exported folder's `index.html`.
-Result: This works fine now, the instructions provide the correct command
-Notes: Nominal.
-The export tiers (decision 7) are built: see S1 and S2. Opening folders and CSVs in a browser like the prototype is R2.2,
-partly built: see S4.
-
-### R14. Dragging table columns ("Other" #1)
-You wrote: "Dragging the columns onto another pane would work same as dropping channels on other panes."
-Changed: a column header drags like a chip: onto another pane to move it (⌘ or Option copies), onto another header to
-reorder.
-Check: switch a pane to Table and drag a column header onto another pane.
-Result: This now works as expected.
-Notes: Nominal behavior.
-
-### R15. Your v1 ideas
-You wrote: (1) the menu bar should have File › Open and every action; (2) a file system watcher or a refresh in Explorer;
-(3) all the icons that fit should show on a pane when hovering.
-Changed: (2) Explorer follows its folder (new and removed files appear by themselves) and the folder menu has Refresh, for
-network shares. (3) On hover a pane shows, in the prototype's order: view, axis settings, Events, Duplicate, Split, ⋯ and
-Close; the ones that don't fit stay in ⋯. (1) The menu bar is built now: see S3.
-Check: add a CSV to the open folder from Finder; hover a pane, then make panes narrow (four in a row).
-Result:
-Notes:
 
 ---
 
@@ -123,7 +77,7 @@ Changed: a small export now carries every raw sample (S1), so it is not coarse a
 export), the viewer draws the same min/max band under the line that the app does.
 Do: (a) flight-1 as One file: zoom in and out in the viewer. (b) Make it coarse:
 `target/release/tlmbench export html <file> --layout "Altitude and battery" --mode light --detail 0 --out ~/Desktop/coarse`
-(the layout's charts then keep only summaries), serve it as F1, and compare the viewer with the app over the same file at the
+(the layout's charts then keep only summaries), serve it (`python3 -m http.server --directory ~/Desktop/coarse`), and compare the viewer with the app over the same file at the
 same zoom.
 Expect: (a) smooth, exact lines, no "coarse" label. (b) a "coarse" label, and the band and line look like the app's.
 Result:
@@ -156,16 +110,6 @@ Result:
 Notes:
 
 ---
-
-## A. Open things and the Explorer
-
-### A3. Open a CSV by double-click, and with ⌘O
-Do: Double-click AAPL.csv in Explorer. Then ⌘O and pick GOOG.csv.
-Expect: the import dialog appears the first time for a new header, a chart appears with channels listed, the second file opens
-in its own tab (or this tab, as the dialog says). Clear cache keeps import profiles: to see the dialog again for a file you
-opened before, delete its profile, `~/Library/Caches/tlmbench/profiles/<key>.json` (Reset app… in Settings will do this once built).
-Result: The file opened right away because I had opened it previously. Clearing the cache didn't change the profile.
-Notes: There should be a clear way for the user to "Reset to default settings" and clear all of the cache. A warning dialog is appropriate as needed.
 
 ## B. Reading a chart
 
@@ -206,26 +150,7 @@ Expect: the second file moves; nothing is rebuilt or slow; undo works.
 Result:
 Notes:
 
-## F. Export (what R2.1 added)  — the most important section
-
-### F1. Export to HTML… (Full), opened from a web server
-Do: ⋯ menu › Export to HTML…, choose a folder. In a terminal run `python3 -m http.server` inside the exported folder, open the
-address in your browser.
-Expect: the viewer opens with the same panes; the chart, table and cursors work; no editing buttons.
-Result: It worked as advertised, but the UI was disappointing and it was not obvious that the export is read only.
-Notes: Export to HTML dialog is clamped to the top-left corner, it should be in the middle of the screen. Also the export icon should be way easier to find... it's buried behind a bunch of menus. The visual feedback was also weak... it should have better contrast and be more professional than plaintext on the dialog. Also the dialog didn't close immediately after
-
-### F2. Open that exported folder by double-clicking index.html
-Expect: a short note that a folder export needs a web server and that `--single-file` opens from anywhere (not a blank page).
-Result: The note appeared as expected, but it didn't provide the exact python command needed so I had to read the usage and pass the --directory flag
-Notes: Is the web server required? The User should be able to choose between a full export with a server and a standalone HTML / static folder when exporting. Consider perhaps different tiers. The "Full" version should be larger to allow for more fidelity as needed. I expected "Browser support" to be almost analogous to what the prototype does now how it allows you to open folders and CSV files. If the prototype can open folders and give pretty much all the features in a browser, the production app should be able to as well.
-
-### F3. One HTML file
-Do: In a terminal: `target/release/tlmbench export html ~/tlmbench-testdata/flights/flight-1.csv --single-file --out ~/Desktop/flight-1.html`
-then double-click the file.
-Expect: it opens straight from the Desktop with the chart, under 25 MB, nothing fetched from the network.
-Result: It works, but the "coarse" plots are way too coarse... they should look more like the prototype right?
-Notes: The HTML support in the current app is disappointing at best.
+## F. Export (what R2.1 added): the most important section
 
 ### F4. Light mode and the raw-window fields
 Do: Export to HTML… with Mode: Light.
@@ -249,7 +174,7 @@ Notes:
 
 ### F7. A check report that links to the failure
 Do: In a terminal, with a folder of CSVs and a failing set: `target/release/tlmbench check ~/tlmbench-testdata/flights --set "Flight limits" --report html --views --out ~/Desktop/report`
-then open `report.html` through a web server (as F1) and click a red cell.
+then open `report.html` through a web server (`python3 -m http.server --directory ~/Desktop/report`) and click a red cell.
 Expect: the cell opens an export of that file, already zoomed on the first violation.
 Result:
 Notes:
@@ -325,12 +250,12 @@ Notes:
 Copy this block once per thing. Don't worry about being tidy.
 
 ```
-What I did: Opened a table
-What I expected: Dragging the columns onto another pane would work same as dropping channels on other panes (same as prototype)
-What happened instead: Table columns are not draggable
-Where (screen, tab, setting): main screen
-How often (always / sometimes / once): always
-Severity (blocker / annoying / cosmetic): blocker
+What I did:
+What I expected:
+What happened instead:
+Where (screen, tab, setting):
+How often (always / sometimes / once):
+Severity (blocker / annoying / cosmetic):
 ```
 
 ## Anything you want built or changed (new ideas)
@@ -338,19 +263,7 @@ Severity (blocker / annoying / cosmetic): blocker
 New ideas go on a list for after the release unless you say they matter for v1 (`docs/post-v1.md`).
 
 ```
-Idea: The Mac toolbar menu should include "File > Open", and all of the actions that the app uses. Right now, File only has a "Close Window" option
-Why it matters: Expected from a professional app
-Needed for v1? (yes / no): yes
-```
-
-```
-Idea: There should be a file system watcher and / or a button to refress the file explorer
-Why it matters: There's no indication to the user if the folder is up to date in the view
-Needed for v1? (yes / no): yes
-```
-
-```
-Idea: I like that the switcher only shows up when hovering over a pane. I think all the icons that can fit should show up on the pane when hovering over it so it's quicker for the user.
-Why it matters: Clicking on "..." takes too much time to do actions on Panes
-Needed for v1? (yes / no): yes
+Idea:
+Why it matters:
+Needed for v1? (yes / no):
 ```
