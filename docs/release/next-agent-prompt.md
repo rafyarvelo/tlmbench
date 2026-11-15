@@ -14,6 +14,12 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
+**Before R2.2, a high-priority bug the owner found in the release app (Nov 15, ledger S5.6-09):** after Open together
+or Compare, the Explorer lets you select channels of the first file only. `t_slots` passes on the fake core, so start
+by reproducing it against the real core (the release app, or `tlmbench-app --daemon` as `t_livecsv` does), fix it, add a
+real-core test, and ask the owner to re-test it. Check the owner test sheet's "Other things I noticed" for the rest of
+their note.
+
 First: `main` may be a few docs-only commits ahead of `origin/main` (the owner's decisions on pane names and renaming layouts, ledger D-ui-43 and D-ui-44); it
 goes up with your first push.
 

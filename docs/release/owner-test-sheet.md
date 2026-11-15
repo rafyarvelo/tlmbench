@@ -269,6 +269,16 @@ Notes:
 
 ## Other things I noticed
 
+```
+What I did: Open together on two files, and Compare (Nov 15, release build from 01c8bb4)
+What I expected: pick channels from both files in the Explorer
+What happened instead: the Explorer only lets me select channels for the first file
+Where (screen, tab, setting): Explorer, a tab with two files
+How often (always / sometimes / once):
+Severity (blocker / annoying / cosmetic): high priority (owner)
+```
+(Agent: ledger S5.6-09, now Partial; the next agent's first item.)
+
 Copy this block once per thing. Don't worry about being tidy.
 
 ```

@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 235 · **Partial** 47 · **Missing** 25 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 17 (354 rows).
+Counts: **Done** 234 · **Partial** 48 · **Missing** 25 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 17 (354 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -164,7 +164,7 @@ where each step stands, and nothing else records either.
 | S5.6-06 | roadmap 5.6 | Cross-correlation. | Done | `t_slots`, `tlmbench-store::group::windowed_correlation_recovers_offset_and_drift_to_a_sample` | |
 | S5.6-07 | roadmap 5.6 | Cross-file derived inputs (`interp`). | Partial | `t_slotderive`, `tlmbench-store::group::a_recipe_reads_another_files_channel_through_its_time_map` | Only `"Close·2"`; a file's prefix name doesn't resolve; automatic recipes don't reach other files. R2.5 |
 | S5.6-08 | roadmap 5.6 | The Alignment section (residuals, quality, preview, nudge, lock). | Done | `t_slots` | The preview is the result drawn with Keep or Undo, not an overlay; the residuals plot has no axes |
-| S5.6-09 | roadmap 5.6 | Open together; Compare runs. | Done | `t_slots` | |
+| S5.6-09 | roadmap 5.6 | Open together; Compare runs. | Partial | `t_slots` (the fake core) | **Owner, Nov 15, release app, high priority:** after Open together or Compare, the Explorer lets you pick channels of the first file only. `t_slots` passes on the fake core, so the real core or the Explorer's slot rows (`app/ui/src/shell/Explorer.svelte` around line 450: every slot's channels are listed under the open file's row) differ from what the test sets up. Reproduce with the release app or the daemon (`t_livecsv`-style, real core), fix, and add a real-core test. Next agent, first |
 | S5.6-10 | roadmap 5.6, Done when | The prototype's multi-file tests are ported. | Partial | `t_slots`, `t_slotpick`, `t_slotsession`, `proto:t_align`, `proto:t_files` | Not ported: Time channel from `gps_tow`, the prefix rule (D-share-01). R3.3 |
 | S5.6-11 | roadmap 5.6, Done when | Two files with a known drift align to within a sample. | Done | `tlmbench-store::group::drift_and_offset_align_to_within_a_sample` | |
 | S5.6-12 | roadmap 5.6 (status row) | Events, checks, rules, the spectrum and adjustments work on every file of a tab, read through its time map. | Partial | the step 5.6 notes ("Left from step 5.6", docs/follow-ups.md at 538e50c) | They act on the primary only; table sort and filter on file 1's columns only; XY needs one file. R2.5 |
