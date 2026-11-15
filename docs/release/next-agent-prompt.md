@@ -14,8 +14,8 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
-1. **Don't push docs-only commits on their own** (owner, Nov 15). `main` is about 22 commits ahead of `origin/main`
-   (R3.1 and R3.2 code and tests among them): **ask the owner to push first thing**, then watch CI (`gh run watch`) until
+1. **Don't push docs-only commits on their own** (owner, Nov 15). `main` up to `fd076bd` is pushed and CI-green (run 43761755149, no rerun); only later docs
+   commits are unpushed and go up with your first push of code or tests. After that push, watch CI (`gh run watch`) until
    it is green with no rerun. A full run takes about 1.5 hours and a push cancels the one in progress, so don't push again
    until it ends unless a fix is needed.
 2. **Triage the owner test sheet:** new Results and Notes (the new section T, then R, S and the older items) become ledger

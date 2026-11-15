@@ -40,7 +40,7 @@ state of its own in the table, not "done".
 | R3.2 Explorer, start page, dialogs | **Built and mostly owner-tested Nov 15, not pushed, with parts waiting on R2.5.** Done D-ui-36, -38, -42, -45, D-derive-02; the owner confirmed the start page, quiet rows, Open with layout ▸, rates and filters; two files in a tab was clearer and its leftover numbers are fixed (sheet T1). Partial D-ui-01 (connections can't be renamed), D-ui-10 (chips and grips, R3.4). Left for core work: the import dialog's sections and Derived list (S5.1-10, D-share-01), Connect's reconnect (D-live-11), the profile's starter layout, the profiles tab (S5.1-12, R3.3) |
 | R3.3 Panes, charts and tables · R3.4 | Not started; after R2.5 |
 | R4 to R9 | Not started. Every release decision is made (Nov 15) |
-| CI | Green on `main` at the status-table push (run 43746056639). Later commits are docs only, pushed by the next agent |
+| CI | Green on `main` at `fd076bd`, the R3.1 and R3.2 push (run 43761755149, all four jobs, no rerun, Nov 15). Later commits are docs only: they wait for the next push of code or tests |
 
 ## Recommended model per step
 
