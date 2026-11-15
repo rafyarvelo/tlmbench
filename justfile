@@ -246,7 +246,8 @@ derived-bench:
     $py ci/derived_bench.py --bin target/release
 
 # Everything the Linux CI job runs (inside the CI image)
-ci-linux: lint test viewer bench-smoke proto-test app-test ro-test fuzz-smoke app-build
+# viewer before test: the CLI's tests of exports and check reports need the embedded viewer
+ci-linux: lint viewer test bench-smoke proto-test app-test ro-test fuzz-smoke app-build
 
 # Everything the macOS and Windows CI jobs run
 ci-native: lint test app-build

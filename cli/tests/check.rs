@@ -249,6 +249,10 @@ fn the_html_report_links_failing_cells_to_an_export_at_the_first_violation() {
             out.path().to_str().unwrap(),
         ],
     );
+    if text(&o).contains("this build has no viewer") {
+        eprintln!("skipped: this build has no viewer (run `just viewer` before building; ci-linux does)");
+        return;
+    }
     // the run itself still exits by its result (a failure here), and writes the report
     assert_eq!(code(&o), 1, "{}", text(&o));
     let html = std::fs::read_to_string(out.path().join("report.html")).unwrap();
