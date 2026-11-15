@@ -13,20 +13,20 @@ own folders:
 | --- | --- |
 | `flights/flight-1.csv` | a good run, 60 s at 100 Hz (altitude, speed, battery_v, temp); every check passes |
 | `flights/flight-2.csv` | the same channels an hour later: the second file in a tab (D1, D2, F6) |
-| `flights/flight-bad.csv` | battery under 12 V for 10 s and a temperature spike: the checks fail here (E2, F7, F9) |
-| `flights/flight-gap.csv` | a 30 s hole in the times: gap breaks and "connect gaps" (B1, F5) |
-| `flights/.tlmbench/` | shared config: the check set "Flight limits", the layout "Altitude and battery", two widgets (an SVG dial and a code widget), two events on flight-1 (E1, F8) |
+| `flights/flight-bad.csv` | battery under 12 V for 10 s and a temperature spike: the checks fail here (F7, F9) |
+| `flights/flight-gap.csv` | a 30 s hole in the times: gap breaks and "connect gaps" (F5) |
+| `flights/.tlmbench/` | shared config: the check set "Flight limits", the layout "Altitude and battery", two widgets (an SVG dial and a code widget), two events on flight-1 (F8) |
 | `grow.py` | `python3 ~/tlmbench-testdata/grow.py ~/tlmbench-testdata/live.csv` adds a row a second, for Live (G1) |
 | `just testdata big` | also writes a 100M-sample `.tlm` (about 400 MB) under `big/`, for B4 and H5 (needs `cargo build --release -p tlmbench-gen` first) |
 
 Open the folder `~/tlmbench-testdata/flights` in Explorer. Your own folder `/Users/rafy/workspace/test` (AAPL.csv, GOOG.csv, …,
-run.parquet) is good for A5 (Parquet) and for a messier look.
+run.parquet) is good for Parquet and for a messier look.
 
 In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/flights/flight-1.csv` and `<set>` with `Flight limits`.
 
 ```
 Date:
-App: release build from commit (agent fills in): 2778484 (Nov 14, 2026), `target/release/tlmbench-app`. Re-test list: docs/release/next-agent-prompt.md, "The owner's re-test list"
+App: release build from commit (agent fills in): f9adbf3 (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). What is new since the Nov 14 build is section S below. Items you confirmed good are removed.
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
@@ -40,25 +40,9 @@ Started with my usual settings, or a fresh profile?:
 
 ## R. Confirm the Nov 14 changes against your comments
 
-Build `2778484` (`target/release/tlmbench-app`). Each item quotes what you wrote, says what changed and how to check it.
+Build `f9adbf3` (`target/release/tlmbench-app`). What you confirmed good (R1, R2, R4 to R11, and A1, A2, A4 to A6, B1 to B3, B5, C1, E1 to E3) is removed; what is left is open. Each item quotes what you wrote, says what changed and how to check it.
 Type `PASS` or `FAIL` after `Result:` as above; under `Notes:` say what still isn't right, in your words. Your original
 answers in sections A to H stay as they were.
-
-### R1. Dialogs in the corner (E2, F1)
-You wrote: "the rules and checks dialog has the same issue as the other dialogs, it's clamped to the top left corner."
-Changed: every dialog opens centred near the top (one shared rule), with the same close button; Export to HTML is styled
-like Export data.
-Check: open Rules and checks, Export to HTML, Export data, Recipes, Settings › Reset app….
-Result:
-Notes:
-
-### R2. "Show only these" (A2)
-You wrote: "only shows up after opening a file … I recommend this option be always visible as an icon."
-Changed: a funnel icon in the Explorer header beside Expand all and Collapse all, always there. With it on and nothing open,
-Explorer says "Showing only open files" with Show all. Opening a different folder turns it off.
-Check: with no file open, click the funnel; open a file; click it again.
-Result:
-Notes:
 
 ### R3. Reset to defaults and clear everything (A3)
 You wrote: "There should be a clear way for the user to 'Reset to default settings' and clear all of the cache. A warning
@@ -68,77 +52,8 @@ widgets, alignments, the cache), all ticked; untick what to keep. Settings › I
 button to forget one. Clear cache's tooltip says what it keeps.
 Check: open a CSV you opened before; in Settings forget its profile (or Reset app… with Import profiles ticked); open it
 again: the import dialog comes back.
-Result:
-Notes:
-
-### R4. Dropping a folder (A4)
-You wrote: "dropping a folder … gave the error … Is a directory (os error 21)."
-Changed: a dropped folder opens in Explorer, as Open folder… does.
-Check: drag `~/tlmbench-testdata` from Finder onto the window.
-Result:
-Notes:
-
-### R5. Share on a read-only folder (A6)
-You wrote: "Got a 'Couldn't share' error, no option to export was offered."
-Changed: two causes were fixed. Share… failed whenever a file of the folder was open; and the app only found out the folder
-was read-only when a write failed. Now the tab menu shows "Export file… · Folder is read-only" in place of Share, and
-Explorer's Share… opens as Export configuration.
-Check: make a folder read-only (Get Info › Sharing & Permissions › Read only, or `chmod -R a-w <folder>`), open it in
-Explorer, open a CSV in it, then the tab menu and Explorer's folder menu › Share….
-Result:
-Notes:
-
-### R6. ⌘Z (B1)
-You wrote: "⌘Z did not work, but the Backspace key and 'Previous view' button work to go back to a view."
-Changed (your decision 3): ⌘Z and ⇧⌘Z undo and redo the last change (a channel moved, a pane closed, …); Backspace still
-goes back a view. In a text field ⌘Z undoes the typing.
-Check: take a channel out of a pane, ⌘Z, ⇧⌘Z; close a pane, ⌘Z.
-Result:
-Notes:
-
-### R7. A default line style (B3)
-You wrote: "Is there a global setting for the default? … in case a user want to make all channels 'thin' or 'heavy'."
-Changed (decision 4): Settings › All settings › Display › Default line width and Default line style. A channel's own
-choice (its Display… dialog) wins; there the first choice reads "Default (…)".
-Check: set Heavy and Dashed, look at the charts; give one channel Thin and Solid.
-Result:
-Notes:
-
-### R8. Pane modes (B5)
-You wrote: "the '...' menu from the gauges doesn't match the UI of the prototype … the handle is in the middle of the pane …
-The 'XY Plot' … header is messed up … resizing for the 'XY Plot' doesn't seem to work at all."
-Changed: the gauges' ⋯ menu is the prototype's compact one. Chart and values has its resize grip at the pane's bottom; Chart
-and table has the chart's grip under the chart and the table's at the pane's bottom. XY's X picker, 1:1 and Fit sit in the
-pane header on hover, and XY resizes with a grip under the plot.
-Check: switch a pane to each of those views and resize it; open a gauge's ⋯.
-Result:
-Notes:
-
-### R9. Copy while dragging (C1)
-You wrote: "Dragging a channel while holding Ctrl or Cmd is supposed to 'Copy' the channel to another pane instead of moving it."
-Changed (decision 2): ⌘ or Option copies on the Mac (Ctrl on Windows and Linux); a "+" shows on the drag while the key is down.
-Check: drag a chip to another pane holding ⌘, then Option, then nothing.
-Result:
-Notes:
-
-### R10. Rules and checks explained, and events on one pane (E1)
-You wrote: "need a better explanation of what each one does … allow users to easily enable events for a single pane."
-Changed: each row says what its kind does, and an empty set says it too:
-  "Check: passes or fails. Expect says what should hold, for example battery_v > 21; failures are counted and listed."
-  "Rule: marks events. Wherever Mark when holds, it adds an event in its category to the charts and the table."
-When, Grace and Settle have tooltips. Each pane has an Events toggle (the flag) among its hover controls; E in the top bar
-is the default for panes you haven't set (decision 5).
-Check: Rules & checks › New set; turn E off, then turn one pane's flag on.
-Result:
-Notes:
-
-### R11. Category colours (E2)
-You wrote: "Is it possible to edit the Colors for Check categories? it should be."
-Changed: the Rules and checks editor's Event categories has a colour picker and a Charts switch per category (Settings ›
-Event categories has them too).
-Check: Rules & checks › edit a set › Event categories.
-Result:
-Notes:
+Result: This works better now, but it's not clear on the difference between "Reset app..." and "Reset to defaults"
+Notes: Is "Reset to defaults" needed anymore or is it redundant?
 
 ### R12. Export to HTML: findable, feedback, read-only (F1)
 You wrote: "the export icon should be way easier to find … The visual feedback was also weak … the dialog didn't close
@@ -147,8 +62,8 @@ Changed (decision 6): an Export button in the top bar (HTML, data, image). Expor
 progress bar under the top bar, then "Exported to …" with Show in Finder. An export's viewer says "Read-only view" with the
 file, the date and the app version.
 Check: export flight-1 to HTML, then open it through a web server.
-Result:
-Notes:
+Result: The share icon is good, and the visual feedback is a little better, but the exported view isn't really "read-only" since some of the panes "duplicate" actions work, but the dragging options don't work so it's awkward.
+Notes: Since the prototype shows dragging works fine in html, is it possible to just allow exported views to have the user be able to move and drag channels like that app. Having the exported view start "locked" and having the user click unlock is probably a good idea. There doesn't have to be 100% parity in the browser version, but clean it up so it's consistent at least; it doesn't make sense to make the view read-only when it clearly at least works allowing the user to rearrange panes
 
 ### R13. The web server note (F2)
 You wrote: "it didn't provide the exact python command needed."
@@ -157,8 +72,8 @@ open, and that One file opens anywhere.
 Check: double-click the exported folder's `index.html`.
 Result:
 Notes:
-Not done yet: export tiers (Folder or One file in the dialog, raw data when it fits, a size field) and drawing coarse data
-like the app (your decision 7; F2, F3). Opening folders and CSVs in a browser like the prototype is the next step (R2.2).
+The export tiers (decision 7) are built: see S1 and S2. Opening folders and CSVs in a browser like the prototype is R2.2,
+partly built: see S4.
 
 ### R14. Dragging table columns ("Other" #1)
 You wrote: "Dragging the columns onto another pane would work same as dropping channels on other panes."
@@ -173,27 +88,71 @@ You wrote: (1) the menu bar should have File › Open and every action; (2) a fi
 (3) all the icons that fit should show on a pane when hovering.
 Changed: (2) Explorer follows its folder (new and removed files appear by themselves) and the folder menu has Refresh, for
 network shares. (3) On hover a pane shows, in the prototype's order: view, axis settings, Events, Duplicate, Split, ⋯ and
-Close; the ones that don't fit stay in ⋯. (1) The menu bar is not done yet (your decision 8).
+Close; the ones that don't fit stay in ⋯. (1) The menu bar is built now: see S3.
 Check: add a CSV to the open folder from Finder; hover a pane, then make panes narrow (four in a row).
 Result:
 Notes:
 
 ---
 
+## S. New in the Nov 15 build (your decisions 7 and 8, and browser-only mode)
+
+For the Nov 15 build only. `Result:` and `Notes:` as above. Browser-only mode needs the page served: run
+`python3 -m http.server --directory app/browser/dist` from the repository and open http://localhost:8000 (S4).
+
+### S1. Export to HTML: Folder or One file (decision 7, F2)
+You said: "The user should be able to choose between a full export with a server and a standalone HTML / static folder."
+Changed: Export to HTML… has "Save as": Folder (any size; needs a web server or a host) or One file (opens from anywhere),
+each with its size. One file has a Size limit field (25 MB to start) and the command line shown at the bottom follows.
+Do: Export to HTML… on flight-1: look at the Save as list and the summary line; choose One file, Export…, save it on the
+Desktop, double-click it. Then choose One file with the limit at 1 MB and look at what the dialog says. Then a Folder.
+Expect: One file asks for a file name (not a folder), writes one `.html` that opens from the Desktop with the chart and
+nothing fetched; with every raw sample in it when it fits (the end note says "Full"); at 1 MB it says Light and why, and
+that a folder has no limit. The Folder choice works as before. Your choice and the limit are there next time.
+Result:
+Notes:
+
+### S2. The viewer's coarse plots (F3)
+You said: "the 'coarse' plots are way too coarse… they should look more like the prototype."
+Changed: a small export now carries every raw sample (S1), so it is not coarse at all. When it is coarse (Light, a trimmed
+export), the viewer draws the same min/max band under the line that the app does.
+Do: (a) flight-1 as One file: zoom in and out in the viewer. (b) Make it coarse:
+`target/release/tlmbench export html <file> --layout "Altitude and battery" --mode light --detail 0 --out ~/Desktop/coarse`
+(the layout's charts then keep only summaries), serve it as F1, and compare the viewer with the app over the same file at the
+same zoom.
+Expect: (a) smooth, exact lines, no "coarse" label. (b) a "coarse" label, and the band and line look like the app's.
+Result:
+Notes:
+
+### S3. The menu bar (decision 8, R15 idea 1)
+Changed: File, Edit, View, Pane, Window and Help, all from one list that also drives the shortcuts. Shortcuts with ⌘ are
+bound in the menu; single keys (E, L, T, F, Esc, Backspace) are shown in the item's name, like "Fit to the data (F)", and
+still work from the keyboard only. Cut, Copy, Paste and Select All are the system's.
+Do: Open each menu. Try: Open recording… (⌘O), Open folder… (⇧⌘O), Save layout (⌘S), Undo and Redo (⌘Z, ⇧⌘Z), Duplicate
+pane (⌘D), New pane (⇧⌘N), Settings… (⌘,), Focus mode (⌘.), and a click on Event markers and Lock the time view (the check
+mark should follow). With nothing open, look at what is greyed out. Click in a text field (the Explorer's Filter) and use
+⌘Z, ⌘C, ⌘V there. Open a Table pane, select cells, press ⌘C and paste into another app. Click in the Explorer and press ⌘A.
+Expect: each does what its name says, once (not twice); items that can't act are greyed; text fields keep their own undo,
+copy and paste; the Table's ⌘C and the Explorer's ⌘A still work. With two windows open, a menu click acts on the window in
+front. Is anything missing that you expected in a menu?
+Result:
+Notes:
+
+### S4. Browser-only mode (R2.2, partly built)
+You said: "I expected Browser support to be almost analogous to what the prototype does: open folders and CSV files."
+Changed so far: a CSV is read in a background thread (a big file doesn't freeze the tab); a reload brings the open files
+back; the page no longer offers folders or live sources, which a tab can't do. Not built yet: Parquet, `.tlm`, packets,
+descriptors, folders, derived channels, events, checks, several files in a tab. They come next.
+Do: Serve the page (see above). Choose or drop `flights/flight-1.csv`. Then drop a bigger CSV (`/Users/rafy/workspace/test`
+has some; or make a 500,000-row one). Reload the page. Try dropping a `.tlm` or a Parquet file. Look at it in light and dark.
+Expect: the CSV opens and draws like the app's; while a big one loads, the page still responds; after a reload the files
+are back with no picker; the start page offers only Open recording…; a binary file says browser-only mode reads CSV.
+Result:
+Notes:
+
+---
+
 ## A. Open things and the Explorer
-
-### A1. Open a folder
-Do: Explorer › Open folder, choose `/Users/rafy/workspace/test`.
-Expect: the folder name shows and its recordings (CSV, Parquet) are listed, other files hidden or greyed, with no blank list.
-Result: As expected.
-Notes: Works fine.
-
-### A2. "Show only these"
-Do: Click the "Show only these" pill (Explorer header) with no file open, then open a file, then switch it off.
-Expect: with nothing open the list is not just silently empty (known issue: it is empty today); with a file open only that
-file shows; off shows everything again.
-Result: "Show only these" only shows up after opening a file, it's not part of the explorer header that is always visible like the expand all and collapse all buttons
-Notes: I recommend this option be always visible as an icon as needed to minimize confusion.
 
 ### A3. Open a CSV by double-click, and with ⌘O
 Do: Double-click AAPL.csv in Explorer. Then ⌘O and pick GOOG.csv.
@@ -203,57 +162,13 @@ opened before, delete its profile, `~/Library/Caches/tlmbench/profiles/<key>.jso
 Result: The file opened right away because I had opened it previously. Clearing the cache didn't change the profile.
 Notes: There should be a clear way for the user to "Reset to default settings" and clear all of the cache. A warning dialog is appropriate as needed.
 
-### A4. Drop a file from Finder
-Do: Drag a CSV from Finder onto the window. Then a folder. (L: X-win-01)
-Expect: the file opens; the folder is listed in Explorer.
-Result: Dropping a file works fine, but dropping a folder (~/tlmbench-testdata) gave the error: "Couldn't open tlmbench-testdata: /Users/rafy/tlmbench-testdata: Is a directory (os error 21)
-Notes: When dropping a folder, it should be equivalent through opening the folder through the "Open folder..." action
-
-### A5. Open a Parquet file
-Do: Open `run.parquet`.
-Expect: opens with channels and a chart, no import errors.
-Result: File parsed and opened panes as expected.
-Notes: Nominal behavior.
-
-### A6. Read-only folder
-Do: Copy a CSV to a read-only folder and open that folder in Explorer, then the CSV. Try the tab menu's Share and Explorer's folder menu › Share…. (L: X-win-09)
-To make the folder read-only: Finder › Get Info › Sharing & Permissions › your name: Read only, or `chmod -R a-w <folder>`
-(undo with `chmod -R u+w <folder>`). `just ro-test-mac` also makes a read-only disk image.
-Expect: everything works; nothing is written beside the file; Share offers Export instead of writing.
-Result: Got a "Couldn't share" error, no option to export was offered
-Notes: This feature appears to be broken.
-
 ## B. Reading a chart
-
-### B1. Zoom, pan, fit
-Do: Scroll to zoom, drag to pan, double-click to fit, Backspace (or Previous view) to go back a view. (⌘Z is undo, not "back a view": decision of Nov 14.)
-Expect: smooth, no flicker, the time axis labels stay readable.
-Result: Zoom, pan, and fit work as expected.
-Notes:  ⌘Z did not work, but the Backspace key and "Previous view" button work to go back to a view
-
-### B2. Cursors and Measure
-Do: Click to place cursor A, then B. Open Measure (rail).
-Expect: values at the cursors and stats between them; they match the numbers in the table pane.
-Result: The cursors and measure pane worked as expected.
-Notes: Nominal behavior.
-
-### B3. Line styles (L: X-win-05)
-Do: On one channel set line width 3, dashed, then step.
-Expect: each is drawn as set (headless tests can't see this).
-Result: This appears to work fine.
-Notes: Is there a global setting for the default? If not, there should be one in case a user want to make all channels "thin" or "heavy"
 
 ### B4. A file that is still building
 Do: Settings › Cache › Clear cache first (a file opened before has its pyramid in the cache and opens at once). Then open the 100M-sample file (`just testdata big`, then `~/tlmbench-testdata/big/big-100M.tlm`).
 Expect: hatching while the pyramid builds, then the chart fills in; the min/max band shows on a spiky channel. (L: X-win-06)
 Result: The file opened pretty much instantly, so I couldn't really tell....
 Notes: Not verified, need a better test case
-
-### B5. Table, values, XY, spectrum, gauges
-Do: Switch a pane to each mode from its mode menu.
-Expect: each shows data and responds to the cursor and the time view.
-Result: The widget types all seem to work, but the "..." menu from the gauges doesn't match the UI of the prototype
-Notes: Resizing a "Chart and values" pane or "Chart and table" pane is awkward because the handle is in the middle of the pane on the bottom of the chart instead of the bottom of the pane below the widget / table. The "XY Plot" kind of works but the header is messed up and it's pretty confusing honestly, maybe needs a tooltip or something, resizing for the "XY Plot" doesn't seem to work at all.
 
 ### B6. Text and fonts
 Do: Compare a screen of the app with the prototype (`prototype/plotter.html`, or the published copy) side by side.
@@ -262,10 +177,6 @@ Result:
 Notes:
 
 ## C. Dragging and windows
-
-### C1. Drag a channel to a pane, between panes, to a pane edge (L: X-win-03)
-Result: Works but doesn't properly support the Ctrl or Cmd keys
-Notes: Dragging a channel while holding Ctrl or Cmd is supposed to "Copy" the channel to another pane instead of moving it.
 
 ### C2. Drag sidebar panels, tabs, and pane numbers to reorder (L: X-win-03)
 Result:
@@ -289,24 +200,6 @@ Do: Change the alignment (start, clock, nudge).
 Expect: the second file moves; nothing is rebuilt or slow; undo works.
 Result:
 Notes:
-
-## E. Events, checks, derived channels
-
-### E1. Add an event and see it on the chart and in the table
-Result: Events and checks work as expected.
-Notes: The UI is not that intuitive for Rules and checks, need a better explanation of what each one does. Also might help to allow users to easily enable events for a single pane, right now it seems like the only way to do that would be to manually enable the global events switch and toggle off every pane you don't want (not ideal).
-
-### E2. Run a check set and click a failing cell
-Do: With `flights` open as the folder, Rules & checks › the "Flight limits" set (it is shared in the folder) › run it on flight-bad.csv.
-Expect: pass and fail show with counts; clicking a failure frames the first violation.
-Result: This works fine, but the rules and checks dialog has the same issue as the other dialogs, it's clamped to the top left corner.
-Notes: Is it possible to edit the Colors for Check categories? it should be.
-
-### E3. Derived channel
-Do: Add a derived channel (`altitude * 2`) from the + in Explorer.
-Expect: it appears as a channel, charts, and survives closing and reopening the file.
-Result: Works as expected.
-Notes: Nominal behavior.
 
 ## F. Export (what R2.1 added)  — the most important section
 
