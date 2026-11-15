@@ -25,6 +25,8 @@ run('start', async ({ p, check, text, visible, fake, until, settingsLS, wait }) 
 
   await p.click('#b-start');
   check('the logo opens the page over the tabs', (await p.isVisible('#startPage >> visible=true')) && (await p.$$eval('.start.overlay [data-recent]', (e) => e.map((x) => x.dataset.recent))).join() === '/data/c.tlm,/data/b.tlm,/data/a.tlm');
+  check('a recent recording says its folder, channels and length (D-ui-36)', /\/data · \d+ channels? · /.test(await text('.start.overlay [data-recent="/data/c.tlm"]')), await text('.start.overlay [data-recent="/data/c.tlm"]'));
+  check('the page has the three cards, Live sources and Layouts beside the recents', (await p.$$('.start.overlay .card')).length === 3 && /live sources/i.test(await text('.start.overlay')) && /layouts/i.test(await text('.start.overlay')) && /No layouts yet/.test(await text('.start.overlay')), [(await p.$$('.start.overlay .card')).length, await text('.start.overlay')]);
   await p.keyboard.press('Escape');
   check('Esc closes it', !(await p.isVisible('#startPage >> visible=true')));
   await p.click('#b-start');

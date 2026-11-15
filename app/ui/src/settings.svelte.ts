@@ -182,6 +182,8 @@ export interface Settings {
   /** The start page shows at launch, and the recordings opened last (newest first). */
   showStart: boolean;
   recent: string[];
+  /** What the start page says under each recent recording: its channel count and length in seconds. */
+  recentInfo: Record<string, { channels: number; seconds: number }>;
   /** Where files go after the import dialog: each in a tab, or just into Explorer. */
   importWhere: 'tabs' | 'shared' | 'current' | 'none';
   /** Export data…: what was chosen last, and Save the view as an image…. */
@@ -301,6 +303,7 @@ export const DEFAULTS: Settings = {
   tipsSeen: {},
   showStart: true,
   recent: [],
+  recentInfo: {},
   importWhere: 'tabs',
   exportData: { format: 'csv', range: 'view', channels: 'tab', layout: 'wide', resample: false, hz: 100, time: 'auto', raw: false },
   exportImage: { format: 'png', what: 'all', scale: 2 },
@@ -476,7 +479,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 /** What the app remembers as it is used, not set on Settings: recent files, each file's panes, channel display and gap
  * factors, the sidebars, the export dialogs' choices, sessions, windows, saved connections. Reset app… resets these only
  * with "Things the app remembers" ticked (sheet R3). */
-export const REMEMBERED: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'exportHtml', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
+export const REMEMBERED: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'recentInfo', 'importWhere', 'exportData', 'exportImage', 'exportHtml', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 /** Every setting back to its default, but `keep` (Reset app…, which asks about layouts and widgets on their own). */
 export function resetAllSettings(keep: (keyof Settings)[] = []): void {

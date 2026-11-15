@@ -1741,7 +1741,9 @@ async function openPathNow(path: string, part?: string): Promise<void> {
     });
     tabs.list.push({ key, path: file.info.path, name: tabName(file.info.path, file.info.part), ...(file.info.part ? { part: file.info.part } : {}), rate: rateText(file) });
     ui.start = false;
-    setSetting('recent', [file.info.path, ...settings.recent.filter((r) => r !== file.info.path)].slice(0, 8));
+    const recent = [file.info.path, ...settings.recent.filter((r) => r !== file.info.path)].slice(0, 8);
+    setSetting('recent', recent);
+    setSetting('recentInfo', Object.fromEntries([...recent.map((r) => [r, r === file.info.path ? { channels: file.info.channels.length, seconds: Number(file.last - file.first) / 1e9 } : settings.recentInfo[r]] as const).filter(([, v]) => v)]));
     ui.note = '';
     ui.undo = null;
     await showTab(key);
