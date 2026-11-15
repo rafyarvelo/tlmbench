@@ -20,7 +20,7 @@
   import { ICON } from '../icons';
   import { chCss, chName, chUnit } from '../display.svelte';
   import { catColor, catName, marked, type TlmEvent } from '../events.svelte';
-  import { fmtCh, learnDecimals, moveChannel, newPaneWith, note, setTable, sortLocked, stack } from '../stack.svelte';
+  import { fmtCh, learnDecimals, moveChannel, newPaneWith, note, paneEvents, setTable, sortLocked, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -285,7 +285,7 @@
   });
 
   /** The event (if any) a row at time `t` is inside, and its tag: ▸ on a range's first row, ◂ on its last, ● on an instant's. */
-  const shownEvents = $derived(pane?.events === false ? [] : marked());
+  const shownEvents = $derived(marked(paneEvents(i)));
   function eventAtRow(t: bigint): { e: TlmEvent; tag: string } | null {
     const half = BigInt(Math.max(1, Math.round(step / 2)));
     const st = BigInt(Math.max(1, Math.round(step)));

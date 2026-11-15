@@ -46,6 +46,20 @@ run(
     await p.locator('.panemenu .mi', { hasText: /^Event markers in this pane$/ }).click();
     check('turning it back on', await until(() => window.__tlmApp.eventsDrawn()[0] === 3));
 
+    // one pane only (owner decision 5, sheet E1): with E off, a pane's own toggle (among its hover controls) shows them there
+    await p.keyboard.press('e');
+    check('E off hides them in panes without a choice of their own', await until(() => window.__tlmApp.eventsDrawn()[1] === 0 && window.__tlmApp.eventsDrawn()[2] === 0), await drawn());
+    await p.hover('#stack [data-pane="1"] .phead');
+    await p.click('#stack [data-pane="1"] [data-pevents]');
+    check('the pane\'s Events toggle shows them in that pane only', await until(() => window.__tlmApp.eventsDrawn()[1] === 3 && window.__tlmApp.eventsDrawn()[2] === 0), await drawn());
+    check('the toggle says so', (await p.getAttribute('#stack [data-pane="1"] [data-pevents]', 'aria-pressed')) === 'true');
+    await p.keyboard.press('e');
+    check('E on again: panes without a choice follow it', await until(() => window.__tlmApp.eventsDrawn()[2] === 3), await drawn());
+    await p.hover('#stack [data-pane="1"] .phead');
+    await p.click('#stack [data-pane="1"] [data-pevents]');
+    check('and the pane\'s own Off stays off', await until(() => window.__tlmApp.eventsDrawn()[1] === 0 && window.__tlmApp.eventsDrawn()[2] === 3), await drawn());
+    await p.click('#stack [data-pane="1"] [data-pevents]');
+
     // the chips decide underneath
     await p.click('#eventsPanel .evcat[data-evcat="alarm"]');
     check('hiding a category in the panel hides it on the charts', await until(() => window.__tlmApp.eventsDrawn().every((n) => n === 1)), await drawn());

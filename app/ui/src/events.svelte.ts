@@ -72,8 +72,9 @@ export const newId = (): string => 'm' + Date.now().toString(36) + Math.floor(Ma
 
 /** The events charts and the overview mark: every event unless E is off, in categories shown on charts (and, while the
  *  panel's chips are linked, not hidden there). */
-export function marked(): TlmEvent[] {
-  if (!settings.eventsOn) return [];
+/** The events charts mark: none when `on` is false (the top bar's E, or a pane's own choice; see paneEvents). */
+export function marked(on = settings.eventsOn): TlmEvent[] {
+  if (!on) return [];
   return events.list.filter((e) => (catOf(e.category)?.chart ?? true) && !(settings.evChartsFollow && events.hidden.includes(e.category)));
 }
 

@@ -43,7 +43,7 @@ export interface Pane {
   tfilt?: { scope?: 'file'; apply?: boolean };
   /** Channels whose columns the table leaves out (they stay in the pane and its chart). */
   hideCols?: number[];
-  /** Event markers on this pane's chart (false: hidden here; the top bar's E and the categories decide underneath). */
+  /** Event markers on this pane: its own choice; left out, it follows the top bar's E (owner decision 5, Nov 14). */
   events?: boolean;
   /** Gauges: each channel's widget choices by channel name (type, range, size, min/max marks, ...). */
   widgets?: Record<string, WidgetCfg>;
@@ -566,6 +566,9 @@ export function xyEqualOf(i: number): boolean {
   const name = (c: number) => ui.channels[c]?.name ?? '';
   return p?.xyEqual ?? (isLon(name(x)) && (p?.channels ?? []).some((c) => c !== x && isLat(name(c))));
 }
+
+/** Whether pane `i` marks events: its own choice, else the top bar's switch (the default for panes without one). */
+export const paneEvents = (i: number): boolean => stack.panes[i]?.events ?? settings.eventsOn;
 
 export function setXy(i: number, patch: Partial<Pick<Pane, 'x' | 'xyEqual' | 'xyView'>>): void {
   edit(() => {

@@ -39,6 +39,7 @@
     axisKey,
     xyAxisOf,
     xyEqualOf,
+    paneEvents,
   } from '../stack.svelte';
   import { failingChannels } from '../checks.svelte';
   import { settings } from '../settings.svelte';
@@ -232,7 +233,7 @@
   const items = (i: number): MenuItem[] => [
     ...(hasChart(i)
       ? [
-          { label: 'Event markers in this pane', checked: stack.panes[i]?.events !== false, data: { pm: 'events' }, run: () => toggleEvents(i) },
+          { label: 'Event markers in this pane', checked: paneEvents(i), data: { pm: 'events' }, run: () => toggleEvents(i) },
           { label: 'Axis and scale…', run: () => (axes = { ...menuAt!, i }) },
           { sep: true } as const,
         ]
@@ -248,10 +249,9 @@
     { label: 'Add a pane below', run: () => addPaneBelow(i) },
   ];
 
+  /** This pane's own choice, the opposite of what it shows now; it then stays whatever the top bar's E does. */
   function toggleEvents(i: number) {
-    const p = stack.panes[i];
-    if (p.events === false) delete p.events;
-    else p.events = false;
+    stack.panes[i].events = !paneEvents(i);
     actions.eventsRedraw();
   }
 
@@ -391,6 +391,9 @@
                   </select>
                   <button class="tbtn xyb" data-xyeq aria-pressed={xyEqualOf(i)} data-tip="Equal scale: one unit is the same length on both axes (longitude is corrected for latitude), so shapes aren't stretched" onclick={() => setXy(i, { xyEqual: !xyEqualOf(i), xyView: undefined })}>1:1</button>
                   <button class="tbtn xyb" data-xyfit disabled={!p.xyView} data-tip="Fit: back to automatic ranges (or double-click the plot). Scroll zooms at the pointer; drag with Box zoom or Pan as the toolbar's mouse mode says." onclick={() => setXy(i, { xyView: undefined })}>Fit</button>
+                {/if}
+                {#if !p.mode || p.mode === 'chart' || p.mode === 'both' || p.mode === 'cv' || p.mode === 'table'}
+                  <button class="pmore" data-pevents aria-pressed={paneEvents(i)} aria-label="Event markers in pane {i + 1}" data-tip={paneEvents(i) ? 'Hide event markers in this pane' : 'Show event markers in this pane'} onclick={() => toggleEvents(i)}>{@html ICON.events}</button>
                 {/if}
                 <button
                   class="pmore vmenu"
@@ -805,6 +808,9 @@
   .xysel,
   .xyb {
     visibility: hidden;
+  }
+  .pmore[data-pevents][aria-pressed='true'] {
+    color: var(--accent);
   }
   .phead:hover :is(.xysel, .xyb),
   .pane.sel :is(.xysel, .xyb),

@@ -45,6 +45,7 @@ import {
   labelled,
   normalize,
   note,
+  paneEvents,
   onStackChange,
   type Pane,
   redoLayout,
@@ -799,7 +800,7 @@ function draw(): void {
         if (y && !y.log) learnDecimals(state.file.id, ch, y.min, y.max);
       }
     drawAxes(ctx, r, { t0: state.t0, t1: state.t1, left: ranges.u0, right: ranges.u1 }, { ...style, timeLabels: labelled(i) });
-    evDrawn[i] = stack.panes[i].events !== false ? drawEvents(ctx, r, marked(), tk) : 0;
+    evDrawn[i] = paneEvents(i) ? drawEvents(ctx, r, marked(true), tk) : 0;
     for (const ch of chans) drawLimits(ctx, r, chLimits(ch), ranges[keyOf.get(ch) ?? 'u0'], tk);
     if (main && span > 0) {
       const x: Axis = { a: (2 * main.xScaleNs) / span, b: (2 * Number(main.originNs - state.t0)) / span - 1 };
