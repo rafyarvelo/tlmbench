@@ -41,7 +41,7 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
    Event column and dimmed rows) need no core work, so **ask the owner** whether Sonnet may take them before R2.5, and
    say so in your report. When your Sonnet work is done, report what the next Opus step is and why, and stop.
 
-Built and committed, not pushed, Nov 15: R3.1 (D-ui-37, -39, -40, -41, -44, S4.4-04) and R3.2 (D-ui-36, -38, -42, -45,
+Built, pushed and CI-green Nov 15: R3.1 (D-ui-37, -39, -40, -41, -44, S4.4-04) and R3.2 (D-ui-36, -38, -42, -45,
 D-derive-02; D-ui-01 and D-ui-10 Partial). The release app was rebuilt for the owner from that code; its leftover-slot-numbers
 fix is on the sheet as T1.
 
