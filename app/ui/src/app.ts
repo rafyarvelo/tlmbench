@@ -5151,8 +5151,26 @@ stackEl.addEventListener('scroll', scheduleDraw, { passive: true });
 void getCurrentWebview().onDragDropEvent((e) => {
   const p = e.payload;
   center.classList.toggle('drop', p.type === 'over' || p.type === 'enter');
-  if (p.type === 'drop' && p.paths.length) void openWithImport(p.paths);
+  if (p.type === 'drop' && p.paths.length) void openDropped(p.paths);
 });
+
+/** A Finder drop: a folder does what Open folder… does (the first, when several are dropped) and files open as Open… does
+ * (sheet A4: a dropped folder was opened as a file, "Is a directory"). */
+async function openDropped(paths: string[]): Promise<void> {
+  let dirs: boolean[] = [];
+  try {
+    dirs = await invoke<boolean[]>('paths_are_folders', { paths });
+  } catch {
+    dirs = [];
+  }
+  const folders = paths.filter((_, k) => dirs[k]);
+  if (folders.length) {
+    await showFolder(folders[0]);
+    if (folders.length > 1) note(`Opened ${nameOf(folders[0])} in Explorer. Explorer shows one folder at a time.`);
+  }
+  const files = paths.filter((_, k) => !dirs[k]);
+  if (files.length) await openWithImport(files);
+}
 
 // tooltips: `data-tip` (CLAUDE.md); the native title for now
 bindTips();

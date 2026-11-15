@@ -24,6 +24,13 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
   await fake((a) => window.__tlmFake.drop([a]), A);
   check('a dropped file opens', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'flight.tlm'));
 
+  // a dropped folder does what Open folder… does (sheet A4: it was opened as a file, "Is a directory")
+  const errsBefore = await text('#wsNote .txt').catch(() => '');
+  await fake(() => window.__tlmFake.drop(['/data']));
+  check('a dropped folder is listed in Explorer', await until(() => document.querySelectorAll('#explorer .row.file').length === 2), await p.$$eval('#explorer .row', (r) => r.length));
+  check('and is not opened as a file', !/Is a directory|Couldn't open/.test(await text('#wsNote .txt').catch(() => '')), [errsBefore, await text('#wsNote .txt').catch(() => '')]);
+  check('the folder is kept in settings, as Open folder… does', (await settingsLS()).folder === '/data', (await settingsLS()).folder);
+
   // a file being read: hatched, Measure waits for exact stats, then fills in
   await fake((c) => (window.__tlmFake.files[c] = { built: false }), COLD);
   await fake((c) => window.__tlmFake.drop([c]), COLD);

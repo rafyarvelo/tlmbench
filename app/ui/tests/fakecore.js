@@ -1216,6 +1216,9 @@
       fake.exported.push({ path, view });
       return null;
     },
+    paths_are_folders({ paths }) {
+      return paths.map((p) => fake.folders.includes(p) || [...Object.keys(fake.files), ...Object.keys(fake.bins)].some((f) => f.startsWith(p.replace(/\/$/, '') + '/')));
+    },
     list_folder({ path }) {
       // a folder's tree from the paths of `fake.files` under it (the core lists the disk)
       const files = [...new Set([...Object.keys(fake.files), ...Object.keys(fake.bins)])].filter((p) => p.startsWith(path.replace(/\/$/, '') + '/'));

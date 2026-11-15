@@ -3136,6 +3136,12 @@ fn binary_ext(ext: Option<&str>) -> bool {
     matches!(ext, None | Some("bin" | "dat" | "raw" | "pkt" | "log" | "tlmbin" | "frames"))
 }
 
+/// Which of `paths` are folders (a Finder drop of a folder opens it in Explorer, as Open folder… does; sheet A4).
+#[tauri::command]
+fn paths_are_folders(paths: Vec<String>) -> Vec<bool> {
+    paths.iter().map(|p| Path::new(p).is_dir()).collect()
+}
+
 /// The files under `path`, in their folders, sorted by name (recordings are `openable`: CSV, TSV, TXT, .tlm and
 /// Parquet, and files a descriptor's `files` patterns name; a binary file nothing claims is `needs_descriptor`);
 /// folders without any file, and hidden ones, are left out. Only reads the folder (Explorer's Open folder).
@@ -3548,6 +3554,7 @@ macro_rules! commands {
             table_unmask,
             filter_check,
             list_folder,
+            paths_are_folders,
             needs_descriptor,
             descriptor_list,
             descriptor_preview,
