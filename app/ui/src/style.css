@@ -198,6 +198,13 @@ body {
   border-color: var(--accent-line);
 }
 
+/* an icon in a text button (Settings' Delete, + Add): sized here, as a component's own style may not reach it */
+.tbtn > svg {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+}
+
 select.sel,
 input.sel {
   min-height: 30px;

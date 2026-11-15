@@ -575,6 +575,17 @@
       fake.profiles[[...header].sort().join('\u0000')] = { header, profile };
       return null;
     },
+    profile_list: () => Object.values(fake.profiles),
+    profile_delete({ header }) {
+      delete fake.profiles[[...header].sort().join('\u0000')];
+      return null;
+    },
+    /** Settings › Reset app…: what the core removes from the cache (profiles empty the fake's list). */
+    reset_app({ kinds }) {
+      (fake.resets ??= []).push(kinds);
+      if (kinds.includes('profiles')) fake.profiles = {};
+      return kinds;
+    },
     // the packet types of the descriptor that names the file (each opens as its own recording)
     packet_parts: ({ path }) => (known(path).find((k) => k.claims)?.descriptor.packet_types ?? []).map((t) => t.name),
     open({ path, profile: given, part, recipes, exclude, adjust, progress }) {

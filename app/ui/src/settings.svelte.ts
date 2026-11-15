@@ -478,6 +478,13 @@ export function resetSettings(): void {
   }
 }
 
+/** Every setting back to its default, but `keep` (Reset app…, which asks about layouts and widgets on their own). */
+export function resetAllSettings(keep: (keyof Settings)[] = []): void {
+  for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
+    if (!keep.includes(key)) setSetting(key, structuredClone(DEFAULTS[key]) as never);
+  }
+}
+
 /** Collapses or expands a sidebar panel (`explorer`, `measure.cur`, `measure.stats`). */
 export function setPanelOpen(name: string, open: boolean): void {
   const rest = settings.panelsClosed.filter((n) => n !== name);

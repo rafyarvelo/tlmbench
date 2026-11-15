@@ -217,6 +217,8 @@ export const actions = {
   recipesExport: () => {},
   recipesImport: (_text: string) => {},
   exportOpen: () => {},
+  /** Settings › Reset app…: what was ticked ('settings', 'profiles', 'recipes', 'checks', 'layouts', 'events', 'widgets', 'alignments', 'cache'). */
+  resetApp: (_what: string[]): Promise<void> => Promise.resolve(),
   htmlOpen: () => {},
   htmlGo: () => {},
   htmlClose: () => {},

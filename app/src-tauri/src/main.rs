@@ -452,6 +452,20 @@ async fn profile_save(header: Vec<String>, profile: ImportProfile, files: State<
         .map_err(|e| e.to_string())?
 }
 
+/// Settings › Import profiles: every profile the app cache holds, by its header (owner decision 1).
+#[tauri::command]
+async fn profile_list(files: State<'_, Files>) -> Result<Vec<tlmbench_decode::profile::SavedProfile>, String> {
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || tlmbench_decode::profile::list(&root)).await.map_err(|e| e.to_string())
+}
+
+/// Forgets the import profile for one header: the import dialog comes back for files with it.
+#[tauri::command]
+async fn profile_delete(header: Vec<String>, files: State<'_, Files>) -> Result<(), String> {
+    let root = files.store.root().to_owned();
+    spawn_blocking(move || tlmbench_decode::profile::remove(&root, &header)).await.map_err(|e| e.to_string())
+}
+
 /// The packet types of the descriptor that names `path` (each opens as its own recording); none when the file has no
 /// packet types.
 #[tauri::command]
@@ -3417,6 +3431,37 @@ async fn cache_clear(files: State<'_, Files>) -> Result<usize, String> {
     files.store.clear().map(|removed| removed.len()).map_err(|e| e.to_string())
 }
 
+/// Settings › Reset app…: removes what you chose from the app cache: import profiles, recipes, check sets (and their
+/// results), the events you added and the alignments between files. Settings, layouts and widgets are the UI's to
+/// reset; nothing beside the data is touched (the cache is the app's own folder). Returns what it removed.
+#[tauri::command]
+async fn reset_app(kinds: Vec<String>, files: State<'_, Files>) -> Result<Vec<String>, String> {
+    let root = files.store.root().to_path_buf();
+    spawn_blocking(move || {
+        let mut removed = Vec::new();
+        for kind in &kinds {
+            let dirs: &[&str] = match kind.as_str() {
+                "profiles" => &["profiles"],
+                "recipes" => &["recipes"],
+                "checks" => &["checks", "checks-results"],
+                "events" => &["events"],
+                "alignments" => &["timemaps"],
+                _ => return Err(format!("nothing to reset called {kind}")),
+            };
+            for d in dirs {
+                let p = root.join(d);
+                if p.exists() {
+                    std::fs::remove_dir_all(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+                    removed.push((*d).to_owned());
+                }
+            }
+        }
+        Ok(removed)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Show in Finder after an export: the OS file manager shows `path` selected (reveal only; the app runs no program).
 #[tauri::command]
 async fn reveal_path(path: String) -> Result<(), String> {
@@ -3598,6 +3643,9 @@ macro_rules! commands {
             cache_clear,
             cache_reveal,
             reveal_path,
+            reset_app,
+            profile_list,
+            profile_delete,
             close,
             hold,
             holders,

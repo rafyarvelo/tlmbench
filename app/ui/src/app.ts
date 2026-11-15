@@ -23,7 +23,7 @@ const ENVELOPE_ALPHA = 0.16;
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
-import { applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
+import { applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
@@ -4197,6 +4197,29 @@ async function htmlGo(): Promise<void> {
   }
 }
 
+/** Settings › Reset app… (owner decision 1, sheet A3): removes what was ticked. The core removes what the cache holds
+ * (import profiles, recipes, check sets, your events, alignments, and the summaries with "cache"); settings, layouts and
+ * widgets are reset here. Nothing beside the data is touched. */
+async function resetApp(what: string[]): Promise<void> {
+  const has = (k: string) => what.includes(k);
+  const kinds = ['profiles', 'recipes', 'checks', 'events', 'alignments'].filter(has);
+  try {
+    if (kinds.length) await invoke('reset_app', { kinds });
+    if (has('cache')) await invoke('cache_clear');
+  } catch (e) {
+    return note(`Couldn't reset: ${e}`);
+  }
+  const keep: (keyof typeof settings)[] = [];
+  if (!has('layouts')) keep.push('layouts', 'workspaces');
+  if (!has('widgets')) keep.push('customWidgets', 'trustedWidgetSources');
+  if (has('settings')) resetAllSettings(keep);
+  if (has('layouts')) (setSetting('workspaces', []), setSetting('layouts', {}));
+  if (has('widgets')) setSetting('customWidgets', []);
+  await Promise.all([refreshRecipes(), loadCheckSets()]);
+  if (state.file) await loadEvents();
+  note(`Reset: ${what.length} ${what.length === 1 ? 'item' : 'items'}. Files open as if for the first time where their import settings went.`);
+}
+
 /** Where each pane to save sits on the overlay: its plot with the margins for the axis labels. */
 function imagePanes(): { i: number; box: Rect; plot: Rect }[] {
   const which = settings.exportImage.what === 'sel' ? [stack.sel] : stack.panes.map((_, i) => i);
@@ -5060,6 +5083,7 @@ Object.assign(actions, {
   },
   recipesImport: (text: string) => void recipesImport(text),
   exportOpen,
+  resetApp,
   htmlOpen,
   htmlGo: () => void htmlGo(),
   htmlSizes: () => void htmlSizes(),

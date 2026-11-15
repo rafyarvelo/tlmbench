@@ -139,6 +139,34 @@
       }
     }
   }
+  /** The import profiles the cache holds, by header (owner decision 1: forget one without resetting everything). */
+  let profiles = $state<{ header: string[] }[]>([]);
+  const loadProfiles = () => invoke<{ header: string[] }[]>('profile_list').then((l) => (profiles = l)).catch(() => (profiles = []));
+  // read again whenever Settings is shown (a profile is saved when a CSV first opens, while Settings is hidden)
+  let root = $state<HTMLElement>();
+  $effect(() => {
+    if (!root) return;
+    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && void loadProfiles());
+    io.observe(root);
+    return () => io.disconnect();
+  });
+  async function forgetProfile(header: string[]) {
+    await invoke('profile_delete', { header }).catch(() => {});
+    await loadProfiles();
+  }
+  /** Reset app… (owner decision 1): each thing that can go, all ticked to start. */
+  const RESET: [string, string, string][] = [
+    ['settings', 'Settings', 'Everything on this page, back to the defaults'],
+    ['profiles', 'Import profiles', 'The import dialog comes back for every file'],
+    ['recipes', 'Recipes', 'Your derived channels'],
+    ['checks', 'Rules and checks', 'Your sets and their results'],
+    ['layouts', 'Layouts', 'Saved layouts and each file’s panes'],
+    ['events', 'Your events', 'Events you added to files'],
+    ['widgets', 'Widgets', 'Widgets of your own'],
+    ['alignments', 'Alignments', 'How files in one tab line up'],
+    ['cache', 'Cache', 'File summaries; rebuilt when a file opens'],
+  ];
+  let resetAsk = $state<Set<string> | null>(null);
 </script>
 
 <div class="setin" id="setPanel">
@@ -228,14 +256,35 @@
     <div class="urow"><span>Record live sessions to<br /><small class="muted" id="recDir">{settings.recordTo || 'The Recordings folder in the app’s data folder'}</small></span><span class="uctl"><button class="tbtn" id="recChoose" onclick={chooseRecDir}>Choose…</button>{#if settings.recordTo}<button class="tbtn" id="recDefault" onclick={() => setSetting('recordTo', '')}>Default</button>{/if}</span></div>
   </section>
   <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span id="sessTxt">{settings.sessions[settings.folder]?.files.length ? 'Session saved · only you (app cache)' : 'Session saves automatically'}</span><button class="tbtn" id="setResetSession" data-tip="Close this folder's tabs and forget its saved session" onclick={actions.resetSession}>Reset session</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
+  <section id="profileSet" bind:this={root}><h3>Import profiles</h3>
+    {#each profiles as pr (pr.header.join('\u0000'))}
+      <div class="urow" data-profile={pr.header.join(',')}><span class="prof">{pr.header.join(', ')}</span><button class="tbtn" data-profdel aria-label="Forget the profile for {pr.header.join(', ')}" data-tip="Forget it: the import dialog comes back for files with these columns" onclick={() => forgetProfile(pr.header)}>{@html ICON.trash}</button></div>
+    {:else}
+      <div class="urow"><span class="muted">None yet. A CSV's import settings are kept by its columns the first time it opens.</span></div>
+    {/each}
+  </section>
   <section class="cache"><h3>Cache</h3>
     <p class="cpath" id="cachePath" data-tip={cache?.path}>{cache?.path ?? '…'}</p>
-    <div class="urow"><span id="cacheSize" class="num">{cache ? `${size(cache.bytes)} of ${size(cache.cap)}` : ''}</span><button class="tbtn" id="cacheOpen" data-tip="Show the cache folder in the file manager" onclick={() => invoke('cache_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="cacheClear" disabled={!cache?.bytes} data-tip="Remove the summaries of files that aren't open; they are rebuilt when a file opens again" onclick={clearCache}>Clear cache</button></div>
+    <div class="urow"><span id="cacheSize" class="num">{cache ? `${size(cache.bytes)} of ${size(cache.cap)}` : ''}</span><button class="tbtn" id="cacheOpen" data-tip="Show the cache folder in the file manager" onclick={() => invoke('cache_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="cacheClear" disabled={!cache?.bytes} data-tip="Remove the summaries of files that aren't open; they are rebuilt when a file opens again. Keeps your settings, import profiles, recipes and sets (Reset app… removes those)" onclick={clearCache}>Clear cache</button></div>
     {#if cleared}<p class="muted" id="cacheNote">{cleared}</p>{/if}
   </section>
-  <footer><span>Saved as you change them</span><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
+  <footer><span>Saved as you change them</span><button class="tbtn" id="setResetApp" data-tip="Start over: choose what goes (settings, import profiles, recipes, sets, layouts, events, widgets, the cache)" onclick={() => (resetAsk = new Set(RESET.map(([k]) => k)))}>Reset app…</button><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
   {/if}
 </div>
+
+{#if resetAsk}
+  <div class="scrim" role="presentation" onclick={() => (resetAsk = null)}></div>
+  <div class="dlg resetdlg" id="resetDlg" role="dialog" aria-label="Reset app">
+    <header><b>Reset app</b><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={() => (resetAsk = null)}>{@html ICON.close}</button></header>
+    <div class="dbody">
+      <p>What you tick goes for good. Your recordings and their folders are never touched.</p>
+      {#each RESET as [k, label, hint] (k)}
+        <label class="rrow"><input type="checkbox" data-reset={k} checked={resetAsk.has(k)} onchange={(e) => { const n = new Set(resetAsk); if (e.currentTarget.checked) n.add(k); else n.delete(k); resetAsk = n; }} /><span>{label}<small class="muted">{hint}</small></span></label>
+      {/each}
+    </div>
+    <footer><span class="spacer"></span><button class="tbtn" onclick={() => (resetAsk = null)}>Cancel</button><button class="tbtn primary danger" id="resetGo" disabled={!resetAsk.size} onclick={async () => { const w = [...resetAsk!]; resetAsk = null; await actions.resetApp(w); void loadProfiles(); }}>Reset</button></footer>
+  </div>
+{/if}
 
 <style>
   .setin {
@@ -383,5 +432,28 @@
     align-items: center;
     gap: 4px;
     font-size: 11.5px;
+  }
+  .resetdlg {
+    width: min(460px, calc(100vw - 32px));
+  }
+  .rrow {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+  }
+  .rrow small {
+    display: block;
+  }
+  .danger {
+    border-color: var(--danger);
+    background: var(--danger);
+  }
+  .prof {
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>
