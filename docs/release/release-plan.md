@@ -21,7 +21,8 @@ v1 goes to `docs/post-v1.md`.
 
 **A step is done when** its ledger rows are Done (or Owner pass with what to look at), `python3 ci/ledger_check.py` passes,
 the owner has been asked to push and has, **CI is green on the pushed commit with no rerun**, and the status table says so
-with the commit and the run. An agent never pushes without the owner's go-ahead (CLAUDE.md), so "built, not pushed" is a
+with the commit and the run. Docs-only commits are not pushed on their own; they go up with the next push of code or
+tests (owner, Nov 15), since a run takes about 1.5 hours and a push cancels the one in progress. An agent never pushes without the owner's go-ahead (CLAUDE.md), so "built, not pushed" is a
 state of its own in the table, not "done".
 
 ## Status (Nov 15, 2026)

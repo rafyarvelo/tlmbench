@@ -14,8 +14,8 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
-1. **Push.** `main` is a few docs-only commits ahead of `origin/main` (the owner's Nov 15 decisions). Ask the owner,
-   push, and watch the run until it's green. R0 is done (two clean runs Nov 15).
+1. **Don't push docs-only commits on their own** (owner, Nov 15). `main` is a few docs commits ahead of `origin/main`;
+   they go up with your first push of code or tests. R0 is done (two clean runs Nov 15).
 2. **Triage the owner test sheet:** new Results and Notes become ledger rows or fixes.
 3. **R3.1, then R3.2** (release plan, R3; moved before R2.2 by the owner on Nov 15, so their re-tests meet the improved
 app). The lists are the Port rows of `docs/release/parity-classes.md` and the owner's Nov 15 decisions listed in the
@@ -35,8 +35,10 @@ ledger row Partial with what is left. Then R2.2's remaining items, in the order 
 ## Rules
 
 - **Done means:** ledger rows moved with evidence you ran (a test by name, a file, or a command with its date),
-  `python3 ci/ledger_check.py` passing with the counts line updated, the status table updated, and then ask the owner to
-  push. After the push, watch CI (`gh run watch`) and fix what fails until it is green with no rerun. Ledger IDs are unique:
+  `python3 ci/ledger_check.py` passing with the counts line updated, the status table updated, and, when code or tests
+  changed, ask the owner to push. After the push, watch CI (`gh run watch`) and fix what fails until it is green with no
+  rerun. **Push only when CI has something to prove:** a docs-only commit waits for the next push of code or tests (owner,
+  Nov 15); a full run takes about 1.5 hours and a push cancels the run in progress. Ledger IDs are unique:
   check the highest in use before adding one.
 - A test for every behaviour change, the tests README's table, and a note in `docs/follow-ups.md` when behaviour differs
   from the design. New ideas go to `docs/post-v1.md`, never into v1 without the owner.
