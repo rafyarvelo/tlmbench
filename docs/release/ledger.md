@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 255 · **Partial** 43 · **Missing** 17 · **Diverged** 4 · **Unverified** 24 · **Owner pass** 17 (360 rows).
+Counts: **Done** 257 · **Partial** 42 · **Missing** 16 · **Diverged** 4 · **Unverified** 24 · **Owner pass** 17 (360 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -113,7 +113,7 @@ where each step stands, and nothing else records either.
 | S5.2-12 | roadmap 5.2 | Markers on charts, ticks on the overview. | Done | `t_eventmarks` | The hover tooltip is D-ui-11 |
 | S5.2-13 | roadmap 5.2 | The table's Event column and tinted rows. | Partial | `t_eventstop` (tint, stripe and ▸ ◂ ● tags in the Time cell) | No Event column, no stronger tint on the channels an event concerns, a tag click doesn't reveal the event. R3.3 |
 | S5.2-14 | roadmap 5.2 | The top bar's E toggle and each pane's. | Done | `t_eventmarks` | |
-| S5.2-15 | roadmap 5.2 | Stop at in the transport (any event, or chosen categories). | Partial | `t_eventstop` | One category at a time; the design says chosen categories. R3.3 |
+| S5.2-15 | roadmap 5.2 | Stop at in the transport (any event, or chosen categories). | Done | `t_eventstop` (Nov 15) | Stop at is a menu: Nothing, Any event, or any number of ticked categories; the button names them |
 | S5.2-16 | roadmap 5.2, Done when | The prototype's events and limits tests are ported and their harness scenes match. | Partial | `t_events`, `t_eventmarks`, `t_limits`, `app/ui/tests/parity/scenes.js` (no scene for the Events panel or the channel editor) | "Charts follow these filters" per tab is not built. Add the scenes: R3.3 |
 | S5.3-01 | roadmap 5.3 | Core: the rule and check engine on the expressions: Expect, When, grace, settle. | Done | `tlmbench-store::checks::a_sample_check_finds_its_violations`, `tlmbench-store::checks::when_scopes_the_check`, `tlmbench-store::checks::grace_ignores_short_violations_and_settle_the_start_of_the_scope` | |
 | S5.3-02 | roadmap 5.3 | Summary functions (`pct`, `duration`, `occurrences`, `since`, min, max, mean, first, last). | Done | `tlmbench-expr::functions::one_number_family`, `tlmbench-store::checks::summary_checks_see_only_the_scope` | |
@@ -298,7 +298,7 @@ where each step stands, and nothing else records either.
 | D-ui-08 | design UI | Every toolbar and panel choice is a saved setting, with Reset to defaults and Reset UI layout; Basic and All. | Done | `t_shell`, `t_sidebars`, `t_fileopen` | |
 | D-ui-09 | design UI | Explorer: channels drag to a pane's edge, between rows and onto a category; categories multi-select; Enter runs the primary action for several rows. | Partial | `t_channels`, `t_colors`, `proto:t_explorer` | Drops land on a pane or empty space only; categories aren't multi-selectable; they come from name prefixes, not the descriptor. R3.2 |
 | D-ui-10 | design UI | Quiet interface and "nothing appears under a passing pointer". | Partial | `t_fileopen`, `t_slots` | Nov 15: a channel row's unit and pane show on hover, focus or selection. Quiet interface still doesn't reach chips, file numbers or grips. R3.4 |
-| D-ui-11 | design Events | Hovering an event marker shows a tooltip (name, category, start, duration). | Missing | `t_eventmarks` (the pointer readout names the event) | R3.3 |
+| D-ui-11 | design Events | Hovering an event marker shows a tooltip (name, category, start, duration). | Done | `t_eventmarks` (Nov 15) | A floating tip near the pointer: name, category, start and length ("instant" for a marker) |
 | D-ui-12 | design Events | Events come from the file too; an event lists the channels it concerns. | Partial | `crates/store/src/events.rs:30` (the field) | Nothing detects events in a file or fills the channels; the Events panel has no file chips. R2.5 |
 | D-ui-13 | design Time modes | Play: the transport (play/pause, Space, speed, window presets, scrubber, Follow, the A–B loop, stopping at the end). | Done | `t_transport` (Nov 15) | The lost test restored: opens paused, Play, speed, window presets, Space, scrubber, Follow, the end, the A–B loop, Stop at offered |
 | D-ui-14 | design Time modes | Each tab remembers its playhead, speed and window, restored paused; switching tabs closes the transport. | Done | `t_transport` (Nov 15) | Each tab keeps its playhead, restored paused; another tab opens without the transport |

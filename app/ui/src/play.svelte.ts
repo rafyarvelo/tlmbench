@@ -27,6 +27,16 @@ export const play = $state({
   canLoop: false,
 });
 
+/** What Stop at is set to: `off`, `any`, or `cat:id` for chosen categories (several are joined with commas). */
+export function stopCats(v: string): 'off' | 'any' | string[] {
+  if (v === 'off' || v === 'any' || !v) return v === 'any' ? 'any' : 'off';
+  const ids = v.split(',').filter((x) => x.startsWith('cat:')).map((x) => x.slice(4));
+  return ids.length ? ids : 'off';
+}
+
+/** The setting for these chosen categories (none: off). */
+export const stopValue = (ids: string[]): string => (ids.length ? ids.map((i) => `cat:${i}`).join(',') : 'off');
+
 /** What the transport's controls do: app.ts fills these in. */
 export const playActions = {
   /** Opens the transport, paused. */

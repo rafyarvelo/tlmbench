@@ -96,8 +96,10 @@ run(
     await p.evaluate(() => window.__tlmPlay.cursors(null, null));
 
     // Stop at: the transport pauses at an event (there are none in the fake recording, so the choices are offered)
-    const opts = await p.$$eval('#playStrip [data-pstop] option', (o) => o.map((x) => x.textContent ?? ''));
-    check('Stop at offers nothing, any event and each category', opts.some((t) => /nothing/.test(t)) && opts.some((t) => /any event/.test(t)) && opts.some((t) => /Alarm/.test(t)), opts);
+    await p.click('#playStrip [data-pstop]');
+    const opts = await p.$$eval('.stopmenu .mi', (o) => o.map((x) => x.textContent ?? ''));
+    await p.keyboard.press('Escape');
+    check('Stop at offers nothing, any event and each category', opts.some((t) => /^Nothing/.test(t)) && opts.some((t) => /^Any event/.test(t)) && opts.some((t) => /Alarm/.test(t)), opts);
 
     await p.click('#playStrip [data-pclose]');
     check('closing hides the transport', !(await strip()).shown);

@@ -3,9 +3,35 @@
 <script lang="ts">
   import { duration } from '../axes';
   import { ICON } from '../icons';
-  import { play, playActions, SPEEDS, speedLabel, WINDOWS } from '../play.svelte';
+  import { play, playActions, SPEEDS, speedLabel, stopCats, stopValue, WINDOWS } from '../play.svelte';
+  import Menu, { type MenuItem } from './Menu.svelte';
   import { setSetting, settings } from '../settings.svelte';
 
+  /** Stop at (design: Time modes): nothing, any event, or the categories you tick: several can be. */
+  let stopMenu = $state<HTMLElement | null>(null);
+  let stopBtn = $state<HTMLElement>();
+  const want = $derived(stopCats(settings.stopAt));
+  const stopText = $derived.by(() => {
+    if (want === 'off') return 'Stop at nothing';
+    if (want === 'any') return 'Stop at any event';
+    const names = want.map((id) => settings.eventCats.find((c) => c.id === id)?.name ?? id);
+    return names.length > 2 ? `Stop at ${names.length} categories` : `Stop at ${names.join(', ')}`;
+  });
+  const stopItems = (): MenuItem[] => [
+    { label: 'Nothing', checked: want === 'off', radio: true, data: { stop: 'off' }, run: () => setSetting('stopAt', 'off') },
+    { label: 'Any event', checked: want === 'any', radio: true, data: { stop: 'any' }, run: () => setSetting('stopAt', 'any') },
+    { heading: 'Or the categories you tick' },
+    ...settings.eventCats.map((c): MenuItem => ({
+      label: c.name,
+      checked: want !== 'off' && want !== 'any' && want.includes(c.id),
+      data: { stop: c.id },
+      keep: true,
+      run: () => {
+        const have = want === 'off' || want === 'any' ? [] : want;
+        setSetting('stopAt', stopValue(have.includes(c.id) ? have.filter((x) => x !== c.id) : [...have, c.id]));
+      },
+    })),
+  ];
   const winLabel = (s: number) => (s >= 3600 ? `${s / 3600} h` : s >= 60 ? `${s / 60} min` : `${s} s`);
 </script>
 
@@ -28,10 +54,8 @@
   <button class="pf" data-ploop aria-pressed={play.loop} disabled={!play.canLoop} data-tip="Repeat the stretch between cursors A and B" onclick={() => (play.loop = !play.loop)}
     >Loop A–B</button
   >
-  <select class="sel pstop" data-pstop aria-label="Stop at" data-tip="Pause when the playhead reaches an event; play again to go on past it" value={settings.stopAt} onchange={(e) => setSetting('stopAt', e.currentTarget.value)}>
-    <option value="off">Stop at nothing</option><option value="any">Stop at any event</option>
-    {#each settings.eventCats as c (c.id)}<option value="cat:{c.id}">Stop at {c.name}</option>{/each}
-  </select>
+  <button class="sel pstop" data-pstop aria-haspopup="menu" aria-expanded={!!stopMenu} data-tip="Pause when the playhead reaches an event; play again to go on past it" bind:this={stopBtn} onclick={() => (stopMenu = stopMenu ? null : stopBtn!)}>{stopText}</button>
+  {#if stopMenu}<Menu class="stopmenu" label="Stop at" first anchor={stopMenu} onclose={() => (stopMenu = null)} items={stopItems()} />{/if}
   <span class="spacer"></span>
   <button class="pb" data-pclose aria-label="Close the transport" data-tip="Close (the view stays)" onclick={playActions.close}>{@html ICON.close}</button>
   <input

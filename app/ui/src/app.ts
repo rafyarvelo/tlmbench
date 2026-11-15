@@ -26,7 +26,7 @@ import { bindTips, flash } from './tips';
 import { COMMANDS, matches, menuLabel } from './commands';
 import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, REMEMBERED, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
-import { play, playActions, SPEEDS } from './play.svelte';
+import { play, playActions, SPEEDS, stopCats } from './play.svelte';
 import { catColor, catName, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
 import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, lineOf, type Limits, limitsOf, openChannelEditor, twinIn } from './display.svelte';
@@ -626,10 +626,10 @@ function playFrame(now: number): void {
 
 /** The start (seconds from the file's start) of the first event the playhead passes in (from, to], if Stop at wants it. */
 function nextStop(from: number, to: number, first: bigint): number | null {
-  const want = settings.stopAt;
+  const want = stopCats(settings.stopAt);
   let best: number | null = null;
   for (const e of marked()) {
-    if (want !== 'any' && want !== `cat:${e.category}`) continue;
+    if (want === 'off' || (want !== 'any' && !want.includes(e.category))) continue;
     const s = Number(BigInt(e.start) - first) / 1e9;
     if (s > from && s <= to && (best == null || s < best)) best = s;
   }

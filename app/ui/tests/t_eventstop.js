@@ -5,7 +5,7 @@ import { run } from './lib.js';
 
 run(
   'eventstop',
-  async ({ p, check, fake, until, plotAt }) => {
+  async ({ p, check, fake, until, plotAt, settingsLS }) => {
     const st = () => p.evaluate(() => window.__tlmPlay.state());
     await fake(() => {
       const t0 = BigInt(window.__tlmApp.view().t0);
@@ -26,9 +26,14 @@ run(
     check('the events are in', await until(() => document.querySelectorAll('#eventsPanel .ev[data-ev]').length === 5));
     await p.keyboard.press('Escape');
 
-    // Stop at
+    // Stop at: a menu with Nothing, Any event and a tick per category (several can be ticked)
+    const stop = async (...ids) => {
+      await p.click('#playStrip [data-pstop]');
+      for (const id of ids) await p.click(`.stopmenu [data-stop="${id}"]`);
+      if (await p.$('.stopmenu')) await p.keyboard.press('Escape');
+    };
     await p.click('#b-play');
-    await p.selectOption('#playStrip [data-pstop]', 'any');
+    await stop('any');
     check('Stop at is a setting', true);
     await p.evaluate(() => { window.__tlmPlay.seek(5); window.__tlmPlay.speed(5); });
     await p.click('#playStrip [data-pplay]');
@@ -40,12 +45,23 @@ run(
     check('that is the range\'s start', Math.abs((await st()).t - 30) < 0.01, await st());
 
     // one category only
-    await p.selectOption('#playStrip [data-pstop]', 'cat:mode');
+    await stop('mode');
     await p.evaluate(() => { window.__tlmPlay.seek(5); window.__tlmPlay.speed(30); });
     await p.click('#playStrip [data-pplay]');
     check('a category passes the others by', await until(() => !window.__tlmPlay.state().running && window.__tlmPlay.state().t > 29.9), JSON.stringify(await st()));
-    await p.selectOption('#playStrip [data-pstop]', 'off');
+
+    // several categories (S5.2-15): tick another and the first of either stops it
+    await stop('alarm');
+    check('the button says what is ticked', /Stop at .*Alarm/.test(await p.$eval('#playStrip [data-pstop]', (e) => e.textContent ?? '')) && /Mode/.test(await p.$eval('#playStrip [data-pstop]', (e) => e.textContent ?? '')), await p.$eval('#playStrip [data-pstop]', (e) => e.textContent));
+    await p.evaluate(() => { window.__tlmPlay.seek(5); window.__tlmPlay.speed(5); });
+    await p.click('#playStrip [data-pplay]');
+    check('with two categories ticked it stops at the first event of either', await until(() => !window.__tlmPlay.state().running), JSON.stringify(await st()));
+    check('that is the alarm at 10 s', Math.abs((await st()).t - 10) < 0.01, await st());
+    await stop('alarm');
+    check('unticking leaves the other', (await settingsLS()).stopAt === 'cat:mode', (await settingsLS()).stopAt);
+    await stop('off');
     await p.evaluate(() => window.__tlmPlay.seek(5));
+    await p.evaluate(() => window.__tlmPlay.speed(30));
     await p.click('#playStrip [data-pplay]');
     check('with Nothing it plays on', await until(() => window.__tlmPlay.state().t > 36), JSON.stringify(await st()));
     await p.click('#playStrip [data-pplay]');
