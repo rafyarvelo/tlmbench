@@ -10,13 +10,21 @@ reader is a module of its own (about 1 MB gzipped) that the page fetches only wh
 a Worker, so a big file doesn't freeze the tab. What was read is kept in the browser's private storage (OPFS); the same
 file opens from it next time, and **a reload brings back the files that were open**. Settings › Clear cache empties it.
 
+**Folders.** Where the browser has `showDirectoryPicker` (Chromium browsers today; not Firefox or Safari), **Open folder…**
+lists the folder in Explorer, read-only (the picker is asked for read access only and nothing is written to the folder):
+sub-folders, the files the app can read, dot folders left out. A file in it opens from its handle. The folder is remembered
+in the browser, and after a reload the browser asks for permission again. Where there is no picker, the start page says so
+and offers Open recording…. The folder's `.tlmbench/` (shared configuration) is not read yet.
+
 **Still to come for v1** (release plan R2.2): fixed-width and packet files through descriptors (kept in the browser,
-found by file name), WASM decoder plugins in the browser's own engine, and read-only folders where the browser can open
-one (`showDirectoryPicker`), with the folder's `.tlmbench/` read for shared configuration.
+found by file name), WASM decoder plugins in the browser's own engine, and reading the folder's `.tlmbench/`.
 
 **What a tab leaves out:** what needs the app (live sources, native plugins, browser access, recording, writing shared
 configuration), and what comes after v1 (several files in one tab with alignment, derived channels, events, rules and
 checks, layouts: `docs/post-v1.md`). A tab doesn't show a button that can't act.
+In the page that means: no Live, Layouts or Rules & checks in the rail; no Derive, Compare, Open together, Add to tab,
+Open with layout, Mark when or Add check; no Save, Share or Export file in the tab menu (a tab keeps no layouts); no
+Checks view for a pane; the Events panel lists but has no Marker, Range or Rules; Settings leaves out what it can't do.
 
 ## Hosting it
 

@@ -81,11 +81,13 @@
     {#if !ui.file}
       <p class="evnote">Open a recording to see its events. Each file keeps its own.</p>
     {:else}
+      {#if !ui.browserOnly}
       <div class="evbar">
         <button class="tbtn" id="evMarker" disabled={ui.viewer} data-tip={ui.viewer ? NOADD : 'Add a marker at cursor A'} onclick={() => actions.eventAdd(false)}>{@html ICON.plus}Marker at A</button>
         <button class="tbtn" id="evRange" disabled={ui.viewer} data-tip={ui.viewer ? NOADD : 'Add a range from cursor A to B'} onclick={() => actions.eventAdd(true)}>{@html ICON.plus}Range A–B</button>
         <button class="tbtn" id="evRules" disabled={ui.viewer} data-tip={ui.viewer ? 'Rules run in the app; an export shows the events they marked' : 'Rules mark events wherever a condition holds'} onclick={() => actions.checkEditor('Event rules', -1, true)}>Rules…</button>
       </div>
+      {/if}
       {#if events.msg}<p class="evnote" id="evMsg" role="status">{events.msg}</p>{/if}
       <div class="evfilter">
         <input class="sel" id="evQ" type="search" placeholder="Filter" aria-label="Filter events by name, category or channel" bind:value={events.q} />
@@ -110,7 +112,9 @@
           <button class="ev" data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? (e.by ? ` · added by ${e.by}` : ' · added by you') : e.source === 'shared' ? ` · shared${e.by ? ` by ${e.by}` : ''}` : e.source === 'rule' ? ' · from a rule' : e.source === 'check' ? ' · a check failed' : ''}" onclick={() => actions.eventShow(e.id)}>
             <i></i><span class="evname">{e.name}</span><span class="evwhen num">{when(e)}<small>{lasts(e)}</small></span>
           </button>
-          {#if e.source === 'user'}
+          {#if ui.browserOnly}
+            <!-- events are not edited in a browser tab -->
+          {:else if e.source === 'user'}
             <button class="evedit" data-evedit={e.id} aria-label="Edit {e.name}" aria-expanded={events.editing === e.id} data-tip="Edit" onclick={() => (events.editing = events.editing === e.id ? null : e.id)}>{@html ICON.edit}</button>
           {:else if e.source === 'rule' || e.source === 'check'}
             <button class="evedit" data-evedit={e.id} aria-label="Edit the {e.source} {e.name}" data-tip="Edit its {e.source}" onclick={() => editRow(e)}>{@html ICON.edit}</button>
@@ -128,7 +132,7 @@
         {/if}
       {/snippet}
       {#if !events.list.length}
-        <p class="evnote">No events. Place cursor A (and B), then add a marker or a range.</p>
+        <p class="evnote">{ui.browserOnly ? 'No events. Events in a browser tab come after v1.' : 'No events. Place cursor A (and B), then add a marker or a range.'}</p>
       {:else if !shown.length}
         <p class="evnote">No events match.</p>
       {:else if events.group}

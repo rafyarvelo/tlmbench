@@ -100,6 +100,11 @@
     addEventListener('pointerup', up);
   }
 
+  // a browser tab has no Layouts or Rules & checks: a sidebar left on one (saved by an earlier page) shows Explorer
+  $effect(() => {
+    if (ui.browserOnly && (settings.leftPanel === 'checks' || settings.leftPanel === 'layouts')) setSetting('leftPanel', 'explorer');
+  });
+
   // Ctrl+B: the left sidebar; Ctrl+Alt+B: Measure
   function key(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'b' || e.shiftKey) return;
@@ -116,6 +121,8 @@
     <div class="exwrap" data-panel="explorer" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Explorer /></div>
   {:else if id === 'events'}
     <div class="evwrap" data-panel="events" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Events /></div>
+  {:else if ui.browserOnly && (id === 'checks' || id === 'layouts')}
+    <!-- after v1 in a browser tab: not drawn -->
   {:else if id === 'checks'}
     <div class="ckwrap" data-panel="checks" class:drop-before={panelDrag.before === id && !!panelDrag.side} hidden={off}><Checks /></div>
   {:else if id === 'layouts'}

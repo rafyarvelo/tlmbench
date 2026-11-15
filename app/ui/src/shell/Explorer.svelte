@@ -255,7 +255,7 @@
       ...(mine.length || theirs.length ? [] : [{ label: 'No layouts yet', disabled: true, run: () => {} } as MenuItem]),
     ];
   };
-  const fileItems = (path: string): MenuItem[] => [
+  const fileItemsAll = (path: string): MenuItem[] => [
     { label: 'Open', data: { fm: 'open' }, disabled: isOpen(path), run: () => actions.openPath(path) },
     { label: 'Open with layout ▸', data: { fm: 'withlayout' }, disabled: !listedPath(path) || !(settings.workspaces.length || ui.shared.some((v) => v.ws)), keep: true, run: () => (fmenu = { ...fmenu!, layouts: true }) },
     { label: 'Open only this', data: { fm: 'only' }, disabled: !listedPath(path), run: () => actions.openOnly(path) },
@@ -268,6 +268,9 @@
     { label: 'Close this file', data: { fm: 'close' }, disabled: !inTab(path), run: () => (slotOf(path) ? actions.closeSlot(slotOf(path)!.slot) : actions.closePath(path)) },
     { label: 'Close all files', data: { fm: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
   ];
+  /** A browser tab has one file per tab: no layouts, Compare, Add to tab, primary or alignment there (they come after v1). */
+  const AFTER_V1 = ['withlayout', 'compare', 'add', 'primary', 'align'];
+  const fileItems = (path: string): MenuItem[] => fileItemsAll(path).filter((it) => !(ui.browserOnly && 'data' in it && AFTER_V1.includes(it.data?.fm ?? '')));
   const inSel = (ch: number) => stack.panes[stack.sel]?.channels.includes(ch) ?? false;
   const addShownTip = $derived(shownChans.length ? `Add ${q.trim() ? `the ${shownChans.length} matching` : `all ${shownChans.length}`} channels to pane ${stack.sel + 1}` : 'No channels shown');
 
@@ -291,7 +294,7 @@
     <button class="phtog" id="exToggle" aria-expanded={!closed} aria-label="Explorer panel" data-tip="Collapse or expand this panel" onclick={() => setPanelOpen('explorer', closed)}><span class="chv" class:shut={closed}>{@html ICON.chev}</span>Explorer</button><span class="spacer"></span>
     <button class="ibtn exall" id="exAddShown" aria-label={addShownTip} disabled={!ui.file || !shownChans.length || viewLocked()} data-tip={viewLocked() ? 'Unlock the view to change panes' : addShownTip} onclick={() => addChannels(shownChans)}>{@html ICON.add}</button>
     <button class="ibtn exall" id="exCats" aria-label="Show categories" aria-pressed={settings.exCategories} data-tip={settings.exCategories ? 'Showing categories. Click for a flat list' : 'Showing a flat list. Click to group channels into categories'} onclick={() => setSetting('exCategories', !settings.exCategories)}>{@html ICON.cats}</button>
-    <button class="ibtn exall" id="exDerive" aria-label="New derived channel" disabled={!ui.file || ui.viewer} data-tip={ui.viewer ? 'Derived channels are made in the app' : "New derived channel: compute one from this file's channels"} onclick={() => actions.deriveOpen(picked.length ? picked : sel?.startsWith('ch:') ? [+sel.slice(3)] : [])}>ƒ</button>
+    {#if !ui.browserOnly}<button class="ibtn exall" id="exDerive" aria-label="New derived channel" disabled={!ui.file || ui.viewer} data-tip={ui.viewer ? 'Derived channels are made in the app' : "New derived channel: compute one from this file's channels"} onclick={() => actions.deriveOpen(picked.length ? picked : sel?.startsWith('ch:') ? [+sel.slice(3)] : [])}>ƒ</button>{/if}
     <span class="exsep" aria-hidden="true"></span>
     <button class="ibtn exall" id="onlyOpen" aria-label="Show only open files" aria-pressed={settings.exOnlyOpen} data-tip={settings.exOnlyOpen ? 'Showing only the open files. Click to list every file' : 'List only the open files'} onclick={() => setSetting('exOnlyOpen', !settings.exOnlyOpen)}>{@html ICON.onlyOpen}</button>
     <button class="ibtn exall" id="treeExpand" aria-label="Expand all" data-tip="Expand all folders and channel groups" onclick={() => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', []))}>{@html ICON.expand}</button>
@@ -381,8 +384,8 @@
     <div class="selbar" id="fileSelBar" role="toolbar" aria-label="Selected files">
       <span class="cap">{pickedFiles.length} files</span><span class="spacer"></span>
       <button class="tbtn primary" data-fsel="open" data-tip="Open each in a tab of its own (Enter)" onclick={() => (actions.openPaths(pickedFiles.filter(listedPath)), (pickedFiles = []))}>Open</button>
-      <button class="tbtn" data-fsel="together" data-tip="Show them in one tab on the same timeline: the first is the primary" onclick={() => (actions.openTogether(pickedFiles.filter(listedPath)), (pickedFiles = []))}>Open together</button>
-      {#if pickedFiles.length === 2}<button class="tbtn" data-fsel="compare" data-tip="Compare runs: starts aligned, a pane for each channel both have" onclick={() => (actions.compare(pickedFiles[0], pickedFiles[1]), (pickedFiles = []))}>Compare</button>{/if}
+      {#if !ui.browserOnly}<button class="tbtn" data-fsel="together" data-tip="Show them in one tab on the same timeline: the first is the primary" onclick={() => (actions.openTogether(pickedFiles.filter(listedPath)), (pickedFiles = []))}>Open together</button>{/if}
+      {#if pickedFiles.length === 2 && !ui.browserOnly}<button class="tbtn" data-fsel="compare" data-tip="Compare runs: starts aligned, a pane for each channel both have" onclick={() => (actions.compare(pickedFiles[0], pickedFiles[1]), (pickedFiles = []))}>Compare</button>{/if}
       {#if filesOpen.length}<button class="tbtn" data-fsel="close" onclick={() => (actions.closePaths(filesOpen), (pickedFiles = []))}>Close</button>{/if}
       <button class="ibtn" data-fsel="clear" aria-label="Clear the selection" data-tip="Clear the selection (Esc)" onclick={() => (pickedFiles = [])}>{@html ICON.close}</button>
     </div>
@@ -392,7 +395,7 @@
       <button class="tbtn" data-sel="add" data-tip="Plot in the selected pane" onclick={() => addChannels(targets)}>Add to pane {stack.sel + 1}</button>
       <button class="tbtn" data-sel="chart" onclick={() => newPaneWith(targets)}>Chart</button>
       <button class="tbtn" data-sel="table" onclick={() => newPaneWith(targets, 'table')}>Table</button>
-      <button class="tbtn" data-sel="derive" data-tip={targets.length > 2 ? 'Pick one or two channels to derive from' : 'A new channel computed from this one'} disabled={targets.length > 2} onclick={() => actions.deriveOpen(targets)}>Derive…</button>
+      {#if !ui.browserOnly}<button class="tbtn" data-sel="derive" data-tip={targets.length > 2 ? 'Pick one or two channels to derive from' : 'A new channel computed from this one'} disabled={targets.length > 2} onclick={() => actions.deriveOpen(targets)}>Derive…</button>{/if}
       <button class="tbtn" data-sel="remove" disabled={!targets.some(plottedAnywhere)} data-tip="Take out of every pane" onclick={() => removeChannels(targets)}>Remove</button>
     </div>
   {/if}
@@ -435,8 +438,7 @@
       { label: 'Open them in a new table', data: { ex: 'new-table' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans, 'table') },
       { sep: true },
       { label: `Show files that can't be opened${hidden ? ` (${hidden} hidden)` : ''}`, checked: settings.exShowAll, data: { ex: 'showall' }, run: () => setSetting('exShowAll', !settings.exShowAll) },
-      { sep: true },
-      { label: 'Recipes…', data: { ex: 'recipes' }, run: actions.recipesOpen },
+      ...(ui.browserOnly ? [] : [{ sep: true } as const, { label: 'Recipes…', data: { ex: 'recipes' }, run: actions.recipesOpen }]),
     ]}
   />
 {/if}

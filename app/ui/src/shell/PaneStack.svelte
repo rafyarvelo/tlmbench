@@ -68,7 +68,7 @@
     { mode: 'gauges', label: 'Gauges', hint: 'One widget per channel: gauges, bars, rings, a compass, a horizon and more' },
     { mode: 'xy', label: 'XY plot', hint: 'One channel against another: a GPS track, current against throttle' },
     { mode: 'spectrum', label: 'Spectrum', hint: 'The frequency content of each channel over the time view' },
-    { mode: 'checks', label: 'Checks', hint: 'What the rules and checks found: the sets, their groups and verdicts' },
+    ...(ui.browserOnly ? [] : [{ mode: 'checks' as const, label: 'Checks', hint: 'What the rules and checks found: the sets, their groups and verdicts' }]),
   ] as const;
   const VIEW_ICON = { chart: ICON.vchart, table: ICON.vtable, both: ICON.vboth, cv: ICON.vboth, values: ICON.vvalues, spectrum: ICON.vspectrum, checks: ICON.vchecks, gauges: ICON.vgauges, xy: ICON.vxy } as const;
   const viewName = (i: number) => VIEWS.find((v) => v.mode === (stack.panes[i]?.mode ?? 'chart'))!.label;

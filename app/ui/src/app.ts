@@ -4820,11 +4820,8 @@ function channelMenu(ch: number, x: number, y: number): void {
     { label: 'Display…', data: { cm: 'display' }, run: () => openChannelEditor(ch) },
     { label: 'Value labels…', data: { cm: 'labels' }, run: () => openChannelEditor(ch, 'labels') },
     { label: 'Gap factor…', meta: `${gapFactor(ch)}×`, data: { gap: '' }, run: () => gapDialog(ch, x, y) },
-    { sep: true },
-    { label: 'Mark when…', data: { cm: 'mark' }, run: () => checkFor(ch, true) },
-    { label: 'Add check…', data: { cm: 'check' }, run: () => checkFor(ch, false) },
-    { sep: true },
-    ...(f.derived.some((d) => d.channel === ch)
+    ...(ui.browserOnly ? [] : [{ sep: true } as const, { label: 'Mark when…', data: { cm: 'mark' }, run: () => checkFor(ch, true) }, { label: 'Add check…', data: { cm: 'check' }, run: () => checkFor(ch, false) }, { sep: true } as const]),
+    ...(ui.browserOnly ? [] : f.derived.some((d) => d.channel === ch)
       ? [
           { label: 'Edit recipe…', data: { cm: 'edit' }, run: () => deriveEdit(ch) },
           { label: 'Duplicate recipe…', data: { cm: 'dup' }, run: () => deriveDuplicate(ui.channels[ch]?.name ?? '') },

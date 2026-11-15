@@ -155,7 +155,7 @@
     await loadProfiles();
   }
   /** Reset app… (owner decision 1): each thing that can go, all ticked to start but what the app remembers (sheet R3). */
-  const RESET: [string, string, string][] = [
+  const RESET_ALL: [string, string, string][] = [
     ['settings', 'Settings', 'Everything on this page, back to the defaults'],
     ['remembered', 'Things the app remembers', 'Recent files, each file’s panes and channel display, the sidebars, export choices, saved connections'],
     ['profiles', 'Import profiles', 'The import dialog comes back for every file'],
@@ -167,6 +167,8 @@
     ['alignments', 'Alignments', 'How files in one tab line up'],
     ['cache', 'Cache', 'File summaries; rebuilt when a file opens'],
   ];
+  /** A browser tab has no recipes, checks, layouts, events or alignments to reset (they come after v1). */
+  const RESET = ui.browserOnly ? RESET_ALL.filter(([k]) => !['recipes', 'checks', 'layouts', 'events', 'alignments'].includes(k)) : RESET_ALL;
   let resetAsk = $state<Set<string> | null>(null);
 </script>
 

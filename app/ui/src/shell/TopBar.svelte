@@ -110,13 +110,15 @@
     { heading: 'View' },
     ...(narrow
       ? [
-          { label: 'Event markers', kbd: 'E', checked: settings.eventsOn, run: () => setSetting('eventsOn', !settings.eventsOn) },
+          ...(ui.browserOnly ? [] : [{ label: 'Event markers', kbd: 'E', checked: settings.eventsOn, run: () => setSetting('eventsOn', !settings.eventsOn) } as MenuItem]),
           { label: 'Lock the time view', kbd: 'L', checked: settings.locked, run: () => setSetting('locked', !settings.locked) },
           { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
         ]
       : []),
-    { label: 'Link time view with other windows', checked: settings.linkView, data: { more: 'linkview' }, tip: 'This window follows the other windows that link too, and they follow it', run: () => setSetting('linkView', !settings.linkView) },
-    { label: 'Link cursors too', checked: settings.linkCursors, data: { more: 'linkcursors' }, disabled: !settings.linkView, run: () => setSetting('linkCursors', !settings.linkCursors) },
+    ...(ui.browserOnly ? [] : ([
+      { label: 'Link time view with other windows', checked: settings.linkView, data: { more: 'linkview' }, tip: 'This window follows the other windows that link too, and they follow it', run: () => setSetting('linkView', !settings.linkView) },
+      { label: 'Link cursors too', checked: settings.linkCursors, data: { more: 'linkcursors' }, disabled: !settings.linkView, run: () => setSetting('linkCursors', !settings.linkCursors) },
+    ] as MenuItem[])),
     { label: 'Overview above the panes', checked: settings.overviewTop, run: () => setSetting('overviewTop', !settings.overviewTop) },
     { heading: 'All panes' },
     ...ALL.map(([m, label, , tip]): MenuItem => ({ label: `Every pane as ${m === 'both' ? 'chart and table' : label.toLowerCase().replace(/s$/, '')}`, checked: allMode() === m, radio: true, data: { allmode: m }, disabled: lk, tip: lk ? LOCKED : tip, run: () => setAllModes(m) })),
@@ -226,7 +228,7 @@
         >
       </div>
     {/each}
-    {#if !__VIEWER__}<button
+    {#if !__VIEWER__ && !ui.browserOnly}<button
       class="tnew"
       id="wsTabNew"
       aria-label="New tab"
@@ -265,7 +267,7 @@
   {/if}
   {#if !narrow}<span class="vsep" aria-hidden="true"></span>{/if}
   {#if !narrow}
-    <button class="tb" id="b-events" aria-pressed={settings.eventsOn} aria-label="Event markers" data-tip="Show or hide event markers on the charts and the overview (E)" onclick={() => setSetting('eventsOn', !settings.eventsOn)}>{@html ICON.events}</button>
+    {#if !ui.browserOnly}<button class="tb" id="b-events" aria-pressed={settings.eventsOn} aria-label="Event markers" data-tip="Show or hide event markers on the charts and the overview (E)" onclick={() => setSetting('eventsOn', !settings.eventsOn)}>{@html ICON.events}</button>{/if}
     <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
   {/if}
   {#if barW >= 1200}
@@ -319,13 +321,14 @@
             {:else if menuTab.ws}
               {#if menuTab.dirty}<span class="dot warn"></span><span>Unsaved changes</span>{:else}<span class="dot good"></span><span>Saved</span>{/if}
             {:else if ui.viewer}{@html ICON.file}<span>The view this export was made with.</span>
+            {:else if ui.browserOnly}{@html ICON.file}<span>The panes this file opened with.</span>
             {:else}{@html ICON.file}<span>The panes this file opened with. Save as keeps them as a layout.</span>{/if}
           </div>
           {#if !menuTab.live}<div class="tmfiles" id="tabFiles"><span>This tab shows</span>{#if menuTab.key === tabs.active && ui.slots.length > 1}{#each ui.slots as r (r.slot)}<span class="fchip" data-tip={r.path}>{r.slot} · {r.name}</span>{/each}{:else}<span class="fchip" data-tip={menuTab.path}>1 · {(menuTab.path.split(/[\\/]/).pop() ?? menuTab.path) + (menuTab.part ? ` · ${menuTab.part}` : '')}</span>{/if}</div>{/if}
           <div class="msep"></div>
         {/if}
-        <!-- a viewer saves nothing, shares nothing and has one window: those items are left out, not disabled -->
-        {#if !ui.viewer}
+        <!-- a viewer saves nothing, shares nothing and has one window: those items are left out, not disabled; a browser tab keeps no layouts and has one window either -->
+        {#if !ui.viewer && !ui.browserOnly}
         {#if !menuTab?.live && !menuTab?.shared}
           <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab?.ws || !menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
         {/if}
