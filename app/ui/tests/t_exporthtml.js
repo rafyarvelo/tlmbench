@@ -21,7 +21,7 @@ run(
     await fake(() => (window.__tlmFake.htmlSizeScale = 1e6));
     await p.selectOption('#htmlChannels', 'all');
     check('Automatic picks Light when Full is over the budget', await until(() => /Light: about/.test(document.querySelector('#htmlSummary')?.textContent ?? '')), await text('#htmlSummary'));
-    check('and says what Light keeps', /Full doesn't fit the budget/.test(await text(dlg)), await text(dlg));
+    check('and says what Light keeps', /doesn't fit the budget/.test(await text(dlg)), await text(dlg));
     await fake(() => (window.__tlmFake.htmlSizeScale = 1));
     await p.selectOption('#htmlMode', 'light');
     await p.selectOption('#htmlRange', 'view');
@@ -56,6 +56,44 @@ run(
     check('with Show in Finder', (await reveal.count()) === 1, await text('#wsNote'));
     await reveal.click();
     check('which shows the export folder', await until(() => (window.__tlmFake.revealedPaths ?? []).join() === '/out/dir/flight-export'), await fake(() => window.__tlmFake.revealedPaths ?? null));
+
+    // One file (owner decision 7): opens from anywhere, with its own size limit (default 25 MB)
+    await p.click('#b-more');
+    await p.click('.moremenu [data-more="exporthtml"]');
+    await until(() => !!document.querySelector('#htmlDlg'));
+    check('Save as offers Folder and One file, each with its size', await until(() => /Folder \(/.test(document.querySelector('#htmlFormat')?.textContent ?? '') && /One file \(/.test(document.querySelector('#htmlFormat')?.textContent ?? '')), await text('#htmlFormat'));
+    check('a folder has no size limit field', !(await p.$('#htmlLimit')));
+    await p.selectOption('#htmlFormat', 'file');
+    check('One file shows the limit field, 25 MB to start', (await p.$eval('#htmlLimit', (i) => i.value)) === '25');
+    check('the summary counts against the limit, not the budget', await until(() => /of the 25 MB limit/.test(document.querySelector('#htmlSummary')?.textContent ?? '')), await text('#htmlSummary'));
+    check('the command line says --single-file', /--single-file/.test(await text(`${dlg} .hint`)) && !/--single-limit/.test(await text(`${dlg} .hint`)), await text(`${dlg} .hint`));
+    await p.selectOption('#htmlMode', 'auto');
+    check('every raw sample when they fit the limit: Automatic says Full', await until(() => /Full: about/.test(document.querySelector('#htmlSummary')?.textContent ?? '')), await text('#htmlSummary'));
+    await fake(() => (window.__tlmFake.htmlSizeScale = 1e6));
+    await p.selectOption('#htmlChannels', 'layout');
+    await p.selectOption('#htmlChannels', 'all');
+    check('Light when they don\'t, and says a folder has no such limit', await until(() => /A folder has no such limit/.test(document.querySelector('#htmlDlg')?.textContent ?? '')), await text(dlg));
+    await fake(() => (window.__tlmFake.htmlSizeScale = 1));
+    await p.selectOption('#htmlChannels', 'layout');
+    await p.fill('#htmlLimit', '100');
+    await p.dispatchEvent('#htmlLimit', 'change');
+    check('a new limit is in the command line and remembered', await until(() => /--single-limit 100MB/.test(document.querySelector('#htmlDlg .hint')?.textContent ?? '')) && (await settingsLS()).exportHtml?.limit === 100 && (await settingsLS()).exportHtml?.format === 'file', await text(`${dlg} .hint`));
+    await fake(() => Object.assign(window.__tlmFake, { savePick: '/out/mail/flight.html', htmlSteps: 0 }));
+    await p.click('#htmlGo');
+    check('Export asks the core for one file at the path chosen, with the limit', await until(() => window.__tlmFake.htmlExports.length === 2));
+    const one = (await fake(() => window.__tlmFake.htmlExports))[1];
+    check('single, out is the file, the limit in bytes', one.single === true && one.out === '/out/mail/flight.html' && one.singleLimit === 100 * 1048576, one);
+    check('the note gives the file\'s size', await until(() => /Exported to flight\.html in mail: 5\.3 MB/.test(document.querySelector('#wsNote .txt')?.textContent ?? ''), null, 8000), await text('#wsNote'));
+    await fake(() => (window.__tlmFake.savePick = null));
+    await p.click('#b-more');
+    await p.click('.moremenu [data-more="exporthtml"]');
+    await until(() => !!document.querySelector('#htmlDlg'));
+    await p.click('#htmlGo');
+    await p.waitForTimeout(200);
+    check('cancelling the save dialog writes nothing', (await fake(() => window.__tlmFake.htmlExports.length)) === 2);
+    await p.selectOption('#htmlFormat', 'folder');
+    await p.keyboard.press('Escape');
+    await until(() => !document.querySelector('#htmlDlg'));
 
     // a failure is shown, with Try again reopening the dialog
     await fake(() => Object.assign(window.__tlmFake, { exportFails: 'disk full', htmlSteps: 0 }));

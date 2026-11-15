@@ -4152,7 +4152,7 @@ async function htmlSizes(): Promise<void> {
   const chans = o.channels === 'all' ? f.info.channels.map((_, c) => c) : html.layout;
   const raw = html.raw.filter((c) => chans.includes(c));
   try {
-    const s = await invoke<{ full: number; light: number; budget: number }>('export_html_sizes', { file: f.id, channels: chans, raw });
+    const s = await invoke<{ full: number; light: number; budget: number; overhead: number }>('export_html_sizes', { file: f.id, channels: chans, raw });
     if (html.open) html.sizes = s;
   } catch {
     html.sizes = null;
@@ -4169,23 +4169,27 @@ async function htmlGo(): Promise<void> {
   const f = state.file;
   if (!ctx || !f || html.busy || ui.task) return;
   const o = settings.exportHtml;
-  const folder = await openDialog({ directory: true, title: 'Export to' });
-  if (typeof folder !== 'string') return;
+  const one = o.format === 'file';
+  const folder = one ? null : await openDialog({ directory: true, title: 'Export to' });
+  const file = one ? await saveDialog({ defaultPath: `${ctx.base}.html`, filters: [{ name: 'HTML page', extensions: ['html'] }] }) : null;
+  if (one ? typeof file !== 'string' : typeof folder !== 'string') return;
   const chans = o.channels === 'all' ? f.info.channels.map((_, c) => c) : html.layout;
   const raw = html.raw.filter((c) => chans.includes(c));
   const secs = (t: bigint) => Number(t - f.first) / 1e9;
   const layout = { ...toWorkspace(frontTab()?.ws ?? ctx.base, stack.panes, channelNames()), view: [secs(state.t0), secs(state.t1)] };
   const span = o.range === 'all' ? null : ctx.view;
-  const out = `${folder.replace(/[\\/]$/, '')}${sep(folder)}${ctx.base}-export`;
+  const out = one ? file! : `${folder!.replace(/[\\/]$/, '')}${sep(folder!)}${ctx.base}-export`;
+  const where = one ? ` in ${nameOf(file!.replace(/[\\/][^\\/]*$/, '')) || file}` : ` in ${folder}`;
   Object.assign(html, { open: false, busy: true, error: '', result: '' });
   ui.task = { label: `Exporting ${ctx.base} to HTML`, done: 0, total: 1 };
   const stop = await listen<{ done: number; total: number }>('html-export-progress', (e) => ui.task && Object.assign(ui.task, e.payload));
   try {
-    const w = await invoke<{ out: string; viewer: boolean; report: { mode: string; bytes: number; trimmed: boolean } }>('export_html', {
-      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [], widgets: settings.customWidgets, detail: htmlDetail(o), connectGaps: settings.gapLines === 'connect' },
+    const w = await invoke<{ out: string; viewer: boolean; bytes: number; report: { mode: string; bytes: number; trimmed: boolean } }>('export_html', {
+      req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [], widgets: settings.customWidgets, detail: htmlDetail(o), connectGaps: settings.gapLines === 'connect', single: one, singleLimit: one ? Math.round(Math.max(1, o.limit) * 1048576) : null },
     });
-    const mb = (w.report.bytes / 1048576).toFixed(w.report.bytes > 1e7 ? 0 : 1);
-    html.result = `Exported to ${nameOf(w.out)} in ${folder}: ${mb} MB, ${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
+    const sz = one ? w.bytes : w.report.bytes;
+    const mb = (sz / 1048576).toFixed(sz > 1e7 ? 0 : 1);
+    html.result = `Exported to ${nameOf(w.out)}${where}: ${mb} MB, ${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
     note(html.result, () => void invoke('reveal_path', { path: w.out }).catch((e) => note(`Couldn't show it: ${e}`)), REVEAL);
     ui.noteOk = true;
   } catch (e) {

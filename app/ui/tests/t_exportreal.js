@@ -71,6 +71,31 @@ try {
   const m = existsSync(join(out, 'export.json')) ? JSON.parse(readFileSync(join(out, 'export.json'), 'utf8')) : null;
   check('the manifest holds the layout in front', m?.layout?.panes?.length > 0 && m?.files?.[0]?.samples === 5000, m?.layout);
 
+  // One file (decision 7): the core writes a single page with every raw sample, and it opens from file://
+  await page.click('#b-more');
+  await page.click('.moremenu [data-more="exporthtml"]');
+  await until(page, () => !!document.getElementById('htmlGo'));
+  await page.selectOption('#htmlFormat', 'file');
+  check('One file shows its size from the core', await until(page, () => /One file \(\d/.test(document.querySelector('#htmlFormat')?.textContent ?? '')), await page.$eval('#htmlFormat', (e) => e.textContent));
+  const one = join(home, 'one.html');
+  answer = one;
+  await page.click('#wsNote [aria-label="Dismiss"]').catch(() => {});
+  await page.click('#htmlGo');
+  check('Export writes one file, Full, and says so', await until(page, () => /Exported to one\.html in .*: .* MB, Full/.test(document.querySelector('#wsNote .txt')?.textContent ?? '') && !document.querySelector('#wsTask'), 20000), await page.$eval('#wsNote', (e) => e.textContent));
+  check('a single HTML file under 25 MB, with the data inside it', existsSync(one) && statSync(one).size < 25 * 1048576 && readFileSync(one, 'utf8').includes('__tlmFiles'), existsSync(one) && statSync(one).size);
+  const f = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  const ferrs = [];
+  f.on('pageerror', (e) => ferrs.push(e.message));
+  await f.goto('file://' + one, { waitUntil: 'domcontentloaded' });
+  check('it opens from file:// and draws its first view', await until(f, () => window.__tlmFirstView != null, 15000), ferrs);
+  await page.keyboard.press('Escape');
+  await page.click('#b-more');
+  await page.click('.moremenu [data-more="exporthtml"]');
+  await until(page, () => !!document.getElementById('htmlGo'));
+  await page.selectOption('#htmlFormat', 'folder');
+  await page.keyboard.press('Escape');
+  await until(page, () => !document.querySelector('#htmlDlg'));
+
   // a tab of two files exports both, each with its alignment (the second joins the tab through the import dialog)
   await page.keyboard.press('Escape');
   await until(page, () => !document.querySelector('#htmlDlg'));

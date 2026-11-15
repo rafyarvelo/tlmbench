@@ -2940,6 +2940,10 @@ struct HtmlRequest {
     /// The widgets of your own the layout can use (the settings' list): SVG goes in made safe, code as a value card.
     #[serde(default)]
     widgets: Vec<serde_json::Value>,
+    /// One file (`out` names the HTML file) instead of a folder; its size limit in bytes (none: 25 MB).
+    #[serde(default)]
+    single: bool,
+    single_limit: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -2948,6 +2952,8 @@ struct HtmlExported {
     report: tlmbench_export::html::Report,
     /// The viewer is in the folder (else it holds the data only: this build has none).
     viewer: bool,
+    /// The size of what was written: the file of a one-file export, else the folder's data.
+    bytes: u64,
 }
 
 /// What Export to HTML… would write, without writing it: the size of Full and of Light and what each holds, for the
@@ -2957,6 +2963,8 @@ struct HtmlSizes {
     full: u64,
     light: u64,
     budget: u64,
+    /// What a one-file export takes before any data: its page and the core (0: this build has no one-file viewer).
+    overhead: u64,
 }
 
 /// Export to HTML…: the same folder as `tlmbench export html` (the writer is shared), from the file in front.
@@ -3069,13 +3077,24 @@ async fn export_html<R: tauri::Runtime>(
         let mut progress = |done: usize, total: usize| {
             let _ = app.emit("html-export-progress", serde_json::json!({ "done": done, "total": total }));
         };
+        if req.single {
+            let viewer = html::embedded_single_viewer();
+            if viewer.is_empty() {
+                return Err("This build has no one-file viewer: run `just viewer` and build again".to_string());
+            }
+            let limit = req.single_limit.unwrap_or(html::SINGLE_FILE_LIMIT);
+            let (report, bytes) = html::export_single(out, &exported, extra, &opts, limit, &viewer, &mut progress)
+                .map_err(|e| e.to_string())?;
+            return Ok(HtmlExported { out: req.out, report, viewer: true, bytes });
+        }
         let report = html::export_with(out, &exported, extra, &opts, &mut progress).map_err(|e| e.to_string())?;
         let built_in = html::embedded_viewer();
         let viewer = !built_in.is_empty();
+        let report_bytes = report.bytes;
         if viewer {
             html::write_viewer(out, &built_in).map_err(|e| e.to_string())?;
         }
-        Ok(HtmlExported { out: req.out, report, viewer })
+        Ok(HtmlExported { out: req.out, report, viewer, bytes: report_bytes })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -3107,6 +3126,7 @@ async fn export_html_sizes(
             full: times + chans * (samples * 8 + pyr),
             light: times + chans * pyr + raws * samples * 8,
             budget: tlmbench_export::html::DEFAULT_BUDGET,
+            overhead: tlmbench_export::html::single_overhead(&tlmbench_export::html::embedded_single_viewer()),
         })
     })
     .await

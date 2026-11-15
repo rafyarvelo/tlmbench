@@ -15,12 +15,16 @@ So a folder export opened by double-click shows a short note saying so. Either:
 
 ## One file
 
-`--single-file` puts the page, the core and the data in one file that opens from anywhere: email, a file share, your
-disk. It is still a static page that fetches nothing. The price is size: the file stays under **25 MB** (the data is
-stored as text, a third bigger), so it is a Light export with its finest pyramid levels left out as needed, and a
-Light export keeps raw samples only where it was told to (channels shown as a table, values or XY, and windows around
-events and check violations). If it can't fit, the command says so and suggests fewer channels, a time range
-(`--from`, `--until`), or a folder.
+Export to HTML… offers **Folder** (any size; needs a web server or a host) and **One file** (opens from anywhere), each
+with its size. `--single-file` is the same on the command line. One file puts the page, the core and the data in one
+file: email, a file share, your disk. It is still a static page that fetches nothing. The price is size: the data is
+stored as text, a third bigger, so the file has a limit, **25 MB** to start; change it in the dialog (Size limit) or with
+`--single-limit 100MB`.
+
+Within the limit the file carries **every raw sample**. When they don't fit it is a Light export with its finest pyramid
+levels left out as needed, and a Light export keeps raw samples only where it was told to (channels shown as a table,
+values or XY, and windows around events and check violations). If even that can't fit, the command says so and suggests
+fewer channels, a time range (`--from`, `--until`), a higher limit, or a folder.
 
 ## What a view shows when the data isn't in the export
 

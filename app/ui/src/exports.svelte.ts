@@ -39,7 +39,7 @@ export const html = $state({
   result: '',
   ctx: null as ExportContext | null,
   /** Bytes of the folder in each mode for the chosen channels, and the budget. */
-  sizes: null as { full: number; light: number; budget: number } | null,
+  sizes: null as { full: number; light: number; budget: number; overhead: number } | null,
   /** Channels of the layout in front, and those it shows as a table, values or XY (raw samples in Light). */
   layout: [] as number[],
   raw: [] as number[],

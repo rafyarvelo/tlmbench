@@ -104,6 +104,7 @@ try {
     return false;
   };
   check('the chart-only channel draws from its summaries, labelled coarse', await untilQ(() => !!document.querySelector('[data-coarse]')), await q.$$eval('[data-coarse]', (x) => x.length));
+  check('a coarse plot draws the same min/max band as the app (decision 7c)', await untilQ(() => (window.__tlmApp?.envelopes()[0] ?? []).some((n) => n > 0)), await q.evaluate(() => window.__tlmApp?.envelopes() ?? 'no hook'));
   check('the table shows the raw samples once they are here, never a pyramid value as one', await untilQ(() => /20\.00/.test(document.body.textContent ?? '') && !/—/.test(document.querySelector('.tbl, [role="grid"], table')?.textContent ?? '—')), await q.evaluate(() => document.body.textContent?.slice(0, 300)));
   check('no page errors in Light', errs2.length === 0, errs2);
 

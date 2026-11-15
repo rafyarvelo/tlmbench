@@ -191,3 +191,35 @@ fn shared_widgets_travel_safe_svg_sanitised_and_code_as_a_value_card() {
     assert!(bar["code"].is_null() && bar["card"] == true);
     assert!(!std::fs::read_to_string(out.join("export.json")).unwrap().contains("evil.example"));
 }
+
+#[test]
+fn one_file_carries_every_raw_sample_when_they_fit_and_the_limit_is_a_flag() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cache = tmp.path().join("cache");
+    let src = fixtures().join("fold/stocks/AAPL.csv");
+    let src = src.to_str().unwrap();
+    let page = tmp.path().join("mail/aapl.html");
+    let r = run(&cache, &["--single-file", "--out", page.to_str().unwrap(), "--json", src]);
+    let err = String::from_utf8_lossy(&r.stderr);
+    if err.contains("no one-file viewer") {
+        eprintln!("skipped: this build has no one-file viewer (run `just viewer`)");
+        return;
+    }
+    assert!(r.status.success(), "{err}");
+    let json: serde_json::Value = serde_json::from_slice(&r.stdout).unwrap();
+    // it fits the 25 MB default, so every raw sample is in it (Full), not Light
+    assert_eq!(json["report"]["mode"], "full", "{json}");
+    assert_eq!(json["report"]["trimmed"], false);
+    let size = std::fs::metadata(&page).unwrap().len();
+    assert!(size > 0 && size <= 25 << 20, "{size}");
+    assert_eq!(std::fs::read_dir(page.parent().unwrap()).unwrap().count(), 1, "nothing else is written");
+    // --single-limit is the cap: too small for the page and the core, it says so and writes nothing
+    let small = tmp.path().join("small.html");
+    let r = run(&cache, &["--single-file", "--single-limit", "100KB", "--out", small.to_str().unwrap(), src]);
+    assert!(!r.status.success());
+    assert!(String::from_utf8_lossy(&r.stderr).contains("limit"), "{}", String::from_utf8_lossy(&r.stderr));
+    assert!(!small.exists());
+    // a size that isn't one is refused
+    let r = run(&cache, &["--single-file", "--single-limit", "lots", "--out", small.to_str().unwrap(), src]);
+    assert_eq!(r.status.code(), Some(3));
+}

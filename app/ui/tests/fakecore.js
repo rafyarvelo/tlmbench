@@ -1216,7 +1216,7 @@
     },
     // Export to HTML…: the sizes it shows, and what the page asked the core to write
     export_html_sizes({ file, channels, raw }) {
-      return { full: 1000 * channels.length * (fake.htmlSizeScale ?? 1), light: 100 * channels.length + 900 * raw.length, budget: 250 * 1024 * 1024 };
+      return { full: 1000 * channels.length * (fake.htmlSizeScale ?? 1), light: 100 * channels.length + 900 * raw.length, budget: 250 * 1024 * 1024, overhead: fake.noSingleViewer ? 0 : 3_000_000 };
     },
     async export_html({ req }) {
       fake.htmlExports.push(req);
@@ -1227,7 +1227,7 @@
         if (steps) await new Promise((r) => setTimeout(r, fake.htmlStepMs ?? 150));
       }
       if (fake.exportFails) throw fake.exportFails;
-      return { out: req.out, viewer: true, report: { mode: req.mode === 'light' ? 'light' : 'full', bytes: 4_200_000, trimmed: false } };
+      return { out: req.out, viewer: true, report: { mode: req.mode === 'light' ? 'light' : 'full', bytes: 4_200_000, trimmed: false }, bytes: req.single ? 5_600_000 : 4_200_000 };
     },
     save_file({ path, bytes }) {
       fake.saved_files.push({ path, bytes });

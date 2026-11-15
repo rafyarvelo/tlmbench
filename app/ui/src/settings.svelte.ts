@@ -95,6 +95,10 @@ export const DEFAULT_DETAIL = { factor: 3, min: 30, cap: 600 };
 
 /** Export to HTML…: what was chosen last. */
 export interface HtmlOpts {
+  /** A folder (any size; needs a web server or a host) or one HTML file (opens from anywhere, up to `limit` MB). */
+  format: 'folder' | 'file';
+  /** The size limit of One file, in MB. */
+  limit: number;
   mode: 'auto' | 'full' | 'light';
   range: 'view' | 'all';
   channels: 'layout' | 'all';
@@ -300,7 +304,7 @@ export const DEFAULTS: Settings = {
   importWhere: 'tabs',
   exportData: { format: 'csv', range: 'view', channels: 'tab', layout: 'wide', resample: false, hz: 100, time: 'auto', raw: false },
   exportImage: { format: 'png', what: 'all', scale: 2 },
-  exportHtml: { mode: 'auto', range: 'all', channels: 'layout', checks: true, detail: { ...DEFAULT_DETAIL } },
+  exportHtml: { format: 'folder', limit: 25, mode: 'auto', range: 'all', channels: 'layout', checks: true, detail: { ...DEFAULT_DETAIL } },
   fileRecipes: {},
   fileRecipesOff: {},
   filePrefix: {},

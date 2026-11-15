@@ -373,3 +373,50 @@ fn a_single_file_carries_the_export_folder_and_the_core() {
     let bad = vec![("index.html".to_string(), b"<body></body>".to_vec())];
     assert!(html::single_file(tmp.path(), &bad).is_err());
 }
+
+#[test]
+fn a_one_file_export_is_full_when_it_fits_the_limit_and_light_when_it_does_not() {
+    use crate::html::{self, Mode};
+    let viewer = vec![
+        ("index.html".to_string(), b"<body><!--TLM_FILES--></body>".to_vec()),
+        ("core.wasm".to_string(), vec![0u8; 3000]),
+    ];
+    // the page and the core: 29 bytes and 3000 as base64 (4000)
+    assert_eq!(html::single_overhead(&viewer), 29 + 4000);
+    assert_eq!(html::single_room(&viewer, 4029 + 3000), 2250);
+    assert_eq!(html::single_room(&viewer, 10), 0);
+
+    let tmp = tempfile::tempdir().unwrap();
+    let (data, desc) = scaled_file(tmp.path());
+    let src = tlmbench_decode::open(
+        &data,
+        &OpenOptions {
+            descriptor: Some(desc),
+            part: None,
+            profile: None,
+            cache_dir: Some(tmp.path().join("cache")),
+            adjust: Vec::new(),
+        },
+    )
+    .unwrap();
+    let file = html::File { name: "run".into(), rec: src.as_ref(), channels: vec![0, 1], raw: vec![], windows: Vec::new() };
+    let opts = html::Options::default();
+    let none = serde_json::json!({});
+    // 150,000 samples of two channels are 2.4 MB raw: under a 10 MB limit every raw sample goes in
+    let page = tmp.path().join("out/big.html");
+    let (r, size) = html::export_single(&page, std::slice::from_ref(&file), none.clone(), &opts, 10 << 20, &viewer, &mut |_, _| {}).unwrap();
+    assert_eq!((r.mode, r.trimmed), (Mode::Full, false));
+    assert_eq!(size, fs::metadata(&page).unwrap().len());
+    assert!(size > 3_200_000 && size <= 10 << 20, "{size}");
+    // under 1 MB it is Light, and still fits
+    let small = tmp.path().join("small.html");
+    let (r, size) = html::export_single(&small, std::slice::from_ref(&file), none.clone(), &opts, 1 << 20, &viewer, &mut |_, _| {}).unwrap();
+    assert_eq!((r.mode, r.trimmed), (Mode::Light, true));
+    assert!(size <= 1 << 20, "{size}");
+    // an explicit Full that doesn't fit is refused, and nothing is left behind
+    let refused = tmp.path().join("refused.html");
+    let full = html::Options { mode: Mode::Full, ..html::Options::default() };
+    let e = html::export_single(&refused, std::slice::from_ref(&file), none, &full, 1 << 20, &viewer, &mut |_, _| {}).unwrap_err();
+    assert!(e.to_string().contains("limit"), "{e}");
+    assert!(!refused.exists());
+}

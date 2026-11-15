@@ -519,9 +519,8 @@ pub fn embedded_single_viewer() -> Vec<(String, Vec<u8>)> {
     unpack(include_bytes!(concat!(env!("OUT_DIR"), "/single.pack")))
 }
 
-/// A one-file export's size limit, the design's 25 MB.
+/// The default size limit of a one-file export, the design's 25 MB.
 pub const SINGLE_FILE_LIMIT: u64 = 25 * 1024 * 1024;
-
 /// The bytes the one-file viewer takes before any data (its page and the core).
 pub fn single_overhead(viewer: &[(String, Vec<u8>)]) -> u64 {
     // the core is base64 in the page
@@ -582,6 +581,47 @@ pub fn single_file(dir: &Path, viewer: &[(String, Vec<u8>)]) -> Result<Vec<u8>> 
         return Err(Error::Write("the one-file viewer has no place for the data".into()));
     }
     Ok(html.replacen("<!--TLM_FILES-->", &tag, 1).into_bytes())
+}
+
+/// The raw bytes of data a one-file export can hold under `limit` (the page and the core take their share, and the data
+/// is base64 in the page: 4 bytes for every 3).
+pub fn single_room(viewer: &[(String, Vec<u8>)], limit: u64) -> u64 {
+    limit.saturating_sub(single_overhead(viewer)) / 4 * 3
+}
+
+/// A one-file export of `files` into the file `out`: everything raw when it fits `limit`, else Light, and the finest levels
+/// left out until it does (`o.mode` Auto; an explicit mode is kept and refused if the page comes out over the limit).
+/// The folder it is made in is a temporary one and is removed.
+pub fn export_single(
+    out: &Path,
+    files: &[File],
+    extra: serde_json::Value,
+    o: &Options,
+    limit: u64,
+    viewer: &[(String, Vec<u8>)],
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<(Report, u64)> {
+    let opts = Options { mode: o.mode, budget: o.budget.min(single_room(viewer, limit)), from: o.from, until: o.until };
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos());
+    let tmp = std::env::temp_dir().join(format!("tlmbench-single-{}-{nanos}", std::process::id()));
+    let result = (|| {
+        let report = export_with(&tmp, files, extra, &opts, progress)?;
+        let page = single_file(&tmp, viewer)?;
+        if page.len() as u64 > limit {
+            return Err(Error::Write(format!(
+                "the one-file export is {} MB but the limit is {} MB: leave channels out, cut the time range, raise the limit, or write a folder",
+                page.len().div_ceil(1 << 20),
+                limit >> 20
+            )));
+        }
+        if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
+            fs::create_dir_all(dir).map_err(io_err(dir))?;
+        }
+        fs::write(out, &page).map_err(io_err(out))?;
+        Ok((report, page.len() as u64))
+    })();
+    let _ = fs::remove_dir_all(&tmp);
+    result
 }
 
 pub fn unpack(mut b: &[u8]) -> Vec<(String, Vec<u8>)> {
