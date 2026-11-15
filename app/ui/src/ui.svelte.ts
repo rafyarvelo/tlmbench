@@ -275,6 +275,8 @@ export const actions = {
   saveFront: () => {},
   revertWs: (_key: number) => {},
   deleteWs: (_name: string) => {},
+  /** Renames one of your layouts (an error to show, or null); open tabs follow. */
+  renameWs: (_from: string, _to: string): string | null => null,
   openWs: (_name: string) => {},
   newWs: (_name: string): string | null => null,
   /** Shared views: list the folder's again, open one, share tab `key`'s layout under a name, export it to a file. */

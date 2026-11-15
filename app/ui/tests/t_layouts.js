@@ -60,11 +60,40 @@ run(
     await p.click('[data-lydel="Scratch 2"]');
     check('Delete removes it from the list', (await until(() => !document.querySelector('[data-lopen="Scratch 2"]'))) && !(await settingsLS()).workspaces.some((w) => w.name === 'Scratch 2'));
 
+    // rename (D-ui-44): the tab menu and a double-click on its name in the Layouts panel
+    await p.click('#wsTabs .wstab[aria-selected=true] .tm');
+    check('a shared view has no Rename…', !(await p.$('[data-ws="rename"]')));
+    await p.keyboard.press('Escape');
+    await p.click('#lyNew');
+    await p.fill('#lyName', 'Draft');
+    await p.press('#lyName', 'Enter');
+    await until(() => !!document.querySelector('[data-lopen="Draft"]'));
+    await p.click('#wsTabs .wstab[aria-selected=true] .tm');
+    check('Save layout and Revert changes are listed, greyed when there is nothing to save', (await p.isDisabled('[data-ws="save"]')) && (await p.isDisabled('[data-ws="revert"]')));
+    await p.click('[data-ws="rename"]');
+    check('Rename… starts from the current name', (await p.inputValue('#wsName')) === 'Draft', await p.inputValue('#wsName'));
+    await p.fill('#wsName', 'Scratch');
+    await p.press('#wsName', 'Enter');
+    check('a name in use is refused', await until(() => /already a layout/.test(document.querySelector('.wserr')?.textContent ?? '')));
+    await p.fill('#wsName', 'Cruise');
+    await p.press('#wsName', 'Enter');
+    check('the open tab follows the new name', await until(() => [...document.querySelectorAll('#wsTabs .nm')].some((n) => n.textContent === 'Cruise')));
+    check('the list and settings follow', await until(() => !!document.querySelector('[data-lopen="Cruise"]') && !document.querySelector('[data-lopen="Draft"]')) && (await settingsLS()).workspaces.some((w) => w.name === 'Cruise'));
+    await p.dblclick('[data-lopen="Cruise"]');
+    check('a double-click on the name in Layouts renames it', (await p.inputValue('#lyName')) === 'Cruise');
+    await p.fill('#lyName', 'Landing');
+    await p.press('#lyName', 'Enter');
+    check('and the tab and the list follow again', await until(() => [...document.querySelectorAll('#wsTabs .nm')].some((n) => n.textContent === 'Landing') && !!document.querySelector('[data-lopen="Landing"]')));
+    await p.click('[data-lydel="Landing"]');
+    await until(() => !document.querySelector('[data-lopen="Landing"]'));
+    await p.click('[data-lshared="review.tlmview.json"]');
+    await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'Flight review');
+
     // the tab menu's header
     await p.click('#wsTabs .wstab[aria-selected=true] .tm');
     check("the tab menu is headed by the tab's name", (await text('#tmName')) === 'Flight review', await text('#tmName'));
     check('a shared view says who shared it and where', /Shared in this folder by a\.chen · \.tlmbench\/views\/review\.tlmview\.json/.test(await text('#wsStatus')), await text('#wsStatus'));
-    check('"This tab shows" names the file', /This tab shows.*flight\.tlm/.test(await text('#tabFiles')), await text('#tabFiles'));
+    check('"This tab shows" names the file, numbered', /This tab shows.*1 · flight\.tlm/.test(await text('#tabFiles')), await text('#tabFiles'));
     await p.click('#tmClose');
     check('× closes the tab', await until(() => ![...document.querySelectorAll('#wsTabs .nm')].some((n) => n.textContent === 'Flight review')));
   },

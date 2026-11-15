@@ -2392,6 +2392,23 @@ function revertWs(key: number): void {
   });
 }
 
+/** Rename…: layout `from` becomes `raw`; its open tabs follow. A copy shared in a folder keeps its name until the next Share…. */
+function renameWs(from: string, raw: string): string | null {
+  const to = raw.trim();
+  const at = settings.workspaces.findIndex((w) => w.name === from);
+  if (at < 0) return 'That layout is gone.';
+  if (to === from) return null;
+  const err = nameError(to, from);
+  if (err) return err;
+  settings.workspaces[at] = { ...settings.workspaces[at], name: to };
+  for (const t of tabs.list) if (t.ws === from && !t.shared) Object.assign(t, { ws: to, name: to });
+  saveSettings();
+  mirrorConfig();
+  saveSession();
+  note(`Renamed layout "${from}" to "${to}".`, () => void renameWs(to, from));
+  return null;
+}
+
 /** Deletes one of your layouts and closes its tabs, with Undo. */
 function deleteWs(name: string): void {
   const at = settings.workspaces.findIndex((w) => w.name === name);
@@ -5247,6 +5264,7 @@ Object.assign(actions, {
   saveWs,
   revertWs,
   deleteWs,
+  renameWs,
   openWs: (name: string) => void openWs(name),
   newWs,
   loadShared: () => void loadShared().catch((e) => note(`Couldn't read the folder's shared views: ${e}`)),

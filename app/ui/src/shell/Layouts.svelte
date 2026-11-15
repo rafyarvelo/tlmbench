@@ -15,18 +15,20 @@
   const openShared = (file: string) => tabs.list.some((t) => t.shared === file);
   const here = (name: string) => front?.ws === name && !front.shared;
 
-  let naming = $state<null | 'new' | 'saveas'>(null);
+  let naming = $state<null | 'new' | 'saveas' | 'rename'>(null);
+  let renaming = $state('');
   let name = $state('');
   let err = $state('');
 
-  function ask(kind: 'new' | 'saveas') {
+  function ask(kind: 'new' | 'saveas' | 'rename', of = '') {
     naming = kind;
-    name = kind === 'saveas' && front?.ws ? `${front.ws} copy` : '';
+    renaming = of;
+    name = kind === 'rename' ? of : kind === 'saveas' && front?.ws ? `${front.ws} copy` : '';
     err = '';
   }
   function submit(e: SubmitEvent) {
     e.preventDefault();
-    const bad = naming === 'new' ? actions.newWs(name) : front ? actions.saveAs(front.key, name) : 'Open a recording first.';
+    const bad = naming === 'rename' ? actions.renameWs(renaming, name) : naming === 'new' ? actions.newWs(name) : front ? actions.saveAs(front.key, name) : 'Open a recording first.';
     if (bad) err = bad;
     else naming = null;
   }
@@ -54,17 +56,17 @@
     </div>
     {#if naming}
       <form class="lyname" id="lyForm" onsubmit={submit}>
-        <label for="lyName">{naming === 'new' ? 'Name of the new layout' : 'Save as a layout named'}</label>
+        <label for="lyName">{naming === 'new' ? 'Name of the new layout' : naming === 'rename' ? 'Rename the layout to' : 'Save as a layout named'}</label>
         <!-- svelte-ignore a11y_autofocus -->
         <input id="lyName" class="sel" maxlength="60" autocomplete="off" spellcheck="false" autofocus bind:value={name} oninput={() => (err = '')} />
         {#if err}<span class="lyerr" role="alert">{err}</span>{/if}
-        <div class="lybtns"><button class="tbtn" type="button" onclick={() => (naming = null)}>Cancel</button><button class="tbtn primary" type="submit">{naming === 'new' ? 'Create' : 'Save'}</button></div>
+        <div class="lybtns"><button class="tbtn" type="button" onclick={() => (naming = null)}>Cancel</button><button class="tbtn primary" type="submit">{naming === 'new' ? 'Create' : naming === 'rename' ? 'Rename' : 'Save'}</button></div>
       </form>
     {/if}
     <div class="lygrp">Your layouts · this computer</div>
     {#each settings.workspaces as w (w.name)}
       <div class="lyrow">
-        <button class="lyitem" class:cur={here(w.name)} data-lopen={w.name} data-tip="{w.name}: {openWs(w.name) ? 'open in a tab, click to show it' : 'click to open it in a new tab'}" disabled={!ui.file && !openWs(w.name)} onclick={() => show(w.name)}>{@html ICON.layout}<span class="nm">{w.name}</span><span class="hint">{openWs(w.name) ? 'open' : `${w.panes.length} ${w.panes.length === 1 ? 'pane' : 'panes'}`}</span></button>
+        <button class="lyitem" class:cur={here(w.name)} data-lopen={w.name} data-tip="{w.name}: {openWs(w.name) ? 'open in a tab, click to show it' : 'click to open it in a new tab'}. Double-click to rename." disabled={!ui.file && !openWs(w.name)} onclick={() => show(w.name)} ondblclick={() => ask('rename', w.name)}>{@html ICON.layout}<span class="nm">{w.name}</span><span class="hint">{openWs(w.name) ? 'open' : `${w.panes.length} ${w.panes.length === 1 ? 'pane' : 'panes'}`}</span></button>
         <button class="lydel" data-lydel={w.name} aria-label="Delete layout {w.name}" data-tip="Delete this layout (you can undo)" onclick={() => actions.deleteWs(w.name)}>{@html ICON.trash}</button>
       </div>
     {:else}
