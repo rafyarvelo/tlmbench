@@ -43,72 +43,72 @@ Started with my usual settings, or a fresh profile?:
 ### A1. Open a folder
 Do: Explorer › Open folder, choose `/Users/rafy/workspace/test`.
 Expect: the folder name shows and its recordings (CSV, Parquet) are listed, other files hidden or greyed, with no blank list.
-Result:
-Notes:
+Result: As expected.
+Notes: Works fine.
 
 ### A2. "Show only these"
 Do: Click the "Show only these" pill (Explorer header) with no file open, then open a file, then switch it off.
 Expect: with nothing open the list is not just silently empty (known issue: it is empty today); with a file open only that
 file shows; off shows everything again.
-Result:
-Notes:
+Result: "Show only these" only shows up after opening a file, it's not part of the explorer header that is always visible like the expand all and collapse all buttons
+Notes: I recommend this option be always visible as an icon as needed to minimize confusion.
 
 ### A3. Open a CSV by double-click, and with ⌘O
 Do: Double-click AAPL.csv in Explorer. Then ⌘O and pick GOOG.csv.
 Expect: the import dialog appears the first time for a new header, a chart appears with channels listed, the second file opens
 in its own tab (or this tab, as the dialog says).
-Result:
-Notes:
+Result: The file opened right away because I had opened it previously. Clearing the cache didn't change the profile.
+Notes: There should be a clear way for the user to "Reset to default settings" and clear all of the cache. A warning dialog is appropriate as needed.
 
 ### A4. Drop a file from Finder
 Do: Drag a CSV from Finder onto the window. Then a folder. (L: X-win-01)
 Expect: the file opens; the folder is listed in Explorer.
-Result:
-Notes:
+Result: Dropping a file works fine, but dropping a folder (~/tlmbench-testdata) gave the error: "Couldn't open tlmbench-testdata: /Users/rafy/tlmbench-testdata: Is a directory (os error 21)
+Notes: When dropping a folder, it should be equivalent through opening the folder through the "Open folder..." action
 
 ### A5. Open a Parquet file
 Do: Open `run.parquet`.
 Expect: opens with channels and a chart, no import errors.
-Result:
-Notes:
+Result: File parsed and opened panes as expected.
+Notes: Nominal behavior.
 
 ### A6. Read-only folder
 Do: Copy a CSV to a disk image or a read-only folder (Get Info › read only), open it. Try Share. (L: X-win-09)
 Expect: everything works; nothing is written beside the file; Share offers Export instead of writing.
-Result:
-Notes:
+Result: Got a "Couldn't share" error, no option to export was offered
+Notes: This feature appears to be broken.
 
 ## B. Reading a chart
 
 ### B1. Zoom, pan, fit
 Do: Scroll to zoom, drag to pan, double-click to fit, ⌘Z to go back a view.
 Expect: smooth, no flicker, the time axis labels stay readable.
-Result:
-Notes:
+Result: Zoom, pan, and fit work as expected.
+Notes:  ⌘Z did not work, but the Backspace key and "Previous view" button work to go back to a view
 
 ### B2. Cursors and Measure
 Do: Click to place cursor A, then B. Open Measure (rail).
 Expect: values at the cursors and stats between them; they match the numbers in the table pane.
-Result:
-Notes:
+Result: The cursors and measure pane worked as expected.
+Notes: Nominal behavior.
 
 ### B3. Line styles (L: X-win-05)
 Do: On one channel set line width 3, dashed, then step.
 Expect: each is drawn as set (headless tests can't see this).
-Result:
-Notes:
+Result: This appears to work fine.
+Notes: Is there a global setting for the default? If not, there should be one in case a user want to make all channels "thin" or "heavy"
 
 ### B4. A file that is still building
 Do: Open the 100M-sample file (`just testdata big`, then `~/tlmbench-testdata/big/big-100M.tlm`).
 Expect: hatching while the pyramid builds, then the chart fills in; the min/max band shows on a spiky channel. (L: X-win-06)
-Result:
-Notes:
+Result: The file opened pretty much instantly, so I couldn't really tell....
+Notes: Not verified, need a better test case
 
 ### B5. Table, values, XY, spectrum, gauges
 Do: Switch a pane to each mode from its mode menu.
 Expect: each shows data and responds to the cursor and the time view.
-Result:
-Notes:
+Result: The widget types all seem to work, but the "..." menu from the gauges doesn't match the UI of the prototype
+Notes: Resizing a "Chart and values" pane or "Chart and table" pane is awkward because the handle is in the middle of the pane on the bottom of the chart instead of the bottom of the pane below the widget / table. The "XY Plot" kind of works but the header is messed up and it's pretty confusing honestly, maybe needs a tooltip or something, resizing for the "XY Plot" doesn't seem to work at all.
 
 ### B6. Text and fonts
 Do: Compare a screen of the app with the prototype (`prototype/plotter.html`, or the published copy) side by side.
@@ -119,8 +119,8 @@ Notes:
 ## C. Dragging and windows
 
 ### C1. Drag a channel to a pane, between panes, to a pane edge (L: X-win-03)
-Result:
-Notes:
+Result: Works but doesn't properly support the Ctrl or Cmd keys
+Notes: Dragging a channel while holding Ctrl or Cmd is supposed to "Copy" the channel to another pane instead of moving it.
 
 ### C2. Drag sidebar panels, tabs, and pane numbers to reorder (L: X-win-03)
 Result:
@@ -148,20 +148,20 @@ Notes:
 ## E. Events, checks, derived channels
 
 ### E1. Add an event and see it on the chart and in the table
-Result:
-Notes:
+Result: Events and checks work as expected.
+Notes: The UI is not that intuitive for Rules and checks, need a better explanation of what each one does. Also might help to allow users to easily enable events for a single pane, right now it seems like the only way to do that would be to manually enable the global events switch and toggle off every pane you don't want (not ideal).
 
 ### E2. Run a check set and click a failing cell
 Do: With `flights` open as the folder, Rules & checks › the "Flight limits" set (it is shared in the folder) › run it on flight-bad.csv.
 Expect: pass and fail show with counts; clicking a failure frames the first violation.
-Result:
-Notes:
+Result: This works fine, but the rules and checks dialog has the same issue as the other dialogs, it's clamped to the top left corner.
+Notes: Is it possible to edit the Colors for Check categories? it should be.
 
 ### E3. Derived channel
 Do: Add a derived channel (`altitude * 2`) from the + in Explorer.
 Expect: it appears as a channel, charts, and survives closing and reopening the file.
-Result:
-Notes:
+Result: Works as expected.
+Notes: Nominal behavior.
 
 ## F. Export (what R2.1 added)  — the most important section
 
@@ -169,20 +169,20 @@ Notes:
 Do: ⋯ menu › Export to HTML…, choose a folder. In a terminal run `python3 -m http.server` inside the exported folder, open the
 address in your browser.
 Expect: the viewer opens with the same panes; the chart, table and cursors work; no editing buttons.
-Result:
-Notes:
+Result: It worked as advertised, but the UI was disappointing and it was not obvious that the export is read only.
+Notes: Export to HTML dialog is clamped to the top-left corner, it should be in the middle of the screen. Also the export icon should be way easier to find... it's buried behind a bunch of menus. The visual feedback was also weak... it should have better contrast and be more professional than plaintext on the dialog. Also the dialog didn't close immediately after
 
 ### F2. Open that exported folder by double-clicking index.html
 Expect: a short note that a folder export needs a web server and that `--single-file` opens from anywhere (not a blank page).
-Result:
-Notes:
+Result: The note appeared as expected, but it didn't provide the exact python command needed so I had to read the usage and pass the --directory flag
+Notes: Is the web server required? The User should be able to choose between a full export with a server and a standalone HTML / static folder when exporting. Consider perhaps different tiers. The "Full" version should be larger to allow for more fidelity as needed. I expected "Browser support" to be almost analogous to what the prototype does now how it allows you to open folders and CSV files. If the prototype can open folders and give pretty much all the features in a browser, the production app should be able to as well.
 
 ### F3. One HTML file
 Do: In a terminal: `target/release/tlmbench export html ~/tlmbench-testdata/flights/flight-1.csv --single-file --out ~/Desktop/flight-1.html`
 then double-click the file.
 Expect: it opens straight from the Desktop with the chart, under 25 MB, nothing fetched from the network.
-Result:
-Notes:
+Result: It works, but the "coarse" plots are way too coarse... they should look more like the prototype right?
+Notes: The HTML support in the current app is disappointing at best.
 
 ### F4. Light mode and the raw-window fields
 Do: Export to HTML… with Mode: Light.
@@ -282,12 +282,12 @@ Notes:
 Copy this block once per thing. Don't worry about being tidy.
 
 ```
-What I did:
-What I expected:
-What happened instead:
-Where (screen, tab, setting):
-How often (always / sometimes / once):
-Severity (blocker / annoying / cosmetic):
+What I did: Opened a table
+What I expected: Dragging the columns onto another pane would work same as dropping channels on other panes (same as prototype)
+What happened instead: Table columns are not draggable
+Where (screen, tab, setting): main screen
+How often (always / sometimes / once): always
+Severity (blocker / annoying / cosmetic): blocker
 ```
 
 ## Anything you want built or changed (new ideas)
@@ -295,7 +295,19 @@ Severity (blocker / annoying / cosmetic):
 New ideas go on a list for after the release unless you say they matter for v1 (`docs/post-v1.md`).
 
 ```
-Idea:
-Why it matters:
-Needed for v1? (yes / no):
+Idea: The Mac toolbar menu should include "File > Open", and all of the actions that the app uses. Right now, File only has a "Close Window" option
+Why it matters: Expected from a professional app
+Needed for v1? (yes / no): yes
+```
+
+```
+Idea: There should be a file system watcher and / or a button to refress the file explorer
+Why it matters: There's no indication to the user if the folder is up to date in the view
+Needed for v1? (yes / no): yes
+```
+
+```
+Idea: I like that the switcher only shows up when hovering over a pane. I think all the icons that can fit should show up on the pane when hovering over it so it's quicker for the user.
+Why it matters: Clicking on "..." takes too much time to do actions on Panes
+Needed for v1? (yes / no): yes
 ```

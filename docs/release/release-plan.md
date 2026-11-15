@@ -80,6 +80,10 @@ Sources: `docs/follow-ups.md` "Left from step 5.10" and the ledger's Missing and
   (`tlmbench check --report html` with `export html --checks`). Time-range views in the viewer. The reduced viewer bundle:
   dialogs and menus cut out, not hidden. Writer: `crates/export/src/html.rs`; viewer core: `crates/web/src/{data,ops}.rs`;
   page: `app/ui/src/viewer.ts`. Done when `ci/gate5.py` still passes and every export row in the ledger is Done.
+- **R2.1a The owner's first real-window pass (M, Nov 14).** The owner's findings in `docs/release/owner-test-sheet.md`,
+  triaged and ordered in `docs/release/next-agent-prompt.md`: fixes with no open decision first, nine decisions asked in
+  one message, then the release app rebuilt, the first UI audit (below), and a re-test list for the owner. It runs before
+  R2.2. The owner's F2 expectation (open folders and files in a browser, as the prototype does) is R2.2's job.
 - **R2.2 Browser-only mode (M).** Parse in a Worker (a big CSV must not freeze the tab); read Parquet, `.tlm`, packets
   and descriptors (make `tlmbench-decode` build for WASM instead of including three of its files as source); derived
   channels, events, checks and several files as the design promises for it, which needs the store for WASM (shared with
@@ -112,9 +116,34 @@ difference either fixed or in the owner's accepted-differences list**. Order by 
   profiles manager's profiles tab; Folder runs (several levels, trends tab); This tab shows.
 - **R3.4 What the audit can't see (S).** Quiet interface; keyboard coverage compared with the prototype's list; every
   tooltip and empty state; copy review (plain, short, sentence case); the design's motion rules.
-- **After each sub-step:** rerun `just app-parity`, update the audit, and screenshot with `node app/ui/tests/shots.js`.
+- **After each sub-step:** rerun `just app-parity`, update the audit, screenshot with `node app/ui/tests/shots.js`, and run
+  the apple-design audit on that sub-step's area (see "UI audits with the apple-design skill").
 
-The UI freezes at the end of R3: after it only bug fixes touch `app/ui/src`.
+The UI freezes at the end of R3: after it only bug fixes touch `app/ui/src`. A full apple-design audit runs before the freeze.
+
+### UI audits with the apple-design skill
+
+The `anthropic-skills:apple-design` skill reviews interface design and motion: feedback, spatial consistency, restraint,
+typography, materials and depth, drag and sheet interactions, springs, and reduced motion. Run it on screenshots and the
+relevant Svelte and CSS at these points, where the UI is about to settle:
+
+| When | Scope | Why then |
+| --- | --- | --- |
+| End of R2.1a (the owner's list) | The screens that list touched: dialogs, the export dialog and its feedback, pane resize, XY, the Explorer header, the viewer | The owner called the export UI "disappointing"; set a baseline before more UI lands |
+| End of R2.2 | Browser-only mode and the viewer, light and dark | A new surface people will meet first |
+| Start of R3 | The whole app, against the prototype | It turns "looks wrong" into ranked items for R3.1 to R3.4; add ledger rows for the ones the owner accepts |
+| End of each R3 sub-step | That sub-step's area only | Catch regressions while the code is fresh |
+| R3.4, before the UI freeze | The whole app, with motion and reduced motion | The last chance for anything that isn't a bug fix |
+| R5, on each OS's installed build | Fonts, high-DPI, the native window (WKWebView, WebView2, WebKitGTK) | Headless screenshots don't show these |
+
+Rules for the audits:
+
+- The prototype and CLAUDE.md's UI conventions (tokens, calm UI, tooltips, copy) win over the skill's advice. Where they
+  conflict, or where a finding would change the design, it is a decision for the owner, with a recommendation.
+- Write the findings with the screenshot each comes from, ranked, in `docs/release/ui-audits.md` (one dated section per
+  audit; kept until R8). Fixes cite the finding.
+- After the freeze (end of R3), a finding is either a bug fix or goes to `docs/post-v1.md`. It never adds scope.
+- If the skill isn't available in a session, say so and do the pass by hand against the same headings. Don't skip it.
 
 ### R4 Packaging and release automation (L)
 
@@ -147,7 +176,8 @@ Needs decisions 1 to 5 and 9. Built before the docs so that every platform's ins
 
 Headless tests cannot see Finder drops, native dialogs, WKWebView or WebView2 or WebKitGTK text and fonts, window
 dragging between windows, GPU differences, the high-DPI look, or the installers. For each OS the agent hands the owner a
-checklist (R1's Owner pass rows, the audit's real-window list, the first-run flow from the installer), the owner runs it on
+checklist (R1's Owner pass rows, the audit's real-window list, the first-run flow from the installer, and the apple-design
+audit on that OS's installed build), the owner runs it on
 the installed release candidate, and the agent fixes what they list, ranked. Needs: a Windows and a Linux machine or VM
 the owner can use (ask early; if the owner has none, say which checks stay unverified and note it in the release notes
 rather than claim them). Include WebGL2 absent or software-only (the Canvas 2D renderer) and a read-only network share.
@@ -249,7 +279,7 @@ the list (decision 8).
 
 ## Order and dependencies
 
-R0 → R1 → R2.1 → R2.2 → R2.3 → R2.4 → R2.5 → R3.1 → R3.2 → R3.3 → R3.4 → R4 → R5 → R6 → R7 → R8 → R9.
+R0 → R1 → R2.1 → R2.1a → R2.2 → R2.3 → R2.4 → R2.5 → R3.1 → R3.2 → R3.3 → R3.4 → R4 → R5 → R6 → R7 → R8 → R9.
 
 - R1 comes first because its ledger defines R2 and R3 (the lists above are what the follow-ups and the audit say today;
   the ledger will add and remove rows, and it wins).
