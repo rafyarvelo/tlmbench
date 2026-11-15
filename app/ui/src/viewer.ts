@@ -86,6 +86,9 @@ export async function installViewerCore(): Promise<void> {
   };
   const manifest = (await (await get('export.json')).json()) as Manifest;
   viewer.manifest = manifest;
+  // the header's "Read-only view" with where it came from (owner decision 6): the files, when, which version
+  const m = manifest as Manifest & { provenance?: { created?: number; core_version?: string }; tool?: { name?: string; version?: string } };
+  (globalThis as { __tlmViewerInfo?: unknown }).__tlmViewerInfo = { files: manifest.files.map((f) => f.name), created: m.provenance?.created ?? null, version: m.tool?.version ?? m.provenance?.core_version ?? '' };
   const core = await loadCore(files ? unbase64(files['tlmbench_web.wasm'] ?? '') : new URL('tlmbench_web.wasm', base).href);
   const fetched = async (path: string) => new Uint8Array(await (await get(path)).arrayBuffer());
   /** A data file, checked against the export's checksum before anything uses it: a truncated upload or a stale cached

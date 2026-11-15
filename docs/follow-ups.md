@@ -492,7 +492,7 @@ by `__VIEWER__`); provenance in `export.json`; gauges, XY and the spectrum in th
 - **A default `--detail` per rule-and-check set** (D-cli-06): the dialog and the CLI set it per export.
 - **A time range (`from`/`until`) for a tab of several files**: refused with a message by the app's Export, as each file would read
   the span in its own clock.
-- **The viewer's report footer** doesn't show the provenance yet (it is in `export.json`).
+- **Done Nov 14 (decision 6):** the viewer's header shows "Read-only view" with the files, the date it was made (`provenance.created`) and the app version. ~~The viewer's report footer doesn't show the provenance yet.~~
 - **Play, cursors and Measure in the viewer** are the app's code but no viewer test drives them.
 - **`query view` and gaps**: the gap index comes with the pyramid, so a never-built file shows no gap breaks in `tlmbench query view`
   until `cache build` (the app builds in the background).

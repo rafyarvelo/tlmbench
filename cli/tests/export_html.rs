@@ -43,6 +43,7 @@ fn writes_the_layout_channels_and_nothing_beside_the_input() {
     let pv = &m["provenance"];
     assert!(pv["command"].as_array().unwrap().iter().any(|a| a == "--layout"));
     assert_eq!(pv["core_version"], env!("CARGO_PKG_VERSION"));
+    assert!(pv["created"].as_u64().is_some_and(|t| t > 1_700_000_000_000), "made at a real time: {}", pv["created"]);
     let hex =
         |v: &serde_json::Value| v.as_str().is_some_and(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()));
     assert!(hex(&pv["config_hash"]));

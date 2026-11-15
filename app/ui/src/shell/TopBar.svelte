@@ -58,6 +58,9 @@
   /** The menu on the time range: how times read. */
   let timeMenu = $state<HTMLElement | null>(null);
   /** The tab whose menu is open, and where; `naming` while Save as… asks for a name. */
+  /** The top bar's Export menu (owner decision 6: one click away, not only under ⋯). */
+  let exporting = $state(false);
+  let exportBtn = $state<HTMLElement>();
   let tabMenu = $state<null | { key: number; anchor?: HTMLElement; at?: { x: number; y: number }; naming?: 'saveas' | 'share' }>(null);
   /** The + menu: your layouts, and a new empty one (`naming`). */
   let addMenu = $state<null | { anchor: HTMLElement; naming?: 'new' }>(null);
@@ -269,6 +272,16 @@
       <button class="tb" id="tb-rmpanes" aria-label="Remove every pane" disabled={!stack.panes.length} data-tip="Remove every pane" onclick={clearPanes}>{@html ICON.removePanes}</button>
     </div>
   {/if}
+  {#if ui.viewer}
+    <!-- an export says it is read-only, and where it came from (owner decision 6) -->
+    <span class="viewinfo" id="viewerInfo" data-tip="An export: nothing here can be edited or saved, and nothing is sent anywhere">
+      <span class="vpill">Read-only view</span>
+      {#if ui.viewerInfo}<span class="vprov">{[ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ')}</span>{/if}
+    </span>
+  {/if}
+  {#if !__VIEWER__}
+    <button class="tb" id="b-export" aria-label="Export" aria-haspopup="menu" aria-expanded={exporting} disabled={!ui.file} data-tip="Export: to HTML, data files or an image" bind:this={exportBtn} onclick={() => (exporting = !exporting)}>{@html ICON.export}</button>
+  {/if}
   <button class="tb" id="b-more" aria-label="More" aria-haspopup="menu" aria-expanded={more} bind:this={moreBtn} onclick={() => (more = !more)}>{@html ICON.moreBar}</button>
   {#if tabMenu}
     <Menu class="tabmenu" label="Tab" anchor={tabMenu?.anchor} at={tabMenu?.at} onclose={() => (tabMenu = null)}>
@@ -420,6 +433,20 @@
   {/if}
   {#if more}
     <Menu class="moremenu" label="More" first anchor={moreBtn} onclose={() => (more = false)} items={moreItems()} />
+  {/if}
+  {#if exporting}
+    <Menu
+      class="exportmenu"
+      label="Export"
+      first
+      anchor={exportBtn}
+      onclose={() => (exporting = false)}
+      items={[
+        { label: 'Export to HTML…', note: 'A page anyone can open, with nothing to install', data: { xm: 'html' }, run: actions.htmlOpen },
+        { label: 'Export data…', note: 'CSV, Parquet, HDF5, MAT or Arrow, for other tools', data: { xm: 'data' }, run: actions.exportOpen },
+        { label: 'Save the view as an image…', note: 'PNG or SVG of the panes', data: { xm: 'image' }, disabled: !stack.panes.length, run: actions.imageOpen },
+      ]}
+    />
   {/if}
 </header>
 
@@ -794,5 +821,29 @@
     width: 1px;
     height: 18px;
     background: var(--border);
+  }
+  .viewinfo {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 46vw;
+    margin-right: 6px;
+    font-size: 12px;
+  }
+  .vpill {
+    flex: none;
+    padding: 2px 8px;
+    border: 1px solid var(--accent-line);
+    border-radius: 12px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .vprov {
+    overflow: hidden;
+    color: var(--fg-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

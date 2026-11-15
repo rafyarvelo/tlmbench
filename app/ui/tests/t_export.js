@@ -8,6 +8,13 @@ run(
   async ({ p, check, text, until, fake, visible, settingsLS }) => {
     const dlg = '#exportDlg';
     const asked = () => fake(() => window.__tlmFake.dataExports);
+    // one click away in the top bar too (owner decision 6, sheet F1)
+    await p.click('#b-export');
+    check('the top bar\'s Export button lists HTML, data and an image', (await p.$$eval('.exportmenu .mi', (e) => e.map((x) => x.dataset.xm))).join() === 'html,data,image', await text('.exportmenu'));
+    await p.click('.exportmenu [data-xm="html"]');
+    check('its Export to HTML… opens that dialog', await until(() => !!document.querySelector('#htmlDlg')));
+    await p.keyboard.press('Escape');
+    await until(() => !document.querySelector('#htmlDlg'));
     await p.click('#b-more');
     check('the ⋯ menu has an Export group', /Export data…/.test(await text('.moremenu')) && /Save the view as an image…/.test(await text('.moremenu')), await text('.moremenu'));
     await p.click('.moremenu [data-more="exportdata"]');

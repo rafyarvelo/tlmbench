@@ -290,10 +290,14 @@ pub fn provenance(command: &[String], config: &serde_json::Value, inputs: &[&Pat
     // serde_json keeps object keys sorted, so the same configuration always hashes the same
     let config_hash =
         blake3::hash(&serde_json::to_vec(config).map_err(|e| Error::Write(e.to_string()))?).to_hex().to_string();
+    // when it was made, for the viewer's header (Unix milliseconds; not part of the configuration's hash)
+    let created =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
     Ok(serde_json::json!({
         "command": command,
         "config_hash": config_hash,
         "core_version": env!("CARGO_PKG_VERSION"),
+        "created": created,
         "inputs": files,
     }))
 }

@@ -69,6 +69,9 @@ try {
   check('the layout opens as the one tab', await until(() => document.querySelectorAll('#wsTabs .wstab').length === 1 && /Two panes/.test(document.querySelector('#wsTabs .wstab')?.textContent ?? '')), await p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
   check('the raw samples arrive in the background', await until(() => window.__tlmViewerLoaded === true));
   await p.click('[data-rail="explorer"]');
+  const vinfo = await p.$eval('#viewerInfo', (e) => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => null);
+  check('the header says it is a read-only view, with the file and the app version (decision 6)', /Read-only view/.test(vinfo ?? '') && /bench\.csv/.test(vinfo ?? '') && /\d{4}/.test(vinfo ?? '') && /TelemetryBench \d/.test(vinfo ?? ''), vinfo);
+  check('and has no Export button (nothing is exported from an export)', !(await p.$('#b-export')));
   check('Explorer lists the exported channels, with the layout\'s panes', await until(() => document.querySelectorAll('#explorer .tree .row.chan').length === 2 && /pane 2/.test(document.querySelector('#explorer .tree')?.textContent ?? '')), await p.$$eval('#explorer .tree .row', (r) => r.map((x) => x.className)));
   check('nothing edits: no new tab, no layouts, no live, no start page', !(await p.$('#wsTabNew')) && !(await p.$('[data-rail="layouts"]')) && !(await p.$('[data-rail="live"]')) && !(await p.$('#b-start')));
   check('a viewer cannot make exports: Export data and Export to HTML are not in its menu (cut from the build, not disabled)', await (async () => {

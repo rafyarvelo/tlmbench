@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 215 · **Partial** 44 · **Missing** 12 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 14 (315 rows).
+Counts: **Done** 216 · **Partial** 44 · **Missing** 12 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 14 (316 rows).
 
 How to read the evidence. A test named here was run in this review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -272,6 +272,7 @@ on a real window). The last column names the step of `docs/release/release-plan.
 | D-ui-24 | owner decision 4 (Nov 14), sheet B3 | Settings › Display has Default line width (thin, normal, thick, heavy) and style (solid, dashed) for every channel without its own; a channel's own width or style wins, and the channel editor's first choice names the default; charts and the SVG image export draw it. | Done | `t_linedefault`, `t_display`, `t_shell` (Nov 14) | Design-doc note owed. The look on screen is X-win-05 |
 | D-ui-25 | owner decision 5 (Nov 14), sheet E1 | A pane's Events toggle among its hover controls (and in its ⋯ menu) shows or hides event markers in that pane; a pane without its own choice follows the top bar's E, so one pane can show events while E is off. | Done | `t_eventmarks` (Nov 14) | Design-doc note owed |
 | D-ui-26 | owner decision 9 (Nov 14), sheet "Ideas" (v1) | A pane's actions show on hover or selection in the prototype's order (view, axis settings, Events, Duplicate, Split, ⋯, Close), each one click; those that don't fit give way, rarer first, before chips fold into "+N"; each stays in ⋯. | Done | `t_paneactions`, `t_chips` (Nov 14) | Design-doc note owed. The look on a real window is X-win-06 |
+| D-ui-27 | owner decision 6 (Nov 14), sheet F1 | Export is one click away: the top bar's Export button lists Export to HTML…, Export data… and Save the view as an image… (the ⋯ items stay). The viewer's header says "Read-only view" with the files, the date it was made and the app version. | Done | `t_export`, `t_viewer` (Nov 14), `tlmbench::export_html` (provenance `created`) | Closes the viewer's provenance Partial (follow-ups). Design-doc note owed |
 | D-filt-01 | design Filters | Ignore outliers fits the 0.1st to 99.9th percentile, clips and marks. | Done | `t_axes` | |
 | D-filt-02 | design Filters | Masked samples are a view: derived channels, rules and exports still read the full data. | Unverified | `tlmbench-store::store::a_mask_makes_samples_missing_in_views_stats_and_values` (the mask itself) | A mask belongs to the file, so two tabs share it; no test shows a derived channel or export ignoring it. R2.5 |
 | D-gauge-01 | design Gauges | The widget type is picked from unit and name, changed per channel, and saved in the pane. | Done | `t_gauges` | |
