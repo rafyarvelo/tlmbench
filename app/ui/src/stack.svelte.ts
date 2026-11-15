@@ -519,6 +519,25 @@ export function setWidget(i: number, name: string, patch: Partial<WidgetCfg>): v
 }
 
 /** Sets an XY pane's X channel, equal scale or local zoom (undefined: automatic). */
+const isLon = (n: string) => /(^|_)(lon|lng|longitude)$/i.test(n);
+const isLat = (n: string) => /(^|_)(lat|latitude)$/i.test(n);
+/** An XY pane's X channel: the one picked, else longitude of a longitude/latitude pair, else the pane's first channel. */
+export function xyAxisOf(i: number): number {
+  const p = stack.panes[i];
+  const chans = p?.channels ?? [];
+  const name = (c: number) => ui.channels[c]?.name ?? '';
+  if (p?.x != null && chans.includes(p.x)) return p.x;
+  const lon = chans.find((c) => isLon(name(c)));
+  return lon != null && chans.some((c) => isLat(name(c))) ? lon : (chans[0] ?? -1);
+}
+/** Whether an XY pane keeps both axes at one scale: as set, else on for a longitude/latitude pair. */
+export function xyEqualOf(i: number): boolean {
+  const p = stack.panes[i];
+  const x = xyAxisOf(i);
+  const name = (c: number) => ui.channels[c]?.name ?? '';
+  return p?.xyEqual ?? (isLon(name(x)) && (p?.channels ?? []).some((c) => c !== x && isLat(name(c))));
+}
+
 export function setXy(i: number, patch: Partial<Pick<Pane, 'x' | 'xyEqual' | 'xyView'>>): void {
   edit(() => {
     const p = stack.panes[i];

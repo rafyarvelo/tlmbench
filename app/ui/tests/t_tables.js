@@ -102,12 +102,14 @@ run('tables', async ({ p, check, text, until, settingsLS, wait, fake }) => {
   check('chart and table', !!(await p.$('#stack [data-pane="1"] .plot')) && !!(await p.$(B)));
   check('the chart still draws', await until(() => { const d = window.__tlmApp.drawn()[1]; return d && d.length; }));
   check('the table is 210 px', Math.round(await p.$eval(B, (e) => e.getBoundingClientRect().height)) === 210, await p.$eval(B, (e) => e.getBoundingClientRect().height));
+  // the chart's grip under the plot and the table's at the pane's bottom, as the prototype (sheet B5)
+  check('a chart grip under the plot, and the table grip is the pane\'s last thing', await p.evaluate(() => { const sec = document.querySelector('#stack [data-pane="1"]'); const t = sec.querySelector('[data-table]'); return !!sec.querySelector('.plot + .hgrip') && t.lastElementChild?.classList.contains('tgrip') && t.querySelectorAll('.tgrip').length === 1; }));
   const g = await p.$eval(`${B} .tgrip`, (e) => { const b = e.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
   await p.mouse.move(g.x, g.y);
   await p.mouse.down();
-  await p.mouse.move(g.x, g.y - 50, { steps: 4 });
+  await p.mouse.move(g.x, g.y + 50, { steps: 4 });
   await p.mouse.up();
-  check('dragging the grip up makes it taller', (await settingsLS()).layouts['/data/flight.tlm'][1].tableH === 260, (await settingsLS()).layouts['/data/flight.tlm'][1]);
+  check('dragging the bottom grip down makes it taller', (await settingsLS()).layouts['/data/flight.tlm'][1].tableH === 260, (await settingsLS()).layouts['/data/flight.tlm'][1]);
 
   await p.reload();
   await wait(800);

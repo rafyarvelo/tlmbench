@@ -618,9 +618,6 @@
 </script>
 
 <div class="ptable" data-table={i} bind:this={box} style={alone ? (h != null ? `flex: none; height: ${h}px` : '') : h != null ? `flex: 0 1 ${h}px; min-height: 90px` : ''}>
-  {#if height != null && !alone}
-    {@render gripBar(-1)}
-  {/if}
   <div class="tbar">
     <span class="tstat" role="status" data-tstat
       >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${frequency(1e9 / step)})`}{/if}</span
@@ -795,7 +792,8 @@
       </div>
     </div>
   </div>
-  {#if alone}
+  <!-- the table's height grip at its bottom, alone or under a chart (the prototype's; sheet B5) -->
+  {#if alone || height != null}
     {@render gripBar(1)}
   {/if}
 </div>

@@ -10,7 +10,7 @@
   import { chCss, chName, chUnit } from '../display.svelte';
   import { niceStep } from '../gauges';
   import { settings } from '../settings.svelte';
-  import { setXy, stack } from '../stack.svelte';
+  import { setXy, stack, xyAxisOf, xyEqualOf } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeXy, type XyReply } from '../wire';
 
@@ -21,18 +21,16 @@
   const nameOf = (ch: number) => ui.channels[ch]?.name ?? '';
   const isLon = (n: string) => /(^|_)(lon|lng|longitude)$/i.test(n);
   const isLat = (n: string) => /(^|_)(lat|latitude)$/i.test(n);
-  /** The X channel: the one picked, else longitude of a longitude/latitude pair, else the pane's first channel. */
-  const xCh = $derived.by(() => {
-    if (pane?.x != null && chans.includes(pane.x)) return pane.x;
-    const lon = chans.find((c) => isLon(nameOf(c)));
-    return lon != null && chans.some((c) => isLat(nameOf(c))) ? lon : (chans[0] ?? -1);
-  });
+  /** The X channel and the 1:1 setting (the pane header's controls set them; sheet B5). */
+  const xCh = $derived(xyAxisOf(i));
   const ys = $derived(chans.filter((c) => c !== xCh));
   const geo = $derived(isLon(nameOf(xCh)) && ys.some((c) => isLat(nameOf(c))));
-  const equal = $derived(pane?.xyEqual ?? geo);
+  const equal = $derived(xyEqualOf(i));
   const zoom = $derived(pane?.xyView ?? null);
+  const fit = () => setXy(i, { xyView: undefined });
 
-  const H = 340;
+  /** The pane's height (its grip sets it, as a chart's), 340 px by default. */
+  const H = $derived(pane?.h ?? 340);
   let width = $state(480);
   let canvas = $state<HTMLCanvasElement>();
   let reply = $state<XyReply | null>(null);
@@ -42,7 +40,7 @@
 
   const [PL, PR, PT, PB] = [54, 14, 24, 30];
   const pw = $derived(Math.max(40, width - PL - PR));
-  const ph = H - PT - PB;
+  const ph = $derived(H - PT - PB);
 
   // ---------- asking the core ----------
   let token = 0;
@@ -365,16 +363,9 @@
     const r = viewRect();
     setXy(i, { xyView: [cx - (cx - r[0]) * f, cx + (r[1] - cx) * f, cy - (cy - r[2]) * f, cy + (r[3] - cy) * f] });
   }
-  const fit = () => setXy(i, { xyView: undefined });
-  const pickX = (e: Event) => setXy(i, { x: Number((e.currentTarget as HTMLSelectElement).value), xyView: undefined });
 </script>
 
 <div class="xyplot" data-xy bind:clientWidth={width}>
-  <div class="xytools">
-    <label class="xsel">X <select class="sel" data-xsel aria-label="X channel" onchange={pickX}>{#each chans as c (c)}<option value={c} selected={c === xCh}>{chName(c)}</option>{/each}</select></label>
-    <button class="tb" data-xyeq aria-pressed={equal} data-tip="Keep both axes at the same scale (longitude is corrected by the cosine of latitude)" onclick={() => setXy(i, { xyEqual: !equal, xyView: undefined })}>1:1</button>
-    <button class="tb" data-xyfit disabled={!zoom} data-tip="Back to automatic ranges (or double-click)" onclick={fit}>Fit</button>
-  </div>
   <canvas
     bind:this={canvas}
     style="width: 100%; height: {H}px"
@@ -393,19 +384,6 @@
     display: flex;
     flex-direction: column;
     min-height: 120px;
-  }
-  .xytools {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 8px;
-    font-size: 12px;
-    color: var(--fg-muted);
-  }
-  .xsel {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
   }
   canvas {
     display: block;

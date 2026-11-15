@@ -325,9 +325,10 @@
       out.push({ label: L.type === 'group' ? 'Ungroup: a widget each' : 'Separate: a widget each', run: () => parts.forEach((p) => set({ type: autoWidget(p) }, p.name)) });
     } else {
       out.push({ heading: c.name });
-      out.push({ label: `Automatic (${typeName(autoWidget(c))})`, radio: true, checked: !cfg.type, run: () => set({ type: undefined }) });
-      for (const t of TYPES.filter((x) => !MULTI[x.type])) out.push({ label: t.name, note: t.hint, radio: true, checked: !!cfg.type && L.type === t.type, data: { wt: t.type }, run: () => set({ type: t.type }) });
-      for (const w of customs.values()) out.push({ label: w.name, note: w.shared ? `Shared in ${w.shared}` : 'Your widget', radio: true, checked: cfg.type === w.id, data: { wt: w.id }, icon: w.icon ? sanitizeSvg(w.icon) : undefined, run: () => set({ type: w.id }) });
+      // names with a check, as the prototype's compact menu (its openCatMenu): no hint under each (sheet B5)
+      out.push({ label: `Automatic (${typeName(autoWidget(c))})`, checked: !cfg.type, run: () => set({ type: undefined }) });
+      for (const t of TYPES.filter((x) => !MULTI[x.type])) out.push({ label: t.name, checked: !!cfg.type && L.type === t.type, data: { wt: t.type }, run: () => set({ type: t.type }) });
+      for (const w of customs.values()) out.push({ label: w.name, checked: cfg.type === w.id, data: { wt: w.id }, icon: w.icon ? sanitizeSvg(w.icon) : undefined, run: () => set({ type: w.id }) });
       const tg = targetOf(c, chans);
       const xy = xyPartner(c, chans);
       const sib = chans.filter((o) => o.ch !== ch && !paired.has(o.ch) && groupKey(o.name) === groupKey(c.name) && o.unit === c.unit);
@@ -339,7 +340,8 @@
     out.push({ sep: true });
     if (HOLD_TYPES[L.type]) out.push({ label: 'Min/max in view', checked: cfg.hold !== false, data: { wt: 'hold' }, run: () => set({ hold: cfg.hold === false ? undefined : false }) });
     out.push({ heading: 'Size' });
-    for (const [k, t] of SIZES) out.push({ label: t, radio: true, checked: (cfg.size ?? undefined) === k, data: { size: k ?? 'M' }, run: () => set({ size: k }) });
+    for (const [k, t] of SIZES) out.push({ label: t, checked: (cfg.size ?? undefined) === k, data: { size: k ?? 'M' }, run: () => set({ size: k }) });
+    out.push({ sep: true });
     out.push({
       label: `Range… ${cfg.min != null && cfg.max != null ? `(${cfg.min} – ${cfg.max})` : '(automatic)'}`,
       data: { wt: 'range' },
@@ -395,7 +397,8 @@
 </div>
 
 {#if menu}
-  <Menu class="widgetmenu" label="Widget for {chName(menu.ch)}" anchor={menu.anchor} onclose={() => (menu = null)} items={items(menu.ch)} />
+  <!-- read through ?. : the menu's props are read once more while it closes, after `menu` is null -->
+  <Menu class="widgetmenu chmenu" label="Widget for {menu ? chName(menu.ch) : ''}" anchor={menu?.anchor} onclose={() => (menu = null)} items={menu ? items(menu.ch) : []} />
 {/if}
 
 <style>

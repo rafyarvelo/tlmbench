@@ -30,11 +30,14 @@
     setMode,
     setPlotH,
     setTable,
+    setXy,
     splitDown,
     splitRight,
     stack,
     units,
     axisKey,
+    xyAxisOf,
+    xyEqualOf,
   } from '../stack.svelte';
   import { failingChannels } from '../checks.svelte';
   import { settings } from '../settings.svelte';
@@ -135,7 +138,7 @@
   /** Dragging the grip under a chart: its pane, where it started and the height then. */
   let grip: null | { i: number; y: number; h: number } = null;
   function gripDown(e: PointerEvent, i: number) {
-    const plot = (e.currentTarget as HTMLElement).parentElement?.querySelector('.plot');
+    const plot = (e.currentTarget as HTMLElement).parentElement?.querySelector('.plot, [data-xy] canvas');
     grip = { i, y: e.clientY, h: plot?.getBoundingClientRect().height ?? 150 };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -146,7 +149,7 @@
   function gripKey(e: KeyboardEvent, i: number) {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
-    const h = (e.currentTarget as HTMLElement).parentElement?.querySelector('.plot')?.getBoundingClientRect().height ?? 150;
+    const h = (e.currentTarget as HTMLElement).parentElement?.querySelector('.plot, [data-xy] canvas')?.getBoundingClientRect().height ?? 150;
     setPlotH(i, h + (e.key === 'ArrowDown' ? 10 : -10));
   }
   /** A chip dragged by its name: its channel and pane (drop on a chip to reorder, on a pane to move; Alt copies). */
@@ -281,6 +284,25 @@
   }
 </script>
 
+{#snippet heightGrip(i: number, now: number, label: string, tip: string)}
+  <div
+    class="hgrip"
+    role="slider"
+    aria-orientation="vertical"
+    aria-valuemin={60}
+    aria-valuemax={800}
+    aria-valuenow={now}
+    aria-label={label}
+    tabindex="0"
+    data-tip={tip}
+    onpointerdown={(e) => gripDown(e, i)}
+    onpointermove={gripMove}
+    onpointerup={() => (grip = null)}
+    ondblclick={() => setPlotH(i, undefined)}
+    onkeydown={(e) => gripKey(e, i)}
+  ></div>
+{/snippet}
+
 {#snippet tileGrid(p: (typeof stack.panes)[number])}
                 <div class="tiles" data-tiles>
                   <div class="twhere" data-where-line>{ui.valuesAt}</div>
@@ -360,6 +382,14 @@
                 {#if stack.coarse[i]}
                   <span class="pill" data-coarse data-tip="Drawn from summaries; the exact view follows">coarse</span>
                 {/if}
+                {#if p.mode === 'xy' && p.channels.length > 1}
+                  <!-- the prototype's XY controls, in the header beside the view button (sheet B5) -->
+                  <select class="xysel" data-xsel aria-label="X axis channel" data-tip="Channel on the horizontal axis" onchange={(e) => setXy(i, { x: Number(e.currentTarget.value), xyView: undefined })}>
+                    {#each p.channels as c (c)}<option value={c} selected={c === xyAxisOf(i)}>X: {chName(c)}</option>{/each}
+                  </select>
+                  <button class="tbtn xyb" data-xyeq aria-pressed={xyEqualOf(i)} data-tip="Equal scale: one unit is the same length on both axes (longitude is corrected for latitude), so shapes aren't stretched" onclick={() => setXy(i, { xyEqual: !xyEqualOf(i), xyView: undefined })}>1:1</button>
+                  <button class="tbtn xyb" data-xyfit disabled={!p.xyView} data-tip="Fit: back to automatic ranges (or double-click the plot). Scroll zooms at the pointer; drag with Box zoom or Pan as the toolbar's mouse mode says." onclick={() => setXy(i, { xyView: undefined })}>Fit</button>
+                {/if}
                 <button
                   class="pmore vmenu"
                   data-vmenu
@@ -394,6 +424,7 @@
                 <Gauges {i} />
               {:else if p.mode === 'xy'}
                 <XY {i} />
+                {@render heightGrip(i, p.h ?? 340, 'Plot height', 'Drag to resize the plot (double-click resets, ↑ ↓ step)')}
               {:else}
                 {#if ui.filtered && ui.filtered.pane !== i}
                   <div class="fchip" data-fchip>
@@ -402,26 +433,11 @@
                   </div>
                 {/if}
                 <div class="plot" style="--pb: {labelled(i) ? PAD.timeLabels : 4}px; --pr: {rightPad()}px"></div>
-                {#if p.mode !== 'both'}
-                  <div
-                    class="hgrip"
-                    role="slider"
-                    aria-orientation="vertical"
-                    aria-valuemin={60}
-                    aria-valuemax={800}
-                    aria-valuenow={p.h ?? 150}
-                    aria-label="Chart height"
-                    tabindex="0"
-                    data-tip="Drag to resize the chart (double-click resets, ↑ ↓ step)"
-                    onpointerdown={(e) => gripDown(e, i)}
-                    onpointermove={gripMove}
-                    onpointerup={() => (grip = null)}
-                    ondblclick={() => setPlotH(i, undefined)}
-                    onkeydown={(e) => gripKey(e, i)}
-                  ></div>
-                {/if}
+                <!-- the chart's height grip: under the plot, except Chart and values, where it sits under the tiles at the pane's
+                     bottom (sheet B5); Chart and table also has the table's grip at its bottom, as the prototype -->
+                {#if p.mode !== 'cv'}{@render heightGrip(i, p.h ?? 150, 'Chart height', 'Drag to resize the chart (double-click resets, ↑ ↓ step)')}{/if}
                 {#if p.mode === 'both'}<Table {i} height={p.tableH ?? 210} />{/if}
-                {#if p.mode === 'cv'}{@render tileGrid(p)}{/if}
+                {#if p.mode === 'cv'}{@render tileGrid(p)}{@render heightGrip(i, p.h ?? 150, 'Chart height', 'Drag to resize the chart above the values (double-click resets, ↑ ↓ step)')}{/if}
               {/if}
             </section>
           {/each}
@@ -759,6 +775,38 @@
   .phead:hover .pmore,
   .pane.sel .pmore,
   .pmore:focus-visible {
+    visibility: visible;
+  }
+  /* XY's controls in the header, as the prototype's .xysel and .xyb: shown with the other header tools */
+  .xysel {
+    min-height: 24px;
+    max-width: 140px;
+    padding: 0 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--raised);
+    color: var(--fg);
+    font: 11.5px var(--font-ui);
+  }
+  .xyb {
+    min-height: 24px;
+    padding: 0 7px;
+  }
+  .xyb[aria-pressed='true'] {
+    border-color: var(--accent-line);
+    background: var(--accent-soft);
+  }
+  .xyb:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .xysel,
+  .xyb {
+    visibility: hidden;
+  }
+  .phead:hover :is(.xysel, .xyb),
+  .pane.sel :is(.xysel, .xyb),
+  .phead :is(.xysel, .xyb):focus-visible {
     visibility: visible;
   }
   .twhere {
