@@ -30,6 +30,8 @@ removed Nov 15; git history keeps them.
   channels for are greyed with what they need), the manual counterpart of an import profile's starter layout.
 - A recipe is duplicated from a derived channel's right-click (Duplicate recipe…) and from the Edit recipe dialog
   (Save as new), besides the Recipes manager.
+- A pane can have a name (Rename pane…, or a double-click on its title), saved as an optional `name` per pane in the
+  layout format and carried by shared views and exports.
 - An unlocked viewer arrangement is not kept across reloads: a reload is the exported view.
 - Parity with the prototype is classed (`docs/release/parity-classes.md`): the "App is better" rows are accepted
   differences (ledger A-01 to A-11); the ⋯ menu is trimmed to what the top bar and menu bar don't hold; the time range is

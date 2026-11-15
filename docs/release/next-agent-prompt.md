@@ -14,6 +14,10 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
+First: `main` may be one docs-only commit ahead of `origin/main` (the owner's pane-name decision, ledger D-ui-43); it
+goes up with your first push.
+
+
 **R2.2's remaining items** (release plan, R2.2, in the order it gives: descriptors and packets, WASM decoder plugins,
 folders, leaving out the post-v1 controls; then the end-of-R2.2 UI audit). The plan's "Recommended model per step" says
 which model suits each item. R3.0, the parity classification, is done (`docs/release/parity-classes.md`): parity work

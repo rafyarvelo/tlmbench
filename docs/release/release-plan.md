@@ -68,7 +68,7 @@ runs a step, keep the step smaller and have it stop and report at the first desi
 
 ## Where things stand (checked Nov 15)
 
-- Ledger: Done 235 · Partial 47 · Missing 23 · Diverged 4 · Unverified 26 · Owner pass 17 (352 rows).
+- Ledger: Done 235 · Partial 47 · Missing 24 · Diverged 4 · Unverified 26 · Owner pass 17 (353 rows).
 - Tests at the last full local run (Nov 15): 104 of 104 app UI tests, `cargo nextest run --workspace` 283 passed (1
   skipped), clippy clean. On CI: see the status table.
 - **Nothing for release exists yet:** `bundle.active` is `false` in `app/src-tauri/tauri.conf.json`; no release workflow;
