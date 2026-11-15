@@ -303,7 +303,11 @@ fn html_export_writes_data_files_and_trims_to_the_budget() {
         raw: vec![1],
         windows: vec![(t0, t1), (u0, u1), (v0, v1)],
     };
-    html::export(&w, &[f], serde_json::json!({}), &html::Options { mode: Mode::Light, ..Default::default() }).unwrap();
+    // progress: one step for reading the file, one per channel written, ending at the total
+    let mut steps = Vec::new();
+    let opts = html::Options { mode: Mode::Light, ..Default::default() };
+    html::export_with(&w, &[f], serde_json::json!({}), &opts, &mut |d, t| steps.push((d, t))).unwrap();
+    assert_eq!(steps, vec![(0, 3), (1, 3), (2, 3), (3, 3)]);
     let m: serde_json::Value = serde_json::from_slice(&fs::read(w.join("export.json")).unwrap()).unwrap();
     let chunks = m["files"][0]["channels"][0]["raw_chunks"].as_array().unwrap();
     let spans: Vec<(usize, usize)> =

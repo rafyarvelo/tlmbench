@@ -8,6 +8,7 @@
 // pyramid is built, panes fill in left to right and the part not read yet is hatched.
 
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { mount, tick, unmount } from 'svelte';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -4145,32 +4146,40 @@ async function htmlSizes(): Promise<void> {
   }
 }
 
-/** Export…: asks where, then the core writes the folder (the viewer and the data) there. */
+/** What a "Show in Finder" button is called here. */
+const REVEAL = /Mac/.test(navigator.platform) ? 'Show in Finder' : /Win/.test(navigator.platform) ? 'Show in Explorer' : 'Show in folder';
+
+/** Export…: asks where, then the dialog closes and the core writes the folder (the viewer and the data) there, with its
+ * progress under the top bar; the note at the end says where it went, with Show in Finder (sheet F1). */
 async function htmlGo(): Promise<void> {
   const ctx = html.ctx;
   const f = state.file;
-  if (!ctx || !f || html.busy) return;
+  if (!ctx || !f || html.busy || ui.task) return;
   const o = settings.exportHtml;
   const folder = await openDialog({ directory: true, title: 'Export to' });
   if (typeof folder !== 'string') return;
-  html.busy = true;
-  html.error = '';
-  html.result = '';
+  const chans = o.channels === 'all' ? f.info.channels.map((_, c) => c) : html.layout;
+  const raw = html.raw.filter((c) => chans.includes(c));
+  const secs = (t: bigint) => Number(t - f.first) / 1e9;
+  const layout = { ...toWorkspace(frontTab()?.ws ?? ctx.base, stack.panes, channelNames()), view: [secs(state.t0), secs(state.t1)] };
+  const span = o.range === 'all' ? null : ctx.view;
+  const out = `${folder.replace(/[\\/]$/, '')}${sep(folder)}${ctx.base}-export`;
+  Object.assign(html, { open: false, busy: true, error: '', result: '' });
+  ui.task = { label: `Exporting ${ctx.base} to HTML`, done: 0, total: 1 };
+  const stop = await listen<{ done: number; total: number }>('html-export-progress', (e) => ui.task && Object.assign(ui.task, e.payload));
   try {
-    const chans = o.channels === 'all' ? f.info.channels.map((_, c) => c) : html.layout;
-    const raw = html.raw.filter((c) => chans.includes(c));
-    const secs = (t: bigint) => Number(t - f.first) / 1e9;
-    const layout = { ...toWorkspace(frontTab()?.ws ?? ctx.base, stack.panes, channelNames()), view: [secs(state.t0), secs(state.t1)] };
-    const span = o.range === 'all' ? null : ctx.view;
-    const out = `${folder.replace(/[\\/]$/, '')}${sep(folder)}${ctx.base}-export`;
     const w = await invoke<{ out: string; viewer: boolean; report: { mode: string; bytes: number; trimmed: boolean } }>('export_html', {
       req: { file: f.id, out, layout, channels: chans, raw, mode: o.mode, budget: null, from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, sets: o.checks ? html.sets : [], widgets: settings.customWidgets, detail: htmlDetail(o), connectGaps: settings.gapLines === 'connect' },
     });
     const mb = (w.report.bytes / 1048576).toFixed(w.report.bytes > 1e7 ? 0 : 1);
-    html.result = `Wrote ${mb} MB (${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}) to ${nameOf(w.out)} in ${folder}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
+    html.result = `Exported to ${nameOf(w.out)} in ${folder}: ${mb} MB, ${w.report.mode === 'full' ? 'Full' : 'Light'}${w.report.trimmed ? ', trimmed to fit' : ''}.${w.viewer ? '' : ' This build has no viewer: the folder holds the data only.'}`;
+    note(html.result, () => void invoke('reveal_path', { path: w.out }).catch((e) => note(`Couldn't show it: ${e}`)), REVEAL);
   } catch (e) {
     html.error = `Couldn't export: ${e}`;
+    note(html.error, htmlOpen, 'Try again');
   } finally {
+    stop();
+    ui.task = null;
     html.busy = false;
   }
 }

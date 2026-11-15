@@ -65,7 +65,7 @@ try {
   check('Export to HTML… shows the core\'s sizes for Full and Light', await until(page, () => /Full \(\d/.test(document.querySelector('#htmlMode')?.textContent ?? '') && /Light \(\d/.test(document.querySelector('#htmlMode')?.textContent ?? '')), await page.$eval('#htmlMode', (e) => e.textContent).catch(() => null));
   answer = dest;
   await page.click('#htmlGo');
-  check('Export writes the folder and says so', await until(page, () => /Wrote .* MB \(Full\)/.test(document.querySelector('#htmlDone')?.textContent ?? ''), 20000), await page.$eval('#htmlErr, #htmlDone', (e) => e.textContent).catch(() => null));
+  check('Export writes the folder and says so, with Show in Finder', await until(page, () => /Exported to bench run-export in .*: .* MB, Full/.test(document.querySelector('#wsNote .txt')?.textContent ?? '') && /Show in/.test(document.querySelector('#wsNote')?.textContent ?? ''), 20000), await page.$eval('#wsNote', (e) => e.textContent).catch(() => null));
   const out = join(dest, 'bench run-export');
   check('the folder has the manifest, the data and the viewer', existsSync(join(out, 'export.json')) && existsSync(join(out, 'data/f0/c0.pyr.bin')) && existsSync(join(out, 'index.html')) && existsSync(join(out, 'tlmbench_web.wasm')), existsSync(out));
   const m = existsSync(join(out, 'export.json')) ? JSON.parse(readFileSync(join(out, 'export.json'), 'utf8')) : null;
@@ -85,8 +85,9 @@ try {
   const dest2 = join(home, 'out2');
   mkdirSync(dest2);
   answer = dest2;
+  await page.click('#wsNote [aria-label="Dismiss"]').catch(() => {});
   await page.click('#htmlGo');
-  check('Export writes both files', await until(page, () => /Wrote /.test(document.querySelector('#htmlDone')?.textContent ?? ''), 20000), await page.$eval('#htmlErr, #htmlDone', (e) => e.textContent).catch(() => null));
+  check('Export writes both files', await until(page, () => /Exported to bench run-export/.test(document.querySelector('#wsNote .txt')?.textContent ?? '') && !document.querySelector('#wsTask'), 20000), await page.$eval('#wsNote', (e) => e.textContent).catch(() => null));
   const two = join(dest2, 'bench run-export');
   const m2 = existsSync(join(two, 'export.json')) ? JSON.parse(readFileSync(join(two, 'export.json'), 'utf8')) : null;
   check('the export holds both files, the second with its map to the shared timeline', m2?.files?.length === 2 && m2.files[1].samples === 3000 && m2.group?.slots?.length === 1 && m2.group.slots[0].knots.length >= 1, [m2?.files?.map((f) => f.samples), m2?.group]);

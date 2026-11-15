@@ -337,10 +337,32 @@ fn f64_bytes(v: &[f64]) -> Vec<u8> {
 /// Writes the data files and `export.json` into `out` (created; an existing `export.json` is replaced). `extra` is
 /// merged into the manifest: the layout, events and the checks summary, as the caller has them.
 pub fn export(out: &Path, files: &[File], extra: serde_json::Value, o: &Options) -> Result<Report> {
+    export_with(out, files, extra, o, &mut |_, _| {})
+}
+
+/// [`export`], telling `progress(done, total)` as it goes: one step per file read, then one per channel written.
+pub fn export_with(
+    out: &Path,
+    files: &[File],
+    extra: serde_json::Value,
+    o: &Options,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<Report> {
     if files.is_empty() {
         return Err(Error::Write("nothing to export".into()));
     }
-    let mut plans: Vec<Plan> = files.iter().map(|f| plan(f, o)).collect();
+    let steps = files.len() + files.iter().map(|f| f.channels.len()).sum::<usize>();
+    let mut done = 0;
+    progress(done, steps);
+    let mut plans: Vec<Plan> = files
+        .iter()
+        .map(|f| {
+            let p = plan(f, o);
+            done += 1;
+            progress(done, steps);
+            p
+        })
+        .collect();
     let full_size = total(&plans, true);
     let full = match o.mode {
         Mode::Full => true,
@@ -419,6 +441,8 @@ pub fn export(out: &Path, files: &[File], extra: serde_json::Value, o: &Options)
                 pyramid_bytes: pb.len() as u64,
                 first_level,
             });
+            done += 1;
+            progress(done, steps);
         }
         // the levels a channel of n samples has, so the viewer can check what it reads
         debug_assert!(p.chans.iter().all(|c| c.values.is_empty() || c.levels.len() == level_lengths(n).len()));

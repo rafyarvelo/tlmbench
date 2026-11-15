@@ -2947,7 +2947,11 @@ struct HtmlSizes {
 
 /// Export to HTML…: the same folder as `tlmbench export html` (the writer is shared), from the file in front.
 #[tauri::command]
-async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlExported, String> {
+async fn export_html<R: tauri::Runtime>(
+    req: HtmlRequest,
+    files: State<'_, Files>,
+    app: AppHandle<R>,
+) -> Result<HtmlExported, String> {
     use tlmbench_export::html::{self, Mode};
     let o = files.get(req.file)?;
     let base = files.base(req.file)?;
@@ -3047,7 +3051,11 @@ async fn export_html(req: HtmlRequest, files: State<'_, Files>) -> Result<HtmlEx
                 .collect();
             extra["group"] = serde_json::json!({ "slots": slots });
         }
-        let report = html::export(out, &exported, extra, &opts).map_err(|e| e.to_string())?;
+        // the top bar's progress (sheet F1): one step per file read and per channel written
+        let mut progress = |done: usize, total: usize| {
+            let _ = app.emit("html-export-progress", serde_json::json!({ "done": done, "total": total }));
+        };
+        let report = html::export_with(out, &exported, extra, &opts, &mut progress).map_err(|e| e.to_string())?;
         let built_in = html::embedded_viewer();
         let viewer = !built_in.is_empty();
         if viewer {
@@ -3354,6 +3362,12 @@ async fn cache_clear(files: State<'_, Files>) -> Result<usize, String> {
     files.store.clear().map(|removed| removed.len()).map_err(|e| e.to_string())
 }
 
+/// Show in Finder after an export: the OS file manager shows `path` selected (reveal only; the app runs no program).
+#[tauri::command]
+async fn reveal_path(path: String) -> Result<(), String> {
+    tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
 /// Settings → Cache → Open folder: the OS file manager shows the cache folder (reveal only; the app runs no program).
 #[tauri::command]
 async fn cache_reveal(files: State<'_, Files>) -> Result<(), String> {
@@ -3528,6 +3542,7 @@ macro_rules! commands {
             cache_info,
             cache_clear,
             cache_reveal,
+            reveal_path,
             close,
             hold,
             holders,

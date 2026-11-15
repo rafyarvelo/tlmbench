@@ -1203,8 +1203,14 @@
     export_html_sizes({ file, channels, raw }) {
       return { full: 1000 * channels.length * (fake.htmlSizeScale ?? 1), light: 100 * channels.length + 900 * raw.length, budget: 250 * 1024 * 1024 };
     },
-    export_html({ req }) {
+    async export_html({ req }) {
       fake.htmlExports.push(req);
+      // progress as the core sends it: `htmlSteps` steps, `htmlStepMs` apart
+      const steps = fake.htmlSteps ?? 0;
+      for (let k = 0; k <= steps; k++) {
+        emit('html-export-progress', { done: k, total: Math.max(1, steps) });
+        if (steps) await new Promise((r) => setTimeout(r, fake.htmlStepMs ?? 150));
+      }
       if (fake.exportFails) throw fake.exportFails;
       return { out: req.out, viewer: true, report: { mode: req.mode === 'light' ? 'light' : 'full', bytes: 4_200_000, trimmed: false } };
     },
@@ -1252,6 +1258,10 @@
     'plugin:event|unlisten': () => null,
     // the cache: `cache` is its entries (bytes each; open: in use, kept by Clear)
     cache_info: () => ({ path: '/Users/me/Library/Caches/tlmbench', bytes: fake.cache.reduce((a, e) => a + e.bytes, 0), cap: 20 * 2 ** 30 }),
+    reveal_path({ path }) {
+      (fake.revealedPaths ??= []).push(path);
+      return null;
+    },
     cache_reveal() {
       fake.revealed = (fake.revealed || 0) + 1;
     },

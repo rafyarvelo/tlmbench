@@ -32,20 +32,39 @@ run(
     await p.fill('#htmlDetMin', '60');
     await p.dispatchEvent('#htmlDetMin', 'change');
     check('changing one is in the command line (--detail) and remembered', await until(() => /--detail 3x,60s,600s/.test(document.querySelector('#htmlDlg .hint')?.textContent ?? '')) && (await settingsLS()).exportHtml?.detail?.min === 60, await text(`${dlg} .hint`));
-    await fake(() => (window.__tlmFake.pickFolder = '/out/dir'));
+    await fake(() => Object.assign(window.__tlmFake, { pickFolder: '/out/dir', htmlSteps: 4, htmlStepMs: 200 }));
     await p.click('#htmlGo');
+    // the dialog closes at once; the export runs on with a progress bar under the top bar (sheet F1)
+    check('the dialog closes as soon as the folder is chosen', await until(() => !document.querySelector('#htmlDlg')));
+    check('the progress shows under the top bar, with a bar', await until(() => /Exporting flight to HTML/.test(document.querySelector('#wsTask')?.textContent ?? '') && !!document.querySelector('#wsTask [role=progressbar]')), await text('#wsTask'));
+    const seen = new Set();
+    for (let k = 0; k < 12; k++) {
+      const v = await p.getAttribute('#wsTask [role=progressbar]', 'aria-valuenow', { timeout: 200 }).catch(() => null);
+      if (v != null) seen.add(v);
+      await p.waitForTimeout(80);
+    }
+    check('and it moves as the core reports', seen.size >= 2, [...seen]);
     check('Export asks the core to write', await until(() => window.__tlmFake.htmlExports.length === 1));
     const r = (await fake(() => window.__tlmFake.htmlExports))[0];
     check('into a folder named after the file, in the folder chosen', r.out === '/out/dir/flight-export', r.out);
     check('with the mode, every channel and the time view', r.mode === 'light' && r.channels.join() === '0,1,2,3,4,5' && r.from != null && r.until != null, r);
     check('the windows go with it', r.detail === '3x,60s,600s', r.detail);
     check('the layout in front goes with it', r.layout?.schema === 1 && Array.isArray(r.layout?.panes) && Array.isArray(r.layout?.view), r.layout);
-    check('it says what it wrote', await until(() => /Wrote 4\.0 MB \(Light\) to flight-export in \/out\/dir\./.test(document.querySelector('#htmlDone')?.textContent ?? '')), await text('#htmlDone'));
+    check('when done the progress goes and the note says where it went', await until(() => !document.querySelector('#wsTask') && /Exported to flight-export in \/out\/dir: 4\.0 MB, Light\./.test(document.querySelector('#wsNote .txt')?.textContent ?? ''), null, 8000), await text('#wsNote'));
+    const reveal = p.locator('#wsNote button', { hasText: /Show in (Finder|Explorer|folder)/ });
+    check('with Show in Finder', (await reveal.count()) === 1, await text('#wsNote'));
+    await reveal.click();
+    check('which shows the export folder', await until(() => (window.__tlmFake.revealedPaths ?? []).join() === '/out/dir/flight-export'), await fake(() => window.__tlmFake.revealedPaths ?? null));
 
-    // a failure is shown
-    await fake(() => (window.__tlmFake.exportFails = 'disk full'));
+    // a failure is shown, with Try again reopening the dialog
+    await fake(() => Object.assign(window.__tlmFake, { exportFails: 'disk full', htmlSteps: 0 }));
+    await p.click('#b-more');
+    await p.click('.moremenu [data-more="exporthtml"]');
+    await until(() => !!document.querySelector('#htmlDlg'));
     await p.click('#htmlGo');
-    check('a failure is shown', await until(() => /Couldn't export: disk full/.test(document.querySelector('#htmlErr')?.textContent ?? '')), await text(dlg));
+    check('a failure is shown', await until(() => /Couldn't export: disk full/.test(document.querySelector('#wsNote .txt')?.textContent ?? '')), await text('#wsNote'));
+    await p.locator('#wsNote button', { hasText: 'Try again' }).click();
+    check('Try again opens the dialog again', await until(() => !!document.querySelector('#htmlDlg')));
     await p.keyboard.press('Escape');
     check('Escape closes it', await until(() => !document.querySelector('#htmlDlg')));
   },

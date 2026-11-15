@@ -47,7 +47,7 @@
 
 {#if html.open && ctx}
   <div class="scrim" role="presentation" onclick={actions.htmlClose}></div>
-  <div class="dlg recdlg" id="htmlDlg" role="dialog" aria-label="Export to HTML">
+  <div class="dlg xdlg" id="htmlDlg" role="dialog" aria-label="Export to HTML">
     <header><b>Export to HTML</b><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={actions.htmlClose}>{@html ICON.close}</button></header>
     <div class="recbody">
       <p class="muted">A folder of static files: the viewer and the data for this view. It opens in a browser from any web server or file share, with nothing to install.</p>
@@ -86,11 +86,9 @@
       {#if s && !fits}<p class="hint">Even Light is over the budget: the finest detail of the biggest channels is left out, and the viewer says so when you zoom past it.</p>
       {:else if s && o.mode === 'auto' && auto === 'light'}<p class="hint">Full doesn't fit the budget, so this is Light: tables and XY keep their raw samples, the other charts the exact summaries.</p>{/if}
       <p class="hint">Same as <code>{cli}</code></p>
-      {#if html.error}<p class="recstat bad" id="htmlErr">{html.error}</p>{/if}
-      {#if html.result}<p class="recstat" id="htmlDone" role="status">{html.result}</p>{/if}
     </div>
     <footer><span class="muted">You choose the folder</span><span class="spacer"></span>
-      <button class="tbtn" onclick={actions.htmlClose}>{html.result ? 'Close' : 'Cancel'}</button>
-      <button class="tbtn primary" id="htmlGo" disabled={html.busy || nchan === 0} onclick={actions.htmlGo}>{html.busy ? 'Writing…' : 'Export…'}</button></footer>
+      <button class="tbtn" onclick={actions.htmlClose}>Cancel</button>
+      <button class="tbtn primary" id="htmlGo" disabled={html.busy || nchan === 0} data-tip="Choose a folder. The export runs on with its progress under the top bar." onclick={actions.htmlGo}>Export…</button></footer>
   </div>
 {/if}

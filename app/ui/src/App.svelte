@@ -150,6 +150,14 @@
   <div class="col">
     <TopBar />
     {#if ui.focus}<button class="tbtn exitfocus" id="focusExit" data-tip="Show the sidebars and toolbar again (Esc)" onclick={() => actions.toggleFocus(false)}>Exit focus</button>{/if}
+    {#if ui.task}
+      {@const pct = Math.round((100 * ui.task.done) / Math.max(1, ui.task.total))}
+      <div class="wsnote wstask" id="wsTask" role="status">
+        <span class="dot"></span><span class="txt">{ui.task.label}…</span>
+        <span class="tbar" role="progressbar" aria-label={ui.task.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style:width="{pct}%"></i></span>
+        <span class="tpct">{pct}%</span>
+      </div>
+    {/if}
     {#if ui.note}
       <div class="wsnote" id="wsNote" role="status">
         <span class="dot"></span><span class="txt">{ui.note}</span>
@@ -329,6 +337,48 @@
   .wsnote .txt {
     flex: 1;
     min-width: 0;
+  }
+  /* work running on after its dialog closed (an HTML export): the label, a bar and the percentage */
+  .wstask .dot {
+    background: var(--accent);
+    animation: tpulse 1.2s ease-in-out infinite;
+  }
+  .wstask .tbar {
+    position: relative;
+    flex: none;
+    width: 160px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 4px;
+    background: var(--grid);
+  }
+  .wstask .tbar i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 4px;
+    background: var(--accent);
+    transition: width 160ms ease-out;
+  }
+  .wstask .tpct {
+    flex: none;
+    min-width: 36px;
+    padding-right: 8px;
+    color: var(--fg-muted);
+    font: 11.5px var(--font-data);
+    text-align: right;
+  }
+  @keyframes tpulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wstask .dot {
+      animation: none;
+    }
+    .wstask .tbar i {
+      transition: none;
+    }
   }
   .statusbar {
     display: flex;
