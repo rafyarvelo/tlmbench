@@ -3168,6 +3168,39 @@ function deriveEdit(ch: number): void {
   deriveEditRecipe(ui.channels[ch]?.name ?? '');
 }
 
+/** A recipe name that isn't taken: `temp_avg copy`, `temp_avg copy 2`. */
+function copyName(name: string): string {
+  let copy = `${name} copy`;
+  for (let n = 2; recipes.list.some((x) => x.name === copy); n++) copy = `${name} copy ${n}`;
+  return copy;
+}
+
+/** Duplicate recipe…: the Derive dialog as a new recipe, prefilled with `name`'s expression, unit and category. */
+function deriveDuplicate(name: string): void {
+  const go = (r: Recipe) => {
+    Object.assign(derive, { open: true, editing: null, busy: false, base: [], tpl: 'custom', name: copyName(r.name), expr: r.expr, unit: r.unit ?? '', category: r.category ?? 'Derived', decimals: r.decimals ?? 3, scope: r.automatic ? 'auto' : 'file', error: '' });
+    deriveCheckSoon();
+  };
+  const r = recipes.list.find((x) => x.name === name);
+  if (r) return go(r);
+  void refreshRecipes().then(() => {
+    const found = recipes.list.find((x) => x.name === name);
+    if (found) go(found);
+  });
+}
+
+/** Save as new, beside Save in Edit recipe: what the dialog shows becomes a recipe of its own (a copy name when the
+ * name wasn't changed), and the recipe being edited stays as it was. */
+function deriveSaveAsNew(): void {
+  const was = derive.editing;
+  if (was == null) return;
+  const old = recipes.list.find((r) => r.name === was);
+  if (!derive.name.trim() || derive.name.trim() === was) derive.name = copyName(was);
+  derive.scope = derive.scope === 'keep' ? (old?.automatic ? 'auto' : 'file') : derive.scope;
+  derive.editing = null;
+  void deriveSubmit();
+}
+
 function deriveEditRecipe(name: string): void {
   const r = recipes.list.find((x) => x.name === name);
   const go = (r: Recipe) => {
@@ -4792,6 +4825,7 @@ function channelMenu(ch: number, x: number, y: number): void {
     ...(f.derived.some((d) => d.channel === ch)
       ? [
           { label: 'Edit recipe…', data: { cm: 'edit' }, run: () => deriveEdit(ch) },
+          { label: 'Duplicate recipe…', data: { cm: 'dup' }, run: () => deriveDuplicate(ui.channels[ch]?.name ?? '') },
           { label: 'Derive from this…', data: { cm: 'derive' }, run: () => deriveOpen([ch]) },
           { label: 'Remove from this file', data: { cm: 'rm-file' }, run: () => void deriveRemove(ch, 'file') },
           { label: 'Remove from every file', data: { cm: 'rm-all' }, run: () => void deriveRemove(ch, 'all') },
@@ -5209,6 +5243,8 @@ Object.assign(actions, {
     manager.open = false;
   },
   recipeEdit: (name: string) => deriveEditRecipe(name),
+  deriveDuplicate,
+  deriveSaveAsNew,
   recipeDuplicate: (name: string) => void recipeDuplicate(name),
   recipeDelete: (name: string) => void recipeDelete(name),
   recipeAuto: (name: string, on: boolean) => void recipeAuto(name, on),

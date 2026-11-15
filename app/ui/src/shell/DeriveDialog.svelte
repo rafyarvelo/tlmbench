@@ -107,6 +107,7 @@
     </div>
     <footer><span class="spacer"></span>
       <button class="tbtn" onclick={actions.deriveClose}>Cancel</button>
+      {#if editing}<button class="tbtn" data-saveasnew disabled={!ok} data-tip="Keep this recipe as it was and add the changes as a new one" onclick={actions.deriveSaveAsNew}>Save as new</button>{/if}
       <button class="tbtn primary" data-ok disabled={!ok} onclick={actions.deriveSubmit}>{editing ? 'Save' : 'Add and plot'}</button></footer>
   </div>
 {/if}

@@ -279,6 +279,9 @@ export const actions = {
   renameWs: (_from: string, _to: string): string | null => null,
   /** Open with layout ▸ on a file's right-click: the file, then the layout (yours, or a shared one by its file) on it. */
   openWithLayout: (_path: string, _name: string, _shared?: string) => {},
+  /** Duplicate recipe…: the Derive dialog prefilled as a new recipe; Save as new: the Edit recipe dialog's copy. */
+  deriveDuplicate: (_name: string) => {},
+  deriveSaveAsNew: () => {},
   openWs: (_name: string) => {},
   newWs: (_name: string): string | null => null,
   /** Shared views: list the folder's again, open one, share tab `key`'s layout under a name, export it to a file. */

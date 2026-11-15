@@ -123,6 +123,24 @@ run(
     const before = (await fake(() => window.__tlmFake.recipeSaves)).length;
     await p.keyboard.press('Escape');
     check('Esc closes the dialog and saves nothing', !(await visible('#deriveDlg')) && (await fake(() => window.__tlmFake.recipeSaves)).length === before);
+
+    // ---- Duplicate recipe… and Save as new (D-derive-02): from where you work, not only the manager
+    const dchan = '#explorer .row.chan[data-derived]';
+    await p.click(dchan, { button: 'right' });
+    await p.click('.chanmenu [data-cm="dup"]');
+    check('Duplicate recipe… opens the Derive dialog prefilled, named "… copy", as a new recipe', await until(() => !!document.querySelector('#deriveDlg')) && /copy$/.test(await field('name')) && (await field('expr')) !== '' && !/Edit recipe/.test(await text('#deriveDlg header')), [await field('name'), await field('expr')]);
+    await p.keyboard.press('Escape');
+    await p.click(dchan, { button: 'right' });
+    await p.click('.chanmenu [data-cm="edit"]');
+    await until(() => !!document.querySelector('#deriveDlg'));
+    const was = (await field('name'));
+    const n0 = (await fake(() => window.__tlmFake.recipeSaves)).length;
+    await p.fill(`${dlg} [data-r="expr"]`, 'abs(roll) * 2');
+    await until(() => !document.querySelector(`${dlg} [data-saveasnew]`).disabled);
+    await p.click(`${dlg} [data-saveasnew]`);
+    await until(() => !document.querySelector('#deriveDlg'));
+    const info = await fake((w) => ({ names: window.__tlmFake.recipes.map((r) => r.name + '=' + r.expr), saves: window.__tlmFake.recipeSaves.length, w }), was);
+    check('Save as new adds a recipe of its own and leaves the edited one as it was', info.saves === n0 + 1 && info.names.some((x) => x === `${was} copy=abs(roll) * 2`) && info.names.some((x) => x.startsWith(was + '=') && !x.endsWith('abs(roll) * 2')), info);
   },
   { files: { '/data/flight.tlm': {} }, launch: '/data/flight.tlm' },
 );
