@@ -204,10 +204,39 @@ function edit(f: () => void, viewOnly = false): void {
     note('The layout is locked.', () => setSetting('locked', false), 'Unlock');
     return;
   }
+  remember();
   f();
   normalize();
   changed();
 }
+
+/** Undo and redo for the layout (panes, their channels and views): ⌘Z and ⇧⌘Z, as any Mac app (owner, Nov 14). A step
+ * belongs to the file in front; another file's history is dropped. */
+type Step = { path: string; panes: Pane[]; sel: number };
+const past: Step[] = [];
+const future: Step[] = [];
+const snap = (): Step => ({ path: ui.path, panes: $state.snapshot(stack.panes) as Pane[], sel: stack.sel });
+function remember(): void {
+  if (past.length && past[past.length - 1].path !== ui.path) past.length = 0;
+  past.push(snap());
+  if (past.length > 100) past.shift();
+  future.length = 0;
+}
+function restore(from: Step[], to: Step[]): boolean {
+  while (from.length && from[from.length - 1].path !== ui.path) from.pop();
+  const s = from.pop();
+  if (!s) return false;
+  to.push(snap());
+  stack.panes.splice(0, stack.panes.length, ...s.panes);
+  stack.sel = Math.min(s.sel, Math.max(0, stack.panes.length - 1));
+  normalize();
+  changed();
+  return true;
+}
+/** Takes back the last layout change; false when there is none. */
+export const undoLayout = (): boolean => restore(past, future);
+/** Does again what Undo took back; false when there is nothing. */
+export const redoLayout = (): boolean => restore(future, past);
 
 const rowOf = (i: number) => rows().find((r) => r.includes(i)) ?? [i];
 const copy = (panes: Pane[]): Pane[] => panes.map((p) => ({ ...p, channels: [...p.channels] }));

@@ -47,9 +47,11 @@ import {
   note,
   onStackChange,
   type Pane,
+  redoLayout,
   rightPad,
   setAxis,
   stack,
+  undoLayout,
   units,
 } from './stack.svelte';
 import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
@@ -2747,6 +2749,12 @@ async function showFolder(path: string): Promise<void> {
   await listFolder(path);
 }
 
+/** The folder the core watches for new and removed files (D-ui-02). */
+let watching = '';
+void listen<{ path: string }>('folder-changed', (e) => {
+  if (e.payload.path === settings.folder && ui.folder) void listFolder(settings.folder);
+});
+
 async function listFolder(path: string): Promise<void> {
   try {
     ui.folder = await invoke<FolderEntry>('list_folder', { path });
@@ -2755,6 +2763,11 @@ async function listFolder(path: string): Promise<void> {
       setSetting('exExpanded', ui.folder.children.filter((c) => c.dir).map((c) => c.path));
       // a different folder lists everything: "only the open files" would hide all of it
       setSetting('exOnlyOpen', false);
+    }
+    // new and removed files show without asking (the core watches the folder; Refresh lists it by hand)
+    if (watching !== path) {
+      watching = path;
+      void invoke('watch_folder', { path }).catch(() => (watching = ''));
     }
     // the views shared in it count under Explorer's .tlmbench row and fill Layouts; its other shared objects are read too
     void loadShared().catch(() => (ui.shared = []));
@@ -4812,6 +4825,20 @@ document.addEventListener('pointerdown', (e) => {
   if (popup && !(e.target as HTMLElement).closest('.menu, .dlg')) closePopup();
 });
 
+/** ⌘Z: the change the note offers to undo (the latest: a removed event, closed files), else the last layout change. */
+function undo(): void {
+  if (ui.note && ui.undo && ui.noteAction === 'Undo') {
+    const f = ui.undo;
+    ui.note = '';
+    ui.undo = null;
+    return f();
+  }
+  if (!undoLayout()) note('Nothing to undo.');
+}
+function redo(): void {
+  if (!redoLayout()) note('Nothing to redo.');
+}
+
 function clearCursors(): void {
   state.A = state.B = null;
   linkSend();
@@ -4835,6 +4862,11 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (popup) return;
+  // ⌘Z / ⇧⌘Z (Ctrl on Windows and Linux): undo and redo the last change; a text field keeps its own (owner, Nov 14)
+  if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y') && !(e.target as HTMLElement).closest('input, textarea, [contenteditable]')) {
+    e.preventDefault();
+    return void (k === 'y' || e.shiftKey ? redo() : undo());
+  }
   if ((e.metaKey || e.ctrlKey) && e.key === '.') return toggleFocus();
   if ((e.metaKey || e.ctrlKey) && k === 'd' && state.file) {
     e.preventDefault();
@@ -4923,6 +4955,7 @@ Object.assign(actions, {
   },
   open: () => void chooseFile(),
   openFolder: () => void chooseFolder(),
+  refreshFolder: () => void (settings.folder && listFolder(settings.folder)),
   openPath: (p: string) => void openWithImport([p]),
   openOnly: (p: string) =>
     void (async () => {
