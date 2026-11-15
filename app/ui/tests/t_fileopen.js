@@ -2,7 +2,7 @@
 // row (Act at once), and the Quiet interface.
 import { run } from './lib.js';
 
-const files = { '/data/a.tlm': {}, '/data/b.tlm': {}, '/data/c.tlm': {}, '/data/d.tlm': {} };
+const files = { '/data/a.tlm': {}, '/data/b.tlm': {}, '/data/c.tlm': {}, '/data/d.tlm': {}, '/data/e.tlm': {} };
 
 run('fileopen', async ({ p, check, fake, until, paneCount, visible, text, settingsLS, wait }) => {
   const app = (f) => p.evaluate((f) => window.__tlmApp[f](), f);
@@ -21,6 +21,15 @@ run('fileopen', async ({ p, check, fake, until, paneCount, visible, text, settin
   };
 
   check('a new file opens with starter charts', (await paneCount()) === 3);
+
+  // the same file asked for twice at once (a double click, two drops) is one tab
+  await p.evaluate(() => { window.__tlmApp.openPaths(['/data/e.tlm']); window.__tlmApp.openPaths(['/data/e.tlm']); });
+  await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'e.tlm');
+  await wait(400);
+  check('two opens of one file at once make one tab', (await p.evaluate(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].filter((n) => n.textContent === 'e.tlm').length)) === 1);
+  check('and the core opened it once', (await fake(() => window.__tlmFake.openedWith.filter((o) => o.path === '/data/e.tlm').length)) === 1);
+  await p.keyboard.press('ControlOrMeta+w');
+  await wait(300);
   await set('fileOpenNew', 'table');
   await openFile('/data/b.tlm');
   check('a file opened for the first time follows "first time": one table', (await paneCount()) === 1 && (await p.$$('#stack [data-table]')).length === 1);

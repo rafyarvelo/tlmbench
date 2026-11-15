@@ -34,8 +34,12 @@ run('windows', async ({ p, check, settingsLS, until, wait, fake }) => {
   check('applying it does not send it back', (await calls()) === n);
 
   // Move to new window: the tab goes to a window of its own, opening the same file, and closes here
+  const dialogs = () => fake(() => window.__tlmFake.calls.filter((c) => c === 'plugin:dialog|open').length);
+  const d0 = await dialogs();
   await fake((a) => (window.__tlmFake.pick = a), A);
   await p.keyboard.press('ControlOrMeta+o');
+  // the file is open from launch, so wait for the dialog itself: the pick is read when it is asked
+  await until((n) => window.__tlmFake.calls.filter((c) => c === 'plugin:dialog|open').length > n, d0);
   await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'flight.tlm');
   await fake((b) => (window.__tlmFake.pick = b), B);
   await p.keyboard.press('ControlOrMeta+o');

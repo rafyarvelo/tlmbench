@@ -1677,9 +1677,21 @@ const layoutKey = (path: string, part?: string | null) => (part ? `${path}\u0000
 
 /** Opens `path` in a tab of its own (or brings its tab to the front); `part`: one packet type of a file that has
  * several (a tab each, until step 5.6 puts them in one tab). */
-async function openPath(path: string, part?: string): Promise<void> {
+/** Opens in flight, by file and part: a second request for the same file (a double click, two drops) joins the first. */
+const opening = new Map<string, Promise<void>>();
+
+function openPath(path: string, part?: string): Promise<void> {
   const open = tabs.list.find((t) => t.path === path && !t.ws && (part == null || t.part === part));
   if (open) return showTab(open.key);
+  const id = `${path}\u0000${part ?? ''}`;
+  const going = opening.get(id);
+  if (going) return going;
+  const p = openPathNow(path, part).finally(() => opening.delete(id));
+  opening.set(id, p);
+  return p;
+}
+
+async function openPathNow(path: string, part?: string): Promise<void> {
   // a file a workspace tab shows is open already: its file tab shares it
   const shown = tabs.list.find((t) => t.path === path && !t.live && (t.part ?? null) === (part ?? null));
   const again = shown ? fileOf(shown.key) : null;
@@ -5408,6 +5420,8 @@ export const gateApi = {
 (window as unknown as { __tlmApp: unknown }).__tlmApp = {
   /** Adds a file to the tab in front, on its timeline (what the import dialog's "This tab" does). */
   addToTab: (path: string) => addToTab(path),
+  /** What a drop or the Explorer's Open does: files the user chose. */
+  openPaths: (paths: string[]) => openWithImport(paths),
   view: () => ({ t0: String(state.t0), t1: String(state.t1), back: state.history.length }),
   cursors: () => ({ A: state.A == null ? null : String(state.A), B: state.B == null ? null : String(state.B) }),
   hoverT: () => (state.hoverT == null ? null : String(state.hoverT)),
