@@ -26,7 +26,7 @@ In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/fligh
 
 ```
 Date:
-App: release build from commit (agent fills in): f9adbf3 (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). What is new since the Nov 14 build is section S below. Items you confirmed good are removed.
+App: release build from commit (agent fills in): 18d127d (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). What is new since the Nov 14 build is section S below. Items you confirmed good are removed.
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
@@ -40,7 +40,7 @@ Started with my usual settings, or a fresh profile?:
 
 ## R. Confirm the Nov 14 changes against your comments
 
-Build `f9adbf3` (`target/release/tlmbench-app`). What you confirmed good (R1, R2, R4 to R11, and A1, A2, A4 to A6, B1 to B3, B5, C1, E1 to E3) is removed; what is left is open. Each item quotes what you wrote, says what changed and how to check it.
+Build `18d127d` (`target/release/tlmbench-app`). What you confirmed good (R1, R2, R4 to R11, and A1, A2, A4 to A6, B1 to B3, B5, C1, E1 to E3) is removed; what is left is open. Each item quotes what you wrote, says what changed and how to check it.
 Type `PASS` or `FAIL` after `Result:` as above; under `Notes:` say what still isn't right, in your words. Your original
 answers in sections A to H stay as they were.
 
@@ -76,7 +76,7 @@ Changed: opened from a file, a folder export shows the exact command for its fol
 open, and that One file opens anywhere.
 Check: double-click the exported folder's `index.html`.
 Result: This works fine now, the instructions provide the correct command
-Notes:
+Notes: Nominal.
 The export tiers (decision 7) are built: see S1 and S2. Opening folders and CSVs in a browser like the prototype is R2.2,
 partly built: see S4.
 
@@ -85,8 +85,8 @@ You wrote: "Dragging the columns onto another pane would work same as dropping c
 Changed: a column header drags like a chip: onto another pane to move it (⌘ or Option copies), onto another header to
 reorder.
 Check: switch a pane to Table and drag a column header onto another pane.
-Result:
-Notes:
+Result: This now works as expected.
+Notes: Nominal behavior.
 
 ### R15. Your v1 ideas
 You wrote: (1) the menu bar should have File › Open and every action; (2) a file system watcher or a refresh in Explorer;
