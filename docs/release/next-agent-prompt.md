@@ -21,15 +21,25 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 2. **Triage the owner test sheet:** new Results and Notes (the new section T, then R, S and the older items) become ledger
    rows or fixes. The owner confirmed on Nov 15 and removed: the ⋯ menu, the time range, Explorer's quiet rows, Open with
    layout ▸, the start page, rates and filters.
-3. **R2.2, browser-only mode, the rest** (release plan, status table): descriptors and packets, WASM decoder plugins,
-   read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit. The
-   release plan gives the order. Several files, derived channels, events and checks in a browser tab are post-v1 (owner,
-   Nov 15). Never touch an "App is better" row.
-4. **Then R2.3 to R2.5** in the plan's order. R2.5 holds the core work the R3.2 rows are waiting on: the import dialog's
-   sections and Derived list (S5.1-10, D-share-01), Connect's reconnect (D-live-11), the profile's starter layout and recipes
-   (D-ui-42's layout), recipes reaching every file in a tab (D-derive-03) and every file's events (S5.6-12). **After R2.5,
-   R3.3** (panes, charts, tables: D-ui-43, -46, -47, -48, -49 and the table's Event column) **and R3.4.** Sonnet suits R3.x;
-   run the apple-design audit at the end of each sub-step (the R3.1/R3.2 audit was run by Sonnet, so an Opus pass is owed).
+3. **This prompt is written for Sonnet** (release plan, "Recommended model per step"). Do, in this order, the work that
+   suits Sonnet, and **stop and report at the first design question or at the first step that needs Opus**; never decide
+   a design question yourself:
+   1. **R2.2, the Sonnet part:** read-only folders (`showDirectoryPicker`) and leaving out the post-v1 controls
+      (D-brow-05, -08, -09, -10: hide them by a known rule). Several files, derived channels, events and checks in a
+      browser tab are post-v1 (owner, Nov 15). Never touch an "App is better" row.
+   2. **R2.3 Decoders**, following the CSV and Parquet path (`backwards.rs`).
+   3. **R2.4 Python:** wheels, the CI matrix, trusted publishing. If the Arrow C interface fights you, stop: Opus.
+   4. The ledger rows each step closes (evidence you ran), the tests README, the status table, the sheet.
+   After each: run the apple-design audit of the area and record it in `ui-audits.md`, saying it was run by Sonnet (the
+   Opus pass is owed).
+4. **What needs Opus; don't start it** (it is Opus in the plan: judgement across many files or hard debugging): R2.2's
+   descriptors and packets and WASM decoder plugins (splitting `packets.rs` for WASM, a streaming zstd shim, WIT
+   components in the browser), then the end-of-R2.2 UI audit; **R2.5** (the core's Partial rows: the import dialog's
+   sections and Derived list S5.1-10, D-share-01, Connect's reconnect D-live-11, the profile's starter layout, recipes
+   and events across the files of a tab D-derive-03, S5.6-12); **R3.4** and everything from R4 on except R7 and R9 (Sonnet)
+   and R8 (Haiku). R3.3 comes after R2.5 in the plan; its UI-only rows (D-ui-43 pane names, D-ui-46 to D-ui-49, the table's
+   Event column and dimmed rows) need no core work, so **ask the owner** whether Sonnet may take them before R2.5, and
+   say so in your report. When your Sonnet work is done, report what the next Opus step is and why, and stop.
 
 Built and committed, not pushed, Nov 15: R3.1 (D-ui-37, -39, -40, -41, -44, S4.4-04) and R3.2 (D-ui-36, -38, -42, -45,
 D-derive-02; D-ui-01 and D-ui-10 Partial). The release app was rebuilt for the owner from that code; its leftover-slot-numbers
