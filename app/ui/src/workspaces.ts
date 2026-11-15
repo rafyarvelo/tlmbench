@@ -6,6 +6,8 @@ import type { AxisKey, AxisSettings, Pane, PaneMode, WidgetCfg } from './stack.s
 
 export interface WsPane {
   channels: string[];
+  /** The pane's own name, where it has one. */
+  name?: string;
   beside?: boolean;
   under?: boolean;
   /** The pane's view; left out for a chart. */
@@ -61,6 +63,7 @@ export function toWorkspace(name: string, panes: Pane[], names: string[]): Works
     name,
     panes: panes.map((p) => {
       const w: WsPane = { channels: p.channels.map((ch) => names[ch]).filter((n) => n != null) };
+      if (p.name) w.name = p.name;
       if (p.beside) w.beside = true;
       if (p.under) w.under = true;
       if (p.mode && p.mode !== 'chart') w.view = p.mode;
@@ -93,6 +96,7 @@ export function fromWorkspace(ws: Workspace, names: string[]): { panes: Pane[]; 
       else if (!channels.includes(i)) channels.push(i);
     }
     const p: Pane = { channels };
+    if (typeof w.name === 'string' && w.name.trim()) p.name = w.name.trim().slice(0, 60);
     if (w.beside) p.beside = true;
     if (w.under) p.under = true;
     if (w.view && w.view !== 'chart') p.mode = w.view;

@@ -26,6 +26,8 @@ export type AxisKey = 'u0' | 'u1';
 
 export interface Pane {
   channels: number[];
+  /** A name of the person's own (none by default): shown before the chips, kept in layouts and exports (owner, Nov 15). */
+  name?: string;
   mode?: PaneMode;
   axis?: Partial<Record<AxisKey, AxisSettings>>;
   /** Table column widths by column id ('n', 't', 'c<channel>'), where resized. */
@@ -277,9 +279,22 @@ export const canSplitRight = (i: number) => columns(rowOf(i)).length < MAX_PER_R
 export function duplicate(i: number, beside = false): void {
   const p = stack.panes[i];
   edit(() => {
-    const again = { ...p, channels: [...p.channels], beside: undefined, under: undefined };
+    const again = { ...p, channels: [...p.channels], beside: undefined, under: undefined, ...(p.name ? { name: `${p.name} copy` } : {}) };
     stack.panes.splice(i + 1, 0, beside ? { ...again, beside: true } : { ...again, under: p.under });
     stack.sel = i + 1;
+  });
+}
+
+/** A pane's name where it is told apart from the others (the overview's picker): its own, else its number. */
+export const paneTitle = (i: number): string => stack.panes[i]?.name?.trim() || `pane ${i + 1}`;
+
+/** Gives pane `i` a name of its own, or none for an empty one; with Undo like any change to the panes. */
+export function renamePane(i: number, raw: string): void {
+  const name = raw.trim().slice(0, 60);
+  if ((stack.panes[i]?.name ?? '') === name) return;
+  edit(() => {
+    if (name) stack.panes[i].name = name;
+    else delete stack.panes[i].name;
   });
 }
 

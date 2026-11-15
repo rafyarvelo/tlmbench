@@ -49,6 +49,7 @@ import {
   normalize,
   note,
   paneEvents,
+  paneTitle,
   onStackChange,
   type Pane,
   redoLayout,
@@ -1358,7 +1359,7 @@ function renderOverviewHead(): void {
   const n = panes()[stack.sel]?.length ?? 0;
   const rangeTxt = `${timeLabel(f.first, Number(f.last - f.first) / 4)} – ${timeLabel(f.last, Number(f.last - f.first) / 4)}`;
   wrap.innerHTML =
-    `<div class="ovhead"><span>Overview of</span><select class="sel ovsel" data-ovch aria-label="What the overview shows"><option value=""${pin == null ? ' selected' : ''}>pane ${stack.sel + 1} · ${n} ${n === 1 ? 'channel' : 'channels'}</option>` +
+    `<div class="ovhead"><span>Overview of</span><select class="sel ovsel" data-ovch aria-label="What the overview shows"><option value=""${pin == null ? ' selected' : ''}>${esc(paneTitle(stack.sel))} · ${n} ${n === 1 ? 'channel' : 'channels'}</option>` +
     chs.map((c, k) => `<option value="${k}"${pin === k ? ' selected' : ''}>${esc(c.name)}</option>`).join('') +
     `</select><span class="spacer"></span><span class="num ovrange" data-ovrange>${esc(rangeTxt)}</span><button class="ovsw" role="switch" aria-checked="${settings.overviewTop}" data-ovtop><span class="knob"></span>Show on top</button></div><div class="ovplot"></div>`;
   slot.append(wrap);

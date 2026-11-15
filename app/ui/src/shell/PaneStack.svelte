@@ -40,6 +40,7 @@
     xyAxisOf,
     xyEqualOf,
     paneEvents,
+    renamePane,
   } from '../stack.svelte';
   import { failingChannels } from '../checks.svelte';
   import { settings } from '../settings.svelte';
@@ -56,6 +57,23 @@
   /** the pane menu: under its ⋯ button, or at the pointer on a right-click */
   const lk = $derived(viewLocked());
   const LOCKED = 'Unlock the view to change panes';
+  /** The pane whose name is being typed (owner, Nov 15: a pane can have a name of its own), and the text so far. */
+  let renaming = $state<number | null>(null);
+  let renameText = $state('');
+  function startRename(i: number) {
+    if (lk) return;
+    renameText = stack.panes[i]?.name ?? '';
+    renaming = i;
+  }
+  function finishRename(i: number) {
+    if (renaming !== i) return;
+    renaming = null;
+    renamePane(i, renameText);
+  }
+  const focusSelect = (n: HTMLInputElement) => {
+    n.focus();
+    n.select();
+  };
   let menu = $state<null | { i: number; anchor?: HTMLElement; at?: { x: number; y: number } }>(null);
   let views = $state<null | { i: number; anchor: HTMLElement }>(null);
   let axes = $state<null | { i: number; x: number; y: number }>(null);
@@ -246,6 +264,7 @@
           { sep: true } as const,
         ]
       : []),
+    { label: 'Rename pane…', data: { pm: 'rename' }, run: () => startRename(i), disabled: lk, tip: lk ? LOCKED : undefined },
     { label: 'Close others', run: () => closeOthers(i), disabled: stack.panes.length < 2 },
     { label: 'Close panes below', run: () => closeBelow(i), disabled: !hasBelow(i) },
     { label: 'Close pane', run: () => closePane(i) },
@@ -362,8 +381,31 @@
                     dragging = i;
                     e.dataTransfer?.setData('text/plain', `pane ${i + 1}`);
                   }}
-                  ondragend={() => (dragging = dropAt = zoneAt = null)}>{i + 1}</span
+                  ondragend={() => (dragging = dropAt = zoneAt = null)}
+                  ondblclick={() => startRename(i)}>{i + 1}</span
                 >
+                {#if renaming === i}
+                  <input
+                    class="pnameinp"
+                    data-pname-input
+                    aria-label="Name of pane {i + 1}"
+                    maxlength="60"
+                    placeholder="Name"
+                    spellcheck="false"
+                    bind:value={renameText}
+                    use:focusSelect
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter') finishRename(i);
+                      else if (e.key === 'Escape') {
+                        e.stopPropagation();
+                        renaming = null;
+                      }
+                    }}
+                    onblur={() => finishRename(i)}
+                  />
+                {:else if p.name}
+                  <span class="pname" role="button" tabindex="-1" data-pname data-tip={lk ? p.name : 'Double-click to rename'} ondblclick={() => startRename(i)}>{p.name}</span>
+                {/if}
                 {#each p.channels as ch (ch)}
                   {@const info = ui.channels[ch]}
                   <span
@@ -798,6 +840,28 @@
   .vmenu:hover {
     border-color: var(--accent-line);
     background: var(--raised);
+  }
+  .pname {
+    flex: none;
+    max-width: 18ch;
+    overflow: hidden;
+    color: var(--fg);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pnameinp {
+    flex: none;
+    width: 16ch;
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12px;
   }
   .phead:hover .pmore,
   .pane.sel .pmore,
