@@ -59,6 +59,8 @@ export interface SlotRow {
 export const ui = $state({
   /** An HTML export's viewer: it opens only what its export holds and edits nothing. */
   viewer: !!(globalThis as { __tlmViewer?: boolean }).__tlmViewer,
+  /** Browser-only mode: files from the page, no folders or live sources (the app has those). */
+  browserOnly: !!(globalThis as { __tlmBrowserOnly?: unknown }).__tlmBrowserOnly,
   /** The viewer's export: its files, when it was made (Unix ms) and the app version, for the header. */
   viewerInfo: ((globalThis as { __tlmViewerInfo?: unknown }).__tlmViewerInfo ?? null) as null | { files: string[]; created: number | null; version: string },
   /** A layout that names files this tab doesn't have (`accel_x·2` needs file 2): the picker asks for them first. */

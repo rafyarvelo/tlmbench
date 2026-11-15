@@ -57,7 +57,7 @@ try {
   };
   await p.goto(url, { waitUntil: 'domcontentloaded' });
   check('the page starts with no file, as the app does', await until(() => /No recording open/.test(document.body.textContent ?? '')));
-  check('with no folder to open: a tab has none', !(await p.$('[data-rail="live"]')) || true);
+  check('it offers no folder and no live source: a tab has neither (audit, R2.2)', !(await p.$('#startPage [data-start="folder"]')) && !(await p.$('#startPage [data-start="live"]')) && !!(await p.$('#startPage [data-start="open"]')) && !/Open a folder/.test(await p.$eval('#explorer', (e) => e.textContent ?? '')));
 
   // the picker
   const chooser = p.waitForEvent('filechooser');

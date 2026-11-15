@@ -153,6 +153,7 @@ async function forgetLocalFiles(): Promise<void> {
 }
 
 export async function installBrowserOnly(): Promise<void> {
+  (globalThis as Record<string, unknown>).__tlmBrowserOnly = true;
   await forgetLocalFiles();
   const base = new URL('.', document.baseURI).href;
   const core = await loadCore(new URL('tlmbench_web.wasm', base).href);

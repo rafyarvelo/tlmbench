@@ -279,6 +279,8 @@
       <span class="exfolder viewer" data-tip="This is an export: it holds what was chosen when it was made">{@html ICON.folder}<span>Export</span></span>
     {:else if ui.folder}
       <button class="exfolder" id="exFolder" aria-haspopup="menu" aria-expanded={!!fold} data-tip="Folders: open a folder of recordings, expand or collapse, close all files" onclick={(e) => ((more = null), (fold = fold ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.folder}<span>{ui.folder.name}</span>{@html ICON.chev}</button>
+    {:else if ui.browserOnly}
+      <span class="exfolder viewer" data-tip="Files you choose or drop on the page; folders are in the app">{@html ICON.folder}<span>This browser</span></span>
     {:else}
       <button class="exfolder" id="exFolder" data-tip="Open a folder of recordings (only read)" onclick={actions.openFolder}>{@html ICON.folder}<span>Open folder</span></button>
     {/if}
@@ -346,7 +348,8 @@
     {:else if ui.file}
       {@render file(ui.path, ui.file, 0)}
     {:else}
-      <p class="exnone">No recording open. <button class="linkbtn" onclick={actions.openFolder}>Open a folder</button> or a <button class="linkbtn" onclick={actions.open}>recording</button>, or drop a CSV or .tlm file on the window.</p>
+      {#if ui.browserOnly}<p class="exnone">No recording open. <button class="linkbtn" onclick={actions.open}>Choose a CSV file</button>, or drop one on the page.</p>
+      {:else}<p class="exnone">No recording open. <button class="linkbtn" onclick={actions.openFolder}>Open a folder</button> or a <button class="linkbtn" onclick={actions.open}>recording</button>, or drop a CSV or .tlm file on the window.</p>{/if}
     {/if}
   </div>
   {#if pickedFiles.length > 1}

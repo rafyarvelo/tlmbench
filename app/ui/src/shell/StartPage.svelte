@@ -35,14 +35,15 @@
     </header>
     <p class="muted">Open a recording to plot it. Nothing is written next to your data.</p>
     <div class="acts">
-      <button class="btn primary" data-start="folder" onclick={go(actions.openFolder)}>Open folder…</button>
-      <button class="btn" data-start="open" onclick={go(actions.open)}>Open recording… <kbd>⌘O</kbd></button>
-      <button class="btn" data-start="live" onclick={go(() => liveActions.openConnect(false))}>Connect live source…</button>
+      {#if !ui.browserOnly}<button class="btn primary" data-start="folder" onclick={go(actions.openFolder)}>Open folder…</button>{/if}
+      <button class="btn" class:primary={ui.browserOnly} data-start="open" onclick={go(actions.open)}>Open recording… <kbd>⌘O</kbd></button>
+      {#if !ui.browserOnly}<button class="btn" data-start="live" onclick={go(() => liveActions.openConnect(false))}>Connect live source…</button>{/if}
     </div>
     {#if live.cards.some((c) => c.recording)}
       {@const rec = live.cards.find((c) => c.recording)!}
       <p class="recbanner" id="startRec"><span class="rdot"></span>Recording to <span class="num">{rec.session}</span></p>
     {/if}
+    {#if !ui.browserOnly}
     <h2>Connections</h2>
     {#each settings.savedConnections as c (c.id)}
       <div class="rec conn" data-conn={c.id}>
@@ -52,6 +53,7 @@
     {:else}
       <p class="muted none">None saved. Tick "Save this connection" when you connect.</p>
     {/each}
+    {/if}
     <h2>Recent sessions</h2>
     {#each sessions as [key, s] (key)}
       {@const current = key === settings.folder && tabs.list.length > 0}

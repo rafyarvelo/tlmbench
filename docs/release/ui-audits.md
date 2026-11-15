@@ -45,3 +45,39 @@ and depth, motion and reduced motion.
   skill would hide a control that can't act. Recommendation: keep it (the prototype's, and it shows where Fit is).
 - **Chart and values' grip at the pane's bottom** follows the owner (sheet B5), not the prototype (whose grip is under
   the plot). Recommendation: keep the owner's; note it for the design doc.
+
+## Nov 15, 2026: R2.2, browser-only mode and the viewer (light and dark)
+
+Scope: browser-only mode (the start page, the Explorer empty state, a CSV open with three panes) and the viewer over an
+HTML export of the same file. Screenshots: headless Chromium at 1440 × 900 against `app/browser/dist` and a folder export
+made by the release CLI, dark and light (`{dark,light}-browser-empty.png`, `-browser-open.png`, `-viewer.png` from a scratch
+script; not kept in the repo). This audit covers what exists: R2.2's binary formats, derived channels, events, checks and
+several files in a tab are not built yet (ledger S5.10-04), so their screens are not audited. Headings from the
+`anthropic-skills:apple-design` skill: wayfinding, familiarity, simplicity, feedback, typography, materials, motion.
+
+### Fixed in this pass
+
+1. **Wayfinding: the start page and Explorer offered what a browser tab can't do** (`dark-browser-empty.png`). "Open folder…"
+   was the primary button, "Connect live source…" sat beside it, the Explorer said "Open a folder" and "drop a CSV or .tlm
+   file", and Connections listed "None saved". None of these can work with no app behind the page: a press did nothing. In
+   browser-only mode the start page now offers Open recording… as the primary button, no folder or live buttons, no
+   Connections section; the Explorer says "Choose a CSV file, or drop one on the page" and its header says "This browser"
+   (a label, as the viewer's says "Export"). `t_browseronly`.
+
+### Checked, no change
+
+- **Responsiveness while a file loads.** The parse runs in a Worker; a 600,000-row CSV opens while the page keeps drawing
+  frames (`t_browseronly`). The open shows the usual progress note.
+- **The viewer is the app, with less** (`dark-viewer.png`, `light-viewer.png`): the same layout, the same tokens, no editing
+  controls, a "Read-only view" pill with the export's file, date and version. Light and dark match the app's themes; plots
+  read well in both (the series colours are the app's).
+- **Typography and tokens.** Nothing new: sizes 11 to 15 px, radii 4, 8 and 12, monospace only for numbers and units.
+- **Materials and motion.** Opaque surfaces and a scrim, as the prototype; no new motion. Reduced motion is unchanged.
+
+### For the owner (not changed)
+
+- **The viewer's provenance text is cut with an ellipsis at 1440 px** ("… TelemetryBench 0…."). The full text is in the pill's
+  tooltip. Recommendation: keep; at narrower widths it must give way, and the version is the part that matters least.
+- **Browser-only mode keeps the rail's Live, Rules and checks, and Layouts icons**, which open panels that mostly can't act
+  until the rest of R2.2 lands. Recommendation: leave them, so the layout matches the app, and hide each as its feature
+  stays unbuilt only if the owner prefers a smaller rail (a choice about scope, so it is yours).
