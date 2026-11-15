@@ -116,7 +116,8 @@ run(
     await p.fill(`${r2} input[data-xp="v"]`, '23');
     await p.dispatchEvent(`${r2} input[data-xp="v"]`, 'change');
     check('changing a value previews again', await until((n) => window.__tlmFake.checkPreviews.length > n, n0, 6000));
-    check('with the new expression', (await fake(() => window.__tlmFake.checkPreviews.at(-1).expect)) === 'battery_v > 23');
+    // an earlier debounced preview can land after the change's: wait for the newest one
+    check('with the new expression', await until(() => window.__tlmFake.checkPreviews.at(-1)?.expect === 'battery_v > 23', null, 6000), await fake(() => window.__tlmFake.checkPreviews.slice(-3).map((x) => x.expect)));
     // to text, with autocomplete
     await p.click(`${r2} [data-xm="expect"]`);
     const inp = `${r2} [data-xt="expect"]`;

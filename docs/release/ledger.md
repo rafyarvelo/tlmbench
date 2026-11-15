@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 206 · **Partial** 44 · **Missing** 13 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 14 (307 rows).
+Counts: **Done** 207 · **Partial** 44 · **Missing** 13 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 14 (308 rows).
 
 How to read the evidence. A test named here was run in this review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -281,6 +281,7 @@ on a real window). The last column names the step of `docs/release/release-plan.
 | D-check-06 | design CLI | The HTML check report is the same static viewer and each failing cell links to an exported view at its first violation. | Done | `tlmbench::check::the_html_report_links_failing_cells_to_an_export_at_the_first_violation`, `t_viewer` | `tlmbench check --report html --views` exports each file with a failing check (Light, the failing checks' channels, violations marked) into `views/` and links failing cells to `#show=<start>,<end>`; the viewer frames that span. The report itself is its own static page, not the viewer. |
 | D-check-07 | design Checks | `--sets-from-profile`; exit codes 0/1/2/3; `--fail-on warn`; `--allow-cant-run`. | Done | `tlmbench::check::a_profile_names_its_sets`, `tlmbench::check::exit_codes_follow_the_worst_thing_that_happened` | |
 | D-check-08 | design Shared configuration | A rule-and-check set's TOML as the design shows it (`runs_on`, `info_only`, `[[rule]]` with `mark`). | Done | `tlmbench-store::checks::sets_are_toml_files_in_the_shared_format`, `examples/recordings/.tlmbench/checks/event-rules.toml` | Owner decision 3 (Nov 11): a set's TOML is what `examples/recordings/.tlmbench/checks/` shows (`runs_on_any_file`, `info_groups`, `[[check]]` with `kind`). Note for the design doc: replace `runs_on`, `info_only` and `[[rule]]` with these. |
+| D-check-09 | owner sheet E1 (Nov 14), CLAUDE.md copy | Rules and checks says what each kind does: one plain line for Check and for Rule in the panel's empty state, a new set's editor and under each row; When, Grace, Settle and the severity carry tips. | Done | `t_checkcopy` (Nov 14) | The owner found the editor hard to understand. The wording is in the commit and the hand-off for the owner to approve |
 | D-share-01 | design Files | Channel prefixes: an import profile sets the rule (file name, up to a separator, a pattern, custom text); a file can take its own. | Partial | `t_slots` (a file's own prefix) | No rule in the profile or the import dialog. R2.5 |
 | D-share-02 | design Files | Shared views: Update shared copy when you can write; a taken slot is remapped. | Done | `t_shared`, `t_slotpick` | |
 | D-share-03 | design Files | A workspace never opens files; a session is saved automatically and restores them. | Done | `t_workspaces`, `t_sessions`, `t_slotsession` | |

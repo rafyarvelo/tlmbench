@@ -5,7 +5,7 @@
 <script lang="ts">
   import { duration, readoutTime } from '../axes';
   import { buildPick, type Agg, type Op, type Pick, parsePick } from '../checkexpr';
-  import { type Check, checks, newCheck, type Outcome } from '../checks.svelte';
+  import { type Check, checks, FIELD_HELP, KIND_HELP, newCheck, type Outcome } from '../checks.svelte';
   import { FUNCTION_NAMES, quoteName, recipes } from '../derive.svelte';
   import { events } from '../events.svelte';
   import { ICON } from '../icons';
@@ -271,7 +271,7 @@
             <input class="sel nm" data-kf="name" placeholder="Name" bind:value={row.name} spellcheck="false" />
             <input class="sel grp" data-kf="group" list="ckgroups" placeholder="Group" data-tip="A group takes its worst result. A new name starts a group." bind:value={row.group} spellcheck="false" />
             {#if row.kind === 'check'}
-              <select class="sel" data-kf="sev" bind:value={row.severity} aria-label="Severity"><option value="fail">Fail</option><option value="warn">Warn</option></select>
+              <select class="sel" data-kf="sev" bind:value={row.severity} aria-label="Severity" data-tip={FIELD_HELP.sev}><option value="fail">Fail</option><option value="warn">Warn</option></select>
             {:else}
               <select class="sel" data-kf="cat" aria-label="Event category" value={row.category ?? ''} onchange={(e) => (e.currentTarget.value === '__new' ? newCategory(i) : (row.category = e.currentTarget.value))}>
                 {#each settings.eventCats as c (c.id)}<option value={c.id}>{c.name}</option>{/each}<option value="__new">+ New category…</option>
@@ -282,10 +282,11 @@
             <button class="ibtn" data-kdel aria-label="Delete this row" data-tip="Delete this row" onclick={() => remove(i)}>{@html ICON.trash}</button>
           </div>
 
+          <p class="kdesc muted" data-kdesc>{KIND_HELP[row.kind === 'rule' ? 'rule' : 'check']}</p>
           {#each ['expect', 'when'] as const as f (f)}
             {#if f === 'expect' || row.when !== undefined}
               <div class="ckr2">
-                <span class="cklab">{f === 'when' ? 'When' : row.kind === 'rule' ? 'Mark when' : 'Expect'}</span>
+                <span class="cklab" data-tip={f === 'when' ? FIELD_HELP.when : undefined}>{f === 'when' ? 'When' : row.kind === 'rule' ? 'Mark when' : 'Expect'}</span>
                 <div class="ckx">
                   {#if !mode(i, f)}
                     {@const p = pickOf(row[f])}
@@ -327,18 +328,25 @@
           {/each}
 
           <div class="ckr3">
-            {#if row.when === undefined}<button class="linkbtn" data-kwhen onclick={() => ((row.when = ''), (asText[`${i}.when`] = true))}>+ When</button>{/if}
-            <label class="lvg">Grace <input class="sel num" data-kf="grace" type="number" min="0" step="any" bind:value={row.grace} /> s</label>
-            {#if row.when !== undefined}<label class="lvg">Settle <input class="sel num" data-kf="settle" type="number" min="0" step="any" bind:value={row.settle} /> s</label>{/if}
+            {#if row.when === undefined}<button class="linkbtn" data-kwhen data-tip={FIELD_HELP.when} onclick={() => ((row.when = ''), (asText[`${i}.when`] = true))}>+ When</button>{/if}
+            <label class="lvg" data-tip={FIELD_HELP.grace}>Grace <input class="sel num" data-kf="grace" type="number" min="0" step="any" bind:value={row.grace} /> s</label>
+            {#if row.when !== undefined}<label class="lvg" data-tip={FIELD_HELP.settle}>Settle <input class="sel num" data-kf="settle" type="number" min="0" step="any" bind:value={row.settle} /> s</label>{/if}
             <span class="kp muted" data-kp>{prev[i] ?? 'Checking on the open file…'}</span>
           </div>
         </div>
       {/each}
       <datalist id="ckgroups">{#each groups as g (g)}<option value={g}></option>{/each}</datalist>
 
+      {#if !ed.set.check.length}
+        <div class="ckintro" data-kintro>
+          <p>A set holds checks and rules for files with the same channels.</p>
+          <p><b>Check</b>: {KIND_HELP.check.replace(/^A check /, '')}</p>
+          <p><b>Rule</b>: {KIND_HELP.rule.replace(/^A rule /, '')}</p>
+        </div>
+      {/if}
       <div class="ckadd">
-        <button class="tbtn" data-kadd onclick={() => addRow(false)}>{@html ICON.plus}Check</button>
-        <button class="tbtn" data-kaddr onclick={() => addRow(true)}>{@html ICON.plus}Rule</button>
+        <button class="tbtn" data-kadd data-tip={KIND_HELP.check} onclick={() => addRow(false)}>{@html ICON.plus}Check</button>
+        <button class="tbtn" data-kaddr data-tip={KIND_HELP.rule} onclick={() => addRow(true)}>{@html ICON.plus}Rule</button>
         <button class="tbtn" data-kfromlim data-tip="Add a check for each alarm limit in the file" onclick={fromLimits}>+ From limits</button>
       </div>
 
@@ -370,6 +378,22 @@
 {/if}
 
 <style>
+  .kdesc {
+    margin: 0 0 2px 34px;
+    font-size: 11.5px;
+  }
+  .ckintro {
+    padding: 10px 12px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .ckintro p {
+    margin: 0 0 4px;
+  }
+  .ckintro p:last-child {
+    margin: 0;
+  }
   .ckdlg {
     width: min(860px, 94vw);
   }
@@ -378,6 +402,7 @@
     flex-direction: column;
     gap: 10px;
     max-height: 70vh;
+    padding: 10px 14px;
     overflow: auto;
   }
   .cktop {

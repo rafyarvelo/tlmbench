@@ -78,6 +78,18 @@ export interface SetResult {
 
 export const RANK: Record<Verdict, number> = { fail: 5, warn: 4, err: 3, cant: 2, pass: 1, na: 0, mark: 0, off: 0 };
 export const WORD: Record<Verdict, string> = { fail: 'Fail', warn: 'Warn', err: 'Error', cant: "Can't run", pass: 'Pass', na: 'Not applicable', mark: 'Marks events', off: 'Off' };
+/** What each row kind does, in one plain line (the editor and the empty states; sheet E1). */
+export const KIND_HELP = {
+  check: 'A check passes or fails. Expect says what should hold, for example battery_v > 21; failures are counted and listed.',
+  rule: 'A rule marks events. Wherever Mark when holds, it adds an event in its category to the charts and the table.',
+} as const;
+/** The fields of a row, for their tips. */
+export const FIELD_HELP = {
+  when: 'Only look while this holds, for example while armed. Leave it out to look at the whole file.',
+  grace: 'How long it may break before it counts, in seconds. Short blips under this are ignored.',
+  settle: 'How long to wait after When starts before looking, in seconds.',
+  sev: 'Fail or Warn: how a broken check counts in the summary.',
+} as const;
 export const ICONCH: Record<Verdict, string> = { fail: '✗', warn: '!', err: '?', cant: '–', pass: '✓', na: '·', mark: '⚑', off: '○' };
 
 export const checks = $state({

@@ -4,7 +4,7 @@
      cached by the file's contents and the set's version. -->
 <script lang="ts">
   import { duration, readoutTime } from '../axes';
-  import { type Check, checks, ICONCH, type Outcome, outcomeText, setsFor, summary, type Verdict, WORD } from '../checks.svelte';
+  import { type Check, checks, ICONCH, KIND_HELP, type Outcome, outcomeText, setsFor, summary, type Verdict, WORD } from '../checks.svelte';
   import { ICON } from '../icons';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
@@ -138,7 +138,11 @@
       {#if !ui.path}
         <p class="cknote">Open a recording to run checks on it.</p>
       {:else if !checks.sets.length}
-        <p class="cknote">No sets yet. A check says what should hold ("battery_v > 21 while armed"); a rule marks events where a condition holds.</p>
+        <div class="cknote" data-cempty>
+          <p>No sets yet. A set holds checks and rules for files with the same channels.</p>
+          <p><b>Check</b>: {KIND_HELP.check.replace(/^A check /, '')}</p>
+          <p><b>Rule</b>: {KIND_HELP.rule.replace(/^A rule /, '')}</p>
+        </div>
       {/if}
       {#if ui.path && checks.running && !Object.keys(results).length}<p class="cknote" data-cprog>Checking…</p>{/if}
       {#each applied as s (s.name)}
@@ -237,6 +241,13 @@
     margin: 4px 12px;
     color: var(--fg-muted);
     font-size: 11.5px;
+  }
+  .cknote p {
+    margin: 0 0 4px;
+  }
+  .cknote b {
+    color: var(--fg);
+    font-weight: 600;
   }
   .csethd {
     display: flex;
