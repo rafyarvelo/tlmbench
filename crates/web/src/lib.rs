@@ -19,12 +19,21 @@ mod backwards;
 #[path = "../../decode/src/csv.rs"]
 #[allow(dead_code)]
 mod csv;
+#[path = "../../decode/src/descriptor.rs"]
+#[allow(dead_code)]
+mod descriptor;
 #[path = "../../decode/src/error.rs"]
 #[allow(dead_code)]
 mod error;
 #[path = "../../decode/src/profile.rs"]
 #[allow(dead_code)]
 mod profile;
+#[path = "../../decode/src/reference.rs"]
+#[allow(dead_code)]
+mod reference;
+#[path = "../../decode/src/strided.rs"]
+#[allow(dead_code)]
+mod strided;
 
 #[allow(unused_imports)]
 pub(crate) use error::Result;

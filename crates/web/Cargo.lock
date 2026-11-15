@@ -615,6 +615,7 @@ name = "tlmbench-web"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "bytemuck",
  "csv-core",
  "lexical-core",
  "memchr",
@@ -625,6 +626,7 @@ dependencies = [
  "thiserror",
  "tlmbench-core",
  "tlmbench-expr",
+ "toml",
 ]
 
 [[package]]

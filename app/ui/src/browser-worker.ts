@@ -13,7 +13,7 @@ self.onmessage = async (e: MessageEvent<Job>) => {
     const { wasm, file, path } = e.data;
     const core = await loadCore(wasm);
     const bytes = new Uint8Array(await file.arrayBuffer());
-    core('import_csv', { file: 0, path }, bytes);
+    core('import_file', { file: 0, path }, bytes);
     const dump = core('dump', { file: 0 }) as ArrayBuffer;
     (self as unknown as Worker).postMessage({ dump }, [dump]);
   } catch (err) {

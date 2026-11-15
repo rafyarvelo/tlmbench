@@ -67,6 +67,8 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
     match cmd {
         "open_export" => open_export(st, a),
         // browser-only mode: a CSV from the page, and the columns the page keeps in its private storage
+        "import_file" => crate::import::import_file(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
+        "import_tlm" => crate::import::import_tlm(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
         "import_csv" => crate::import::import_csv(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
         "dump" => {
             let (meta, data) = crate::import::dump(st, arg::<usize>(a, "file")?)?;

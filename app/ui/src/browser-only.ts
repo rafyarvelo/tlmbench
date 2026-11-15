@@ -3,7 +3,7 @@
 // in the browser's private file storage (OPFS) so opening the same file again skips the parse. Nothing is written beside the
 // data, and nothing leaves the machine. (Design: Export to HTML › browser-only mode.)
 //
-// What it reads and does is smaller than the app's: CSV files, charts, tables, values and Measure. Binary formats, packet files,
+// What it reads and does is smaller than the app's: CSV and .tlm files, charts, tables, values and Measure. Binary formats, packet files,
 // descriptors, plugins, folders, live sources, derived channels and checks are the app's (see docs/follow-ups.md).
 
 import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
@@ -91,7 +91,7 @@ function pick(files: Map<string, File>, multiple: boolean): Promise<string[] | n
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = multiple;
-    input.accept = '.csv,.tsv,.txt,text/csv';
+    input.accept = '.csv,.tsv,.txt,.tlm,text/csv';
     input.onchange = () => done(register(files, [...(input.files ?? [])]));
     input.oncancel = () => done(null);
     input.click();
@@ -178,7 +178,7 @@ export async function installBrowserOnly(): Promise<void> {
       }
       throw new Error(`${path.slice(LOCAL_PREFIX.length)} isn't open in this tab: choose it again, or drop it on the page.`);
     }
-    if (!/\.(csv|tsv|txt)$/i.test(f.name)) throw new Error('Browser-only mode reads CSV files; the app reads more (binary files, packets, Parquet).');
+    if (!/\.(csv|tsv|txt|tlm)$/i.test(f.name)) throw new Error('Browser-only mode reads CSV and .tlm files; the app reads more (Parquet, packets, descriptors).');
     const k = nextId++;
     ids.set(path, k);
     const key = await keyOf(f);
@@ -202,7 +202,7 @@ export async function installBrowserOnly(): Promise<void> {
     if (dump) r = core('load', { file: k, path }, new Uint8Array(dump));
     else {
       await new Promise((res) => setTimeout(res, 0));
-      r = core('import_csv', { file: k, path }, new Uint8Array(await f.arrayBuffer()));
+      r = core('import_file', { file: k, path }, new Uint8Array(await f.arrayBuffer()));
     }
     (window as unknown as { __tlmCache?: string; __tlmParse?: string }).__tlmCache = 'miss';
     (window as unknown as { __tlmParse?: string }).__tlmParse = dump ? 'worker' : 'page';

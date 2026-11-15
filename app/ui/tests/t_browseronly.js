@@ -41,6 +41,47 @@ const rows = ['time,Speed [m/s],temp'];
 for (let i = 0; i < 3000; i++) rows.push(`${i === 1500 ? 149.5 : i / 10},${Math.sin(i / 40)},${20 + i / 300}`);
 const csv = { name: 'bench run.csv', mimeType: 'text/csv', buffer: Buffer.from(rows.join('\n') + '\n') };
 
+// a tlmbench reference file (.tlm): the header holds the descriptor; 8-byte records: u32 time in us, i16 in mV, u8 flag, a pad
+function makeTlm(n) {
+  const toml = `schema = 1
+name = "bench"
+record_size = 8
+[time]
+source = "field"
+field = "t"
+unit = "us"
+[[fields]]
+name = "t"
+type = "u32"
+offset = 0
+[[fields]]
+name = "volts"
+type = "i16"
+offset = 4
+unit = "V"
+scale = 0.001
+[[fields]]
+name = "armed"
+type = "u8"
+offset = 6
+`;
+  const headerLen = Math.ceil((24 + Buffer.byteLength(toml)) / 64) * 64;
+  const b = Buffer.alloc(headerLen + n * 8);
+  b.write('TLMBENCH', 0);
+  b.writeUInt16LE(1, 8);
+  b.writeUInt32LE(headerLen, 12);
+  b.writeUInt32LE(Buffer.byteLength(toml), 16);
+  b.write(toml, 24);
+  for (let i = 0; i < n; i++) {
+    const o = headerLen + i * 8;
+    b.writeUInt32LE(i * 1000, o);
+    b.writeInt16LE(Math.round(Math.sin(i / 50) * 3000), o + 4);
+    b.writeUInt8(i % 200 < 100 ? 1 : 0, o + 6);
+  }
+  return b;
+}
+const tlm = { name: 'flight.tlm', mimeType: 'application/octet-stream', buffer: makeTlm(4000) };
+
 const browser = await chromium.launch();
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -116,13 +157,25 @@ try {
   });
   check('a file dropped on the page opens too', await until(() => [...document.querySelectorAll('#wsTabs .wstab')].some((t) => /dropped\.csv/.test(t.textContent ?? ''))), await p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
 
+  // a .tlm: the decoder's own header and descriptor reader, in the page
+  {
+    const chooser2 = p.waitForEvent('filechooser');
+    await p.evaluate(() => document.querySelector('#b-more')?.click());
+    await p.click('.moremenu .mi:has-text("Open recording")');
+    await (await chooser2).setFiles(tlm);
+    check('a .tlm opens in a tab', await until(() => [...document.querySelectorAll('#wsTabs .wstab')].some((t) => /flight\.tlm/.test(t.textContent ?? ''))), await p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
+    check('its fields list as channels, the time field left out, with the unit from its descriptor', await until(() => { const r = [...document.querySelectorAll('#explorer .tree .row.chan')].map((x) => x.textContent ?? ''); return r.length === 2 && /volts/.test(r[0]) && /armed/.test(r[1]); }), await p.$$eval('#explorer .tree .row.chan', (r) => r.map((x) => x.textContent)));
+    check('read in the Worker', (await p.evaluate(() => window.__tlmParse)) === 'worker');
+    check('with all 4000 samples', await until(() => /4[,\s\u202f]?000/.test(document.body.textContent ?? '')));
+  }
+
   // a file the page can't read says so
   await p.evaluate(() => {
     const dt = new DataTransfer();
     dt.items.add(new File([new Uint8Array(64)], 'flight.bin'));
     window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   });
-  check('a binary file says browser-only mode reads CSV', await until(() => /Browser-only mode reads CSV files/.test(document.body.textContent ?? '')));
+  check('a binary file it can’t read says what browser-only mode reads', await until(() => /Browser-only mode reads CSV and \.tlm files/.test(document.body.textContent ?? '')));
   // the viewer's rule (sheet R12) holds here too: what a tab can't do is left out, not a button that does nothing
   check('no Live in the rail (a tab has no live sources)', !(await p.$('[data-rail="live"]')));
   await p.click('[data-rail="settings"]');
