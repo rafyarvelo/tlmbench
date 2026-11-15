@@ -33,9 +33,10 @@ state of its own in the table, not "done".
 | R2.1 Exports | Built Nov 11 (ledger rows naming R2.1; `docs/exports.md`, `docs/viewer-store.md`); CI with the Nov 15 push |
 | R2.1a The owner's first pass | Built Nov 14 and 15: the owner's 11 fixes, all nine decisions (owner-decisions memory, `follow-ups.md`), the sheet's R3 (Reset app), R12 (the viewer Locked, with Unlock) and B4 (`TLMBENCH_SLOW_BUILD`), the first UI audit. **The owner's re-test is open**: R12, B4, S1 to S4 and the older untested items on the sheet |
 | R3.0 Classification audit (new, moved up) | **Done Nov 15** (`parity-classes.md`: 11 Port rows, 16 App is better, the rest Noise; apple-design audit in `ui-audits.md`; ledger D-ui-36 to D-ui-41, D-live-11). The owner approved every "App is better" row Nov 15 (ledger A-05 to A-11). The owner decided P3 (trim the ⋯ menu) and P10 (a fixed-width time range) as recommended, Nov 15 |
-| R2.2 Browser-only mode | **Next.** Half built (D-brow-01 to -07: Worker, reload, static-host recipe, a tab offering only what it can do, `.tlm`, Parquet). Left, by the owner's scope of Nov 15: descriptors and packets, WASM decoder plugins, read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit |
+| R2.2 Browser-only mode | After R3.2 (owner, Nov 15). Half built (D-brow-01 to -07: Worker, reload, static-host recipe, a tab offering only what it can do, `.tlm`, Parquet). Left, by the owner's scope of Nov 15: descriptors and packets, WASM decoder plugins, read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit |
 | R2.3 Decoders · R2.4 Python · R2.5 Core's Partial rows | Not started |
-| R3.1 to R3.4 Parity | Not started; their lists come from R3.0 |
+| R3.1 Menus and shell, R3.2 Explorer, start page, dialogs | **Next** (moved before R2.2 by the owner, Nov 15, so the owner's re-tests meet the improved app). Lists: `parity-classes.md` Port rows and the owner's Nov 15 decisions (below, R3) |
+| R3.3 Panes, charts and tables · R3.4 | Not started; after R2.5 |
 | R4 to R9 | Not started. Release decisions 1 to 5 and 9 decided Nov 15; 6, 7, 8 and 10 open (needed by R7 and R8) |
 | CI on the Nov 15 push | Green: run 43738929926 (`cb228f2`). The push after it (docs only) is R0's second run |
 
@@ -200,12 +201,18 @@ the native menu bar, the viewer's lock, export tiers, hover pane actions), and p
   start page's sessions and saved sources, Connect's fields; edge drops, event marker tooltips, the table's status line and
   Event column, slower channels dimmed, Stop at several categories, the profiles tab, folder runs, Play's lost test) are
   candidates: R3.0 decides each one's class.
+- **The owner's Nov 15 decisions, by sub-step** (each a ledger row): R3.1: rename a layout (D-ui-44), the ⋯ menu trim
+  (D-ui-37), the menu focus ring (D-ui-39), the fixed-width time range (D-ui-40), the viewer's clipped tab (D-ui-41).
+  R3.2: the start page (D-ui-36), Open with layout ▸ (D-ui-42), every file marked in the Explorer with its slot and
+  alignment (D-ui-45), duplicate a recipe from the channel and Save as new (D-derive-02), readable rates (D-ui-38).
+  R3.3: pane names (D-ui-43), Open together draws every file (D-ui-46), Duplicate for ▸ file N and From file ▸ (D-ui-47,
+  D-ui-48).
 - **R3.4 What the audit can't see (S).** Quiet interface; keyboard coverage compared with the prototype's list; every
   tooltip and empty state; copy review (plain, short, sentence case); the design's motion rules.
 - **After each sub-step:** rerun `just app-parity`, update `parity-classes.md`, screenshot with `node app/ui/tests/shots.js`,
   and run the apple-design audit on that sub-step's area.
 
-The UI freezes at the end of R3: after it only bug fixes touch `app/ui/src`. A full apple-design audit runs before the freeze.
+The UI freezes when both R2.2 and R3.4 are done (R3.4 is last in the order): after it only bug fixes touch `app/ui/src`. A full apple-design audit runs before the freeze.
 
 ### UI audits with the apple-design skill
 
@@ -367,7 +374,7 @@ the list (decision 8).
 
 ## Order and dependencies
 
-R0 → R1 → R2.1 → R2.1a → **R3.0** → R2.2 → R2.3 → R2.4 → R2.5 → R3.1 → R3.2 → R3.3 → R3.4 → R4 → R5 → R6 → R7 → R8 → R9.
+R0 → R1 → R2.1 → R2.1a → **R3.0** → **R3.1 → R3.2** → R2.2 → R2.3 → R2.4 → R2.5 → R3.3 → R3.4 → R4 → R5 → R6 → R7 → R8 → R9.
 
 R0 closes with the first two clean CI runs; R2.1a closes with the owner's re-test, which can run alongside the steps after it.
 
@@ -375,6 +382,9 @@ R0 closes with the first two clean CI runs; R2.1a closes with the owner's re-tes
   the ledger will add and remove rows, and it wins).
 - R2.1 settled the store for WASM (it builds behind a `native` feature; the viewer's queries stay in `crates/web`).
 - R3.0 runs before the rest of R2 because it is read-only and its "App is better" list protects work R2 might touch.
+- R3.1 and R3.2 run before R2.2 (owner, Nov 15): the owner is testing the desktop app and every finding of Nov 15 is
+  theirs. Two items wait for core work in R2.5 and are finished there: the import profile's starter layout and recipes
+  (P5, S5.1-10) and Connect's reconnect (D-live-11). R3.2 builds the dialog around them and leaves those parts.
 - R4 comes before the real-window passes so there are installers to test, and before the docs so the manual PDF has a
   place in the bundle (use a placeholder PDF until R7). A bug R5 finds goes back to a short fix step, not to a new plan.
 - R7 needs the UI frozen (end of R3) and the packaging known (R4); screenshots are taken last, after R6's fixes.

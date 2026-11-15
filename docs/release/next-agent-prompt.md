@@ -14,17 +14,18 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
-(The owner's Nov 15 report about Open together and Compare turned out to be confusing UI, not a bug: ledger D-ui-45
-and D-ui-46 for R3.2 and R3.3.)
+1. **Push and confirm CI.** `main` may be a few docs-only commits ahead of `origin/main` (the owner's Nov 15 decisions).
+   Ask the owner, push, and watch the run. If it and the run before it are green with no rerun, mark R0 done in the
+   status table (the run before is the "CI on the Nov 15 push" row).
+2. **Triage the owner test sheet:** new Results and Notes become ledger rows or fixes.
+3. **R3.1, then R3.2** (release plan, R3; moved before R2.2 by the owner on Nov 15, so their re-tests meet the improved
+app). The lists are the Port rows of `docs/release/parity-classes.md` and the owner's Nov 15 decisions listed in the
+plan's R3 ("The owner's Nov 15 decisions, by sub-step"), each a ledger row. Never touch an "App is better" row. Sonnet
+suits these; run the apple-design audit on each sub-step's area at its end (Opus if available). Two R3.2 items need core
+work from R2.5 first (the profile's starter layout and recipes, Connect's reconnect): build around them and leave the
+ledger row Partial with what is left. Then R2.2's remaining items, in the order the plan gives.
 
-First: `main` may be a few docs-only commits ahead of `origin/main` (the owner's decisions on pane names and renaming layouts, ledger D-ui-43 and D-ui-44); it
-goes up with your first push.
-
-
-**R2.2's remaining items** (release plan, R2.2, in the order it gives: descriptors and packets, WASM decoder plugins,
-folders, leaving out the post-v1 controls; then the end-of-R2.2 UI audit). The plan's "Recommended model per step" says
-which model suits each item. R3.0, the parity classification, is done (`docs/release/parity-classes.md`): parity work
-later (R3.1 to R3.3) ports only its Port rows and never touches an "App is better" row.
+(The owner's Nov 15 report about Open together and Compare was confusing UI, not a bug: ledger D-ui-45 and D-ui-46.)
 
 ## Open with the owner
 
