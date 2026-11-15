@@ -54,6 +54,11 @@ Check: open a CSV you opened before; in Settings forget its profile (or Reset ap
 again: the import dialog comes back.
 Result: This works better now, but it's not clear on the difference between "Reset app..." and "Reset to defaults"
 Notes: Is "Reset to defaults" needed anymore or is it redundant?
+Changed since (Nov 15, after your answer): Reset to defaults is gone. Reset app… has one more choice, "Things the app
+remembers" (recent files, each file's panes and channel display, the sidebars, export choices, saved connections),
+unticked to start; with only Settings ticked it does what Reset to defaults did. Needs a rebuild of the app to see.
+Result:
+Notes:
 
 ### R12. Export to HTML: findable, feedback, read-only (F1)
 You wrote: "the export icon should be way easier to find … The visual feedback was also weak … the dialog didn't close
@@ -63,14 +68,14 @@ progress bar under the top bar, then "Exported to …" with Show in Finder. An e
 file, the date and the app version.
 Check: export flight-1 to HTML, then open it through a web server.
 Result: The share icon is good, and the visual feedback is a little better, but the exported view isn't really "read-only" since some of the panes "duplicate" actions work, but the dragging options don't work so it's awkward.
-Notes: Since the prototype shows dragging works fine in html, is it possible to just allow exported views to have the user be able to move and drag channels like that app. Having the exported view start "locked" and having the user click unlock is probably a good idea. There doesn't have to be 100% parity in the browser version, but clean it up so it's consistent at least; it doesn't make sense to make the view read-only when it clearly at least works allowing the user to rearrange panes
+Notes: Since the prototype shows dragging works fine in html, is it possible to just allow exported views to have the user be able to move and drag channels like that app. Having the exported view start "locked" and having the user click unlock is probably a good idea. There doesn't have to be 100% parity in the browser version, but clean it up so it's consistent at least; it doesn't make sense to make the view read-only when it clearly at least works allowing the user to rearrange panes. Also the Events tab shows the rules buttons but they don't work and there's no visual indication to the user as to why, either hide them or disable and put some UI indication as to why.
 
 ### R13. The web server note (F2)
 You wrote: "it didn't provide the exact python command needed."
 Changed: opened from a file, a folder export shows the exact command for its folder with a Copy button, the address to
 open, and that One file opens anywhere.
 Check: double-click the exported folder's `index.html`.
-Result:
+Result: This works fine now, the instructions provide the correct command
 Notes:
 The export tiers (decision 7) are built: see S1 and S2. Opening folders and CSVs in a browser like the prototype is R2.2,
 partly built: see S4.

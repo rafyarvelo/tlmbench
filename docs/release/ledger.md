@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 223 · **Partial** 44 · **Missing** 12 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 16 (325 rows).
+Counts: **Done** 224 · **Partial** 44 · **Missing** 12 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 16 (326 rows).
 
 How to read the evidence. A test named here was run in this review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -189,6 +189,7 @@ on a real window). The last column names the step of `docs/release/release-plan.
 | D-brow-02 | release plan R2.2 | A reload in browser-only mode brings back the files that were open, from the browser's private storage, with no picker. | Done | `t_browseronly` (Nov 15) | |
 | D-brow-03 | release plan R2.2 | A static-host recipe for `app/browser/dist` (any static host, GitHub Pages snippet). | Done | `just browser-site`, `docs/browser-only.md` | The release workflow runs it on a tag: R4 |
 | D-brow-04 | UI audit R2.2 (Nov 15) | Browser-only mode offers only what a tab can do: no folder or live-source buttons, no Connections, the Explorer says to choose or drop a CSV. | Done | `t_browseronly` (Nov 15), `docs/release/ui-audits.md` | |
+| D-ui-33 | owner test sheet R3 (Nov 15) | Settings has one reset, Reset app…: Reset to defaults is gone, and the dialog's "Things the app remembers" (recent files, each file's panes and channel display, the sidebars, export choices, saved connections), unticked to start, decides whether those go; with only Settings ticked it does what Reset to defaults did. | Done | `t_reset`, `t_shell` (Nov 15) | Design-doc note owed |
 | S5.10-05 | roadmap 5.10 | The Canvas 2D fallback renderer. | Done | `t_canvas2d` | Its frame time has no budget or measurement: R6 |
 | S5.10-06 | roadmap 5.10 | Time going backwards flagged in the index. | Partial | `tlmbench-decode::cache::backwards_time_is_flagged_not_reordered`, `tlmbench-decode::fixed::backwards_time_is_an_error`, `tlmbench-decode::packets::backwards_time_is_an_error` | CSV and Parquet flag it; fixed-width, packet and plugin files still fail. R2.3 |
 | S5.10-07 | roadmap 5.10 | `just gate5`: a folder check plus an HTML export of a 2 h flight within budget, opening in under 2 s from a static host. | Done | `just gate5` (Nov 11, M1, this review: pass; folder check of 3 flights in 0.7 s; the 2 h, 20-channel flight exports Full at 117.7 MB in 0.2 s; first chart view 313 ms from a local static server) | Served from localhost; a remote host is unmeasured (R6); CI doesn't run the gate |

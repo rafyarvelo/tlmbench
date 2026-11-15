@@ -60,9 +60,13 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   await p.keyboard.press('Escape');
   check('Esc closes ⋯', !(await visible('.moremenu')));
 
-  // Reset to defaults: settings go, the file's panes and the sidebars stay
+  // Reset app… with only Settings ticked (the old Reset to defaults, sheet R3): settings go, the file's panes and the sidebars stay
   await p.click('#addPane');
-  await p.click('#setReset');
+  check('Reset to defaults is gone, Reset app… does it', !(await p.$('#setReset')));
+  await p.click('#setResetApp');
+  for (const b of await p.$$('#resetDlg [data-reset]:not([data-reset="settings"])')) await b.uncheck();
+  await p.click('#resetGo');
+  await until(() => !document.querySelector('#resetDlg'));
   const s = await settingsLS();
   check('reset to defaults', s.theme === 'system' && s.mode === 'box' && !s.overviewTop && !s.showPerf && s.layouts['/data/flight.tlm'], s);
   check('reset applies', (await p.getAttribute('html', 'data-theme')) === null && !(await visible('#statusBar')));

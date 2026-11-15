@@ -24,7 +24,7 @@ import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
 import { COMMANDS, matches, menuLabel } from './commands';
-import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
+import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, REMEMBERED, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
@@ -4217,12 +4217,14 @@ async function resetApp(what: string[]): Promise<void> {
   } catch (e) {
     return note(`Couldn't reset: ${e}`);
   }
-  const keep: (keyof typeof settings)[] = [];
-  if (!has('layouts')) keep.push('layouts', 'workspaces');
-  if (!has('widgets')) keep.push('customWidgets', 'trustedWidgetSources');
-  if (has('settings')) resetAllSettings(keep);
+  // Settings resets what Settings shows; "Things the app remembers" the rest (sheet R3). Layouts and widgets go only when
+  // ticked themselves, whichever of those two is.
+  const own: (keyof typeof settings)[] = ['layouts', 'workspaces', 'customWidgets', 'trustedWidgetSources'];
+  const keep = (Object.keys(settings) as (keyof typeof settings)[]).filter((k) =>
+    own.includes(k) || (REMEMBERED.includes(k) ? !has('remembered') : !has('settings')));
+  if (has('settings') || has('remembered')) resetAllSettings(keep);
   if (has('layouts')) (setSetting('workspaces', []), setSetting('layouts', {}));
-  if (has('widgets')) setSetting('customWidgets', []);
+  if (has('widgets')) (setSetting('customWidgets', []), setSetting('trustedWidgetSources', []));
   await Promise.all([refreshRecipes(), loadCheckSets()]);
   if (state.file) await loadEvents();
   note(`Reset: ${what.length} ${what.length === 1 ? 'item' : 'items'}. Files open as if for the first time where their import settings went.`);

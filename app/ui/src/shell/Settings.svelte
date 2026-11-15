@@ -3,7 +3,7 @@
 <script lang="ts">
   import { TIME_FORMATS } from '../axes';
   import { resetTips } from '../tips';
-  import { type EventCategory, movePanel, resetSettings, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
+  import { type EventCategory, movePanel, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { ICON } from '../icons';
   import { invoke } from '@tauri-apps/api/core';
@@ -154,9 +154,10 @@
     await invoke('profile_delete', { header }).catch(() => {});
     await loadProfiles();
   }
-  /** Reset app… (owner decision 1): each thing that can go, all ticked to start. */
+  /** Reset app… (owner decision 1): each thing that can go, all ticked to start but what the app remembers (sheet R3). */
   const RESET: [string, string, string][] = [
     ['settings', 'Settings', 'Everything on this page, back to the defaults'],
+    ['remembered', 'Things the app remembers', 'Recent files, each file’s panes and channel display, the sidebars, export choices, saved connections'],
     ['profiles', 'Import profiles', 'The import dialog comes back for every file'],
     ['recipes', 'Recipes', 'Your derived channels'],
     ['checks', 'Rules and checks', 'Your sets and their results'],
@@ -268,7 +269,7 @@
     <div class="urow"><span id="cacheSize" class="num">{cache ? `${size(cache.bytes)} of ${size(cache.cap)}` : ''}</span><button class="tbtn" id="cacheOpen" data-tip="Show the cache folder in the file manager" onclick={() => invoke('cache_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="cacheClear" disabled={!cache?.bytes} data-tip="Remove the summaries of files that aren't open; they are rebuilt when a file opens again. Keeps your settings, import profiles, recipes and sets (Reset app… removes those)" onclick={clearCache}>Clear cache</button></div>
     {#if cleared}<p class="muted" id="cacheNote">{cleared}</p>{/if}
   </section>
-  <footer><span>Saved as you change them</span><button class="tbtn" id="setResetApp" data-tip="Start over: choose what goes (settings, import profiles, recipes, sets, layouts, events, widgets, the cache)" onclick={() => (resetAsk = new Set(RESET.map(([k]) => k)))}>Reset app…</button><button class="tbtn" id="setReset" onclick={resetSettings}>Reset to defaults</button></footer>
+  <footer><span>Saved as you change them</span><button class="tbtn" id="setResetApp" data-tip="Start over: choose what goes (settings, what the app remembers, import profiles, recipes, sets, layouts, events, widgets, the cache)" onclick={() => (resetAsk = new Set(RESET.map(([k]) => k).filter((k) => k !== 'remembered')))}>Reset app…</button></footer>
   {/if}
 </div>
 

@@ -473,14 +473,10 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
   listeners.forEach((f) => f(key));
 }
 
-/** What Reset to defaults keeps: the panes and gap factors remembered per file, and where the sidebars are. */
-const KEEP: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'exportHtml', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
-
-export function resetSettings(): void {
-  for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
-    if (!KEEP.includes(key)) setSetting(key, structuredClone(DEFAULTS[key]) as never);
-  }
-}
+/** What the app remembers as it is used, not set on Settings: recent files, each file's panes, channel display and gap
+ * factors, the sidebars, the export dialogs' choices, sessions, windows, saved connections. Reset app… resets these only
+ * with "Things the app remembers" ticked (sheet R3). */
+export const REMEMBERED: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'importWhere', 'exportData', 'exportImage', 'exportHtml', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 /** Every setting back to its default, but `keep` (Reset app…, which asks about layouts and widgets on their own). */
 export function resetAllSettings(keep: (keyof Settings)[] = []): void {
