@@ -205,6 +205,8 @@
   {:else}
     <p class="setnone">No setting matches “{q.trim()}”.</p>
   {/each}
+  <!-- an export or a browser tab has no folder, no app behind it and nothing to save to: what would do nothing is left out -->
+  {#if !ui.viewer}
   <section id="evCatSet">
     <h3>Event categories</h3>
     {#each settings.eventCats as c, i (c.id)}
@@ -217,17 +219,22 @@
     {/each}
     <div class="urow"><span class="muted">Charts mark an event when its category is on and the Events panel shows it.</span><button class="tbtn" id="catAdd" onclick={addCat}>{@html ICON.plus}Add</button></div>
   </section>
+  {#if !ui.browserOnly}
   <section id="sharedSet">
     <h3>Shared configuration</h3>
     <div class="urow"><span id="sharedWhere">{cfg.dir ? 'Reading the folder’s .tlmbench/' : ui.folder ? 'This folder has no .tlmbench/ yet' : 'Open a folder to share with it'}<br /><small class="muted">Recipes, rules, layouts, widgets, categories, profiles, decoders, events and alignments. Yours win a name; the folder’s fill in the rest.</small></span><button class="tbtn" id="setShare" disabled={!ui.folder} onclick={actions.shareOpen}>Share…</button></div>
     {#if cfg.categories.length}<div class="urow"><span class="muted" id="sharedCats">{cfg.categories.length} event {cfg.categories.length === 1 ? 'category comes' : 'categories come'} from the folder and win a shared id, so a shared view looks the same for everyone.</span></div>{/if}
     {#each cfg.problems as p (p.path)}<div class="urow"><span style="color: var(--danger)" data-problem>{p.path}: {p.why}</span></div>{/each}
   </section>
+  {/if}
+  {#if !ui.browserOnly}
   <section id="browserSet">
     <h3>Browser access</h3>
     <div class="urow"><span>Open this core in a browser<br /><small class="muted">A tab on this computer shows the same files, live sources and settings. The address has a token that lasts until you turn this off or quit.</small></span><label class="catchart"><input type="checkbox" id="browserOn" checked={!!browserUrl} onchange={(e) => void browserSet(e.currentTarget.checked)} />On</label></div>
     {#if browserUrl}<div class="urow"><span id="browserUrl" class="muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{browserUrl}</span><button class="tbtn" id="browserCopy" onclick={() => void navigator.clipboard?.writeText(browserUrl!)}>Copy</button></div>{/if}
   </section>
+  {/if}
+  {#if !ui.browserOnly}
   <section id="pluginSet">
     <h3>Plugins</h3>
     {#each sharedFolders as s (s.folder)}
@@ -245,6 +252,7 @@
     {/each}
     <div class="urow"><span class="muted">WASM plugins can't reach your files or network. Native ones can, so they stay off until you turn them on.</span><span class="uctl"><button class="tbtn" id="pluginsOpen" onclick={() => invoke('plugins_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="pluginsRescan" data-tip="Read the plugins folders again" onclick={() => void rescan()}>Rescan</button></span></div>
   </section>
+  {/if}
   {#if customised.length}
     <section id="chSet"><h3>Channels</h3>
       {#each customised as n (n)}
@@ -253,9 +261,11 @@
       <div class="urow"><span>Everything customised on channels</span><button class="tbtn" id="chResetAll" onclick={() => customised.forEach(resetChannel)}>Reset all</button></div>
     </section>
   {/if}
+  {#if !ui.browserOnly}
   <section id="liveSet"><h3>Live</h3>
     <div class="urow"><span>Record live sessions to<br /><small class="muted" id="recDir">{settings.recordTo || 'The Recordings folder in the app’s data folder'}</small></span><span class="uctl"><button class="tbtn" id="recChoose" onclick={chooseRecDir}>Choose…</button>{#if settings.recordTo}<button class="tbtn" id="recDefault" onclick={() => setSetting('recordTo', '')}>Default</button>{/if}</span></div>
   </section>
+  {/if}
   <section><h3>Layout</h3><div class="urow"><span>Sidebar sizes, sides and panels</span><button class="tbtn" id="setResetUi" onclick={resetUiLayout}>Reset UI layout</button></div><div class="urow"><span id="sessTxt">{settings.sessions[settings.folder]?.files.length ? 'Session saved · only you (app cache)' : 'Session saves automatically'}</span><button class="tbtn" id="setResetSession" data-tip="Close this folder's tabs and forget its saved session" onclick={actions.resetSession}>Reset session</button></div><div class="urow"><span>Panes remembered for each file</span><button class="tbtn" id="setForget" onclick={() => setSetting('layouts', {})}>Forget layouts</button></div><div class="urow"><span>Tips you have learned</span><button class="tbtn" id="setResetTips" onclick={resetTips}>Reset tooltips</button></div></section>
   <section id="profileSet" bind:this={root}><h3>Import profiles</h3>
     {#each profiles as pr (pr.header.join('\u0000'))}
@@ -269,7 +279,10 @@
     <div class="urow"><span id="cacheSize" class="num">{cache ? `${size(cache.bytes)} of ${size(cache.cap)}` : ''}</span><button class="tbtn" id="cacheOpen" data-tip="Show the cache folder in the file manager" onclick={() => invoke('cache_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="cacheClear" disabled={!cache?.bytes} data-tip="Remove the summaries of files that aren't open; they are rebuilt when a file opens again. Keeps your settings, import profiles, recipes and sets (Reset app… removes those)" onclick={clearCache}>Clear cache</button></div>
     {#if cleared}<p class="muted" id="cacheNote">{cleared}</p>{/if}
   </section>
+  {/if}
+  {#if !ui.viewer}
   <footer><span>Saved as you change them</span><button class="tbtn" id="setResetApp" data-tip="Start over: choose what goes (settings, what the app remembers, import profiles, recipes, sets, layouts, events, widgets, the cache)" onclick={() => (resetAsk = new Set(RESET.map(([k]) => k).filter((k) => k !== 'remembered')))}>Reset app…</button></footer>
+  {/if}
   {/if}
 </div>
 

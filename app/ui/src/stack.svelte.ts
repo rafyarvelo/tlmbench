@@ -4,7 +4,7 @@
 
 import { PAD, value } from './axes';
 import { setSetting, settings } from './settings.svelte';
-import { ui } from './ui.svelte';
+import { ui, viewLocked } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
  * view, the chart with its table below, or value tiles. */
@@ -200,6 +200,10 @@ function levelRow(p: Pane): void {
 }
 
 function edit(f: () => void, viewOnly = false): void {
+  if (!viewOnly && viewLocked()) {
+    note('This view is locked. Unlock it to rearrange.', () => (ui.locked = false), 'Unlock');
+    return;
+  }
   if (!viewOnly && settings.locked && settings.lockLayout) {
     note('The layout is locked.', () => setSetting('locked', false), 'Unlock');
     return;

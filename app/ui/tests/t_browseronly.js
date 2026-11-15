@@ -123,6 +123,11 @@ try {
     window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   });
   check('a binary file says browser-only mode reads CSV', await until(() => /Browser-only mode reads CSV files/.test(document.body.textContent ?? '')));
+  // the viewer's rule (sheet R12) holds here too: what a tab can't do is left out, not a button that does nothing
+  check('no Live in the rail (a tab has no live sources)', !(await p.$('[data-rail="live"]')));
+  await p.click('[data-rail="settings"]');
+  check('Settings leaves out what needs the app: browser access, plugins, live recording, shared configuration', await p.evaluate(() => !document.querySelector('#browserSet, #pluginSet, #liveSet, #sharedSet')));
+  check('and keeps the cache, which a tab has', await p.evaluate(() => !!document.querySelector('#settings .cache, .cache')));
   check('no page errors', errs.length === 0, errs);
 } catch (e) {
   bad++;

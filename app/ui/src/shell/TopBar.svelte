@@ -8,7 +8,7 @@
   import { moveTab, tabs } from '../tabs.svelte';
   import { TIME_FORMATS } from '../axes';
   import { addPaneBelow, allMode, clearChannels, clearPanes, setAllModes, stack } from '../stack.svelte';
-  import { actions, ui } from '../ui.svelte';
+  import { actions, ui, viewLocked } from '../ui.svelte';
   import { cfg } from '../share.svelte';
   import CheckBadge from './CheckBadge.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -90,8 +90,10 @@
     tabMenu = { key, ...how };
   }
   let moreBtn: HTMLButtonElement | undefined = $state();
+  const lk = $derived(viewLocked());
+  const LOCKED = 'Unlock the view to change panes';
   const moreItems = (): MenuItem[] => [
-    { label: 'Open recording…', kbd: '⌘O', run: actions.open },
+    ...(ui.viewer ? [] : [{ label: 'Open recording…', kbd: '⌘O', run: actions.open }]),
     ...(narrow
       ? [
           { heading: 'Bar' },
@@ -108,10 +110,10 @@
     { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
     { label: 'Overview above the panes', checked: settings.overviewTop, run: () => setSetting('overviewTop', !settings.overviewTop) },
     { heading: 'All panes' },
-    ...ALL.map(([m, label, , tip]): MenuItem => ({ label: `Every pane as ${m === 'both' ? 'chart and table' : label.toLowerCase().replace(/s$/, '')}`, checked: allMode() === m, radio: true, data: { allmode: m }, tip, run: () => setAllModes(m) })),
-    { label: 'New pane', kbd: '⌘⇧N', data: { more: 'addpane' }, disabled: !ui.file, run: () => addPaneBelow(Math.max(0, stack.panes.length - 1)) },
-    { label: 'Remove every channel', data: { more: 'nochan' }, disabled: !stack.panes.some((p) => p.channels.length), run: clearChannels },
-    { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: !stack.panes.length, run: clearPanes },
+    ...ALL.map(([m, label, , tip]): MenuItem => ({ label: `Every pane as ${m === 'both' ? 'chart and table' : label.toLowerCase().replace(/s$/, '')}`, checked: allMode() === m, radio: true, data: { allmode: m }, disabled: lk, tip: lk ? LOCKED : tip, run: () => setAllModes(m) })),
+    { label: 'New pane', kbd: '⌘⇧N', data: { more: 'addpane' }, disabled: !ui.file || lk, tip: lk ? LOCKED : undefined, run: () => addPaneBelow(Math.max(0, stack.panes.length - 1)) },
+    { label: 'Remove every channel', data: { more: 'nochan' }, disabled: lk || !stack.panes.some((p) => p.channels.length), tip: lk ? LOCKED : undefined, run: clearChannels },
+    { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: lk || !stack.panes.length, tip: lk ? LOCKED : undefined, run: clearPanes },
     { heading: 'Export' },
     // a viewer is an export: it cannot make one (these are left out of its build, not disabled)
     ...(__VIEWER__ ? [] : [
@@ -261,20 +263,20 @@
   {#if barW >= 1200}
     <div class="seg allmodes" role="group" aria-label="All panes view">
       {#each ALL as [m, label, icon, tip] (m)}
-        <button class="tb" data-allmode={m} aria-pressed={allMode() === m} disabled={settings.locked && settings.lockLayout} aria-label={label} data-tip={tip} onclick={() => setAllModes(m)}>{@html icon}</button>
+        <button class="tb" data-allmode={m} aria-pressed={allMode() === m} disabled={(settings.locked && settings.lockLayout) || lk} aria-label={label} data-tip={lk ? LOCKED : tip} onclick={() => setAllModes(m)}>{@html icon}</button>
       {/each}
     </div>
   {/if}
   {#if wide}
     <div class="seg pact" role="group" aria-label="Pane actions">
-      <button class="tb" id="tb-clearch" aria-label="Remove every channel" disabled={!stack.panes.some((p) => p.channels.length)} data-tip="Remove every channel from every pane (panes stay)" onclick={clearChannels}>{@html ICON.clearChannels}</button>
-      <button class="tb" id="tb-rmpanes" aria-label="Remove every pane" disabled={!stack.panes.length} data-tip="Remove every pane" onclick={clearPanes}>{@html ICON.removePanes}</button>
+      <button class="tb" id="tb-clearch" aria-label="Remove every channel" disabled={lk || !stack.panes.some((p) => p.channels.length)} data-tip={lk ? LOCKED : "Remove every channel from every pane (panes stay)"} onclick={clearChannels}>{@html ICON.clearChannels}</button>
+      <button class="tb" id="tb-rmpanes" aria-label="Remove every pane" disabled={lk || !stack.panes.length} data-tip={lk ? LOCKED : "Remove every pane"} onclick={clearPanes}>{@html ICON.removePanes}</button>
     </div>
   {/if}
   {#if ui.viewer}
-    <!-- an export says it is read-only, and where it came from (owner decision 6) -->
-    <span class="viewinfo" id="viewerInfo" data-tip="An export: nothing here can be edited or saved, and nothing is sent anywhere">
-      <span class="vpill">Read-only view</span>
+    <!-- an export says whether its arrangement is locked, and where it came from (owner decision 6, R12) -->
+    <span class="viewinfo" id="viewerInfo">
+      <button class="vpill" id="b-vlock" aria-pressed={!ui.locked} data-tip={(ui.locked ? 'Locked: unlock to move, add and close panes and channels. ' : 'Unlocked: your changes last until you reload. ') + (ui.viewerInfo ? [ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ') : '')} onclick={() => (ui.locked = !ui.locked)}>{ui.locked ? 'Locked' : 'Unlocked'}</button>
       {#if ui.viewerInfo}<span class="vprov">{[ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ')}</span>{/if}
     </span>
   {/if}
@@ -308,11 +310,14 @@
               {:else}{@html ICON.folder}<span>Shared in this folder{sharedBy ? ` by ${sharedBy}` : ''} · .tlmbench/views/{menuTab.shared}</span>{/if}
             {:else if menuTab.ws}
               {#if menuTab.dirty}<span class="dot warn"></span><span>Unsaved changes</span>{:else}<span class="dot good"></span><span>Saved</span>{/if}
+            {:else if ui.viewer}{@html ICON.file}<span>The view this export was made with.</span>
             {:else}{@html ICON.file}<span>The panes this file opened with. Save as keeps them as a layout.</span>{/if}
           </div>
           {#if !menuTab.live}<div class="tmfiles" id="tabFiles"><span>This tab shows</span><span class="fchip" data-tip={menuTab.path}>{(menuTab.path.split(/[\\/]/).pop() ?? menuTab.path) + (menuTab.part ? ` · ${menuTab.part}` : '')}</span></div>{/if}
           <div class="msep"></div>
         {/if}
+        <!-- a viewer saves nothing, shares nothing and has one window: those items are left out, not disabled -->
+        {#if !ui.viewer}
         {#if menuTab?.ws && !menuTab.shared}
           <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
         {/if}
@@ -347,6 +352,7 @@
         {/if}
         {#if !menuTab?.live}<div class="msep"></div>{/if}
         <button class="mi" role="menuitem" data-ws="newwin" onclick={() => tabAct((k) => actions.moveToWindow(k))}><span class="nm">Move to new window</span></button>
+        {/if}
         {#if menuTab?.live}<button class="mi" role="menuitem" data-ws="showwin" data-tip="The source keeps recording once and shows in both windows" onclick={() => tabAct((k) => actions.moveToWindow(k, true))}><span class="nm">Show in new window</span></button>{/if}
         <button class="mi" role="menuitem" onclick={() => tabAct(actions.closeTab)}><span class="nm">Close tab</span></button>
       <button class="mi" role="menuitem" disabled={tabs.list.length < 2} onclick={() => tabAct(actions.closeOtherTabs)}
@@ -831,6 +837,12 @@
     font-size: 12px;
   }
   .vpill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 500;
     flex: none;
     padding: 2px 8px;
     border: 1px solid var(--accent-line);

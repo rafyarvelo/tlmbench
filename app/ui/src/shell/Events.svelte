@@ -27,6 +27,7 @@
     };
     return out.sort((a, b) => at(a.id) - at(b.id));
   });
+  const NOADD = 'An export is a static file: events are added in the app';
   const keyOf = (e: TlmEvent) => (events.group === 'cat' ? catName(e.category) : events.group === 'name' ? e.name : events.group === 'channel' ? (e.channels[0] ?? 'No channel') : events.group === 'source' ? (e.source === 'user' ? 'Added by you' : e.source === 'rule' ? 'From rules' : e.source === 'check' ? 'From checks' : e.source === 'shared' ? 'Shared in the folder' : 'From the file') : '');
   const groups = $derived.by(() => {
     const out: { k: string; items: TlmEvent[] }[] = [];
@@ -81,9 +82,9 @@
       <p class="evnote">Open a recording to see its events. Each file keeps its own.</p>
     {:else}
       <div class="evbar">
-        <button class="tbtn" id="evMarker" data-tip="Add a marker at cursor A" onclick={() => actions.eventAdd(false)}>{@html ICON.plus}Marker at A</button>
-        <button class="tbtn" id="evRange" data-tip="Add a range from cursor A to B" onclick={() => actions.eventAdd(true)}>{@html ICON.plus}Range A–B</button>
-        <button class="tbtn" id="evRules" data-tip="Rules mark events wherever a condition holds" onclick={() => actions.checkEditor('Event rules', -1, true)}>Rules…</button>
+        <button class="tbtn" id="evMarker" disabled={ui.viewer} data-tip={ui.viewer ? NOADD : 'Add a marker at cursor A'} onclick={() => actions.eventAdd(false)}>{@html ICON.plus}Marker at A</button>
+        <button class="tbtn" id="evRange" disabled={ui.viewer} data-tip={ui.viewer ? NOADD : 'Add a range from cursor A to B'} onclick={() => actions.eventAdd(true)}>{@html ICON.plus}Range A–B</button>
+        <button class="tbtn" id="evRules" disabled={ui.viewer} data-tip={ui.viewer ? 'Rules run in the app; an export shows the events they marked' : 'Rules mark events wherever a condition holds'} onclick={() => actions.checkEditor('Event rules', -1, true)}>Rules…</button>
       </div>
       {#if events.msg}<p class="evnote" id="evMsg" role="status">{events.msg}</p>{/if}
       <div class="evfilter">

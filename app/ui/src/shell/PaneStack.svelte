@@ -43,7 +43,7 @@
   } from '../stack.svelte';
   import { failingChannels } from '../checks.svelte';
   import { settings } from '../settings.svelte';
-  import { actions, ui } from '../ui.svelte';
+  import { actions, ui, viewLocked } from '../ui.svelte';
   import AxisDialog from './AxisDialog.svelte';
   import AddPane from './AddPane.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -54,6 +54,8 @@
   import Table from './Table.svelte';
 
   /** the pane menu: under its ⋯ button, or at the pointer on a right-click */
+  const lk = $derived(viewLocked());
+  const LOCKED = 'Unlock the view to change panes';
   let menu = $state<null | { i: number; anchor?: HTMLElement; at?: { x: number; y: number } }>(null);
   let views = $state<null | { i: number; anchor: HTMLElement }>(null);
   let axes = $state<null | { i: number; x: number; y: number }>(null);
@@ -140,6 +142,7 @@
   /** Dragging the grip under a chart: its pane, where it started and the height then. */
   let grip: null | { i: number; y: number; h: number } = null;
   function gripDown(e: PointerEvent, i: number) {
+    if (lk) return;
     const plot = (e.currentTarget as HTMLElement).parentElement?.querySelector('.plot, [data-xy] canvas');
     grip = { i, y: e.clientY, h: plot?.getBoundingClientRect().height ?? 150 };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -286,6 +289,7 @@
     // a chip's right-click is the channel's menu (app.ts); elsewhere on the title, the pane's
     if ((e.target as HTMLElement).closest('[data-ch]')) return;
     e.preventDefault();
+    if (lk) return;
     open(i, { at: { x: e.clientX, y: e.clientY } });
   }
 </script>
@@ -300,12 +304,13 @@
     aria-valuenow={now}
     aria-label={label}
     tabindex="0"
-    data-tip={tip}
+    aria-disabled={lk}
+    data-tip={lk ? 'Unlock the view to resize panes' : tip}
     onpointerdown={(e) => gripDown(e, i)}
     onpointermove={gripMove}
     onpointerup={() => (grip = null)}
-    ondblclick={() => setPlotH(i, undefined)}
-    onkeydown={(e) => gripKey(e, i)}
+    ondblclick={() => !lk && setPlotH(i, undefined)}
+    onkeydown={(e) => !lk && gripKey(e, i)}
   ></div>
 {/snippet}
 
@@ -351,8 +356,8 @@
                   class="pnum"
                   role="button"
                   tabindex="-1"
-                  draggable="true"
-                  data-tip="Drag to move this pane; hold {COPY_KEY} to copy it"
+                  draggable={lk ? undefined : 'true'}
+                  data-tip={lk ? 'Unlock the view to move panes' : `Drag to move this pane; hold ${COPY_KEY} to copy it`}
                   ondragstart={(e) => {
                     dragging = i;
                     e.dataTransfer?.setData('text/plain', `pane ${i + 1}`);
@@ -364,9 +369,9 @@
                   <span
                     class="chip"
                     data-ch={ch}
-                    data-tip="Click for its display settings. Drag to another pane to move it; hold {COPY_KEY} to copy"
+                    data-tip={lk ? 'Click for its display settings. Unlock the view to move it' : `Click for its display settings. Drag to another pane to move it; hold ${COPY_KEY} to copy`}
                     style="--c: {chCss(ch)}"
-                    draggable="true"
+                    draggable={lk ? undefined : 'true'}
                     role="presentation"
                     onclick={(e) => !(e.target as HTMLElement).closest('.cx') && openChannelEditor(ch)}
                     ondragstart={(e) => {
@@ -377,7 +382,7 @@
                     ondrop={(e) => dropChip(e, i, ch)}
                     >{chName(ch)}{#if failing.has(info?.name ?? '')}<span class="chkdot" class:warn={failing.get(info?.name ?? '') === 'warn'} data-chkdot data-tip="Used by a failing check"></span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}{#if units(i).length > 1}<span class="side" data-side>· {axisKey(i, ch) === 'u1' ? 'R' : 'L'}</span>{/if}<span class="val" data-val={ch}
                       >{stack.values[ch] ?? ''}</span
-                    ><button class="cx" data-chip-x={ch} aria-label="Take {info?.name ?? ch} out of pane {i + 1}" data-tip="Take out of this pane" onclick={(e) => (e.stopPropagation(), removeChannel(ch, i))}>{@html ICON.close}</button></span
+                    ><button class="cx" data-chip-x={ch} disabled={lk} aria-label="Take {info?.name ?? ch} out of pane {i + 1}" data-tip={lk ? LOCKED : 'Take out of this pane'} onclick={(e) => (e.stopPropagation(), removeChannel(ch, i))}>{@html ICON.close}</button></span
                   >
                 {:else}
                   <span class="mnote" data-empty-pane>Empty pane. Drag a channel here, or select this pane and click a channel.</span>
@@ -402,7 +407,8 @@
                   data-vmenu
                   aria-haspopup="menu"
                   aria-label="View of pane {i + 1}: {viewName(i)}"
-                  data-tip="View: {viewName(i).toLowerCase()}. Click to change"
+                  disabled={lk}
+                  data-tip={lk ? `View: ${viewName(i).toLowerCase()}. Unlock the view to change it` : `View: ${viewName(i).toLowerCase()}. Click to change`}
                   aria-expanded={views?.i === i}
                   onclick={(e) => {
                     menu = null;
@@ -418,19 +424,20 @@
                   <button class="pmore pact-ev" data-pevents aria-pressed={paneEvents(i)} aria-label="Event markers in pane {i + 1}" data-tip={paneEvents(i) ? 'Hide event markers in this pane' : 'Show event markers in this pane'} onclick={() => toggleEvents(i)}>{@html ICON.events}</button>
                 {/if}
                 {#if p.channels.length}
-                  <button class="pmore pact-dup" data-pdup aria-label="Duplicate pane {i + 1}" data-tip="Duplicate this pane below, with the same channels, view, sort and filters. Shift-click puts the copy beside it." onclick={(e) => duplicate(i, e.shiftKey && canSplitRight(i))}>{@html ICON.dup}</button>
+                  <button class="pmore pact-dup" data-pdup disabled={lk} aria-label="Duplicate pane {i + 1}" data-tip={lk ? LOCKED : "Duplicate this pane below, with the same channels, view, sort and filters. Shift-click puts the copy beside it."} onclick={(e) => duplicate(i, e.shiftKey && canSplitRight(i))}>{@html ICON.dup}</button>
                 {/if}
-                <button class="pmore pact-split" data-psplit disabled={!canSplitRight(i)} aria-label="Split pane {i + 1}" data-tip={canSplitRight(i) ? 'Split: add an empty pane on the right. To pick a side, drag a channel onto the left or right edge of a pane.' : 'A row holds up to 4 panes'} onclick={() => splitRight(i)}>{@html ICON.split}</button>
+                <button class="pmore pact-split" data-psplit disabled={lk || !canSplitRight(i)} aria-label="Split pane {i + 1}" data-tip={lk ? LOCKED : canSplitRight(i) ? 'Split: add an empty pane on the right. To pick a side, drag a channel onto the left or right edge of a pane.' : 'A row holds up to 4 panes'} onclick={() => splitRight(i)}>{@html ICON.split}</button>
                 <button
                   class="pmore"
                   data-pmenu
                   aria-haspopup="menu"
                   aria-label="More for pane {i + 1}"
-                  data-tip="Close, duplicate or split (also on right-click)"
+                  disabled={lk}
+                  data-tip={lk ? LOCKED : 'Close, duplicate or split (also on right-click)'}
                   aria-expanded={menu?.i === i}
                   onclick={(e) => (menu?.i === i ? (menu = null) : open(i, { anchor: e.currentTarget as HTMLElement }))}>{@html ICON.more}</button
                 >
-                <button class="pmore pact-close" data-pclose aria-label="Close pane {i + 1}" data-tip="Close this pane" onclick={() => closePane(i)}>{@html ICON.close}</button>
+                <button class="pmore pact-close" data-pclose disabled={lk} aria-label="Close pane {i + 1}" data-tip={lk ? LOCKED : 'Close this pane'} onclick={() => closePane(i)}>{@html ICON.close}</button>
               </div>
               {#if p.mode === 'values'}
                 {@render tileGrid(p)}
@@ -465,7 +472,7 @@
       {/each}
     </div>
     {#if r < rows().length - 1}
-      <div class="rgap"><button data-gap={r} aria-label="Add a pane here" data-tip="Add a pane between these rows" onclick={() => addPaneBelow(row[row.length - 1])}>{@html ICON.plus}</button></div>
+      <div class="rgap"><button data-gap={r} disabled={lk} aria-label="Add a pane here" data-tip={lk ? LOCKED : 'Add a pane between these rows'} onclick={() => addPaneBelow(row[row.length - 1])}>{@html ICON.plus}</button></div>
     {/if}
   {/each}
   {#if !stack.panes.length && ui.file}

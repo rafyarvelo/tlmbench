@@ -6,7 +6,7 @@ uploaded (the page has no server behind it), and nothing is written beside your 
 What it reads today: CSV files (the decoder's own CSV reader, so units in the header, the time column and time that goes
 backwards read as in the app). The parse runs in a Worker, so a big file doesn't freeze the tab. What was read is kept in the
 browser's private storage (OPFS); the same file opens from it next time, and **a reload brings back the files that were
-open**. Settings › Clear cache empties that storage. The app reads more (binary files, packets, Parquet, descriptors,
+open**. Settings › Clear cache empties that storage. What a tab can't do is left out, not shown as a button that does nothing (no Live in the rail; Settings has no browser access, plugins, live recording or shared configuration). The app reads more (binary files, packets, Parquet, descriptors,
 plugins, folders, live sources, derived channels, checks); see `docs/follow-ups.md`.
 
 ## Hosting it

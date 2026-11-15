@@ -78,6 +78,36 @@ several files in a tab are not built yet (ledger S5.10-04), so their screens are
 
 - **The viewer's provenance text is cut with an ellipsis at 1440 px** ("… TelemetryBench 0…."). The full text is in the pill's
   tooltip. Recommendation: keep; at narrower widths it must give way, and the version is the part that matters least.
-- **Browser-only mode keeps the rail's Live, Rules and checks, and Layouts icons**, which open panels that mostly can't act
-  until the rest of R2.2 lands. Recommendation: leave them, so the layout matches the app, and hide each as its feature
-  stays unbuilt only if the owner prefers a smaller rail (a choice about scope, so it is yours).
+- ~~Browser-only mode keeps the rail's Live, Rules and checks, and Layouts icons.~~ Closed Nov 15 by the owner's rule (sheet
+  R12: every control acts, or is left out, or is disabled with the reason): Live is gone from the rail in a tab, and
+  Settings leaves out browser access, plugins, live recording and shared configuration. Layouts and Rules & checks stay
+  until R2.2 builds checks and layouts, then are checked again (ledger D-brow-05).
+
+## Nov 15, 2026: the viewer, Locked and Unlocked (R12), light and dark
+
+Scope: the viewer over a flight-1 export (a chart pane with two channels, a chart, a table), Locked and Unlocked, light and
+dark, 1440 × 900 (`{light,dark}-{locked,unlocked}.png` from a scratch script; not kept in the repo). Headings from the
+`anthropic-skills:apple-design` skill.
+
+### Fixed in this pass
+
+1. **Feedback: a control that looked live but only said "locked" afterwards.** The first build let every pane control
+   through to a note. Locked now greys them with "Unlock the view to…" (chips and rows stop being draggable, the pane
+   actions, the add-pane row, the height grips, the ⋯ menu), so the state is visible before a press, not after.
+2. **Wayfinding: two padlocks.** The pill first carried a padlock beside the toolbar's "Lock the time view" padlock. The
+   pill is text only ("Locked", "Unlocked"); the provenance (file, date, version) stays in its
+   tooltip and in the muted text beside it.
+3. **Simplicity: settings that could not apply.** Settings in a viewer showed rules for plugins, live recording, browser
+   access and the like. They are left out (not greyed): a viewer shows only how it draws.
+
+### Checked, no change
+
+- **Familiarity.** Unlocked, the viewer is the app: the same drag, the same copy key, the same pane actions on hover.
+- **Typography and tokens.** The pill is 12 px, radius 12; nothing new. **Materials, motion.** Opaque surfaces; no new motion.
+- **Light and dark.** Both read well; the greyed controls keep their contrast above the disabled floor.
+
+### For the owner
+
+- **Whether an unlocked arrangement is kept across reloads** (sheet R12). Recommendation: no. A reload is the exported
+  view, which is what a reader expects of a shared link, and nothing is stored. If you want it kept, it would go in that
+  browser's storage only, with a "Back to the exported view" action.

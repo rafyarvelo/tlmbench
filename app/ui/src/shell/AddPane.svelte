@@ -4,7 +4,7 @@
   import { ICON } from '../icons';
   import Menu from './Menu.svelte';
   import { addPaneBelow, setMode, stack, type PaneMode } from '../stack.svelte';
-  import { ui } from '../ui.svelte';
+  import { ui, viewLocked } from '../ui.svelte';
 
   let menu = $state<HTMLElement | null>(null);
   const KINDS: [PaneMode, string][] = [['chart', 'Chart'], ['table', 'Table'], ['both', 'Chart and table'], ['values', 'Values']];
@@ -16,12 +16,13 @@
 </script>
 
 <div class="addrow" hidden={!ui.file}>
-  <button id="addPane" class="addpane">{@html ICON.plus}Add pane</button><button
+  <button id="addPane" class="addpane" disabled={viewLocked()} data-tip={viewLocked() ? 'Unlock the view to add panes' : undefined}>{@html ICON.plus}Add pane</button><button
     id="addPaneKinds"
     class="addpane kinds"
+    disabled={viewLocked()}
     aria-haspopup="menu"
     aria-label="Kind of pane to add"
-    data-tip="Add a table, a chart with its table, or value tiles"
+    data-tip={viewLocked() ? 'Unlock the view to add panes' : 'Add a table, a chart with its table, or value tiles'}
     aria-expanded={!!menu}
     onclick={(e) => (menu = menu ? null : (e.currentTarget as HTMLElement))}>{@html ICON.chev}</button
   >

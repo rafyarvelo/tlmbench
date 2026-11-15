@@ -59,6 +59,8 @@ export interface SlotRow {
 export const ui = $state({
   /** An HTML export's viewer: it opens only what its export holds and edits nothing. */
   viewer: !!(globalThis as { __tlmViewer?: boolean }).__tlmViewer,
+  /** A viewer opens locked: the arrangement of its panes can't change until the person unlocks it (not kept anywhere). */
+  locked: true,
   /** Browser-only mode: files from the page, no folders or live sources (the app has those). */
   browserOnly: !!(globalThis as { __tlmBrowserOnly?: unknown }).__tlmBrowserOnly,
   /** The viewer's export: its files, when it was made (Unix ms) and the app version, for the header. */
@@ -283,3 +285,6 @@ export const actions = {
   /** What a pane's axis shows now, in its units (null before it's drawn). */
   axisRange: (_i: number, _key: 'u0' | 'u1'): [number, number] | null => null,
 };
+
+/** Whether the layout can't be changed now: a viewer that is still locked. */
+export const viewLocked = (): boolean => ui.viewer && ui.locked;
