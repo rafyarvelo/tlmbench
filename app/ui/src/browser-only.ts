@@ -3,10 +3,12 @@
 // in the browser's private file storage (OPFS) so opening the same file again skips the parse. Nothing is written beside the
 // data, and nothing leaves the machine. (Design: Export to HTML › browser-only mode.)
 //
-// What it reads and does is smaller than the app's: CSV, Parquet and .tlm files, charts, tables, values and Measure. Descriptors,
-// packets, WASM plugins and folders are still to come (release plan R2.2); live sources and native plugins need the app; several
+// What it reads and does is smaller than the app's: CSV, Parquet and .tlm files, charts, tables, values and Measure, and a
+// folder listed read-only where the browser can open one (browser-folder.ts). Descriptors, packets and WASM plugins are still
+// to come (release plan R2.2); live sources and native plugins need the app; several
 // files, derived channels, events and checks in a tab are after v1 (docs/post-v1.md).
 
+import { folderFile, listFolder, pickFolder } from './browser-folder';
 import { isParquet, parquetDump } from './parquet-wasm';
 import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
 
@@ -166,7 +168,7 @@ export async function installBrowserOnly(): Promise<void> {
 
   /** Opens a file from the page: from the private storage when it was read before, else parsed (and then kept). */
   async function openLocal(path: string, progress: Handler | null) {
-    const f = files.get(path);
+    const f = files.get(path) ?? (await folderFile(path));
     if (!f) {
       // opened in an earlier visit: its columns are still in this browser's storage
       const saved = manifest()[path];
@@ -225,7 +227,7 @@ export async function installBrowserOnly(): Promise<void> {
     launch: () => ({ file: null, gate: null, gateMode: null, gateSeconds: null }),
     'plugin:dialog|open': (a) => {
       const o = (a.options ?? {}) as { directory?: boolean; multiple?: boolean };
-      if (o.directory) return null; // no folders in a browser tab
+      if (o.directory) return pickFolder(); // read-only, where the browser has the picker (null: cancelled or none)
       return pick(files, !!o.multiple).then((p) => (p == null ? null : o.multiple ? p : p[0]));
     },
     'plugin:dialog|save': () => null,
@@ -241,6 +243,10 @@ export async function installBrowserOnly(): Promise<void> {
     stats: (a) => core('stats', a),
     rows: (a) => core('rows', a),
     events_list: () => [],
+    list_folder: (a) => listFolder(String(a.path)),
+    watch_folder: () => null,
+    // a tab reads no shared configuration yet (D-brow-10: the folder's .tlmbench/ is still to come)
+    config_use: () => ({ dir: null, from: { categories: [], widgets: [] }, recipes: [], checks: [], problems: [], writable: false }),
     cache_info: async () => {
       const dir = await cacheDir();
       let bytes = 0;

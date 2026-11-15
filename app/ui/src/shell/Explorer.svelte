@@ -304,8 +304,8 @@
       <span class="exfolder viewer" data-tip="This is an export: it holds what was chosen when it was made">{@html ICON.folder}<span>Export</span></span>
     {:else if ui.folder}
       <button class="exfolder" id="exFolder" aria-haspopup="menu" aria-expanded={!!fold} data-tip="Folders: open a folder of recordings, expand or collapse, close all files" onclick={(e) => ((more = null), (fold = fold ? null : (e.currentTarget as HTMLElement)))}>{@html ICON.folder}<span>{ui.folder.name}</span>{@html ICON.chev}</button>
-    {:else if ui.browserOnly}
-      <span class="exfolder viewer" data-tip="Files you choose or drop on the page; folders are in the app">{@html ICON.folder}<span>This browser</span></span>
+    {:else if !ui.canFolder}
+      <span class="exfolder viewer" data-tip="This browser can't open folders: choose files, or drop them on the page">{@html ICON.folder}<span>This browser</span></span>
     {:else}
       <button class="exfolder" id="exFolder" data-tip="Open a folder of recordings (only read)" onclick={actions.openFolder}>{@html ICON.folder}<span>Open folder</span></button>
     {/if}
@@ -412,9 +412,8 @@
       { sep: true },
       { label: `Import all ${csvFiles.length} file${csvFiles.length === 1 ? '' : 's'}…`, data: { ex: 'import-all' }, disabled: !csvFiles.length, run: () => actions.importAll(csvFiles) },
       { sep: true },
-      { label: 'Recipes…', data: { ex: 'recipes-f' }, run: actions.recipesOpen },
-      { label: 'Share…', data: { ex: 'share' }, disabled: !ui.folder, run: actions.shareOpen },
-      { sep: true },
+      // recipes and Share are not in a browser tab (D-brow-05: recipes come after v1, a tab writes nothing)
+      ...(ui.browserOnly ? [] : [{ label: 'Recipes…', data: { ex: 'recipes-f' }, run: actions.recipesOpen }, { label: 'Share…', data: { ex: 'share' }, disabled: !ui.folder, run: actions.shareOpen }, { sep: true } as const]),
       { label: 'Expand all folders', data: { ex: 'expand' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])) },
       { label: 'Collapse all folders', data: { ex: 'collapse' }, disabled: !ui.folder, run: collapseAll },
       { sep: true },

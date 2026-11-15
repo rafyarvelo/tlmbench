@@ -54,7 +54,7 @@
       <p class="recbanner" id="startRec"><span class="rdot"></span>Recording to <span class="num">{rec.session}</span></p>
     {/if}
     <div class="cards">
-      {#if !ui.browserOnly}
+      {#if ui.canFolder}
         <button class="card" data-start="folder" onclick={go(actions.openFolder)}>{@html ICON.folder}<span class="tx"><b>Open folder…</b><span>A folder of runs: CSV, Parquet, or binary logs with a descriptor</span></span></button>
       {/if}
       <button class="card" data-start="open" onclick={go(actions.open)}>{@html ICON.file}<span class="tx"><b>Open recording… <kbd>⌘O</kbd></b><span>One file, in its own tab with a starter layout</span></span></button>
@@ -62,6 +62,7 @@
         <button class="card live" data-start="live" onclick={go(() => liveActions.openConnect(false))}>{@html ICON.live}<span class="tx"><b>Connect live source…</b><span>Serial, UDP, TCP, or tail a file being written. Try file playback.</span></span></button>
       {/if}
     </div>
+    {#if !ui.canFolder}<p class="muted hint" id="noFolders">This browser can't open folders. Choose files with Open recording…, or drop them on the page.</p>{/if}
     <div class="cols">
       <section>
         <h2>Recent sessions</h2>

@@ -100,7 +100,7 @@ try {
   };
   await p.goto(url, { waitUntil: 'domcontentloaded' });
   check('the page starts with no file, as the app does', await until(() => /No recording open/.test(document.body.textContent ?? '')));
-  check('it offers no folder and no live source: a tab has neither (audit, R2.2)', !(await p.$('#startPage [data-start="folder"]')) && !(await p.$('#startPage [data-start="live"]')) && !!(await p.$('#startPage [data-start="open"]')) && !/Open a folder/.test(await p.$eval('#explorer', (e) => e.textContent ?? '')));
+  check('it offers no live source, and a folder only where the browser has the picker (audit, R2.2; D-brow-10)', (!(await p.$('#startPage [data-start="folder"]')) === !(await p.evaluate(() => typeof window.showDirectoryPicker === 'function'))) && !(await p.$('#startPage [data-start="live"]')) && !!(await p.$('#startPage [data-start="open"]')) && !/Open a folder/.test(await p.$eval('#explorer', (e) => e.textContent ?? '')));
 
   // the picker
   const chooser = p.waitForEvent('filechooser');

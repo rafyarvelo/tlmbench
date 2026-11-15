@@ -63,6 +63,8 @@ export const ui = $state({
   locked: true,
   /** Browser-only mode: files from the page, no folders or live sources (the app has those). */
   browserOnly: !!(globalThis as { __tlmBrowserOnly?: unknown }).__tlmBrowserOnly,
+  /** Whether a folder can be opened: always in the app, only where the browser has `showDirectoryPicker` in a tab. */
+  canFolder: !(globalThis as { __tlmBrowserOnly?: unknown }).__tlmBrowserOnly || typeof (globalThis as { showDirectoryPicker?: unknown }).showDirectoryPicker === 'function',
   /** The viewer's export: its files, when it was made (Unix ms) and the app version, for the header. */
   viewerInfo: ((globalThis as { __tlmViewerInfo?: unknown }).__tlmViewerInfo ?? null) as null | { files: string[]; created: number | null; version: string },
   /** A layout that names files this tab doesn't have (`accel_x·2` needs file 2): the picker asks for them first. */
