@@ -2841,7 +2841,7 @@ function emptyWindow(): void {
   freeLayers();
   Object.assign(state, { file: null, building: null, A: null, B: null, history: [], future: [] });
   stack.panes = [];
-  Object.assign(ui, { file: '', path: '', channels: [], range: '', span: '', pointer: '', canBack: false, cursors: false, anyCursor: false, perf: '' });
+  Object.assign(ui, { file: '', path: '', channels: [], range: '', span: '', pointer: '', canBack: false, cursors: false, anyCursor: false, perf: '', slots: [] });
   $('empty').hidden = false;
   renderPanes();
   renderOverviewHead();

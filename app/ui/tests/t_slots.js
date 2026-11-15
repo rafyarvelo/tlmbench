@@ -133,6 +133,17 @@ run(
       await p.hover('#explorer .row.chan');
       check('and shows on hover', await until(() => getComputedStyle(document.querySelector('#explorer .row.chan .unit')).opacity === '1'));
     }
+    // closing the tabs Open together and Compare made takes the slot numbers and the marks with it (owner, Nov 15)
+    // (the compare tab goes last, so the window empties while it is in front)
+    for (let n = 0; n < 8; n++) {
+      const other = await p.$('#wsTabs .wstab:not(:has-text("vs")) .tx');
+      if (!other) break;
+      await other.click({ force: true });
+      await p.waitForTimeout(150);
+    }
+    check('the compare tab is the one left', (await p.$$eval('#wsTabs .wstab .nm', (t) => t.map((x) => x.textContent))).join() === 'flight vs GPS', await p.$$eval('#wsTabs .wstab .nm', (t) => t.map((x) => x.textContent)));
+    await p.click('#wsTabs [aria-selected=true] .tx');
+    check('with every tab closed, no slot rows or numbers stay in Explorer', await until(() => document.querySelectorAll('#explorer .row.slot, #explorer .row.file.slotted, #explorer [data-fslot]').length === 0), await p.evaluate(() => [...document.querySelectorAll('#explorer .row.slot')].length));
   },
   { files, launch: null },
 );
