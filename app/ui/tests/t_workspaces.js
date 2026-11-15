@@ -50,12 +50,12 @@ run(
     await tabMenu();
     await p.click('.tabmenu [data-ws="revert"]');
     check('Revert changes', await until(() => window.__tlmApp.panes().length === 4 && !document.querySelector('#wsTabs [data-dirty]')), await app('panes'));
-    await p.keyboard.press('Meta+s');
+    await p.keyboard.press('ControlOrMeta+s');
     check('⌘S with nothing to save keeps it', (await saved())[0].panes.length === 4);
 
     // the file again: its own tab, sharing the open file
     await fake((f) => (window.__tlmFake.pick = f), A);
-    await p.keyboard.press('Meta+o');
+    await p.keyboard.press('ControlOrMeta+o');
     check('a file tab beside the workspace tab', await until(() => document.querySelectorAll('#wsTabs .wstab').length === 2), await names());
     check('the file is not opened twice', (await calls('open')) === 1, await calls('open'));
     check('with its own layout', (await app('panes')).length === 3, await app('panes'));
