@@ -23,7 +23,11 @@ learns about a file lives in its own cache, so a read-only network share works a
 
 | An HTML export, from a static server | Export to HTML… |
 | --- | --- |
-| ![An HTML export opened from a static server: the layout's panes, the checks summary and the violations marked, nothing that edits](docs/images/app-viewer.png) | ![The Export to HTML dialog: Automatic, Full and Light with their sizes against the budget](docs/images/app-export-html.png) |
+| ![An HTML export of a failing flight: the layout's panes, the violations shaded, a table, and the Locked pill with the export's file and date](docs/images/app-viewer.png) | ![The Export to HTML dialog: save as a folder or one file, Full or Light, with the size against the budget](docs/images/app-export-html.png) |
+
+| In a browser tab, no install |
+| --- |
+| ![Browser-only mode: a CSV chosen in the page, read in the tab, four panes](docs/images/app-browser.png) |
 
 ## Why it's fast, and why you can trust what it draws
 
@@ -53,112 +57,91 @@ learns about a file lives in its own cache, so a read-only network share works a
 | Live: 4M samples/s over TCP (4 × 1 MHz, 32 × 125 kHz), 60 s each | every record recorded, none dropped; 3.7–6.5% of a core |
 | A live tab following that stream (10 s window) | 0 and 3 of 3,540 frames missed, views in under 20 ms (p95) |
 
-These are the project's own gates: `just gate` (Phase 1), `just gate2` (Phase 2) and `just gate3 core` / `just gate3
-app` (Phase 3) reproduce them. (Phase 2's first paint measured 112–146 ms in the latest runs.)
+These are the project's own gates (last run Nov 1 to 9, 2026; they are re-run on the release build before v1): `just gate`,
+`just gate2` and `just gate3 core` / `just gate3 app` reproduce them. An HTML export of a 2 h, 20-channel flight is 117.6 MB
+and draws its first chart in 0.2 s from a local static host (`just gate5`).
 
-## What works today
+## What it does
 
-- **The app** (Tauri, Svelte, WebGL2), with the prototype's UI: an icon rail, Explorer (open a folder; folder → file
-  → channel), a tab per open file (restored at launch), a stack of panes in rows and columns (split, duplicate, close
-  with Undo, drag), an overview strip, Box zoom, Pan and Cursors with Back and Fit, values at the pointer, cursors A
-  and B with Measure (values, Δt, Δy, exact min, max, mean and standard deviation), a gap factor per channel, Settings,
-  and Play (a playhead the view follows, speed, window, A–B loop). Files being summarized fill in left to right.
-- **Live:** connect a serial port, TCP, UDP, a growing CSV or `.tlm` file, or replay a recording as if it were arriving
-  now (file playback, for demos and for testing rules without hardware). A live tab follows now (window presets, scrub
-  back with the session drawn behind the scrubber, Jump to live), shows each source's health and warns when samples are
-  dropped, and can pause, stop and add sources. A trigger on any channel or expression freezes a window around a
-  crossing and marks it as an event; rules and checks run on the live file every couple of seconds; derived
-  channels follow it. The session records to a folder you choose (never beside the data) and reopens like any file.
-- **Several files:** put recordings on one timeline in one tab (Add to tab, Open together, or Compare runs for two
-  runs with starts aligned and a pane per shared channel). Each file takes a numbered slot (`accel_x·2`, shown as
-  `gps · lat`); Make primary and Channel prefix… are on a file's right-click menu. The Alignment section lines a file up
-  with the primary by Align starts, Same clock, an Offset, Sync points (from cursors A and B), Event matching, windowed
-  Cross-correlation (offset and clock drift) or a time channel both files record; it shows the fit, lets you Keep or
-  Undo a result, nudge it and lock it. Nothing is rewritten: each file keeps its own pyramid and a time map is applied
-  when a view is asked for. Derived channels can read the other files' channels (`"Close·2"`), tables show another
-  file's columns held between its samples, and a session brings the files back with their alignment.
-- **Windows:** several windows on one core. Move a tab to a new window from its menu, or drag it out of the strip (or
-  onto another window's strip); a live source can show in two windows from one ingest; Link time view (and cursors)
-  keeps windows on one flight in step. Settings apply to every window at once, while sidebar layout is per window, and
-  the windows come back on the next start. Browser access (Settings, or `tlmbench-app --browser`) and the standalone
-  daemon (`tlmbench-app --daemon`) serve the same UI to browser tabs on this computer, with a token in the address.
-- **Plugins:** a format nothing built in reads can be decoded by a plugin, and files can be lined up by an alignment
-  plugin. Plugins are WASM components that run in a sandbox (no files, network or clock; a time and memory limit per
-  call), or native libraries that run with your rights and stay off until you turn them on. Settings › Plugins lists
-  them with tier and version and opens your plugins folder; `plugins/template-decoder` and `plugins/template-estimator`
-  are crates to start from; `tlmbench plugins` and `--plugins DIR` do the same on the command line, and `tlmbench plugins --check my.wasm file` tries a plugin on a file. A decoder's output
-  goes into the same column cache as CSV and Parquet, so everything else works on it unchanged.
-- **Analysis:** tables with sort and filter, XY plots, Gauges and widgets of your own, derived channels (expressions
-  and recipes), channel display, limits and value labels, events, and rules and checks (also `tlmbench check` in CI).
-- **Formats:** CSV (delimiter, units and time column detected) and Parquet (typed columns), each converted once to
-  a column cache; fixed-width binary records described by a TOML descriptor, including the self-describing `.tlm`
-  reference format; and packet files (sync word, length, checksum, zstd/lz4/gzip payloads) by the same descriptor,
-  indexed once and decompressed on demand (the CLI for now; the app gets them with the descriptor form).
-- **The CLI:**
+- **The app** (Tauri, Svelte, WebGL2): an icon rail, the Explorer (a folder's recordings, folder → file → channel), a tab per
+  open file, a stack of panes in rows and columns (split, duplicate, close with Undo, drag), an overview strip, Box zoom,
+  Pan and Cursors with Back and Fit, values at the pointer, cursors A and B with Measure (Δt, Δy, exact min, max, mean and
+  standard deviation), Play (a playhead, speed, an A–B loop), a native menu bar, ⌘Z undo, and settings that are all kept.
+- **Formats:** CSV (delimiter, units and time column detected), Parquet, fixed-width binary records and packet files
+  (sync word, length, checksum, zstd, LZ4 or gzip payloads) described by a TOML descriptor (with a form for a file nothing
+  reads yet), the self-describing `.tlm` reference format, and decoder plugins. Each is read once into the app's cache.
+- **Analysis:** tables with sort and filter, XY plots, Gauges and widgets of your own, derived channels (expressions and
+  recipes), channel display, limits and value labels, events, and rules and checks with reports (also `tlmbench check`
+  in CI).
+- **Several files:** recordings on one timeline in one tab, each in a numbered slot (`accel_x·2`, shown as `gps · lat`),
+  lined up by Align starts, Same clock, an offset, sync points, event matching, cross-correlation, a time channel or an
+  alignment plugin. Nothing is rewritten: a time map is applied when a view is asked for.
+- **Live:** a serial port, TCP, UDP, a growing CSV or `.tlm`, or a recording replayed as if it were arriving now. Triggers
+  on any channel or expression, rules and checks on the live file, several sources in one tab, recording to a folder you
+  choose (never beside the data).
+- **Windows:** several windows on one core; drag a tab out to its own window; link the time view across windows. Browser
+  access serves the same UI to browser tabs on this computer.
+- **Sharing:** a folder's `.tlmbench/` holds layouts, check sets, recipes, events, widgets and decoders as small files ready
+  for git; Share… writes only what changed, and a read-only folder offers Export… instead.
+- **Plugins:** WASM components in a sandbox (no files, network or clock; a time and memory limit per call), or native
+  libraries that stay off until you turn them on. `plugins/template-decoder` and `plugins/template-estimator` are crates to
+  start from.
+- **Export to HTML:** a folder (any size, from any static host) or one HTML file (opens from anywhere), with raw samples
+  when they fit and exact summaries when they don't. The viewer is the app's own UI over the core compiled to WASM; it opens
+  Locked, and Unlock lets a reader rearrange it without changing the export.
+- **In a browser, no install:** `app/browser/dist` is the same UI with the core in WASM. Open CSV, Parquet or `.tlm` files in
+  the tab; nothing leaves the machine and the files come back after a reload.
+- **The CLI and Python** over the same core and cache:
 
   ```
   tlmbench info flight.tlm                         # channels, units, time base, gaps
-  tlmbench cache build flight.tlm                  # build the summaries ahead of time (resumes if interrupted)
   tlmbench query view flight.tlm -c volts --width 1500 --from 250 --until 460
-  tlmbench query values flight.tlm --at 7.5        # each channel's sample nearest a time
   tlmbench query stats flight.tlm -c amps          # exact stats over a span
-  tlmbench record tcp://10.0.0.2:9000 --descriptor frames.toml   # record a live source into a session
-  tlmbench record file:///logs/run.csv             # follow a growing CSV (only read)
-  tlmbench record replay://flight.tlm?speed=10    # replay a recording through the live path (a demo, no hardware)
+  tlmbench record tcp://10.0.0.2:9000 --descriptor frames.toml   # record a live source
   tlmbench check runs/ --set acceptance.toml       # exit 0 all pass, 1 a check failed, 2 couldn't run, 3 configuration
   tlmbench convert flight.tlm --to parquet --out out/ -c "motor_*,battery_v"   # also csv, arrow, hdf5, mat
-  tlmbench export html flight.tlm --layout "Flight review" --checks "Flight acceptance" --out site/   # a static folder
+  tlmbench export html flight.tlm --layout "Flight review" --checks "Flight acceptance" --out site/
   ```
 
-- **Export to HTML:** the ⋯ menu's Export › Export to HTML… and `tlmbench export html` write the same folder: the
-  viewer, the data for a layout (Full, with raw samples for every channel, when it fits the 250 MB budget, else Light with
-  the exact summaries and raw samples where a table, values or XY pane needs them), and the checks summary with violations
-  marked. It opens from any static host or file share with nothing to install, and draws the first chart in about 0.2 s.
-  The viewer is the app's own UI over the core compiled to WASM; it opens, measures and switches views, and edits nothing.
-- **Python:** `pip install`-able from `python/` (`maturin develop`): `tlmbench.open("flight.bin")`, then `read` (NumPy),
-  `to_arrow`, `view` (what the app draws), `stats` (exact), `check`, `convert` and `export_html` over the same core and
-  cache. The app never runs Python; scripts run outside it.
-- **In a browser, no install:** `app/browser/dist` (after `just viewer`) is the same UI with the core in WASM: drop CSV
-  files on the page. What it reads is kept in the browser's private storage; nothing leaves the machine. It reads CSV
-  only for now, and has the app's charts, tables, values and Measure; the rest is the app's.
-- **When WebGL2 isn't there** (an old browser, a remote desktop, some virtual machines) the traces draw with Canvas 2D.
-- **Read-only by design,** tested in CI against a read-only mount: nothing is written beside the data.
+  ```python
+  import tlmbench
+  rec = tlmbench.open("flight.tlm")
+  rec.read(["volts"])        # NumPy; rec.to_arrow(), rec.view(), rec.stats(), rec.check(), rec.export_html()
+  ```
 
-## Where it's going
+  The app never runs Python; scripts run outside it.
+- **Read-only by design,** tested in CI against a read-only mount: nothing is written beside the data. When WebGL2 isn't
+  there, the traces draw with Canvas 2D.
 
-v1 is the whole design in [`docs/design.md`](docs/design.md), built in five gated phases:
+## Status
 
-| Phase | | Gate |
-| --- | --- | --- |
-| 1. Core loop | ✓ done | 100M points at 60 fps |
-| 2. Scale | ✓ gate passes | 10 GB first paint under 1 s |
-| 3. Live | ✓ gate passes | 4M samples/s with no drops |
-| 4. Formats + polish | ✓ done | formats complete |
-| 5. Workbench | built (the gate has run on the Mac; not yet pushed or run on CI): derived channels, events, rules and checks, widgets, live, several files with alignment, the shared `.tlmbench/` configuration, multiple windows and the daemon, plugins, static HTML export, Python and browser-only mode; what is left is in `docs/follow-ups.md` | a folder check and an HTML export of a 2 h flight (passes: 117.6 MB Full, first view in 0.2 s) |
-
-[`docs/roadmap.md`](docs/roadmap.md) orders the remaining steps and [`docs/feature-matrix.md`](docs/feature-matrix.md) shows
-each feature in the design, the prototype and the app.
-
-The whole UI already exists as a working prototype: [`prototype/plotter.html`](prototype/plotter.html), one file with
-no build step and data synthesized in the page. It is the spec the app's UI is ported from.
+Pre-release: v1 is the whole design in [`docs/design.md`](docs/design.md), and there are no installers yet (build from
+source, below). [`docs/release/release-plan.md`](docs/release/release-plan.md) orders the work to v1.0.0 and says where it
+stands; [`docs/release/ledger.md`](docs/release/ledger.md) lists every v1 requirement with its evidence. The UI was designed as
+a working prototype first: [`prototype/plotter.html`](prototype/plotter.html), one file with no build step.
 
 ## Repository
 
 ```
-app/            the desktop app: Tauri shell (src-tauri) and the TypeScript + WebGL2 UI (ui)
+app/            the desktop app: Tauri shell (src-tauri), the Svelte + WebGL2 UI (ui), the HTML export's viewer
+                (viewer) and browser-only mode (browser)
 crates/core     time base, M4, the pyramid (build, exact queries, stats), gap index, wire format
-crates/decode   CSV column cache, format descriptors, the .tlm reference format (fuzzed)
-crates/store    the cache: pyramid files, resumable builds, eviction, the chunk cache, view batches; derived
-                channels, checks, events, widgets, live files and triggers
+crates/decode   CSV and Parquet column caches, format descriptors, packets, the .tlm reference format (fuzzed)
+crates/store    the cache: pyramid files, resumable builds, eviction, views; derived channels, checks, events,
+                widgets, several files and alignment, shared configuration, live files and triggers
 crates/expr     expressions: parser, evaluator, recipes, filters, the FFT
 crates/live     live sources (serial, TCP, UDP, tail, file playback), the ring buffer and session recording
-crates/export   data export writers
+crates/plugin   WASM (wasmtime, WIT) and native plugins
+crates/export   data export writers and the HTML export
+crates/web      the core compiled to WASM for the viewer and browser-only mode (web-parquet: its Parquet reader)
 cli/            the tlmbench command line
-tools/          gen (deterministic synthetic recordings), icons, winid (screenshots)
+python/         the tlmbench Python package (pyo3, maturin)
+plugins/        plugin templates and test plugins
+tools/          gen (synthetic recordings), testdata (the owner's test files), icons, winid (screenshots)
 prototype/      the UI prototype and its Playwright suite
-docs/           the design doc, development guide, follow-ups
+docs/           design, development guide, release plan and ledger (docs/README.md lists them)
 examples/       shared configuration in the formats the app writes (.tlmbench/)
-ci/             CI image, pinned versions, setup, read-only and eviction scripts
+ci/             CI image, pinned versions, setup, gates, read-only and ledger checks
 ```
 
 ## Getting started
@@ -172,6 +155,7 @@ just lint test                 # rustfmt, clippy, unit and property tests
 just gen --samples 20M --channels 6 --format tlm   # a synthetic recording in ~/tlmbench-data
 just app-dev ~/tlmbench-data/synth-20000000-6ch.tlm
 just proto-test                # the prototype's browser tests
+node app/ui/tests/shots.js     # the screenshots in this README (after npm run build in app/ui)
 ```
 
 Shared configuration (check sets, recipes, layouts) lives in a folder's `.tlmbench/`, one small file per object and
