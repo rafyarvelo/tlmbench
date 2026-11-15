@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 210 · **Partial** 44 · **Missing** 13 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 14 (311 rows).
+Counts: **Done** 211 · **Partial** 44 · **Missing** 12 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 14 (311 rows).
 
 How to read the evidence. A test named here was run in this review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -247,7 +247,7 @@ on a real window). The last column names the step of `docs/release/release-plan.
 | D-live-09 | design Live (text) | While following, the core sends only the buckets that changed and the UI appends them. | Diverged | `docs/follow-ups.md` ("Live views are whole views at 30 Hz") | Gate 3 passes without it. Owner decision 5 in review.md |
 | D-live-10 | design Performance | Live display latency under 50 ms, sample to pixel. | Unverified | `ci/gate3.py` (reports no latency, though the design's Gate 3 decision lists it) | R6 |
 | D-ui-01 | design UI | The start page lists layouts and saved connections you can manage. | Partial | `t_start`, `t_playback` | No layouts list; saved connections have no rename or edit. R3.2 |
-| D-ui-02 | design UI | Open folder remembers recent folders and watches them for new files. | Missing | `app/src-tauri/src/main.rs` (no watcher) | A new file shows only when the folder is listed again. R3.2 |
+| D-ui-02 | design UI | Open folder remembers recent folders and watches them for new files. | Done | `t_watch`, `t_watchreal` (Nov 14, the real core: a file written into the folder shows, one removed goes), `app/src-tauri/src/main.rs` (`watch_folder`) | Owner sheet "Ideas" (v1 = yes, Nov 14). The folder menu's Refresh lists it by hand for a network share that sends no events; a growing file doesn't re-list. The real window on a network share is X-win-09 |
 | D-ui-03 | design UI | Each bulk close can be undone for a few seconds. | Done | `t_leftovers`, `t_channels`, `t_tabs` | |
 | D-ui-04 | design UI | Motion: glides on a critically damped spring over log(span), menus grow, dialogs rise, nothing animates with reduced motion. | Owner pass | `app/ui/src/app.ts`, `app/ui/src/style.css` | No test times or sees it. Fit, box zoom and Back at 2× and 200×; then with Reduce motion on. R5 |
 | D-ui-05 | design UI | Tooltips only on icon buttons, retiring after three uses; Short, Full, Off. | Done | `t_tips` | |

@@ -123,6 +123,7 @@ export const measureShown = (open: boolean, auto: boolean) => open || (auto && u
 export const actions = {
   open: () => {},
   openFolder: () => {},
+  refreshFolder: () => {},
   openPath: (_path: string) => {},
   /** Opens a file and closes every other tab. */
   openOnly: (_path: string) => {},

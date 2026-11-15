@@ -3144,6 +3144,61 @@ fn binary_ext(ext: Option<&str>) -> bool {
     matches!(ext, None | Some("bin" | "dat" | "raw" | "pkt" | "log" | "tlmbin" | "frames"))
 }
 
+/// The watcher on Explorer's folder: one at a time, replaced when another folder opens (process-wide, so the window app
+/// and the daemon both have it).
+static FOLDER_WATCH: Mutex<Option<notify::RecommendedWatcher>> = Mutex::new(None);
+
+/// Watches Explorer's folder (and the folders in it) for files that appear, go or are renamed, and tells the UI with
+/// `folder-changed` (at most twice a second), which lists the folder again. A file growing (a live recording) is not a
+/// change of the list. Only reads; `None` stops watching. A network share may send nothing: Explorer's Refresh lists it
+/// again by hand (design UI, D-ui-02; sheet "Ideas").
+#[tauri::command]
+fn watch_folder<R: tauri::Runtime>(path: Option<String>, app: AppHandle<R>) -> Result<(), String> {
+    use notify::{EventKind, RecursiveMode, Watcher};
+    let mut slot = FOLDER_WATCH.lock().map_err(|e| e.to_string())?;
+    *slot = None;
+    let Some(path) = path.filter(|p| !p.is_empty()) else { return Ok(()) };
+    let last = Arc::new(Mutex::new(std::time::Instant::now() - std::time::Duration::from_secs(1)));
+    let pending = Arc::new(AtomicBool::new(false));
+    let folder = path.clone();
+    let root = std::path::PathBuf::from(&path);
+    let mut w = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
+        let Ok(ev) = ev else { return };
+        use notify::event::ModifyKind;
+        if std::env::var_os("TLMBENCH_DEBUG_WATCH").is_some() {
+            eprintln!("watch: {:?} {:?}", ev.kind, ev.paths);
+        }
+        // a file read or growing (a live recording) doesn't change the list; anything else may (FSEvents reports a new
+        // file with several flags at once, not always as Create)
+        let listed =
+            !matches!(ev.kind, EventKind::Access(_) | EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Metadata(_)));
+        // the app's own files in .tlmbench/ and hidden files aren't listed
+        let shown = ev.paths.iter().any(|p| {
+            let rel = p.strip_prefix(&root).unwrap_or(p);
+            !rel.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+        });
+        if !listed || !shown || pending.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        // a burst (a copy of many files) is one change: wait out the rest of the half second
+        let wait =
+            std::time::Duration::from_millis(500).saturating_sub(last.lock().map(|t| t.elapsed()).unwrap_or_default());
+        let (app, folder, last, pending) = (app.clone(), folder.clone(), last.clone(), pending.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(wait.max(std::time::Duration::from_millis(150)));
+            if let Ok(mut t) = last.lock() {
+                *t = std::time::Instant::now();
+            }
+            pending.store(false, Ordering::Release);
+            let _ = app.emit("folder-changed", serde_json::json!({ "path": folder }));
+        });
+    })
+    .map_err(|e| e.to_string())?;
+    w.watch(Path::new(&path), RecursiveMode::Recursive).map_err(|e| e.to_string())?;
+    *slot = Some(w);
+    Ok(())
+}
+
 /// Which of `paths` are folders (a Finder drop of a folder opens it in Explorer, as Open folder… does; sheet A4).
 #[tauri::command]
 fn paths_are_folders(paths: Vec<String>) -> Vec<bool> {
@@ -3570,6 +3625,7 @@ macro_rules! commands {
             filter_check,
             list_folder,
             paths_are_folders,
+            watch_folder,
             needs_descriptor,
             descriptor_list,
             descriptor_preview,

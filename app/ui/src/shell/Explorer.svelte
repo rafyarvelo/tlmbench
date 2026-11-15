@@ -379,6 +379,7 @@
     onclose={() => (fold = null)}
     items={[
       { label: 'Open folder…', data: { ex: 'open-folder' }, run: actions.openFolder },
+      { label: 'Refresh', note: 'New files show by themselves; a network share may need this', data: { ex: 'refresh' }, disabled: !ui.folder, run: actions.refreshFolder },
       { label: 'Open recording…', kbd: '⌘O', data: { ex: 'open-file' }, run: actions.open },
       { sep: true },
       { label: `Import all ${csvFiles.length} file${csvFiles.length === 1 ? '' : 's'}…`, data: { ex: 'import-all' }, disabled: !csvFiles.length, run: () => actions.importAll(csvFiles) },

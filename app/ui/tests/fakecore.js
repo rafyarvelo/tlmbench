@@ -415,6 +415,10 @@
     otherWindowView(view) {
       emit('view-linked', { from: 'win-2', view });
     },
+    /** A file appeared in the watched folder: the core tells the UI. */
+    folderChanged(path) {
+      emit('folder-changed', { path: path ?? fake.watched });
+    },
     drop(paths) {
       for (const ev of ['tauri://drag-enter', 'tauri://drag-drop']) emit(ev, { paths, position: { x: 200, y: 200 } });
     },
@@ -1220,6 +1224,10 @@
     },
     export_view({ path, view }) {
       fake.exported.push({ path, view });
+      return null;
+    },
+    watch_folder({ path }) {
+      fake.watched = path;
       return null;
     },
     paths_are_folders({ paths }) {
