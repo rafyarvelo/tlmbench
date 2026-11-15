@@ -43,7 +43,8 @@ const ORDER: [&str; 6] = ["File", "Edit", "View", "Pane", "Window", "Help"];
 
 /// The menu names in `entries` that the bar has no place for (their items would be dropped).
 pub fn unknown_menus(entries: &[Entry]) -> Vec<String> {
-    let mut bad: Vec<String> = entries.iter().filter(|e| !ORDER.contains(&e.menu.as_str())).map(|e| e.menu.clone()).collect();
+    let mut bad: Vec<String> =
+        entries.iter().filter(|e| !ORDER.contains(&e.menu.as_str())).map(|e| e.menu.clone()).collect();
     bad.dedup();
     bad
 }
