@@ -28,7 +28,7 @@ state of its own in the table, not "done".
 
 | Step | State |
 | --- | --- |
-| R0 Close out 5.10 | **Open.** The two clean CI runs in a row never happened: the last run (43073397717 on `d45727c`, Nov 11) needed a rerun of `t_live` on Linux, and 62 commits (R1's follow-ups to R2.2's first half) were not pushed until this cleanup. Pushed Nov 15 with this cleanup; see the table's last row for the run |
+| R0 Close out 5.10 | **First clean run Nov 15:** run 43738929926 on `cb228f2`, all four jobs green on the first attempt (Linux, macOS, Windows, the image), after three fixes the runs since Nov 11 found: the check report's export test needed the viewer (`ci-linux` builds it first now), `t_workspaces` pressed ⌘ where Linux uses Ctrl, and the replay tests timed a busy runner's file open. **Done when the next run is clean too** (two in a row, no rerun) |
 | R1 Review and the ledger | Done Nov 11 (`ledger.md`, `review.md`, `ci/ledger_check.py`) |
 | R2.1 Exports | Built Nov 11 (ledger rows naming R2.1; `docs/exports.md`, `docs/viewer-store.md`); CI with the Nov 15 push |
 | R2.1a The owner's first pass | Built Nov 14 and 15: the owner's 11 fixes, all nine decisions (owner-decisions memory, `follow-ups.md`), the sheet's R3 (Reset app), R12 (the viewer Locked, with Unlock) and B4 (`TLMBENCH_SLOW_BUILD`), the first UI audit. **The owner's re-test is open**: R12, B4, S1 to S4 and the older untested items on the sheet |
@@ -37,7 +37,7 @@ state of its own in the table, not "done".
 | R2.3 Decoders · R2.4 Python · R2.5 Core's Partial rows | Not started |
 | R3.1 to R3.4 Parity | Not started; their lists come from R3.0 |
 | R4 to R9 | Not started. Release decisions 1 to 5 and 9 decided Nov 15; 6, 7, 8 and 10 open (needed by R7 and R8) |
-| CI on the Nov 15 push | See the commit that closes this cleanup |
+| CI on the Nov 15 push | Green: run 43738929926 (`cb228f2`). The push after it (docs only) is R0's second run |
 
 ## Recommended model per step
 
