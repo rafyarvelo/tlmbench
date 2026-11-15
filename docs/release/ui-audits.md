@@ -138,3 +138,23 @@ Checked, no change: dialogs share one frame, open centred over a scrim and close
 XY's controls appear on hover only (B5); sizes and radii stay on the tokens; reduced motion is honoured (earlier audits).
 
 The owner approved every "App is better" row and decided P3 (trim the ⋯ menu) and P10 (fixed-width time range) as recommended, Nov 15.
+
+## Nov 15, 2026: end of R3.1 and R3.2 (dark, 1440 × 900; run by Sonnet, the Opus pass is still owed)
+
+Scope: the tab menu, the ⋯ menu, menu focus, the time range, the viewer's tab, the Layouts panel's rename, the Explorer's
+file rows and channel rows, Open with layout ▸, the recipe dialogs, the start page. A screenshot of the start page was
+read (`tests/out/start.png`); the rest from the code and the tests. Principles from `anthropic-skills:apple-design`.
+
+1. **Restraint, done:** the ⋯ menu is View, All panes and Window (no Export, no bulk removals on the desktop app); a
+   channel row is a name and a tick until the pointer is on it. Both fade with `prefers-reduced-motion` honoured.
+2. **Feedback, done:** a menu opened with the mouse has no ring; an arrow key or Tab brings it back. Rename says why a name
+   is refused in the field, not in a note.
+3. **Spatial consistency, done:** the time range holds a 26 ch minimum with tabular numbers, so its neighbours stay put.
+4. **Finding, left:** on the start page the Layouts rows are greyed with no file open, because a layout opens on the file
+   in front. The tooltip says so, but a person with only a folder open may wonder. Recommendation: keep it; opening a
+   file's right-click ▸ Open with layout is the other way in. Needs the owner's eye in the real window.
+5. **Finding, left:** Open with layout ▸ swaps the file menu's list in place (a Back item first) instead of a flyout. It
+   keeps arrow-key and focus behaviour simple; a real flyout would need Menu to nest. Owner pass: does it read as a submenu?
+6. **Owner pass (real window):** the ⋯ height at 900 px, the focus ring after a click in WebKit (Tauri's engine decides
+   `:focus-visible` differently from Chromium; the menu now sets it itself), the viewer tab's name, the start page at a
+   narrow width.
