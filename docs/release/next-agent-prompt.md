@@ -14,7 +14,7 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
-First: `main` may be one docs-only commit ahead of `origin/main` (the owner's pane-name decision, ledger D-ui-43); it
+First: `main` may be a few docs-only commits ahead of `origin/main` (the owner's decisions on pane names and renaming layouts, ledger D-ui-43 and D-ui-44); it
 goes up with your first push.
 
 
