@@ -26,7 +26,7 @@ In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/fligh
 
 ```
 Date:
-App: release build from commit (agent fills in): 892b51e (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
+App: release build from commit (agent fills in): 01c8bb4 (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
@@ -108,12 +108,19 @@ Notes:
 ### S4. Browser-only mode (R2.2, partly built)
 You said: "I expected Browser support to be almost analogous to what the prototype does: open folders and CSV files."
 Changed so far: a CSV is read in a background thread (a big file doesn't freeze the tab); a reload brings the open files
-back; the page no longer offers folders or live sources, which a tab can't do. Not built yet: Parquet, `.tlm`, packets,
-descriptors, folders, derived channels, events, checks, several files in a tab. They come next.
-Do: Serve the page (see above). Choose or drop `flights/flight-1.csv`. Then drop a bigger CSV (`/Users/rafy/workspace/test`
-has some; or make a 500,000-row one). Reload the page. Try dropping a `.tlm` or a Parquet file. Look at it in light and dark.
-Expect: the CSV opens and draws like the app's; while a big one loads, the page still responds; after a reload the files
-are back with no picker; the start page offers only Open recording…; a binary file says browser-only mode reads CSV.
+back; the page no longer offers folders or live sources, which a tab can't do. **New (Nov 15, later build): a `.tlm` and a
+Parquet file open** (Parquet: snappy, LZ4, gzip, brotli and Zstandard; its reader is a separate download of about 1 MB that
+the page fetches only when you open a Parquet file). Not built yet: packets, descriptors, folders, derived channels,
+events, checks, several files in a tab (they come next).
+Do: Serve the page (see above). Choose or drop `flights/flight-1.csv`. Then `browser/bench.tlm` (200,000 samples; `just
+testdata` writes it, and `browser/codecs-snappy.parquet` and `codecs-zstd.parquet` if pyarrow is installed). Open a
+Parquet file and look at the Network tab of the browser's developer tools: `tlmbench_parquet.wasm` loads only then. Drop a
+bigger CSV (`/Users/rafy/workspace/test` has some; or make a 500,000-row one). Reload the page. Drop a file that isn't
+one of these. Look at it in light and dark.
+Expect: each opens and draws like the app's (the `.tlm` has altitude in m and battery in V, the time from its own field;
+the Parquet file has speed in m/s and Temp in °C, its text column left out); while a big CSV loads, the page still
+responds; after a reload the files are back with no picker; the start page offers only Open recording…; a file it can't
+read says browser-only mode reads CSV, Parquet and .tlm files.
 Result:
 Notes:
 

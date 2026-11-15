@@ -10,12 +10,15 @@ Writes (nothing next to your own data):
     flights/flight-2.csv    another run of the same channels, logged an hour later (for two files in one tab)
     flights/flight-bad.csv  battery drops under 12 V for 10 s and temp spikes (the checks fail here)
     flights/flight-gap.csv  a 30 s hole in the times (gap breaks, "connect gaps")
+    browser/bench.tlm       a small tlmbench reference file (4 channels, 200,000 samples) for browser-only mode
+    browser/codecs-*.parquet  the same small table in Parquet, snappy and Zstandard (written when pyarrow is installed)
     flights/.tlmbench/      shared config: a check set, a layout, two widgets (SVG and code), events for flight-1
     grow.py                 python3 grow.py live.csv  appends a row per second, for the Live tests
 """
 import math
 import random
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -105,7 +108,42 @@ with open(path, "w") as f:
 '''
 
 
+def write_tlm(path, samples=200_000, hz=1000):
+    """A tlmbench reference file: 4 channels (a u32 time in us, f32 altitude, i16 battery in mV, u8 armed), 12-byte records."""
+    desc = (
+        'schema = 1\nname = "Bench"\nrecord_size = 12\n[time]\nsource = "field"\nfield = "t"\nunit = "us"\n'
+        '[[fields]]\nname = "t"\ntype = "u32"\noffset = 0\n'
+        '[[fields]]\nname = "altitude"\ntype = "f32"\noffset = 4\nunit = "m"\n'
+        '[[fields]]\nname = "battery"\ntype = "i16"\noffset = 8\nunit = "V"\nscale = 0.001\n'
+        '[[fields]]\nname = "armed"\ntype = "u8"\noffset = 10\n'
+    ).encode()
+    header_len = -(-(24 + len(desc)) // 64) * 64
+    head = b"TLMBENCH" + struct.pack("<HHIII", 1, 0, header_len, len(desc), 0) + desc
+    with open(path, "wb") as f:
+        f.write(head.ljust(header_len, b"\0"))
+        for i in range(samples):
+            t = i / hz
+            f.write(struct.pack("<IfhBx", int(t * 1e6), 120 + 80 * math.sin(t / 9.0), int(12600 - 40 * t), 1 if t > 5 else 0))
+
+
+def write_parquet(folder):
+    """The fixtures' small table in two codecs, where pyarrow is there."""
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        import parquet_codecs
+        import pyarrow.parquet as pq
+    except ImportError:
+        print("pyarrow isn't installed: no Parquet files in browser/")
+        return
+    for codec in ("snappy", "zstd"):
+        pq.write_table(parquet_codecs.table(), folder / f"codecs-{codec}.parquet", compression=codec, row_group_size=1200)
+
+
 def make(root):
+    browser = root / "browser"
+    browser.mkdir(parents=True, exist_ok=True)
+    write_tlm(browser / "bench.tlm")
+    write_parquet(browser)
     flights = root / "flights"
     cfg = flights / ".tlmbench"
     for d in (cfg / "checks", cfg / "views", cfg / "events", cfg / "widgets" / "dial", cfg / "widgets" / "bar-code"):

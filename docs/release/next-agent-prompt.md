@@ -1,9 +1,10 @@
 You are continuing TelemetryBench (tlmbench) in `/Users/rafy/workspace/tlmbench`, branch `main`, on the way to the v1
-release. R12 (the viewer opens Locked, with Unlock) and B4 (a build slow enough to look at) are done and committed; the
-owner has not re-tested them. **Your job: close the gaps the last session left (below), then finish R2.2, browser-only
-mode.** Nothing is pushed: pushing is the owner's call. One agent works at a time: start from a clean `main`, leave a
-clean `main`. If another Claude session is running in this repository, agree with it which files each of you touches, and
-when each runs cargo or a UI suite, before you edit.
+release. R12 (the viewer opens Locked, with Unlock), B4 (a build slow enough to look at) and the first half of R2.2
+(`.tlm` and Parquet in a tab) are done and committed; the owner has not re-tested them. **Your job: finish R2.2,
+browser-only mode: packets, descriptors, several files in a tab (with alignment), events, checks, derived channels, WASM
+plugins and folders (the list in section 2).** Nothing is pushed: pushing is the owner's call. One agent works at a time:
+start from a clean `main`, leave a clean `main`. If another Claude session is running in this repository, agree with it
+which files each of you touches, and when each runs cargo or a UI suite, before you edit.
 
 ## First, in this order
 
@@ -17,56 +18,71 @@ when each runs cargo or a UI suite, before you edit.
    `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/` (`r12-viewer-lock.md`, `owner-decisions-nov14.md`,
    `viewer-architecture.md`, `disk-space.md`, `headless-tests-miss-real-window.md`, `release-plan.md`).
 
-## Where things stand (Nov 15)
+## Where things stand (Nov 15, later)
 
-- **R12 built** (commits `7a96b07`, `892b51e`; ledger D-ui-34, D-ui-35, D-brow-05, X-win-11). The viewer opens Locked; the
-  pill in the top bar unlocks it; `viewLocked()` in `app/ui/src/ui.svelte.ts` is the one test, and `edit()` in
-  `stack.svelte.ts` refuses a layout change while locked. `t_viewerctl` clicks every visible control and menu item,
-  locked and unlocked (about 5 minutes; `run.sh` allows it 600 s). The same rule ("a control acts, is left out, or is
-  disabled with a short tip saying why") now holds in browser-only mode for the rail's Live icon and Settings.
-- **B4 built**: `TLMBENCH_SLOW_BUILD=<ms>` (in `crates/store/src/pyr.rs`) waits after each block of about a million
-  samples. The release app was rebuilt from `892b51e` and the owner's sheet says so.
-- **R2.2 so far** (D-brow-01 to D-brow-05): a CSV parses in a Worker, a reload brings files back, a static-host recipe, no
-  folder or live offers in a tab. S5.10-04 is Partial: no `.tlm`, Parquet, packets, descriptors, plugins, derived channels,
-  events, checks or several files in a tab. `crates/web` includes only the decoder's `csv.rs`, `backwards.rs`, `error.rs`
-  and `profile.rs` by `#[path]`.
+- **R12 and B4 built earlier** (ledger D-ui-34, D-ui-35, D-brow-05, X-win-11): the viewer opens Locked (`viewLocked()` in
+  `app/ui/src/ui.svelte.ts`, `edit()` in `stack.svelte.ts`); `TLMBENCH_SLOW_BUILD=<ms>` in `crates/store/src/pyr.rs`.
+- **The gaps the last session left are closed.** `t_windows` was flaky (about 1 run in 3), and it was two things: the test
+  set the next pick before the first dialog was asked (the file is open from launch, so its `until` passed at once), and
+  `openPath` awaited between its "already open" check and creating the tab, so two opens of one file at once made two tabs
+  (a double click, two drops). In-flight opens by file and part now join (`opening` in `app.ts`); `t_fileopen` covers it and
+  `t_windows` ran 8 of 8. The whole UI suite passed (104 of 104, `t_perf_gauges` alone too) and `cargo nextest run
+  --workspace` passed (283, 1 skipped), `cargo clippy --workspace --all-targets -- -D warnings` is clean, `cargo fmt --all`
+  was run (it had drifted in four files). **Not done:** trying the viewer's drag in WebKit or Safari (Playwright's `webkit`
+  isn't installed here); the owner's drag failure still isn't reproduced.
+- **R2.2 so far** (D-brow-01 to D-brow-07):
+  - CSV in a Worker, a reload brings files back, a static-host recipe, no folder or live offers in a tab.
+  - **`.tlm`** (D-brow-06): `crates/web/src/import.rs` `import_tlm`, over the decoder's `descriptor.rs`, `reference.rs` and
+    `strided.rs` included by `#[path]` (rayon, threads and mmap never reach the WASM). `import_file` picks CSV or `.tlm` by the
+    bytes.
+  - **Parquet** (D-brow-07): the pure part of the decoder's reader is now `crates/decode/src/parquet_core.rs` (the time
+    column, units, nulls, widening), used by the app's `parquet.rs` and by the new crate **`crates/web-parquet`** (own
+    workspace and target, like `crates/web`). Its WASM (3.96 MB, 1.08 MB gzipped) is fetched by the Worker only when a
+    Parquet file opens (`app/ui/src/parquet-wasm.ts`, `browser-worker.ts`); the main core stays 1.33 MB (it was 0.97 MB
+    before `.tlm`: `toml` and the descriptor code). Pure-Rust codecs; **Zstandard goes through `crates/web-parquet/zstd-shim`,
+    a `[patch.crates-io]` stand-in for the `zstd` crate over `ruzstd` (decode only)**, because the real crate needs a C
+    compiler that targets WebAssembly (Apple's clang has none). Fixtures for every codec: `tools/testdata/parquet_codecs.py`
+    writes `crates/web-parquet/tests/fixtures/`; `tlmbench-web-parquet::codecs` and `t_browseronly` read them. The same
+    dump form (`crates/web/src/import.rs` `dump`/`load`) is what the Worker returns and what OPFS keeps, so a Parquet file
+    reloads from the cache like a CSV.
+  - S5.10-04 stays Partial: no packets, descriptors from files, plugins, derived channels, events, checks or several files in
+    a tab; folders not started.
+- **What I found for the next steps** (not built):
+  - **Several files in a tab:** `addToTab` in a tab fails with "group_set is not available here": the browser-only command
+    table (`app/ui/src/browser-only.ts`) doesn't wire `group_set`, `group_state` (a stub returns nothing) and `group_map`
+    to the core, as `viewer.ts` does at lines 236 to 238. `align_estimate` is not in the WASM core at all: it is
+    `tlmbench_store::align::estimate` (the app's `main.rs:663`), and the clock, starts and manual methods need no data
+    while sync, events, cross-correlation, time source and plugins do. Decide with the owner whether to build the needed
+    part of `tlmbench-store` for WASM (release plan: "the owner decides it once, with a recommendation") or do the simple
+    methods in `crates/web` and disable the estimators in a tab with the reason (the rule: act, be left out, or be
+    disabled with a tip). My recommendation: the simple methods now, the estimators when the store builds for WASM.
+  - **Packets and descriptors:** `packets.rs` mixes framing (`frame`, `frame_checked`, `packet_records`, `decompress`:
+    pure) with the index cache, mmap and rayon. Split the pure part into a `packets_core.rs` the way `parquet_core.rs` was
+    split. It calls `zstd::stream::read::Decoder`, which the shim doesn't have yet (add it over ruzstd's
+    `StreamingDecoder`) and `lz4_flex`, `flate2` (zlib-rs) and `crc32fast`, all pure Rust. A descriptor in a tab needs
+    somewhere to live (localStorage or OPFS, by file name pattern: `descriptor::name_matches`) and the descriptor form's
+    commands (`descriptor_*`, `preview.rs`, `needs_descriptor`, `packet_parts`; see the stubs in `wasmcore.ts`).
+  - **Disk:** a full `cargo nextest run --workspace` fills this Mac's disk even from 21 GB free (debug test binaries were
+    19 GB). This worked in 8 GB: `rm -rf target/debug`, then
+    `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 cargo nextest run --workspace --no-fail-fast`; delete `target/debug` after.
 - **Open owner question** (sheet R12): keep an unlocked arrangement across reloads? The recommendation, no, is on the sheet.
   Don't build persistence unless the owner says yes.
-- Not yet tested by the owner: R12, B4, S1 to S4 (the Nov 15 work), and B6, C2, C3, D1, D2, F4 to F10, G1 to G3, H1 to H5.
+- **Not yet tested by the owner:** R12, B4, S1 to S4 (S4 now covers `.tlm` and Parquet), and B6, C2, C3, D1, D2, F4 to F10, G1
+  to G3, H1 to H5.
 
-## 1. Gaps the last session left
+## 1. What is left of the gaps
 
-- **`t_windows` is red on a clean `main`** (checked on a worktree of the commit before R12): after "Move to new window" the
-  moved tab stays in the first window, and the tab list before it already shows the file twice ("flight.tlm |bench
-  run.csv |bench run.csv"), as if ⌘O opened the file twice. Find out whether the page opens it twice (the keydown handler
-  in `app.ts` against the command table's `lastKey` guard, decision 8) or the test's fake does. If it is a real
-  double-open it is a bug the owner would meet. Fix it and say what it was.
-- **The whole UI suite was not rerun after the last edits** (the add-pane row's lock, the pill's text, the run.sh limit).
-  Run `npx svelte-check --fail-on-warnings && npm run build` from `app/ui`, then `tests/run.sh`, then `t_perf_gauges`
-  alone. Check the build succeeded: svelte-check warnings stop it and the tests then run the old `dist`.
-- **Not run in that session**: the Rust tests (`cargo nextest run --workspace`, see Rules for disk), `python3
-  ci/ledger_check.py` was run and is green.
-- **Dragging in the owner's browser.** Headless Chromium drags fine in the viewer; the owner's failure was not reproduced.
-  If you can, try the export in WebKit (Playwright's `webkit`, if installed) and Safari, unlocked. If a drag fails there,
-  it is a bug in the viewer, not the owner's setup.
+Only the WebKit or Safari drag check above, if you can do it (Playwright's `webkit` browser, if installed; else say so).
 
 ## 2. Finish R2.2 (browser-only mode), as `release-plan.md` says
 
-Parquet, `.tlm`, packets, descriptors, plugins, derived channels, events, checks, several files in a tab, and folders where
-the browser allows them (the prototype opens folders: `showDirectoryPicker`, and a `webkitdirectory` input where it is
-missing). Close S5.10-04. Suggested order, each one tested and its ledger row moved before the next:
+Done: `.tlm` and Parquet. Left, each one tested and its ledger row moved before the next:
 
-1. **`.tlm`** (fixed layout, the simplest). Include the decoder's reader into `crates/web` by `#[path]` as the CSV one is;
-   the WASM crate has its own workspace and target (`just viewer` builds it). Nothing may use threads, mmap or the file
-   system there: the file's bytes come from the page.
-2. **Parquet.** The `parquet` crate may not build for `wasm32-unknown-unknown` with the features the workspace uses
-   (`snap`, `zstd`, `lz4`, `flate2-zlib-rs`, `brotli`): try pure-Rust codecs only, measure the WASM size against the
-   viewer's budget, and report the numbers before you accept a bigger download.
-3. **Descriptors and packets**, then **several files in a tab** (the viewer's `group_*` commands already do the
-   alignment in the core), then **events**, **checks**, **derived channels** (the expression crate is already in the WASM
-   core), **WASM plugins** (the browser's own WebAssembly; native plugins can't exist in a tab, so say so in the UI where
-   they would be offered).
-4. **Folders.** Where the browser allows it (`showDirectoryPicker`), list a folder's recordings in the Explorer, read-only,
+1. **Descriptors and packets** (see "What I found"), with the descriptor stored in the browser and found by file name.
+2. **Several files in a tab** (wire the group commands; alignment as decided), then **events**, **checks**, **derived
+   channels** (the expression crate is already in the WASM core), **WASM plugins** (the browser's own WebAssembly; native
+   plugins can't exist in a tab, so say so in the UI where they would be offered).
+3. **Folders.** Where the browser allows it (`showDirectoryPicker`), list a folder's recordings in the Explorer, read-only,
    as the prototype does; where not, say so once and offer Open recording… A folder's `.tlmbench/` is read for shared
    configuration the same way, read-only: a tab writes nothing beside the data.
 
@@ -77,7 +93,8 @@ ledger D-brow-05. A binary file whose format is not read yet still says what a t
 
 Tests: extend `t_browseronly` (it runs against `app/browser/dist` and a real Chromium), one case per format, with a
 generated file; a large file must still keep the page drawing frames (the Worker). Run the apple-design audit at the end of
-R2.2 into `ui-audits.md`, browser-only light and dark, each new screen.
+R2.2 into `ui-audits.md`, browser-only light and dark, each new screen (none was added yet: the work so far changed what
+opens, not what is shown).
 
 ## Hand the owner, when you report
 
@@ -96,13 +113,16 @@ R2.2 into `ui-audits.md`, browser-only light and dark, each new screen.
     draws the app's min/max band; the native menu bar from one command table; browser-only mode so far; one reset (Reset
     app… with Things the app remembers; Reset to defaults is gone); **the viewer opens Locked with Unlock, so decision 6's
     "Read-only view" header becomes the Locked/Unlocked pill (provenance in its tooltip); what a viewer or a tab can't do is
-    left out or disabled with the reason; `TLMBENCH_SLOW_BUILD`.**
+    left out or disabled with the reason; `TLMBENCH_SLOW_BUILD`.** Added later on Nov 15: browser-only mode reads `.tlm` and
+    Parquet (the Parquet reader is a separate WASM module fetched only when a Parquet file opens, 1.08 MB gzipped; the
+    decoder's Parquet rules are `parquet_core.rs`, shared by the app and the tab); opening one file twice at once is one
+    tab (an `openPath` race).
 
 ## Rules
 
 - A row moves to Done only with evidence you ran in your session (a test by name, a file, or a command with its date). Run
   `python3 ci/ledger_check.py` before every commit, and update the counts line at the top of the ledger. Ledger IDs are
-  unique: the next free ones are D-ui-36, D-brow-06 and X-win-12; check the highest in use before you add a row.
+  unique: the next free ones are D-ui-36, D-brow-08 and X-win-12; check the highest in use before you add a row.
 - A test for every behaviour change, the tests README's table, and a design-doc note when behaviour differs from the doc.
 - Headless tests don't see the real window. Anything only a real window shows is an Owner pass row with what to look at.
   Try the release app yourself before calling a step done (`screencapture -x` of the running window works for a look).
