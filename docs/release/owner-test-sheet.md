@@ -26,7 +26,7 @@ In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/fligh
 
 ```
 Date:
-App: release build from commit (agent fills in): 01c8bb4 (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
+App: release build from commit (agent fills in): the R3.1/R3.2 build of Nov 15, 2026 (`git log -1` when built), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
@@ -121,6 +121,47 @@ Expect: each opens and draws like the app's (the `.tlm` has altitude in m and ba
 the Parquet file has speed in m/s and Temp in °C, its text column left out); while a big CSV loads, the page still
 responds; after a reload the files are back with no picker; the start page offers only Open recording…; a file it can't
 read says browser-only mode reads CSV, Parquet and .tlm files.
+Result:
+Notes:
+
+---
+
+## T. R3.1 and R3.2 (Nov 15 build): what you haven't checked yet
+
+You confirmed (removed): the ⋯ menu, the time range, Explorer's quiet rows, Open with layout ▸, the start page, rates and
+filters. Left:
+
+### T1. Slot numbers after closing a tab (fixed Nov 15, rebuilt)
+You wrote: the numbers stay in Explorer after closing a tab made with Open together or Compare.
+Changed: closing the last tab (the window empties) left the slot list behind; it is cleared now.
+Do: Open together on flight-1 and flight-2, close the tab; also Compare, then close; also with another tab open.
+Expect: no slot numbers or "primary" on any file row once its tab is gone.
+Result:
+Notes:
+
+### T2. The tab menu: Rename… and Save layout / Revert
+Do: ⌄ on a file tab: Save layout and Revert are listed, greyed. Save as… "A", then Rename… to "B"; also double-click the
+name in the Layouts panel. Try a name already in use.
+Expect: the tab and the list follow the new name; a used name is refused in the field; Undo in the note puts it back.
+Result:
+Notes:
+
+### T3. Duplicate recipe… and Save as new
+Do: make a derived channel (±2σ or a delta); right-click it ▸ Duplicate recipe…; then Edit recipe…, change the
+expression, Save as new.
+Expect: the first opens the Derive dialog filled in and named "… copy"; the second adds a recipe and leaves the first as it was.
+Result:
+Notes:
+
+### T4. The viewer's tab name
+Do: export flight-bad to HTML as One file with the layout "Altitude and battery"; open it.
+Expect: the tab name reads from its start, cut with an ellipsis at the end.
+Result:
+Notes:
+
+### T5. The start page, narrow
+Do: make the window as narrow as it goes, with a file open (the logo opens it) and with none.
+Expect: the cards and columns stack, nothing clipped; Layouts rows are greyed with no file open and say why on hover.
 Result:
 Notes:
 

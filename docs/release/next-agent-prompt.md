@@ -14,21 +14,33 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
-1. **Don't push docs-only commits on their own** (owner, Nov 15). `main` is a few docs commits ahead of `origin/main`;
-   they go up with your first push of code or tests. R0 is done (two clean runs Nov 15).
-2. **Triage the owner test sheet:** new Results and Notes become ledger rows or fixes.
-3. **R3.1, then R3.2** (release plan, R3; moved before R2.2 by the owner on Nov 15, so their re-tests meet the improved
-app). The lists are the Port rows of `docs/release/parity-classes.md` and the owner's Nov 15 decisions listed in the
-plan's R3 ("The owner's Nov 15 decisions, by sub-step"), each a ledger row. Never touch an "App is better" row. Sonnet
-suits these; run the apple-design audit on each sub-step's area at its end (Opus if available). Two R3.2 items need core
-work from R2.5 first (the profile's starter layout and recipes, Connect's reconnect): build around them and leave the
-ledger row Partial with what is left. Then R2.2's remaining items, in the order the plan gives.
+1. **Don't push docs-only commits on their own** (owner, Nov 15). `main` is about 17 commits ahead of `origin/main`
+   (R3.1 and R3.2 code and tests among them): **ask the owner to push first thing**, then watch CI (`gh run watch`) until
+   it is green with no rerun. A full run takes about 1.5 hours and a push cancels the one in progress, so don't push again
+   until it ends unless a fix is needed.
+2. **Triage the owner test sheet:** new Results and Notes (the new section T, then R, S and the older items) become ledger
+   rows or fixes. The owner confirmed on Nov 15 and removed: the ⋯ menu, the time range, Explorer's quiet rows, Open with
+   layout ▸, the start page, rates and filters.
+3. **R2.2, browser-only mode, the rest** (release plan, status table): descriptors and packets, WASM decoder plugins,
+   read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit. The
+   release plan gives the order. Several files, derived channels, events and checks in a browser tab are post-v1 (owner,
+   Nov 15). Never touch an "App is better" row.
+4. **Then R2.3 to R2.5** in the plan's order. R2.5 holds the core work the R3.2 rows are waiting on: the import dialog's
+   sections and Derived list (S5.1-10, D-share-01), Connect's reconnect (D-live-11), the profile's starter layout and recipes
+   (D-ui-42's layout), recipes reaching every file in a tab (D-derive-03) and every file's events (S5.6-12). **After R2.5,
+   R3.3** (panes, charts, tables: D-ui-43, -46, -47, -48, -49 and the table's Event column) **and R3.4.** Sonnet suits R3.x;
+   run the apple-design audit at the end of each sub-step (the R3.1/R3.2 audit was run by Sonnet, so an Opus pass is owed).
 
-(The owner's Nov 15 report about Open together and Compare was confusing UI, not a bug: ledger D-ui-45 and D-ui-46.)
+Built and committed, not pushed, Nov 15: R3.1 (D-ui-37, -39, -40, -41, -44, S4.4-04) and R3.2 (D-ui-36, -38, -42, -45,
+D-derive-02; D-ui-01 and D-ui-10 Partial). The release app was rebuilt for the owner from that code; its leftover-slot-numbers
+fix is on the sheet as T1.
 
 ## Open with the owner
 
-- The re-test on the owner test sheet (R12, B4, S1 to S4 and the older items). When the owner confirms an item, remove it.
+- The re-test of the owner test sheet: section T (T1 to T5), R12, B4, S1 to S4 and the older items. When the owner confirms
+  an item, remove it.
+- Real-window looks no test can give (ledger and `ui-audits.md`): the ⋯ height at 900 px, the focus ring after a click in
+  WebKit, Open with layout ▸ reading as a submenu, the start page narrow.
 
 ## Rules
 
