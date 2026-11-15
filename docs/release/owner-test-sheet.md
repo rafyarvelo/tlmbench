@@ -56,7 +56,8 @@ Notes: I recommend this option be always visible as an icon as needed to minimiz
 ### A3. Open a CSV by double-click, and with ⌘O
 Do: Double-click AAPL.csv in Explorer. Then ⌘O and pick GOOG.csv.
 Expect: the import dialog appears the first time for a new header, a chart appears with channels listed, the second file opens
-in its own tab (or this tab, as the dialog says).
+in its own tab (or this tab, as the dialog says). Clear cache keeps import profiles: to see the dialog again for a file you
+opened before, delete its profile, `~/Library/Caches/tlmbench/profiles/<key>.json` (Reset app… in Settings will do this once built).
 Result: The file opened right away because I had opened it previously. Clearing the cache didn't change the profile.
 Notes: There should be a clear way for the user to "Reset to default settings" and clear all of the cache. A warning dialog is appropriate as needed.
 
@@ -73,7 +74,9 @@ Result: File parsed and opened panes as expected.
 Notes: Nominal behavior.
 
 ### A6. Read-only folder
-Do: Copy a CSV to a disk image or a read-only folder (Get Info › read only), open it. Try Share. (L: X-win-09)
+Do: Copy a CSV to a read-only folder and open that folder in Explorer, then the CSV. Try the tab menu's Share and Explorer's folder menu › Share…. (L: X-win-09)
+To make the folder read-only: Finder › Get Info › Sharing & Permissions › your name: Read only, or `chmod -R a-w <folder>`
+(undo with `chmod -R u+w <folder>`). `just ro-test-mac` also makes a read-only disk image.
 Expect: everything works; nothing is written beside the file; Share offers Export instead of writing.
 Result: Got a "Couldn't share" error, no option to export was offered
 Notes: This feature appears to be broken.
@@ -81,7 +84,7 @@ Notes: This feature appears to be broken.
 ## B. Reading a chart
 
 ### B1. Zoom, pan, fit
-Do: Scroll to zoom, drag to pan, double-click to fit, ⌘Z to go back a view.
+Do: Scroll to zoom, drag to pan, double-click to fit, Backspace (or Previous view) to go back a view. (⌘Z is undo, not "back a view": decision of Nov 14.)
 Expect: smooth, no flicker, the time axis labels stay readable.
 Result: Zoom, pan, and fit work as expected.
 Notes:  ⌘Z did not work, but the Backspace key and "Previous view" button work to go back to a view
@@ -99,7 +102,7 @@ Result: This appears to work fine.
 Notes: Is there a global setting for the default? If not, there should be one in case a user want to make all channels "thin" or "heavy"
 
 ### B4. A file that is still building
-Do: Open the 100M-sample file (`just testdata big`, then `~/tlmbench-testdata/big/big-100M.tlm`).
+Do: Settings › Cache › Clear cache first (a file opened before has its pyramid in the cache and opens at once). Then open the 100M-sample file (`just testdata big`, then `~/tlmbench-testdata/big/big-100M.tlm`).
 Expect: hatching while the pyramid builds, then the chart fills in; the min/max band shows on a spiky channel. (L: X-win-06)
 Result: The file opened pretty much instantly, so I couldn't really tell....
 Notes: Not verified, need a better test case
