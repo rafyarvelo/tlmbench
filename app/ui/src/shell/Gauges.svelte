@@ -328,7 +328,8 @@
       // names with a check, as the prototype's compact menu (its openCatMenu): no hint under each (sheet B5)
       out.push({ label: `Automatic (${typeName(autoWidget(c))})`, checked: !cfg.type, run: () => set({ type: undefined }) });
       for (const t of TYPES.filter((x) => !MULTI[x.type])) out.push({ label: t.name, checked: !!cfg.type && L.type === t.type, data: { wt: t.type }, run: () => set({ type: t.type }) });
-      for (const w of customs.values()) out.push({ label: w.name, checked: cfg.type === w.id, data: { wt: w.id }, icon: w.icon ? sanitizeSvg(w.icon) : undefined, run: () => set({ type: w.id }) });
+      // your own and shared widgets keep saying where they came from (a shared one may run code)
+      for (const w of customs.values()) out.push({ label: w.name, note: w.shared ? `Shared in ${w.shared}` : 'Your widget', checked: cfg.type === w.id, data: { wt: w.id }, icon: w.icon ? sanitizeSvg(w.icon) : undefined, run: () => set({ type: w.id }) });
       const tg = targetOf(c, chans);
       const xy = xyPartner(c, chans);
       const sib = chans.filter((o) => o.ch !== ch && !paired.has(o.ch) && groupKey(o.name) === groupKey(c.name) && o.unit === c.unit);

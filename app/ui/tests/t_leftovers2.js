@@ -29,13 +29,14 @@ run('leftovers2', async ({ p, check, text, wait, until, paneCount }) => {
   check('the values pane takes only the room it needs', await p.evaluate(() => document.querySelector('#stack [data-pane="0"]').getBoundingClientRect().height < document.querySelector('#stack [data-pane="1"]').getBoundingClientRect().height));
   await view(0, 'chart');
 
-  // at most three in a row
+  // at most four in a row (f85adc3)
   await menu(0, /^Split right$/);
   await menu(0, /^Split right$/);
-  check('two splits make three beside each other', (await p.$$('#stack .prow:first-child section.pane')).length === 3);
+  await menu(0, /^Split right$/);
+  check('three splits make four beside each other', (await p.$$('#stack .prow:first-child section.pane')).length === 4);
   await p.hover('#stack [data-pane="0"] .phead');
   await p.click('#stack [data-pane="0"] [data-pmenu]');
-  check('and a fourth is refused', await p.locator('.panemenu .mi', { hasText: /^Split right$/ }).isDisabled());
+  check('and a fifth is refused', await p.locator('.panemenu .mi', { hasText: /^Split right$/ }).isDisabled());
   await p.keyboard.press('Escape');
 
   // A over a table row

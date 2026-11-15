@@ -47,7 +47,7 @@ run('panegrips', async ({ p, check, until }) => {
   await p.hover('#stack [data-pane="2"] .gw');
   await p.click('#stack [data-pane="2"] .gwt');
   check('the widget menu is the compact channel menu', await until(() => !!document.querySelector('.widgetmenu.chmenu')));
-  check('with no hint under each widget name', await p.$$eval('.widgetmenu .mi', (e) => e.every((x) => !x.querySelector('.note, small'))));
+  check('with no hint under each built-in widget name', await p.$$eval('.widgetmenu .mi[data-wt]', (e) => e.filter((x) => !/^(sw_|fw_|cw_)/.test(x.dataset.wt)).every((x) => !x.querySelector('small'))));
   await p.keyboard.press('Escape');
   check('and closes without an error', await until(() => !document.querySelector('.widgetmenu')));
 });
