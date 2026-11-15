@@ -14,9 +14,8 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
-1. **Push and confirm CI.** `main` may be a few docs-only commits ahead of `origin/main` (the owner's Nov 15 decisions).
-   Ask the owner, push, and watch the run. If it and the run before it are green with no rerun, mark R0 done in the
-   status table (the run before is the "CI on the Nov 15 push" row).
+1. **Push.** `main` is a few docs-only commits ahead of `origin/main` (the owner's Nov 15 decisions). Ask the owner,
+   push, and watch the run until it's green. R0 is done (two clean runs Nov 15).
 2. **Triage the owner test sheet:** new Results and Notes become ledger rows or fixes.
 3. **R3.1, then R3.2** (release plan, R3; moved before R2.2 by the owner on Nov 15, so their re-tests meet the improved
 app). The lists are the Port rows of `docs/release/parity-classes.md` and the owner's Nov 15 decisions listed in the
