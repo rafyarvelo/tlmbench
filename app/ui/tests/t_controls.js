@@ -61,13 +61,14 @@ run('controls', async ({ p, check, text, visible, plotAt, settingsLS, until, wai
   // the ⋯ menu's groups and the bulk removals
   await more();
   const heads = await p.$$eval('.moremenu .mgrp', (e) => e.map((x) => x.textContent));
-  check('⋯ has View, All panes and Window groups', heads.join() === 'View,All panes,Export,Window', heads);
-  await p.click('[data-more="nochan"]');
+  check('⋯ has View, All panes and Window groups', heads.join() === 'View,All panes,Window', heads);
+  check('⋯ no longer repeats what the top bar and menu bar have', !(await p.$('[data-more="nochan"], [data-more="exportdata"], [data-more="addpane"]')));
+  await p.keyboard.press('Escape');
+  await p.click('#tb-clearch');
   check('Remove every channel empties the panes, keeping them', (await paneCount()) === 3 && (await p.$$eval('#stack .chip', (e) => e.length)) === 0);
   await p.click('#wsNote button:has-text("Undo")');
   check('Undo puts the channels back', (await p.$$eval('#stack .chip', (e) => e.length)) === 6);
-  await more();
-  await p.click('[data-more="nopanes"]');
+  await p.click('#tb-rmpanes');
   check('Remove every pane', (await paneCount()) === 0);
   await p.click('#wsNote button:has-text("Undo")');
   check('Undo brings the panes back', (await paneCount()) === 3);

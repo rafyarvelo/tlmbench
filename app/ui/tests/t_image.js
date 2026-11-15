@@ -7,8 +7,8 @@ run(
   'image',
   async ({ p, check, text, until, fake, visible, settingsLS }) => {
     const saved = () => fake(() => window.__tlmFake.saved_files.map((f) => ({ path: f.path, n: f.bytes.length, head: f.bytes.slice(0, 8), text: f.bytes[0] === 60 ? new TextDecoder().decode(new Uint8Array(f.bytes)) : '' })));
-    await p.click('#b-more');
-    await p.click('.moremenu [data-more="exportimage"]');
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="image"]');
     check('the dialog opens', await until(() => !!document.querySelector('#imageDlg')));
     check('every pane by default, as a PNG', (await p.inputValue('#imWhat')) === 'all' && (await p.inputValue('#imFormat')) === 'png' && /3 panes/.test(await text('.exfiles')), await text('.exfiles'));
     check('named after the recording', /flight\.png/.test(await text('.exfiles')), await text('.exfiles'));

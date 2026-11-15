@@ -6,8 +6,8 @@ import { run } from './lib.js';
 run('linedefault', async ({ p, check, until, fake }) => {
   const svg = async () => {
     const n = await fake(() => window.__tlmFake.saved_files.length);
-    await p.click('#b-more');
-    await p.click('.moremenu [data-more="exportimage"]');
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="image"]');
     await until(() => !!document.querySelector('#imageDlg'));
     await p.selectOption('#imFormat', 'svg');
     await p.selectOption('#imWhat', 'sel');

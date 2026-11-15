@@ -7,9 +7,9 @@ run(
   'exporthtml',
   async ({ p, check, text, until, fake, settingsLS }) => {
     const dlg = '#htmlDlg';
-    await p.click('#b-more');
-    check('the ⋯ menu offers Export to HTML…', /Export to HTML…/.test(await text('.moremenu')), await text('.moremenu'));
-    await p.click('.moremenu [data-more="exporthtml"]');
+    await p.click('#b-export');
+    check('the top bar\'s Export menu offers Export to HTML…', /Export to HTML…/.test(await text('.exportmenu')), await text('.exportmenu'));
+    await p.click('.exportmenu [data-xm="html"]');
     check('it opens the dialog', await until(() => !!document.querySelector('#htmlDlg')));
     check('the summary counts the tab\'s channels and the mode Automatic picks', await until(() => /6 channels · Full: about/.test(document.querySelector('#htmlSummary')?.textContent ?? '')), await text('#htmlSummary'));
     check('the mode list shows both sizes', /Full \(/.test(await text('#htmlMode')) && /Light \(/.test(await text('#htmlMode')), await text('#htmlMode'));
@@ -58,8 +58,8 @@ run(
     check('which shows the export folder', await until(() => (window.__tlmFake.revealedPaths ?? []).join() === '/out/dir/flight-export'), await fake(() => window.__tlmFake.revealedPaths ?? null));
 
     // One file (owner decision 7): opens from anywhere, with its own size limit (default 25 MB)
-    await p.click('#b-more');
-    await p.click('.moremenu [data-more="exporthtml"]');
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="html"]');
     await until(() => !!document.querySelector('#htmlDlg'));
     check('Save as offers Folder and One file, each with its size', await until(() => /Folder \(/.test(document.querySelector('#htmlFormat')?.textContent ?? '') && /One file \(/.test(document.querySelector('#htmlFormat')?.textContent ?? '')), await text('#htmlFormat'));
     check('a folder has no size limit field', !(await p.$('#htmlLimit')));
@@ -85,8 +85,8 @@ run(
     check('single, out is the file, the limit in bytes', one.single === true && one.out === '/out/mail/flight.html' && one.singleLimit === 100 * 1048576, one);
     check('the note gives the file\'s size', await until(() => /Exported to flight\.html in mail: 5\.3 MB/.test(document.querySelector('#wsNote .txt')?.textContent ?? ''), null, 8000), await text('#wsNote'));
     await fake(() => (window.__tlmFake.savePick = null));
-    await p.click('#b-more');
-    await p.click('.moremenu [data-more="exporthtml"]');
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="html"]');
     await until(() => !!document.querySelector('#htmlDlg'));
     await p.click('#htmlGo');
     await p.waitForTimeout(200);
@@ -97,8 +97,8 @@ run(
 
     // a failure is shown, with Try again reopening the dialog
     await fake(() => Object.assign(window.__tlmFake, { exportFails: 'disk full', htmlSteps: 0 }));
-    await p.click('#b-more');
-    await p.click('.moremenu [data-more="exporthtml"]');
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="html"]');
     await until(() => !!document.querySelector('#htmlDlg'));
     await p.click('#htmlGo');
     check('a failure is shown', await until(() => /Couldn't export: disk full/.test(document.querySelector('#wsNote .txt')?.textContent ?? '')), await text('#wsNote'));

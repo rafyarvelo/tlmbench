@@ -74,6 +74,7 @@ try {
   check('and has no Export button (nothing is exported from an export)', !(await p.$('#b-export')));
   check('Explorer lists the exported channels, with the layout\'s panes', await until(() => document.querySelectorAll('#explorer .tree .row.chan').length === 2 && /pane 2/.test(document.querySelector('#explorer .tree')?.textContent ?? '')), await p.$$eval('#explorer .tree .row', (r) => r.map((x) => x.className)));
   check('nothing edits: no new tab, no layouts, no live, no start page', !(await p.$('#wsTabNew')) && !(await p.$('[data-rail="layouts"]')) && !(await p.$('[data-rail="live"]')) && !(await p.$('#b-start')));
+  check('the tab shows its name from the start, never cut at the left (D-ui-41)', await p.evaluate(() => { const st = document.querySelector('#wsTabs').getBoundingClientRect(); const nm = document.querySelector('#wsTabs [aria-selected=true] .nm').getBoundingClientRect(); return nm.left >= st.left - 1; }));
   check('a viewer cannot make exports: Export data and Export to HTML are not in its menu (cut from the build, not disabled)', await (async () => {
     await p.click('#b-more');
     const gone = !(await p.$('.moremenu [data-more="exporthtml"]')) && !(await p.$('.moremenu [data-more="exportdata"]')) && !!(await p.$('.moremenu [data-more="exportimage"]'));

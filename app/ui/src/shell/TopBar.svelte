@@ -47,7 +47,10 @@
     ro.observe(tabsEl);
     measureTabs();
     // the tab in front stays in sight
-    tabsEl.querySelector('[aria-selected="true"]')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    // a tab wider than the strip shows its start (the name is cut at the end, never at the left)
+    const front = tabsEl.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (front && front.offsetWidth > tabsEl.clientWidth) tabsEl.scrollLeft = front.offsetLeft - tabsEl.offsetLeft;
+    else front?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
     return () => ro.disconnect();
   });
   /** The bar's width: under 900 px Clear, Back, Fit, Play and Lock move into ⋯. */
@@ -61,7 +64,7 @@
   /** The top bar's Export menu (owner decision 6: one click away, not only under ⋯). */
   let exporting = $state(false);
   let exportBtn = $state<HTMLElement>();
-  let tabMenu = $state<null | { key: number; anchor?: HTMLElement; at?: { x: number; y: number }; naming?: 'saveas' | 'share' }>(null);
+  let tabMenu = $state<null | { key: number; anchor?: HTMLElement; at?: { x: number; y: number }; naming?: 'saveas' | 'share' | 'rename' }>(null);
   /** The + menu: your layouts, and a new empty one (`naming`). */
   let addMenu = $state<null | { anchor: HTMLElement; naming?: 'new' }>(null);
   let wsName = $state('');
@@ -90,6 +93,8 @@
     tabMenu = { key, ...how };
   }
   let moreBtn: HTMLButtonElement | undefined = $state();
+  /** The desktop app has a menu bar; a browser page and an export's viewer have not. */
+  const desktop = !ui.browserOnly && !__VIEWER__;
   const lk = $derived(viewLocked());
   const LOCKED = 'Unlock the view to change panes';
   const moreItems = (): MenuItem[] => [
@@ -103,24 +108,27 @@
         ]
       : []),
     { heading: 'View' },
-    { label: 'Event markers', kbd: 'E', checked: settings.eventsOn, run: () => setSetting('eventsOn', !settings.eventsOn) },
-    { label: 'Lock the time view', kbd: 'L', checked: settings.locked, run: () => setSetting('locked', !settings.locked) },
+    ...(narrow
+      ? [
+          { label: 'Event markers', kbd: 'E', checked: settings.eventsOn, run: () => setSetting('eventsOn', !settings.eventsOn) },
+          { label: 'Lock the time view', kbd: 'L', checked: settings.locked, run: () => setSetting('locked', !settings.locked) },
+          { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
+        ]
+      : []),
     { label: 'Link time view with other windows', checked: settings.linkView, data: { more: 'linkview' }, tip: 'This window follows the other windows that link too, and they follow it', run: () => setSetting('linkView', !settings.linkView) },
     { label: 'Link cursors too', checked: settings.linkCursors, data: { more: 'linkcursors' }, disabled: !settings.linkView, run: () => setSetting('linkCursors', !settings.linkCursors) },
-    { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
     { label: 'Overview above the panes', checked: settings.overviewTop, run: () => setSetting('overviewTop', !settings.overviewTop) },
     { heading: 'All panes' },
     ...ALL.map(([m, label, , tip]): MenuItem => ({ label: `Every pane as ${m === 'both' ? 'chart and table' : label.toLowerCase().replace(/s$/, '')}`, checked: allMode() === m, radio: true, data: { allmode: m }, disabled: lk, tip: lk ? LOCKED : tip, run: () => setAllModes(m) })),
-    { label: 'New pane', kbd: '⌘⇧N', data: { more: 'addpane' }, disabled: !ui.file || lk, tip: lk ? LOCKED : undefined, run: () => addPaneBelow(Math.max(0, stack.panes.length - 1)) },
-    { label: 'Remove every channel', data: { more: 'nochan' }, disabled: lk || !stack.panes.some((p) => p.channels.length), tip: lk ? LOCKED : undefined, run: clearChannels },
-    { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: lk || !stack.panes.length, tip: lk ? LOCKED : undefined, run: clearPanes },
-    { heading: 'Export' },
-    // a viewer is an export: it cannot make one (these are left out of its build, not disabled)
-    ...(__VIEWER__ ? [] : [
-      { label: 'Export data…', data: { more: 'exportdata' }, disabled: !ui.file, run: actions.exportOpen },
-      { label: 'Export to HTML…', data: { more: 'exporthtml' }, disabled: !ui.file || ui.viewer, tip: 'A folder of static files that opens in any browser with nothing to install', run: actions.htmlOpen },
-    ] as MenuItem[]),
-    { label: 'Save the view as an image…', data: { more: 'exportimage' }, disabled: !ui.file || !stack.panes.length, run: actions.imageOpen },
+    // the desktop app's menu bar (Pane, File) and the top bar's Export say the rest; a page without them keeps these here
+    ...(desktop
+      ? []
+      : ([
+          { label: 'New pane', kbd: '⌘⇧N', data: { more: 'addpane' }, disabled: !ui.file || lk, tip: lk ? LOCKED : undefined, run: () => addPaneBelow(Math.max(0, stack.panes.length - 1)) },
+          { label: 'Remove every channel', data: { more: 'nochan' }, disabled: lk || !stack.panes.some((p) => p.channels.length), tip: lk ? LOCKED : undefined, run: clearChannels },
+          { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: lk || !stack.panes.length, tip: lk ? LOCKED : undefined, run: clearPanes },
+          ...(__VIEWER__ ? [{ label: 'Save the view as an image…', data: { more: 'exportimage' }, disabled: !ui.file || !stack.panes.length, run: actions.imageOpen }] : []),
+        ] as MenuItem[])),
     { heading: 'Window' },
     { label: settings.panelsClosed.length >= PANELS.length ? 'Expand all sidebar panels' : 'Collapse all sidebar panels', data: { more: 'panels' }, run: toggleAllPanels },
     { label: 'Switch theme', kbd: 'T', data: { more: 'theme' }, run: actions.toggleTheme },
@@ -287,15 +295,15 @@
   {#if tabMenu}
     <Menu class="tabmenu" label="Tab" anchor={tabMenu?.anchor} at={tabMenu?.at} onclose={() => (tabMenu = null)}>
       {#if tabMenu.naming}
-        <form class="wsname" onsubmit={(e) => nameSubmit(e, (n) => (tabMenu!.naming === 'share' ? actions.share : actions.saveAs)(tabMenu!.key, n))}>
-          <label for="wsName">{tabMenu.naming === 'share' ? 'Share with this folder as' : 'Save as a layout named'}</label>
+        <form class="wsname" onsubmit={(e) => nameSubmit(e, (n) => tabMenu!.naming === 'rename' ? actions.renameWs(menuTab!.ws!, n) : (tabMenu!.naming === 'share' ? actions.share : actions.saveAs)(tabMenu!.key, n))}>
+          <label for="wsName">{tabMenu.naming === 'share' ? 'Share with this folder as' : tabMenu.naming === 'rename' ? 'Rename the layout to' : 'Save as a layout named'}</label>
           <!-- svelte-ignore a11y_autofocus -->
           <input id="wsName" class="sel" maxlength="60" autocomplete="off" spellcheck="false" autofocus bind:value={wsName} oninput={() => (wsErr = '')} />
           {#if wsErr}<span class="wserr" role="alert">{wsErr}</span>{/if}
           {#if tabMenu.naming === 'share'}<span class="wshint">Writes .tlmbench/views/ in {settings.folder || 'the folder'}: the layout, the file and the time range in view.</span>{/if}
           <div class="wsbtns">
             <button class="btn" type="button" onclick={() => (tabMenu = null)}>Cancel</button><button class="btn primary" type="submit"
-              >{tabMenu.naming === 'share' ? 'Share' : 'Save'}</button
+              >{tabMenu.naming === 'share' ? 'Share' : tabMenu.naming === 'rename' ? 'Rename' : 'Save'}</button
             >
           </div>
         </form>
@@ -313,13 +321,13 @@
             {:else if ui.viewer}{@html ICON.file}<span>The view this export was made with.</span>
             {:else}{@html ICON.file}<span>The panes this file opened with. Save as keeps them as a layout.</span>{/if}
           </div>
-          {#if !menuTab.live}<div class="tmfiles" id="tabFiles"><span>This tab shows</span><span class="fchip" data-tip={menuTab.path}>{(menuTab.path.split(/[\\/]/).pop() ?? menuTab.path) + (menuTab.part ? ` · ${menuTab.part}` : '')}</span></div>{/if}
+          {#if !menuTab.live}<div class="tmfiles" id="tabFiles"><span>This tab shows</span>{#if menuTab.key === tabs.active && ui.slots.length > 1}{#each ui.slots as r (r.slot)}<span class="fchip" data-tip={r.path}>{r.slot} · {r.name}</span>{/each}{:else}<span class="fchip" data-tip={menuTab.path}>1 · {(menuTab.path.split(/[\\/]/).pop() ?? menuTab.path) + (menuTab.part ? ` · ${menuTab.part}` : '')}</span>{/if}</div>{/if}
           <div class="msep"></div>
         {/if}
         <!-- a viewer saves nothing, shares nothing and has one window: those items are left out, not disabled -->
         {#if !ui.viewer}
-        {#if menuTab?.ws && !menuTab.shared}
-          <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
+        {#if !menuTab?.live && !menuTab?.shared}
+          <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab?.ws || !menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
         {/if}
         {#if !menuTab?.live}
           <button
@@ -330,8 +338,8 @@
             ><span class="nm">Save as…</span>{#if menuTab?.shared}<span class="hint">your copy</span>{/if}</button
           >
         {/if}
-        {#if menuTab?.ws}
-          <button class="mi" role="menuitem" data-ws="revert" disabled={!menuTab.dirty} onclick={() => tabAct(actions.revertWs)}><span class="nm">Revert changes</span></button>
+        {#if !menuTab?.live}
+          <button class="mi" role="menuitem" data-ws="revert" disabled={!menuTab?.ws || !menuTab.dirty} onclick={() => tabAct(actions.revertWs)}><span class="nm">Revert changes</span></button>
         {/if}
         {#if !menuTab?.live && !cfg.writable}
           <button class="mi" role="menuitem" data-ws="share" data-tip="This folder is read-only, so the layout can't be shared into it. Export file… writes it where you choose." onclick={() => tabAct(actions.exportWs)}
@@ -348,6 +356,7 @@
           <button class="mi" role="menuitem" data-ws="export" onclick={() => tabAct(actions.exportWs)}><span class="nm">Export file…</span></button>
         {/if}
         {#if menuTab?.ws && !menuTab.shared}
+          <button class="mi" role="menuitem" data-ws="rename" onclick={() => (startNaming(menuTab!.ws!), (tabMenu!.naming = 'rename'))}><span class="nm">Rename…</span></button>
           <button class="mi" role="menuitem" data-ws="delete" onclick={() => tabAct(() => actions.deleteWs(menuTab!.ws!))}><span class="nm">Delete layout</span></button>
         {/if}
         {#if !menuTab?.live}<div class="msep"></div>{/if}
@@ -773,6 +782,10 @@
     color: inherit;
     font: inherit;
     font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    /* keeps its width while the decimals follow the zoom (D-ui-40): room for hh:mm:ss.nnnnnnnnn → hh:mm:ss.nnnnnnnnn */
+    min-width: 26ch;
+    text-align: center;
   }
   .rangebtn:hover {
     background: var(--raised);

@@ -22,6 +22,13 @@
         data?: Record<string, string>;
         tip?: string;
       };
+  /** Whether the last input was the keyboard: a menu opened with the mouse shows no focus ring (D-ui-39). */
+  let byKey = false;
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', () => (byKey = true), true);
+    window.addEventListener('pointerdown', () => (byKey = false), true);
+  }
+  export const lastInputWasKey = () => byKey;
 </script>
 
 <script lang="ts">
@@ -52,6 +59,8 @@
   } = $props();
 
   let el = $state<HTMLDivElement>();
+  /** the ring shows once the keyboard is used: opened from it, or an arrow key */
+  let kb = $state(lastInputWasKey());
   let pos = $state({ left: -9999, top: -9999, origin: '0 0' });
 
   /** As the prototype's placePop: under the anchor, its left edge kept 16 px inside the window, above it when it
@@ -82,6 +91,7 @@
 
   function keydown(e: KeyboardEvent) {
     const list = enabled();
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Tab'].includes(e.key)) kb = true;
     if (!list.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
     if ((e.target as HTMLElement).closest('input, textarea, select')) return;
     e.preventDefault();
@@ -114,6 +124,7 @@
   role="menu"
   tabindex="-1"
   aria-label={label}
+  data-kb={kb ? "" : undefined}
   bind:this={el}
   style="left: {pos.left}px; top: {pos.top}px; transform-origin: {pos.origin}"
   onkeydown={keydown}
@@ -149,6 +160,9 @@
 </div>
 
 <style>
+  .menu:not([data-kb]) :global(.mi:focus-visible) {
+    outline: none;
+  }
   .menu:focus {
     outline: none;
   }

@@ -16,9 +16,9 @@ run(
     check('its Export to HTML… opens that dialog', await until(() => !!document.querySelector('#htmlDlg')));
     await p.keyboard.press('Escape');
     await until(() => !document.querySelector('#htmlDlg'));
-    await p.click('#b-more');
-    check('the ⋯ menu has an Export group', /Export data…/.test(await text('.moremenu')) && /Save the view as an image…/.test(await text('.moremenu')), await text('.moremenu'));
-    await p.click('.moremenu [data-more="exportdata"]');
+    await p.click('#b-export');
+    check('the top bar\'s Export menu has data and image', /Export data…/.test(await text('.exportmenu')) && /Save the view as an image…/.test(await text('.exportmenu')), await text('.exportmenu'));
+    await p.click('.exportmenu [data-xm="data"]');
     check('Export data… opens the dialog', await until(() => !!document.querySelector('#exportDlg')));
     check('the summary counts this tab\'s channels', /6 channels · .* rows × 7 columns/.test(await text('#exSummary')), await text('#exSummary'));
     check('the files it writes are named after the recording', /flight\.csv/.test(await text('.exfiles')) && /flight\.channels\.csv/.test(await text('.exfiles')), await text('.exfiles'));
@@ -64,10 +64,9 @@ run(
 
     // no channels in the panes: nothing to export until some are added or every channel is chosen
     await p.keyboard.press('Escape');
-    await p.click('#b-more');
-    await p.click('.moremenu [data-more="nochan"]');
-    await p.click('#b-more');
-    await p.click('.moremenu [data-more="exportdata"]');
+    await p.click('#tb-clearch');
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="data"]');
     await until(() => !!document.querySelector('#exportDlg'));
     check('with empty panes Export waits and says what to do', (await p.isDisabled('#exGo')) && /add channels to the panes/.test(await text('#exSummary')), await text('#exSummary'));
     await p.selectOption('#exChannels', 'all');

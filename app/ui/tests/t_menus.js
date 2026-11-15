@@ -7,6 +7,9 @@ run('menus', async ({ p, check, until, wait }) => {
   const focused = () => p.evaluate(() => document.activeElement?.textContent?.trim() ?? '');
   const box = (sel) => p.evaluate((s) => { const r = [...document.querySelectorAll(s)].pop()?.getBoundingClientRect(); return r && { x: r.x, y: r.y, w: r.width, h: r.height, b: r.bottom, r: r.right }; }, sel);
 
+  const rt = await p.evaluate(() => { const c = getComputedStyle(document.querySelector('#rangeTxt')); return [c.fontVariantNumeric, parseFloat(c.minWidth)]; });
+  check('the time range keeps its width: tabular numbers in a fixed minimum (D-ui-40)', /tabular-nums/.test(rt[0]) && rt[1] > 100, rt);
+
   // the ⋯ menu: under its button, inside the window, the first item focused
   await p.click('#b-more');
   await wait(250);
@@ -14,9 +17,12 @@ run('menus', async ({ p, check, until, wait }) => {
   const b = await box('#b-more');
   check('the ⋯ menu sits under its button', m && Math.abs(m.y - (b.b + 4)) < 1.5 && m.r <= 1440 - 15, [m, b]);
   check('the first item takes focus', /^Open recording/.test(await focused()), await focused());
+  const ring = () => p.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
+  check('opened with the mouse, the first item shows no focus ring (D-ui-39)', (await ring()) === 'none', await ring());
+  const hh = await box('.moremenu');
+  check('⋯ is short enough not to scroll at 900 px (D-ui-37)', hh.h < 560, hh);
   await p.keyboard.press('ArrowDown');
-  await p.keyboard.press('ArrowDown');
-  await p.keyboard.press('ArrowDown');
+  check('an arrow key brings the ring', (await ring()) !== 'none', await ring());
   await p.keyboard.press('ArrowDown');
   check('↓ skips disabled items', /^Overview above the panes/.test(await focused()), await focused());
   await p.keyboard.press('End');

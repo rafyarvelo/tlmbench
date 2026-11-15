@@ -18,8 +18,7 @@ run('zones', async ({ p, check, wait, until, paneCount, visible, text }) => {
   await drop(2, 0, s.w * 0.06, s.h * 0.5);
   check('the left edge puts it first in the row', (await layout()) === '0/1/2' && JSON.stringify((await app('panes'))[0]) === JSON.stringify(p2), [await layout(), await app('panes')]);
   const ch0 = JSON.stringify(await app('panes'));
-  await p.click('#b-more');
-  await p.click('.moremenu [data-more="nopanes"]');
+  await p.click('#tb-rmpanes');
   await p.click('#wsNote button:has-text("Undo")');
   check('Undo restores them', JSON.stringify(await app('panes')) === ch0);
 
@@ -53,8 +52,7 @@ run('zones', async ({ p, check, wait, until, paneCount, visible, text }) => {
   check('Duplicate beside puts the copy right of it', /^0\/1/.test(await layout()), await layout());
 
   // empty states
-  await p.click('#b-more');
-  await p.click('.moremenu [data-more="nopanes"]');
+  await p.click('#tb-rmpanes');
   check('no panes: a line of help and a big + Add pane', await visible('[data-nopanes]'));
   await p.click('#addFirst');
   check('+ Add pane adds an empty one that says so', (await paneCount()) === 1 && /Empty pane/.test(await text('#stack [data-pane="0"] .phead')), await text('#stack'));

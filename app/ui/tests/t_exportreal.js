@@ -60,8 +60,8 @@ try {
   await until(page, () => !!document.getElementById('impGo'));
   await page.click('#impGo');
   check('the CSV opens in the real app', await until(page, () => /bench run/.test(document.querySelector('#wsTabs .wstab')?.textContent ?? '')));
-  await page.click('#b-more');
-  await page.click('.moremenu [data-more="exporthtml"]');
+  await page.click('#b-export');
+  await page.click('.exportmenu [data-xm="html"]');
   check('Export to HTML… shows the core\'s sizes for Full and Light', await until(page, () => /Full \(\d/.test(document.querySelector('#htmlMode')?.textContent ?? '') && /Light \(\d/.test(document.querySelector('#htmlMode')?.textContent ?? '')), await page.$eval('#htmlMode', (e) => e.textContent).catch(() => null));
   answer = dest;
   await page.click('#htmlGo');
@@ -72,8 +72,8 @@ try {
   check('the manifest holds the layout in front', m?.layout?.panes?.length > 0 && m?.files?.[0]?.samples === 5000, m?.layout);
 
   // One file (decision 7): the core writes a single page with every raw sample, and it opens from file://
-  await page.click('#b-more');
-  await page.click('.moremenu [data-more="exporthtml"]');
+  await page.click('#b-export');
+  await page.click('.exportmenu [data-xm="html"]');
   await until(page, () => !!document.getElementById('htmlGo'));
   await page.selectOption('#htmlFormat', 'file');
   check('One file shows its size from the core', await until(page, () => /One file \(\d/.test(document.querySelector('#htmlFormat')?.textContent ?? '')), await page.$eval('#htmlFormat', (e) => e.textContent));
@@ -89,8 +89,8 @@ try {
   await f.goto('file://' + one, { waitUntil: 'domcontentloaded' });
   check('it opens from file:// and draws its first view', await until(f, () => window.__tlmFirstView != null, 15000), ferrs);
   await page.keyboard.press('Escape');
-  await page.click('#b-more');
-  await page.click('.moremenu [data-more="exporthtml"]');
+  await page.click('#b-export');
+  await page.click('.exportmenu [data-xm="html"]');
   await until(page, () => !!document.getElementById('htmlGo'));
   await page.selectOption('#htmlFormat', 'folder');
   await page.keyboard.press('Escape');
@@ -103,8 +103,8 @@ try {
   writeFileSync(csv2, 'time,rpm,temp\n' + Array.from({ length: 3000 }, (_, i) => `${500 + i / 100},${Math.cos(i / 50)},${30 + i / 300}`).join('\n') + '\n');
   await page.evaluate((p) => window.__tlmApp.addToTab(p), csv2);
   check('a second file joins the tab', await until(page, () => document.querySelectorAll('#explorer .tree .row.chan').length === 4, 15000), await page.$$eval('#explorer .tree .row', (r) => r.length));
-  await page.click('#b-more');
-  await page.click('.moremenu [data-more="exporthtml"]');
+  await page.click('#b-export');
+  await page.click('.exportmenu [data-xm="html"]');
   await until(page, () => !!document.getElementById('htmlGo'));
   await page.selectOption('#htmlChannels', 'all');
   const dest2 = join(home, 'out2');

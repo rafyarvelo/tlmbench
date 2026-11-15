@@ -7,9 +7,9 @@ const ch = (n) => `#explorer .row.chan[data-ch="${n}"]`;
 // the Explorer panel, shown again after another rail replaced it
 const explorer = async (p) => (await p.isVisible('#exMore')) || (await p.click('[data-rail="explorer"]'));
 const OPENERS = [
-  ['Export to HTML', '#htmlDlg', async (p) => (await p.click('#b-more'), await p.click('.moremenu [data-more="exporthtml"]'))],
-  ['Export data', '#exportDlg', async (p) => (await p.click('#b-more'), await p.click('.moremenu [data-more="exportdata"]'))],
-  ['Save the view as an image', '#imageDlg', async (p) => (await p.click('#b-more'), await p.click('.moremenu [data-more="exportimage"]'))],
+  ['Export to HTML', '#htmlDlg', async (p) => (await p.click('#b-export'), await p.click('.exportmenu [data-xm="html"]'))],
+  ['Export data', '#exportDlg', async (p) => (await p.click('#b-export'), await p.click('.exportmenu [data-xm="data"]'))],
+  ['Save the view as an image', '#imageDlg', async (p) => (await p.click('#b-export'), await p.click('.exportmenu [data-xm="image"]'))],
   ['Rules and checks', '#recDlg', async (p) => (await p.click('[data-rail="checks"]'), await p.click('#checksBody [data-cnew]'))],
   ['Recipes', '#recipesDlg', async (p) => (await explorer(p), await p.click('#exMore'), await p.click('.exmenu [data-ex="recipes"]'))],
   ['New derived channel', '#deriveDlg', async (p) => (await explorer(p), await p.click(`${ch(0)} .nm`), await p.click('#selBar [data-sel="derive"]'))],
