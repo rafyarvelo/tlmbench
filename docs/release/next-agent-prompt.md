@@ -29,8 +29,6 @@ ledger row Partial with what is left. Then R2.2's remaining items, in the order 
 ## Open with the owner
 
 - The re-test on the owner test sheet (R12, B4, S1 to S4 and the older items). When the owner confirms an item, remove it.
-- Release decisions 6, 7, 8 and 10 (Help and the manual, the web copy, the final deletion list, package managers); 1 to 5
-  and 9 were decided Nov 15.
 
 ## Rules
 

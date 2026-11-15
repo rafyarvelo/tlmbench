@@ -38,7 +38,7 @@ state of its own in the table, not "done".
 | R2.3 Decoders · R2.4 Python · R2.5 Core's Partial rows | Not started |
 | R3.1 Menus and shell, R3.2 Explorer, start page, dialogs | **Next** (moved before R2.2 by the owner, Nov 15, so the owner's re-tests meet the improved app). Lists: `parity-classes.md` Port rows and the owner's Nov 15 decisions (below, R3) |
 | R3.3 Panes, charts and tables · R3.4 | Not started; after R2.5 |
-| R4 to R9 | Not started. Release decisions 1 to 5 and 9 decided Nov 15; 6, 7, 8 and 10 open (needed by R7 and R8) |
+| R4 to R9 | Not started. Every release decision is made (Nov 15) |
 | CI | Green on `main` at the status-table push (run 43746056639). Later commits are docs only, pushed by the next agent |
 
 ## Recommended model per step
@@ -70,7 +70,7 @@ runs a step, keep the step smaller and have it stop and report at the first desi
 
 ## Where things stand (checked Nov 15)
 
-- Ledger: Done 235 · Partial 48 · Missing 28 · Diverged 4 · Unverified 26 · Owner pass 17 (358 rows).
+- Ledger: Done 235 · Partial 48 · Missing 30 · Diverged 4 · Unverified 26 · Owner pass 17 (360 rows).
 - Tests at the last full local run (Nov 15): 104 of 104 app UI tests, `cargo nextest run --workspace` 283 passed (1
   skipped), clippy clean. On CI: see the status table.
 - **Nothing for release exists yet:** `bundle.active` is `false` in `app/src-tauri/tauri.conf.json`; no release workflow;
@@ -94,9 +94,8 @@ runs a step, keep the step smaller and have it stop and report at the first desi
 
 ## Release decisions
 
-Each step below says which of these it needs. **Decided Nov 15 by the owner, as recommended: 1, 2, 3, 4, 5 and 9**, and the
-CLI ships beside the app (R4). Still open: 6, 7, 8 (partly: the plan documents were reduced Nov 15; the final deletion
-list is agreed at R8) and 10. Nothing open is built until the owner answers.
+Each step below says which of these it needs. **All ten are decided, by the owner on Nov 15, as recommended**; the CLI
+ships beside the app (R4). The web copy is GitHub Pages (7).
 
 | # | Decision | Recommendation (and state) |
 | --- | --- | --- |
@@ -105,11 +104,11 @@ list is agreed at R8) and 10. Nothing open is built until the owner answers.
 | 3 | Signing: an Apple Developer ID and notarisation; a Windows code-signing certificate (or Azure Trusted Signing) | Sign both for the release. Unsigned builds trigger Gatekeeper and SmartScreen warnings that make a "production" release look broken. The owner holds the credentials and adds them as repository secrets; an agent never sees them **Decided Nov 15.** |
 | 4 | Where installers are published | GitHub Releases on the repo, built by a tag-triggered workflow; the same workflow publishes the Python wheels and attaches the CLI archives **Decided Nov 15.** |
 | 5 | PyPI: the project name (`tlmbench` is what `python/` uses), a trusted-publisher setup | Register the name now; publish with PyPI trusted publishing (no stored token) **Decided Nov 15.** |
-| 6 | How Help opens the manual in the app | Open the bundled PDF with the OS's default viewer through Tauri's opener (the app doesn't run a program of its own: it asks the OS to open a document), plus a "Online manual" link. The alternative is a manual window inside the app, which needs the manual as HTML too |
-| 7 | Where the web copy of the manual lives | GitHub Pages from the repo (`docs/site`), next to the browser-only app and a sample HTML export |
-| 8 | What happens to the plan documents (the list in R8) | Delete them from `main` once their content is absorbed (git history keeps them); keep the prototype under `prototype/` as the design reference and its tests as they are |
+| 6 | How Help opens the manual in the app | Open the bundled PDF with the OS's default viewer through Tauri's opener (the app doesn't run a program of its own: it asks the OS to open a document), plus a "Online manual" link. The alternative is a manual window inside the app, which needs the manual as HTML too **Decided Nov 15.** |
+| 7 | Where the web copy of the manual lives | GitHub Pages from the repo (`docs/site`), next to the browser-only app and a sample HTML export **Decided Nov 15.** |
+| 8 | What happens to the plan documents (the list in R8) | Delete them from `main` once their content is absorbed (git history keeps them); keep the prototype under `prototype/` as the design reference and its tests as they are **Decided Nov 15.** |
 | 9 | Version and tag | `1.0.0`, tag `v1.0.0`; a `v1.0.0-rc.N` tag series for the dry runs **Decided Nov 15.** |
-| 10 | Homebrew tap, winget, Flathub, crates.io | Not for v1.0.0; a Homebrew cask is the first to add after |
+| 10 | Homebrew tap, winget, Flathub, crates.io | Not for v1.0.0; a Homebrew cask is the first to add after **Decided Nov 15.** |
 
 ## The steps
 
@@ -207,7 +206,8 @@ the native menu bar, the viewer's lock, export tiers, hover pane actions), and p
   R3.2: the start page (D-ui-36), Open with layout ▸ (D-ui-42), every file marked in the Explorer with its slot and
   alignment (D-ui-45), duplicate a recipe from the channel and Save as new (D-derive-02), readable rates (D-ui-38).
   R3.3: pane names (D-ui-43), Open together draws every file (D-ui-46), Duplicate for ▸ file N and From file ▸ (D-ui-47,
-  D-ui-48).
+  D-ui-48), limits shared by every file's copy of a channel (D-ui-49). R2.5: recipes reach every file in a tab (D-derive-03)
+  and every file's events show, labelled (S5.6-12).
 - **R3.4 What the audit can't see (S).** Quiet interface; keyboard coverage compared with the prototype's list; every
   tooltip and empty state; copy review (plain, short, sentence case); the design's motion rules.
 - **After each sub-step:** rerun `just app-parity`, update `parity-classes.md`, screenshot with `node app/ui/tests/shots.js`,

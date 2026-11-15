@@ -20,6 +20,10 @@ doesn't promise for a tab; they wait until after v1, and a tab leaves them out (
 - Layouts saved in the browser.
 - A phone layout (the prototype's `t_phone`; release review decision 8).
 
+## Distribution (owner, Nov 15)
+
+- A Homebrew cask first, then winget, Flathub and crates.io as the owner ranks them (release decision 10).
+
 ## Ideas and measured limits (from the step notes, Nov 2 to Nov 11)
 
 Not gaps: v1 meets its budgets without them. Each would make something faster or remove a known limit.

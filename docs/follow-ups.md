@@ -37,6 +37,9 @@ removed Nov 15; git history keeps them.
   keeps choosing Same clock when the files' times overlap, else Align starts.
 - In a tab with several files: a pane's ⋯ menu has Duplicate for ▸ file N, and a channel chip's right-click has From
   file ▸ and Add from every file (channels matched by name).
+- In a tab with several files: limits belong to the channel name and every file's copy shares them; a recipe scoped to
+  any file with the channels gives each file its own copy; every file's events show through its alignment, labelled
+  with the file, and a new event goes to file 1 unless added from another file's pane or channel.
 - An unlocked viewer arrangement is not kept across reloads: a reload is the exported view.
 - Parity with the prototype is classed (`docs/release/parity-classes.md`): the "App is better" rows are accepted
   differences (ledger A-01 to A-11); the ⋯ menu is trimmed to what the top bar and menu bar don't hold; the time range is
