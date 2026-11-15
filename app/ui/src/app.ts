@@ -3820,10 +3820,39 @@ async function addToTab(path: string, saved?: NonNullable<Session['groups']>[str
 async function openTogether(paths: string[]): Promise<void> {
   const [first, ...rest] = paths;
   if (!first) return;
+  // a tab that was already open keeps the panes it has; a new one gets a layout that draws every file (owner, Nov 15)
+  const fresh = !tabs.list.some((x) => x.path === first && !x.ws && !x.live);
   await openPath(first);
   const t = tabs.list.find((x) => x.path === first && !x.ws && !x.live);
   if (t) await showTab(t.key);
   for (const p of rest) await addToTab(p);
+  const f = state.file;
+  if (!fresh || !f?.members || f.members.length < 2) return;
+  stack.panes = togetherLayout(f);
+  stack.sel = 0;
+  normalize();
+  await tick();
+  renderPanes();
+  state.ovStale = true;
+  void requestView('exact');
+}
+
+/** Open together's first layout: a pane per channel the files share (spread like a starter's, each pane holding every file's
+ *  copy of its channels), then each file's starter charts for the channels only it has. */
+function togetherLayout(f: OpenFile): Pane[] {
+  const ms = f.members!;
+  const own = ms.map((m) => m.info.channels.map((c, k) => ({ name: c.name, ch: m.first + k, derived: m.derived.some((d) => d.channel === k) })).filter((c) => !c.derived));
+  const count = new Map<string, number>();
+  for (const l of own) for (const c of l) count.set(c.name, (count.get(c.name) ?? 0) + 1);
+  const shared = [...new Set(own.flatMap((l) => l.map((c) => c.name)))].filter((n) => (count.get(n) ?? 0) > 1);
+  const panes: Pane[] = defaultPanes(shared.length).map((p) => ({
+    channels: p.channels.flatMap((k) => own.flatMap((l) => l.filter((c) => c.name === shared[k]).map((c) => c.ch))),
+  }));
+  for (const l of own) {
+    const only = l.filter((c) => (count.get(c.name) ?? 0) < 2);
+    for (const p of defaultPanes(only.length)) panes.push({ channels: p.channels.map((k) => only[k].ch) });
+  }
+  return panes;
 }
 
 /** The first channel of up to four groups the two files share, a pane each with both files' channel (the names the files have in common). */
