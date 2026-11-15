@@ -35,6 +35,8 @@ removed Nov 15; git history keeps them.
 - A saved layout can be renamed (tab menu, Layouts panel); a shared copy is updated on the next Share….
 - Open together's first layout overlays the channels the files share (a pane each) and adds each file's own starters; it
   keeps choosing Same clock when the files' times overlap, else Align starts.
+- In a tab with several files: a pane's ⋯ menu has Duplicate for ▸ file N, and a channel chip's right-click has From
+  file ▸ and Add from every file (channels matched by name).
 - An unlocked viewer arrangement is not kept across reloads: a reload is the exported view.
 - Parity with the prototype is classed (`docs/release/parity-classes.md`): the "App is better" rows are accepted
   differences (ledger A-01 to A-11); the ⋯ menu is trimmed to what the top bar and menu bar don't hold; the time range is
