@@ -277,6 +277,8 @@ export const actions = {
   deleteWs: (_name: string) => {},
   /** Renames one of your layouts (an error to show, or null); open tabs follow. */
   renameWs: (_from: string, _to: string): string | null => null,
+  /** Open with layout ▸ on a file's right-click: the file, then the layout (yours, or a shared one by its file) on it. */
+  openWithLayout: (_path: string, _name: string, _shared?: string) => {},
   openWs: (_name: string) => {},
   newWs: (_name: string): string | null => null,
   /** Shared views: list the folder's again, open one, share tab `key`'s layout under a name, export it to a file. */

@@ -2409,6 +2409,14 @@ function renameWs(from: string, raw: string): string | null {
   return null;
 }
 
+/** Open with layout ▸: shows `path`, then layout `name` (yours or the folder's shared one) on it, in a tab of its own. */
+async function openWithLayout(path: string, name: string, shared?: string): Promise<void> {
+  const ws = shared ? ui.shared.find((v) => v.file === shared)?.ws : findWs(name);
+  if (!ws) return void note(`The layout "${name}" is gone.`);
+  await openPath(path);
+  if (state.file && ui.path === path) await openLayout(ws);
+}
+
 /** Deletes one of your layouts and closes its tabs, with Undo. */
 function deleteWs(name: string): void {
   const at = settings.workspaces.findIndex((w) => w.name === name);
@@ -5265,6 +5273,7 @@ Object.assign(actions, {
   revertWs,
   deleteWs,
   renameWs,
+  openWithLayout,
   openWs: (name: string) => void openWs(name),
   newWs,
   loadShared: () => void loadShared().catch((e) => note(`Couldn't read the folder's shared views: ${e}`)),

@@ -24,7 +24,7 @@
   let sel = $state<string | null>(null);
   /** Channels picked together (Ctrl/Cmd-click, Shift-click a range, Ctrl+A); `sel` is the one last clicked. */
   let picked = $state<number[]>([]);
-  let fmenu = $state<null | { at: { x: number; y: number }; path: string }>(null);
+  let fmenu = $state<null | { at: { x: number; y: number }; path: string; layouts?: boolean }>(null);
   /** Files picked together (Cmd/Ctrl-click, Shift-click a range) to open or close at once. */
   let pickedFiles = $state<string[]>([]);
 
@@ -234,8 +234,30 @@
     sel = path;
     fmenu = { at: { x: e.clientX, y: e.clientY }, path };
   }
+  /** The channels a layout names that this file lacks (known only for a file that is open; others say nothing). */
+  const lacks = (path: string, panes: { channels?: string[] }[]): string[] => {
+    const have = path === ui.path ? new Set(ui.channels.filter((_, k) => !ui.slots.length || k < (ui.slots[0]?.count ?? Infinity)).map((c) => c.name)) : null;
+    if (!have) return [];
+    return [...new Set(panes.flatMap((p) => p.channels ?? []).filter((n) => !/·\d+$/.test(n) && !have.has(n)))];
+  };
+  /** The layouts a file can open with: yours, then the folder's; one the file can't fill is greyed with what it needs. */
+  const layoutItems = (path: string): MenuItem[] => {
+    const one = (name: string, panes: { channels?: string[] }[], shared?: string): MenuItem => {
+      const need = lacks(path, panes);
+      return { label: name, meta: need.length ? `needs ${need.slice(0, 2).join(', ')}${need.length > 2 ? '…' : ''}` : undefined, data: { fmlayout: shared ?? name }, disabled: need.length > 0, run: () => actions.openWithLayout(path, name, shared) };
+    };
+    const mine = settings.workspaces.map((w) => one(w.name, w.panes));
+    const theirs = ui.shared.flatMap((v) => (v.ws ? [one(v.ws.name, v.ws.panes, v.file)] : []));
+    return [
+      { label: 'Back', data: { fm: 'layouts-back' }, run: () => (fmenu = { ...fmenu!, layouts: false }) } as MenuItem,
+      ...(mine.length ? [{ heading: 'Your layouts' } as MenuItem, ...mine] : []),
+      ...(theirs.length ? [{ heading: 'Shared in this folder' } as MenuItem, ...theirs] : []),
+      ...(mine.length || theirs.length ? [] : [{ label: 'No layouts yet', disabled: true, run: () => {} } as MenuItem]),
+    ];
+  };
   const fileItems = (path: string): MenuItem[] => [
     { label: 'Open', data: { fm: 'open' }, disabled: isOpen(path), run: () => actions.openPath(path) },
+    { label: 'Open with layout ▸', data: { fm: 'withlayout' }, disabled: !listedPath(path) || !(settings.workspaces.length || ui.shared.some((v) => v.ws)), keep: true, run: () => (fmenu = { ...fmenu!, layouts: true }) },
     { label: 'Open only this', data: { fm: 'only' }, disabled: !listedPath(path), run: () => actions.openOnly(path) },
     { label: 'Import settings…', data: { fm: 'import' }, disabled: !/\.(csv|tsv|txt)$/i.test(path), run: () => actions.importAgain(path) },
     { label: 'Format descriptor…', data: { fm: 'descriptor' }, disabled: /\.(csv|tsv|txt|tlm|parquet)$/i.test(path), run: () => actions.descriptorForm(path) },
@@ -421,7 +443,7 @@
 {/if}
 
 {#if fmenu}
-  <Menu class="filemenu" label={fmenu?.path} at={fmenu?.at} onclose={() => (fmenu = null)} items={fmenu ? fileItems(fmenu.path) : []} />
+  <Menu class="filemenu" label={fmenu?.path} at={fmenu?.at} onclose={() => (fmenu = null)} items={fmenu ? (fmenu.layouts ? layoutItems(fmenu.path) : fileItems(fmenu.path)) : []} />
 {/if}
 
 {#snippet file(path: string, name: string, depth: number)}

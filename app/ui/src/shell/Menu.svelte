@@ -21,6 +21,8 @@
         /** data-* attributes, without the prefix */
         data?: Record<string, string>;
         tip?: string;
+        /** the menu stays open after the pick (a ▸ item that swaps its list) */
+        keep?: boolean;
       };
   /** Whether the last input was the keyboard: a menu opened with the mouse shows no focus ring (D-ui-39). */
   let byKey = false;
@@ -145,8 +147,8 @@
           {...dataAttrs(it.data)}
           onclick={() => {
             // `it` follows `items`, which closing may change: take the action first
-            const run = it.run;
-            onclose();
+            const { run, keep } = it;
+            if (!keep) onclose();
             run();
           }}
           >{#if it.icon}{@html it.icon}{/if}<span class="nm">{it.label}{#if it.note}<small>{it.note}</small>{/if}</span>{#if it.meta}<span
