@@ -14,7 +14,7 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
 
 ## Your step
 
-1. **Don't push docs-only commits on their own** (owner, Nov 15). `main` is about 17 commits ahead of `origin/main`
+1. **Don't push docs-only commits on their own** (owner, Nov 15). `main` is about 22 commits ahead of `origin/main`
    (R3.1 and R3.2 code and tests among them): **ask the owner to push first thing**, then watch CI (`gh run watch`) until
    it is green with no rerun. A full run takes about 1.5 hours and a push cancels the one in progress, so don't push again
    until it ends unless a fix is needed.
