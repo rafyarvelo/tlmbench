@@ -76,7 +76,8 @@ export function installPointerDnd(): void {
       if (e.button !== 0 || drag) return;
       const t = e.target instanceof Element ? e.target : null;
       const src = t?.closest('[draggable="true"]');
-      if (!t || !src || t.closest(EDITING)) return;
+      // and a handle inside a draggable that does its own pointer work (a column's resize edge) opts out with data-nodrag
+      if (!t || !src || t.closest(EDITING) || t.closest('[data-nodrag]')) return;
       pending = { src, x: e.clientX, y: e.clientY };
       // no native drag, and no text selected along the way; the press still focuses what it would have
       e.preventDefault();

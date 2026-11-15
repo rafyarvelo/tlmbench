@@ -19,7 +19,7 @@
   import { ICON } from '../icons';
   import { chCss, chName, chUnit } from '../display.svelte';
   import { catColor, catName, marked, type TlmEvent } from '../events.svelte';
-  import { fmtCh, learnDecimals, newPaneWith, note, setTable, sortLocked, stack } from '../stack.svelte';
+  import { fmtCh, learnDecimals, moveChannel, newPaneWith, note, setTable, sortLocked, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -593,6 +593,25 @@
   // ---------- height (a chart with its table) ----------
 
   let box = $state<HTMLElement | null>(null);
+  /** A column header drags like the channel's chip (the prototype's .tth[draggable]): onto another pane to move it
+   * there (Alt copies), onto another header to reorder the pane's channels (sheet, "Other" #1). */
+  const isChip = (e: DragEvent) => !!e.dataTransfer?.types.includes('application/x-tlm-chip');
+  function headDrag(e: DragEvent, ch: number) {
+    e.dataTransfer?.setData('application/x-tlm-chip', JSON.stringify({ ch, from: i }));
+    e.dataTransfer?.setData('text/plain', ui.channels[ch]?.name ?? String(ch));
+  }
+  function headDrop(e: DragEvent, before: number) {
+    if (!isChip(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let c: null | { ch: number; from: number } = null;
+    try {
+      c = JSON.parse(e.dataTransfer?.getData('application/x-tlm-chip') ?? 'null');
+    } catch {
+      /* not a chip */
+    }
+    if (c && c.ch !== before) moveChannel(c.ch, c.from, i, before, e.altKey);
+  }
   let grip: null | { y: number; h: number; sign: number } = null;
   let dragH = $state<number | null>(null);
   const h = $derived(dragH ?? height);
@@ -668,6 +687,7 @@
         <div class="thead" role="row">
           {#each headers as { h, col } (col.id)}
             {@const k = sortOf(col.id)}
+            <!-- svelte-ignore a11y_interactive_supports_focus (the header's own buttons take focus; dragging is by mouse, as a chip's) -->
             <span
               class="tth"
               class:num={col.ch != null}
@@ -679,6 +699,10 @@
               aria-sort={k < 0 ? 'none' : sort[k].desc ? 'descending' : 'ascending'}
               style="width: {h.getSize()}px{col.id === 'n' || col.id === 't' ? `; left: ${leftOf(col.id)}px` : ''}"
               data-col={col.id}
+              draggable={col.ch != null ? 'true' : undefined}
+              ondragstart={(e) => col.ch != null && headDrag(e, col.ch)}
+              ondragover={(e) => col.ch != null && isChip(e) && (e.preventDefault(), e.stopPropagation())}
+              ondrop={(e) => col.ch != null && headDrop(e, col.ch)}
             >
               <span
                 class="thtop"
@@ -709,6 +733,7 @@
               {/if}
               <span
                 class="trsz"
+                data-nodrag
                 class:on={h.column.getIsResizing()}
                 role="separator"
                 aria-orientation="vertical"
@@ -940,6 +965,9 @@
     z-index: 3;
     display: flex;
     background: var(--surface);
+  }
+  .tth[draggable='true'] {
+    cursor: grab;
   }
   .tth {
     position: relative;
