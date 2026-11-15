@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 235 · **Partial** 46 · **Missing** 21 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 17 (349 rows).
+Counts: **Done** 235 · **Partial** 46 · **Missing** 22 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 17 (350 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -255,6 +255,7 @@ where each step stands, and nothing else records either.
 | D-store-08 | design Storage | Interrupted pyramid builds resume; a lock keeps two processes from building one key. | Done | `tlmbench-store::store::an_interrupted_build_resumes_where_it_stopped`, `tlmbench::cache_query::concurrent_builds_share_one_entry` | |
 | D-store-09 | design Storage | The gap index and the chunk index of times are stored beside the pyramid. | Done | `tlmbench-core::gaps::finds_every_jump_over_the_threshold`, `tlmbench-core::time::an_indexed_search_finds_what_a_full_one_does` | |
 | D-store-10 | design Storage | The LRU chunk store holds decoded chunks under 25% of RAM; chunks in use survive eviction. | Done | `tlmbench-store::chunks::the_budget_holds_and_the_oldest_go_first`, `tlmbench-store::chunks::a_chunk_in_use_survives_eviction` | |
+| D-store-11 | design Storage (the cache has a size cap and Clear cache), found Nov 15 | Every folder the app writes in its cache is counted in the size Settings shows, held to the cap's eviction and emptied by Clear cache, including live recordings' growing pyramids (`live/`, `live-sessions/`); a folder left by a process that crashed or was killed is removed the next time the app starts. | Missing | | `live/<key>-<pid>` is removed only when the `Live` drops (`crates/store/src/live.rs:248`); `Store::entries` (`crates/store/src/lib.rs:278`) skips `live/`, so on Nov 15 the owner's app showed 549 KB while 1.4 GB of orphans from killed processes (Nov 3 to 15) sat there, never evicted or cleared (deleted by hand). R2.5 |
 | D-down-01 | design Downsampling | Raw samples are sent when the view holds at most 4W, with the nearest sample beyond each edge. | Done | `tlmbench-core::m4::sparse_view_returns_raw_samples_with_neighbours` | |
 | D-down-02 | design Downsampling | Buckets are whole nanoseconds on a global grid; ties go to the earliest sample. | Done | `tlmbench-core::pyramid::ties_go_to_the_earliest_sample`, `tlmbench-core::m4::matches_brute_force` | |
 | D-down-03 | design Downsampling | Views from the pyramid equal M4 over raw samples point for point. | Done | `tlmbench-core::pyramid::pyramid_m4_equals_raw_m4`, `tlmbench-core::pyramid::partial_pyramid_m4_equals_raw_m4` | |
