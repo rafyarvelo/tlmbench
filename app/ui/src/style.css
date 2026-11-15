@@ -1055,6 +1055,13 @@ input[role='switch']:checked::after {
   text-overflow: ellipsis;
   pointer-events: none;
 }
+
+/* the copy key is down: a "+" before the dragged name */
+.dnd-copy .dnd-ghost::before {
+  content: '+';
+  margin-right: 4px;
+  font-weight: 600;
+}
 html.dnd-active,
 html.dnd-active * {
   cursor: grabbing !important;

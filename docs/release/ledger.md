@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 211 · **Partial** 44 · **Missing** 12 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 14 (311 rows).
+Counts: **Done** 212 · **Partial** 44 · **Missing** 12 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 14 (312 rows).
 
 How to read the evidence. A test named here was run in this review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -268,6 +268,7 @@ on a real window). The last column names the step of `docs/release/release-plan.
 | D-ui-20 | owner sheet A2 (Nov 14), `docs/follow-ups.md` | Explorer's "Show only these" is an icon in the header, there with or without a file open; with nothing open the list says "Showing only open files" with Show all; a different folder turns it off. | Done | `t_channels`, `t_open` (Nov 14) | The owner found the pill only once a file was open and asked for an always-visible icon; the prototype's pill in the Open strip is replaced |
 | D-ui-21 | owner sheet B5 (Nov 14), prototype panes | XY's controls (X: channel, 1:1, Fit) sit in the pane header on hover, and the XY plot resizes with a grip; Chart and values has its height grip at the pane's bottom; Chart and table has the chart grip under the plot and the table grip at the bottom; the gauges' ⋯ menu is the prototype's compact one. | Done | `t_panegrips`, `t_tables`, `t_xy` (Nov 14) | Chart and values' bottom grip follows the owner, not the prototype (its grip is under the plot): a design-doc note. The real-window feel is X-win-03 |
 | D-ui-22 | owner decision 3 (Nov 14), sheet B1 | ⌘Z and ⇧⌘Z (Ctrl on Windows and Linux) undo and redo the last change: the change a note offers to undo, else the last layout change (panes, channels, views); a text field keeps its own; Backspace stays "back a view". | Done | `t_undo` (Nov 14) | Design-doc note owed. The native menu bar's Edit menu (decision 8) will carry the same commands |
+| D-ui-23 | owner decision 2 (Nov 14), sheet C1 | A drag copies instead of moving with Option or ⌘ on the Mac, Ctrl on Windows and Linux, and Alt everywhere; a "+" shows on the drag while the key is down; the chip and pane tooltips name the key. | Done | `t_chips` (Nov 14) | Design-doc note owed (the prototype says Alt/Option only). The real-window drag is X-win-03 |
 | D-filt-01 | design Filters | Ignore outliers fits the 0.1st to 99.9th percentile, clips and marks. | Done | `t_axes` | |
 | D-filt-02 | design Filters | Masked samples are a view: derived channels, rules and exports still read the full data. | Unverified | `tlmbench-store::store::a_mask_makes_samples_missing_in_views_stats_and_values` (the mask itself) | A mask belongs to the file, so two tabs share it; no test shows a derived channel or export ignoring it. R2.5 |
 | D-gauge-01 | design Gauges | The widget type is picked from unit and name, changed per channel, and saved in the pane. | Done | `t_gauges` | |

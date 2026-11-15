@@ -16,6 +16,7 @@
   import { duration, frequency, timeLabel } from '../axes';
   import { live } from '../live.svelte';
   import { settings } from '../settings.svelte';
+  import { isCopy } from '../dnd';
   import { ICON } from '../icons';
   import { chCss, chName, chUnit } from '../display.svelte';
   import { catColor, catName, marked, type TlmEvent } from '../events.svelte';
@@ -594,7 +595,7 @@
 
   let box = $state<HTMLElement | null>(null);
   /** A column header drags like the channel's chip (the prototype's .tth[draggable]): onto another pane to move it
-   * there (Alt copies), onto another header to reorder the pane's channels (sheet, "Other" #1). */
+   * there (the copy key copies), onto another header to reorder the pane's channels (sheet, "Other" #1). */
   const isChip = (e: DragEvent) => !!e.dataTransfer?.types.includes('application/x-tlm-chip');
   function headDrag(e: DragEvent, ch: number) {
     e.dataTransfer?.setData('application/x-tlm-chip', JSON.stringify({ ch, from: i }));
@@ -610,7 +611,7 @@
     } catch {
       /* not a chip */
     }
-    if (c && c.ch !== before) moveChannel(c.ch, c.from, i, before, e.altKey);
+    if (c && c.ch !== before) moveChannel(c.ch, c.from, i, before, isCopy(e));
   }
   let grip: null | { y: number; h: number; sign: number } = null;
   let dragH = $state<number | null>(null);

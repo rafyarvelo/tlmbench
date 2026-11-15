@@ -1,5 +1,5 @@
-// A pane's chips: × takes a channel out, dragging by the name reorders (onto another chip) or moves (onto a pane; Alt
-// copies), "· L" / "· R" where two units share a pane, and "+N" with the list when the header can't fit them all.
+// A pane's chips: × takes a channel out, dragging by the name reorders (onto another chip) or moves (onto a pane; Alt,
+// or the platform's copy key, ⌘ on the Mac and Ctrl elsewhere, copies), "· L" / "· R" where two units share a pane, and "+N" with the list when the header can't fit them all.
 import { run } from './lib.js';
 
 run('chips', async ({ p, check, wait, until, text, visible }) => {
@@ -23,6 +23,23 @@ run('chips', async ({ p, check, wait, until, text, visible }) => {
   await p.dragAndDrop(chip(1, 2), '#stack [data-pane="0"] .plot');
   await p.keyboard.up('Alt');
   check('Alt copies it', JSON.stringify((await app('panes'))[0]) === '[1,2]' && (await app('panes'))[1].includes(2), await app('panes'));
+  // the platform's copy key too: ⌘ on the Mac, Ctrl elsewhere (owner, Nov 14; sheet C1), with a "+" while it is down
+  const KEY = await p.evaluate(() => (/Mac/.test(navigator.platform) ? 'Meta' : 'Control'));
+  await p.hover(chip(0, 2));
+  await p.click(`${chip(0, 2)} [data-chip-x]`);
+  await until(() => !window.__tlmApp.panes()[0].includes(2));
+  const from = await p.locator(chip(1, 2)).boundingBox();
+  const to = await p.locator('#stack [data-pane="0"] .plot').boundingBox();
+  await p.mouse.move(from.x + 8, from.y + 8);
+  await p.mouse.down();
+  await p.mouse.move(from.x + 30, from.y + 30, { steps: 4 });
+  await p.keyboard.down(KEY);
+  check(`holding ${KEY} shows a "+" on the drag`, await until(() => document.documentElement.classList.contains('dnd-copy')));
+  await p.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
+  await p.mouse.up();
+  await p.keyboard.up(KEY);
+  check(`${KEY} copies it too`, await until(() => { const ps = window.__tlmApp.panes(); return ps[0].includes(2) && ps[1].includes(2); }), await app('panes'));
+  check('the "+" goes when the drag ends', !(await p.evaluate(() => document.documentElement.classList.contains('dnd-copy'))));
 
   // onto empty space: a new pane (the same view with the setting)
   const n0 = (await app('panes')).length;

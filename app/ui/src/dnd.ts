@@ -31,6 +31,13 @@ class Transfer {
   setDragImage(): void {}
 }
 
+const MAC = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
+/** Whether a drop copies instead of moving: Option (Finder's key) or ⌘ on the Mac, Ctrl on Windows and Linux, and Alt
+ * everywhere, as the prototype (owner, Nov 14; sheet C1). */
+/** The copy key's name, for tooltips. */
+export const COPY_KEY = MAC ? 'Option or ⌘' : 'Ctrl';
+export const isCopy = (e: { altKey: boolean; metaKey: boolean; ctrlKey: boolean }): boolean => e.altKey || (MAC ? e.metaKey : e.ctrlKey);
+
 function fire(type: string, target: Element | null, at: MouseEvent, dt: Transfer): boolean {
   if (!target) return false;
   const ev = new MouseEvent(type, {
@@ -113,6 +120,8 @@ export function installPointerDnd(): void {
       drag.over = el;
       if (el) fire('dragenter', el, e, drag.dt);
     }
+    // a "+" on the drag while the copy key is down
+    document.documentElement.classList.toggle('dnd-copy', isCopy(e));
     drag.dt.dropEffect = drag.dt.effectAllowed === 'copy' ? 'copy' : 'move';
     drag.ok = fire('dragover', el, e, drag.dt);
     if (!drag.ok) drag.dt.dropEffect = 'none';
@@ -124,7 +133,7 @@ export function installPointerDnd(): void {
     if (!drag) return;
     const d = drag;
     drag = null;
-    document.documentElement.classList.remove('dnd-active', 'dnd-no');
+    document.documentElement.classList.remove('dnd-active', 'dnd-no', 'dnd-copy');
     d.ghost.remove();
     if (!cancelled && d.ok && d.over) {
       fire('drop', d.over, e, d.dt);
@@ -147,9 +156,11 @@ export function installPointerDnd(): void {
         e.preventDefault();
         end(drag.last, true);
       }
+      if (drag) document.documentElement.classList.toggle('dnd-copy', isCopy(e));
     },
     true,
   );
+  window.addEventListener('keyup', (e) => drag && document.documentElement.classList.toggle('dnd-copy', isCopy(e)), true);
   window.addEventListener(
     'click',
     (e) => {

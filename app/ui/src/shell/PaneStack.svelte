@@ -3,6 +3,7 @@
      menu closes, duplicates and splits panes. app.ts draws each pane's plot and handles the pointer over it. -->
 <script lang="ts">
   import { PAD } from '../axes';
+  import { COPY_KEY, isCopy } from '../dnd';
   import { ICON } from '../icons';
   import { chCss, chLimits, chName, chUnit, limitText, openChannelEditor } from '../display.svelte';
   import {
@@ -96,7 +97,7 @@
     carrying = false;
     if (isChip(e)) {
       const c = chipOf(e);
-      if (c) newPaneBefore([c.ch], first, settings.dropNewView === 'same' ? stack.panes[c.from]?.mode : undefined, e.altKey ? undefined : c);
+      if (c) newPaneBefore([c.ch], first, settings.dropNewView === 'same' ? stack.panes[c.from]?.mode : undefined, isCopy(e) ? undefined : c);
     } else {
       const chs = chansOf(e);
       if (chs.length) newPaneBefore(chs, first);
@@ -109,7 +110,7 @@
     const row = rows().find((r) => r.includes(to)) ?? [to];
     const chip = chipOf(e);
     // a chip that is alone in its own column frees that column when it moves
-    const freed = chip && !e.altKey && columns(row).some((c) => c.length === 1 && c[0] === chip.from && stack.panes[chip.from].channels.length === 1) ? 1 : 0;
+    const freed = chip && !isCopy(e) && columns(row).some((c) => c.length === 1 && c[0] === chip.from && stack.panes[chip.from].channels.length === 1) ? 1 : 0;
     if (columns(row).length - freed >= MAX_PER_ROW) return null;
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const f = (e.clientX - r.left) / r.width;
@@ -152,7 +153,7 @@
     const h = (e.currentTarget as HTMLElement).parentElement?.querySelector('.plot, [data-xy] canvas')?.getBoundingClientRect().height ?? 150;
     setPlotH(i, h + (e.key === 'ArrowDown' ? 10 : -10));
   }
-  /** A chip dragged by its name: its channel and pane (drop on a chip to reorder, on a pane to move; Alt copies). */
+  /** A chip dragged by its name: its channel and pane (drop on a chip to reorder, on a pane to move; the copy key copies: isCopy). */
   const failing = $derived(ui.path ? failingChannels(ui.path) : new Map());
   const isChip = (e: DragEvent) => !!e.dataTransfer?.types.includes('application/x-tlm-chip');
   const chipOf = (e: DragEvent): null | { ch: number; from: number } => {
@@ -172,12 +173,12 @@
     if (!c) return;
     if (side) {
       const mode = settings.dropNewView === 'same' ? stack.panes[c.from]?.mode : undefined;
-      newPaneBeside([c.ch], to, side, mode, e.altKey ? undefined : c);
+      newPaneBeside([c.ch], to, side, mode, isCopy(e) ? undefined : c);
     } else if (to < 0) {
-      // onto empty space: a new pane, a chart or the view it came from; the channel leaves the old one unless Alt copies
+      // onto empty space: a new pane, a chart or the view it came from; the channel leaves the old one unless the copy key is down
       const mode = settings.dropNewView === 'same' ? stack.panes[c.from]?.mode : undefined;
-      newPaneWith([c.ch], mode, e.altKey ? undefined : c);
-    } else moveChannel(c.ch, c.from, to, before, e.altKey);
+      newPaneWith([c.ch], mode, isCopy(e) ? undefined : c);
+    } else moveChannel(c.ch, c.from, to, before, isCopy(e));
   }
   /** Panes whose header can't show every chip: how many are folded into "+N", and the open list. */
   let folded = $state<Record<number, number>>({});
@@ -224,7 +225,7 @@
   function paneDrop(e: DragEvent, i: number) {
     if (dragging == null) return dropChans(e, i);
     e.preventDefault();
-    if (zoneAt) dropPane(dragging, i, zoneAt.zone, e.altKey);
+    if (zoneAt) dropPane(dragging, i, zoneAt.zone, isCopy(e));
     dragging = dropAt = zoneAt = null;
   }
 
@@ -346,7 +347,7 @@
                   role="button"
                   tabindex="-1"
                   draggable="true"
-                  data-tip="Drag to move this pane"
+                  data-tip="Drag to move this pane; hold {COPY_KEY} to copy it"
                   ondragstart={(e) => {
                     dragging = i;
                     e.dataTransfer?.setData('text/plain', `pane ${i + 1}`);
@@ -358,6 +359,7 @@
                   <span
                     class="chip"
                     data-ch={ch}
+                    data-tip="Click for its display settings. Drag to another pane to move it; hold {COPY_KEY} to copy"
                     style="--c: {chCss(ch)}"
                     draggable="true"
                     role="presentation"

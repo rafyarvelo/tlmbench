@@ -26,7 +26,6 @@ run('channels', async ({ p, check, text, visible, fake, paneCount, until, wait }
   const np = await paneCount();
   await p.click('#explorer .row.cat[data-cat="other"] [data-cat-act="chart"]');
   check('a category\'s Chart opens the group in a new pane', (await paneCount()) === np + 1 && (await app('panes')).at(-1).join() === '2,3', await app('panes'));
-  await p.keyboard.press('ControlOrMeta+z').catch(() => {});
   await p.click('#stack [data-pane="3"] [data-pmenu]');
   await p.locator('.panemenu .mi', { hasText: /^Close pane$/ }).click();
   check('back to three panes', (await paneCount()) === 3);
