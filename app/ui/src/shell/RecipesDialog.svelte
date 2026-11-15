@@ -72,25 +72,6 @@
   .recdlg {
     width: min(640px, calc(100vw - 32px));
   }
-  .dclose {
-    display: grid;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--fg-muted);
-  }
-  .dclose:hover {
-    border-color: var(--border);
-    background: var(--raised);
-    color: var(--fg);
-  }
-  .dclose :global(svg) {
-    width: 10px;
-    height: 10px;
-  }
   .recbody {
     display: flex;
     flex: 1;

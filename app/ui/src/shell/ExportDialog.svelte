@@ -56,7 +56,7 @@
 
 {#if exp.open && ctx}
   <div class="scrim" role="presentation" onclick={actions.exportClose}></div>
-  <div class="dlg recdlg" id="exportDlg" role="dialog" aria-label="Export data">
+  <div class="dlg xdlg" id="exportDlg" role="dialog" aria-label="Export data">
     <header><b>Export data</b><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={actions.exportClose}>{@html ICON.close}</button></header>
     <div class="recbody">
       <p class="muted">The samples, for other tools: a file plus a list of its channels. The command line writes the same with <code>tlmbench convert</code>.</p>
@@ -113,7 +113,7 @@
 
 {#if img.open}
   <div class="scrim" role="presentation" onclick={actions.imageClose}></div>
-  <div class="dlg recdlg" id="imageDlg" role="dialog" aria-label="Save the view as an image">
+  <div class="dlg xdlg" id="imageDlg" role="dialog" aria-label="Save the view as an image">
     <header><b>Save the view as an image</b><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={actions.imageClose}>{@html ICON.close}</button></header>
     <div class="recbody">
       <p class="muted">The panes as they look now: traces, axes, cursors and markers, in the current theme.</p>
@@ -142,147 +142,3 @@
       <button class="tbtn primary" id="imGo" disabled={!img.panes || img.busy} onclick={actions.imageGo}>Save…</button></footer>
   </div>
 {/if}
-
-<style>
-  .recdlg {
-    display: flex;
-    flex-direction: column;
-    width: min(620px, calc(100vw - 32px));
-    max-height: 84vh;
-    overflow: hidden;
-    padding: 0;
-    gap: 0;
-    border-radius: 12px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-    font-size: 13px;
-  }
-  .recdlg > header,
-  .recdlg > footer {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 14px;
-  }
-  .recdlg > header {
-    border-bottom: 1px solid var(--grid);
-  }
-  .recdlg > header b {
-    font-weight: 600;
-  }
-  .recdlg > footer {
-    border-top: 1px solid var(--grid);
-  }
-  .recdlg > footer .muted {
-    font-size: 12px;
-  }
-  .recdlg > footer .tbtn {
-    min-height: 30px;
-    padding: 0 12px;
-    border-radius: 4px;
-    font: 500 11.5px var(--font-ui);
-  }
-  .recdlg > footer .tbtn.primary {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: #fff;
-  }
-  .recdlg > footer .tbtn:disabled {
-    opacity: 0.5;
-  }
-  .dclose {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--fg-muted);
-  }
-  .dclose:hover {
-    border-color: var(--border);
-    background: var(--raised);
-    color: var(--fg);
-  }
-  .dclose :global(svg) {
-    width: 10px;
-    height: 10px;
-  }
-  .recbody {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 0;
-    padding: 10px 14px;
-    overflow-y: auto;
-  }
-  .recbody p {
-    margin: 0;
-  }
-  .muted,
-  .hint {
-    color: var(--fg-muted);
-    font-size: 12px;
-  }
-  .lvrow {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .lvf {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 180px;
-    font-size: 12px;
-  }
-  .lvf > span:first-child {
-    color: var(--fg-muted);
-  }
-  .lvf .sel {
-    width: 100%;
-    min-height: 30px;
-    padding: 0 8px;
-  }
-  .lvchk {
-    display: flex;
-    flex: 1;
-    align-items: flex-end;
-    gap: 6px;
-    min-width: 180px;
-    padding-bottom: 6px;
-    font-size: 12px;
-  }
-  .exsum {
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--raised);
-    font-size: 12px;
-  }
-  .cap {
-    margin-top: 4px;
-    color: var(--fg-muted);
-    font-size: 11.5px;
-  }
-  .exfiles {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 12px;
-  }
-  .exfiles code,
-  .hint code {
-    font-family: var(--font-data);
-  }
-  .recstat {
-    font-size: 12px;
-  }
-  .recstat.bad {
-    color: var(--danger);
-  }
-</style>

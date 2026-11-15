@@ -1,6 +1,6 @@
 // Every dialog opens centred across the window and inside it (sheet E2, F1: Rules and checks and Export to HTML opened
 // stuck in the top-left corner because only some dialogs centred themselves). One shared rule in style.css centres `.dlg`;
-// a dialog taller than the window scrolls its body, and Escape closes each one.
+// a dialog taller than the window scrolls its body, its close button is the shared one, and Escape closes each one.
 import { run } from './lib.js';
 
 const ch = (n) => `#explorer .row.chan[data-ch="${n}"]`;
@@ -34,6 +34,8 @@ run(
         check(`${name} is centred across the window`, Math.abs(mid - vp.width / 2) <= 2, r);
         check(`${name} is inside the window`, r.l >= 0 && r.t >= 0 && r.r <= vp.width && r.b <= vp.height, r);
         check(`${name} is not in the top-left corner`, r.t > 8 && r.l > 8, r);
+        const close = await p.$eval(sel, (e) => { const b = e.querySelector('.dclose'); return b ? Math.round(b.getBoundingClientRect().width) : null; });
+        if (close !== null) check(`${name}: its close button is the shared 26 px one`, close === 26, close);
         const spill = await p.$eval(sel, (e) => e.scrollHeight - e.clientHeight);
         check(`${name}: nothing spills past its bottom (its body scrolls)`, spill <= 1, spill);
         await p.keyboard.press('Escape');

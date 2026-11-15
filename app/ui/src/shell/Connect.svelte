@@ -207,26 +207,6 @@
   .livedlg > header b {
     font-weight: 600;
   }
-  .dclose {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--fg-muted);
-  }
-  .dclose:hover {
-    border-color: var(--border);
-    background: var(--raised);
-    color: var(--fg);
-  }
-  .dclose :global(svg) {
-    width: 10px;
-    height: 10px;
-  }
   .lvdlg {
     display: grid;
     grid-template-columns: 190px minmax(0, 1fr);

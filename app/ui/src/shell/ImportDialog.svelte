@@ -226,26 +226,6 @@
   .livedlg > footer .tbtn.primary:disabled {
     opacity: 0.5;
   }
-  .dclose {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--fg-muted);
-  }
-  .dclose:hover {
-    border-color: var(--border);
-    background: var(--raised);
-    color: var(--fg);
-  }
-  .dclose :global(svg) {
-    width: 10px;
-    height: 10px;
-  }
   .lverr {
     margin: 0;
     padding: 0 14px 8px;

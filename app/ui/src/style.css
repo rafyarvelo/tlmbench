@@ -821,6 +821,32 @@ kbd {
   font-weight: 600;
 }
 
+/* a dialog's close button, as the prototype's .pclose */
+.dclose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.dclose:hover {
+  border-color: var(--border);
+  background: var(--raised);
+  color: var(--fg);
+}
+
+.dclose svg {
+  width: 10px;
+  height: 10px;
+}
+
 .dsub {
   overflow: hidden;
   color: var(--fg-muted);
@@ -1044,4 +1070,150 @@ body.viewer .ckbar,
 body.viewer [data-cedit],
 body.viewer [data-cattach] {
   display: none;
+}
+
+/* The export dialogs (Export data, Save the view as an image, Export to HTML): a header and footer with rules, a
+   scrolling body of labelled fields, a summary box and the command line. */
+.xdlg {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, calc(100vw - 32px));
+  max-height: 84vh;
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+}
+
+.xdlg > header,
+.xdlg > footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.xdlg > header {
+  border-bottom: 1px solid var(--grid);
+}
+
+.xdlg > header b {
+  font-weight: 600;
+}
+
+.xdlg > footer {
+  border-top: 1px solid var(--grid);
+}
+
+.xdlg > footer .muted {
+  font-size: 12px;
+}
+
+.xdlg > footer .tbtn {
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font: 500 11.5px var(--font-ui);
+}
+
+.xdlg > footer .tbtn.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.xdlg > footer .tbtn:disabled {
+  opacity: 0.5;
+}
+
+.xdlg .recbody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px 14px;
+  overflow-y: auto;
+}
+
+.xdlg .recbody p {
+  margin: 0;
+}
+
+.xdlg .muted,
+.xdlg .hint {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.xdlg .lvrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.xdlg .lvf {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 180px;
+  font-size: 12px;
+}
+
+.xdlg .lvf > span:first-child {
+  color: var(--fg-muted);
+}
+
+.xdlg .lvf .sel {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+}
+
+.xdlg .lvchk {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 180px;
+  padding-bottom: 6px;
+  font-size: 12px;
+}
+
+.xdlg .exsum {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--raised);
+  font-size: 12px;
+}
+
+.xdlg .cap {
+  margin-top: 4px;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+
+.xdlg .exfiles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.xdlg .exfiles code,
+.xdlg .hint code {
+  font-family: var(--font-data);
+}
+
+.xdlg .recstat {
+  font-size: 12px;
+}
+
+.xdlg .recstat.bad {
+  color: var(--danger);
 }
