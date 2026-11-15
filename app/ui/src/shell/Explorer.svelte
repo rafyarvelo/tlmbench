@@ -58,6 +58,9 @@
     return c ? stateOf(c.health, c.stopped) : null;
   });
   const slotOf = (path: string) => ui.slots.find((s) => s.path === path);
+  /** How a file of the tab is aligned to file 1, in words. */
+  const alignWord = (sl: (typeof ui.slots)[number]) =>
+    ({ starts: 'starts aligned', clock: 'same clock', timesrc: 'time channel', xcorr: 'correlated', events: 'events', sync: 'sync points', manual: 'offset', plugin: sl.align.plugin ?? 'plugin' })[sl.align.method];
   /** The file whose Alignment is showing (its slot number). */
   let alignOpen = $state<number | null>(null);
   /** The open files, each with the tab a click brings forward (its file tab, else a layout shown on it). */
@@ -423,9 +426,11 @@
 
 {#snippet file(path: string, name: string, depth: number)}
   {@const open = isOpen(path)}
+  {@const sl = ui.slots.length > 1 ? slotOf(path) : undefined}
   <div
     class="row file"
     class:open
+    class:slotted={!!sl}
     class:cant={!listedPath(path)}
     class:sel={sel === path || pickedFiles.includes(path)}
     role="treeitem"
@@ -440,7 +445,7 @@
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}<span class="nm">{name}</span><CheckBadge {path} />{#if open && ui.slots.length < 2 && frontState}{@const fs = frontState}<span class="meta lvst" data-state={fs} data-lvstate>{WORD[fs]}</span>{/if}{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}{#if sl}<b class="slotn" data-fslot={sl.slot}>{sl.slot}</b>{/if}<span class="nm">{name}</span>{#if sl}<span class="meta" data-fslotmeta>{sl.slot === 1 ? 'primary' : `${sl.align.locked ? 'locked · ' : ''}${alignWord(sl)}`}</span>{/if}<CheckBadge {path} />{#if open && ui.slots.length < 2 && frontState}{@const fs = frontState}<span class="meta lvst" data-state={fs} data-lvstate>{WORD[fs]}</span>{/if}{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
@@ -489,7 +494,7 @@
     onclick={() => sl.slot > 1 && (alignOpen = alignOpen === sl.slot ? null : sl.slot)}
     onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), sl.slot > 1 && (alignOpen = alignOpen === sl.slot ? null : sl.slot))}>
     <b class="slotn">{sl.slot}</b><span class="nm">{sl.name}</span>{#if stateById(sl.file)}{@const ss = stateById(sl.file)!}<span class="meta lvst" data-state={ss} data-lvstate>{WORD[ss]}</span>{/if}
-    {#if sl.slot === 1}<span class="meta" data-primary>primary</span>{:else}<span class="meta" data-asum>{sl.align.locked ? 'locked · ' : ''}{({ starts: 'starts aligned', clock: 'same clock', timesrc: 'time channel', xcorr: 'correlated', events: 'events', sync: 'sync points', manual: 'offset', plugin: sl.align.plugin ?? 'plugin' })[sl.align.method]}</span>{/if}
+    {#if sl.slot === 1}<span class="meta" data-primary>primary</span>{:else}<span class="meta" data-asum>{sl.align.locked ? 'locked · ' : ''}{alignWord(sl)}</span>{/if}
     <span class="slotact">
       {#if sl.slot > 1}<button class="linkbtn" data-makeprimary data-tip="Make this file the primary: file 1 keeps plain channel names and defines time zero" onclick={(e) => (e.stopPropagation(), actions.makePrimary(sl.slot))}>Make primary</button>{/if}
       <button class="ibtn" data-closeslot aria-label="Close {sl.name}" data-tip="Close this file" onclick={(e) => (e.stopPropagation(), actions.closeSlot(sl.slot))}>{@html ICON.close}</button>
@@ -762,7 +767,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .row.file.open .nm {
+  .row.file.open .nm,
+  .row.file.slotted .nm {
     color: var(--accent);
     font-weight: 600;
   }
@@ -899,6 +905,26 @@
   }
   .where + .unit {
     margin-left: 8px;
+  }
+  /* quiet by default (D-ui-10): the unit and the pane show on hover, focus or selection */
+  .row.chan .where,
+  .row.chan .unit {
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .row.chan:hover .where,
+  .row.chan:hover .unit,
+  .row.chan:focus-within .where,
+  .row.chan:focus-within .unit,
+  .row.chan.sel .where,
+  .row.chan.sel .unit {
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .row.chan .where,
+    .row.chan .unit {
+      transition: none;
+    }
   }
   .selbar {
     display: flex;
