@@ -27,7 +27,7 @@ import { COMMANDS, matches, menuLabel } from './commands';
 import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, REMEMBERED, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
-import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
+import { catColor, catName, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
 import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, lineOf, type Limits, limitsOf, openChannelEditor, twinIn } from './display.svelte';
 import {
@@ -1394,6 +1394,7 @@ function updateChips(): void {
   if (JSON.stringify(values) !== JSON.stringify(stack.values)) stack.values = values;
   if (JSON.stringify(levels) !== JSON.stringify(stack.levels)) stack.levels = levels;
   const hit = state.hoverT != null ? eventAt(state.hoverT) : null;
+  showEventTip(hit);
   // over another file's channel that sits off its own clock, the readout gives both: `file 2 … (own clock …)`
   let own = '';
   const ms = state.file?.members;
@@ -3240,6 +3241,30 @@ async function loadEvents(): Promise<void> {
 }
 
 onMarksChange(() => scheduleDraw());
+
+/** The tooltip over an event marker: name, category, start and duration (design: Events). */
+let evTip: HTMLElement | null = null;
+let pointerAt = { x: 0, y: 0 };
+stackEl.addEventListener('pointermove', (e) => (pointerAt = { x: e.clientX, y: e.clientY }), true);
+function showEventTip(hit: TlmEvent | null): void {
+  if (!hit) {
+    evTip?.remove();
+    evTip = null;
+    return;
+  }
+  if (!evTip) {
+    evTip = document.createElement('div');
+    evTip.className = 'tip evtip';
+    evTip.id = 'evTip';
+    document.body.append(evTip);
+  }
+  const span = Number(state.t1 - state.t0);
+  const len = BigInt(hit.duration);
+  evTip.innerHTML = `<b>${esc(hit.name)}</b><br>${esc(catName(hit.category))} · ${esc(readoutTime(BigInt(hit.start), span))} · ${len > 0n ? esc(duration(Number(len))) : 'instant'}`;
+  const [w, h] = [evTip.offsetWidth, evTip.offsetHeight];
+  evTip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, pointerAt.x + 12))}px`;
+  evTip.style.top = `${Math.max(8, Math.min(window.innerHeight - h - 8, pointerAt.y + 18))}px`;
+}
 
 /** The marked event the pointer time is in (an instant: within a few pixels of it). */
 function eventAt(t: bigint): TlmEvent | null {

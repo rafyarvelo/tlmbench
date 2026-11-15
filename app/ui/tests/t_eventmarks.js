@@ -80,6 +80,19 @@ run(
     const on = await plotAt(0, 0.55);
     await p.mouse.move(on.x, on.y);
     check('the pointer readout names the event under it', await until(() => /Hover test/.test(document.querySelector('#hoverTxt')?.textContent ?? '')), await text('#hoverTxt'));
+    // a tooltip on the marker: name, category, start and duration (D-ui-11)
+    check('hovering a range marker shows a tooltip with its name, category, start and length', await until(() => /Hover test/.test(document.querySelector('#evTip')?.textContent ?? '') && /Mode change/.test(document.querySelector('#evTip')?.textContent ?? '') && /s/.test(document.querySelector('#evTip')?.textContent ?? '') && !/instant/.test(document.querySelector('#evTip')?.textContent ?? '')), await text('#evTip'));
+    const off = await plotAt(0, 0.95);
+    await p.mouse.move(off.x, off.y);
+    check('it goes when the pointer leaves the marker', await until(() => !document.querySelector('#evTip')));
+    // an instant is hit within a few pixels: look along its place
+    for (const f of [0.3, 0.297, 0.303, 0.294, 0.306, 0.29, 0.31]) {
+      const inst = await plotAt(0, f);
+      await p.mouse.move(inst.x, inst.y);
+      if (await until(() => !!document.querySelector('#evTip'), null, 400)) break;
+    }
+    check('an instant says so', await until(() => /Spike/.test(document.querySelector('#evTip')?.textContent ?? '') && /instant/.test(document.querySelector('#evTip')?.textContent ?? '')), await text('#evTip'));
+    await p.mouse.move(5, 5);
   },
   { files: { '/data/flight.tlm': {} }, launch: '/data/flight.tlm' },
 );
