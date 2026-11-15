@@ -3,11 +3,20 @@
 The same interface as the app, with the core compiled to WebAssembly, running in the page. Nothing is installed, nothing is
 uploaded (the page has no server behind it), and nothing is written beside your data. Choose a CSV or drop one on the page.
 
-What it reads today: CSV files (the decoder's own CSV reader, so units in the header, the time column and time that goes
-backwards read as in the app) tlmbench reference files (`.tlm`: the decoder's own header, descriptor and time code) and Parquet (snappy, LZ4, gzip, brotli and Zstandard; the same rules as the app for the time column, units and nulls). The Parquet reader is a module of its own (about 1 MB gzipped) that the page fetches only when a Parquet file is opened. The parse runs in a Worker, so a big file doesn't freeze the tab. What was read is kept in the
-browser's private storage (OPFS); the same file opens from it next time, and **a reload brings back the files that were
-open**. Settings › Clear cache empties that storage. What a tab can't do is left out, not shown as a button that does nothing (no Live in the rail; Settings has no browser access, plugins, live recording or shared configuration). The app reads more (packets, descriptors from files,
-plugins, folders, live sources, derived channels, checks); see `docs/follow-ups.md`.
+**What it reads today:** CSV (the decoder's own reader, so units in the header, the time column and time that goes
+backwards read as in the app), tlmbench reference files (`.tlm`: the decoder's own header, descriptor and time code) and
+Parquet (snappy, LZ4, gzip, brotli and Zstandard, by the app's rules for the time column, units and nulls). The Parquet
+reader is a module of its own (about 1 MB gzipped) that the page fetches only when a Parquet file opens. The parse runs in
+a Worker, so a big file doesn't freeze the tab. What was read is kept in the browser's private storage (OPFS); the same
+file opens from it next time, and **a reload brings back the files that were open**. Settings › Clear cache empties it.
+
+**Still to come for v1** (release plan R2.2): fixed-width and packet files through descriptors (kept in the browser,
+found by file name), WASM decoder plugins in the browser's own engine, and read-only folders where the browser can open
+one (`showDirectoryPicker`), with the folder's `.tlmbench/` read for shared configuration.
+
+**What a tab leaves out:** what needs the app (live sources, native plugins, browser access, recording, writing shared
+configuration), and what comes after v1 (several files in one tab with alignment, derived channels, events, rules and
+checks, layouts: `docs/post-v1.md`). A tab doesn't show a button that can't act.
 
 ## Hosting it
 

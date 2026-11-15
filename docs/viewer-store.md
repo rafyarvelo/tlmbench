@@ -1,6 +1,6 @@
-# R2.1: the viewer's sparse store and the plan for what a view reads
+# The viewer's sparse store: what an export holds and what a view reads
 
-Written before the code (step R2.1, Nov 11, 2026). It covers Light's raw windows and a trimmed export, which both
+How the HTML export's viewer holds data (built in release step R2.1, Nov 11, 2026; written as its plan, kept as the reference). It covers Light's raw windows and a trimmed export, which both
 need a viewer core that holds a channel partly: raw samples for some stretches only, and a pyramid whose finest level
 may be above level 4.
 

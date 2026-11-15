@@ -1,5 +1,9 @@
 # Roadmap to v1: the app
 
+> **History (frozen Nov 15, 2026).** This roadmap took the app from Phase 4 to step 5.10; its status table stops there.
+> Where things stand now is `docs/release/release-plan.md` (the status table) and `docs/release/ledger.md` (every feature).
+> The accepted differences below are ledger rows A-01 to A-04; new ones are added there, by the owner, through R3.0.
+
 Nov 7, 2026. How the app gets from where it is to v1: everything `docs/design.md` promises, looking and behaving like
 the prototype (`prototype/plotter.html`), and faster than it. `docs/feature-matrix.md` lists every feature with its
 state in the design, the prototype and the app, and names the step below that closes each gap. This roadmap replaces

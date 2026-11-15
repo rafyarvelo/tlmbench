@@ -110,8 +110,8 @@ You said: "I expected Browser support to be almost analogous to what the prototy
 Changed so far: a CSV is read in a background thread (a big file doesn't freeze the tab); a reload brings the open files
 back; the page no longer offers folders or live sources, which a tab can't do. **New (Nov 15, later build): a `.tlm` and a
 Parquet file open** (Parquet: snappy, LZ4, gzip, brotli and Zstandard; its reader is a separate download of about 1 MB that
-the page fetches only when you open a Parquet file). Not built yet: packets, descriptors, folders, derived channels,
-events, checks, several files in a tab (they come next).
+the page fetches only when you open a Parquet file). Not built yet: packets, descriptors, WASM plugins and folders
+(next). Several files, derived channels, events and checks in a tab come after v1 (your scope, Nov 15).
 Do: Serve the page (see above). Choose or drop `flights/flight-1.csv`. Then `browser/bench.tlm` (200,000 samples; `just
 testdata` writes it, and `browser/codecs-snappy.parquet` and `codecs-zstd.parquet` if pyarrow is installed). Open a
 Parquet file and look at the Network tab of the browser's developer tools: `tlmbench_parquet.wasm` loads only then. Drop a

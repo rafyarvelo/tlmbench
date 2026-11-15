@@ -1,5 +1,8 @@
 # Release review (R1)
 
+> **History: the R1 review as written Nov 11, 2026.** Its counts are out of date; the ledger holds the current ones and the
+> release plan's status table the steps. The owner's answers to section 6 are in the release plan and the ledger.
+
 Nov 11, 2026, on `main` at `d45727c`. Every roadmap step (4.1 to 5.10) and every Accepted or Modified design decision,
 checked against the code and against tests run in this review. The rows are in `docs/release/ledger.md`;
 `python3 ci/ledger_check.py` checks them. No code was changed.

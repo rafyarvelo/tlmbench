@@ -2,9 +2,10 @@
 
 Desktop telemetry workbench: Rust core, Tauri app with a web UI, CLI and Python bindings over the same core.
 The repo holds the design doc, the Rust crates, CLI and Tauri app, a single-file HTML prototype of the UI, its tests, and example shared config.
-Phases 1–3 (core loop, scale, live) are done and Phase 4 (formats and polish) is under way; the phases and gates are in
-`docs/design.md`, and `docs/roadmap.md` orders the remaining steps (one agent at a time) with `docs/feature-matrix.md`
-showing each feature in the design, the prototype and the app.
+The app is feature-complete against the old roadmap (steps 4.1 to 5.10) and is on the way to v1.0.0:
+`docs/release/release-plan.md` orders that work (one agent at a time) and its status table is the only record of where each
+step stands; `docs/release/ledger.md` is the only feature status (`ci/ledger_check.py`). `docs/release/next-agent-prompt.md`
+is the hand-off. `docs/roadmap.md`, `docs/feature-matrix.md` and `docs/parity-audit.md` are history: don't update them.
 
 ## Hard requirements (never trade these away)
 
@@ -23,7 +24,7 @@ showing each feature in the design, the prototype and the app.
   page; Share and Export are simulated. Published copy: https://claude.ai/artifact/L3Aw4dwFS24oqwfU1yJDv5
 - `prototype/tests/`: Playwright tests, one `t_*.js` per area, `./run.sh` to run them (see its README).
 - `docs/development.md`: setup (`brew bundle`, `ci/setup.sh`), recipes, pinned versions, CI. `docs/follow-ups.md`:
-  deferred work (large recordings, benchmark tracking).
+  notes owed to the design doc; `docs/post-v1.md`: what the owner placed after the release (new ideas go there, not into v1).
 - `justfile`, `ci/`: the same recipes run on the Mac and in CI (`just ci-linux` in the image from `ci/Dockerfile`).
   Tool versions are pinned in `rust-toolchain.toml`, `ci/versions.env`, `requirements-dev.txt` and the tests' package.json.
 - `examples/recordings/.tlmbench/`: shared configuration in the formats the app writes (TOML for files people

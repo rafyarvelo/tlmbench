@@ -113,6 +113,14 @@ When a Linux job fails and you need a shell in the same environment, open the re
 `.devcontainer/` from the same Dockerfile, with the fixture folder mounted read-only at `/data/ro`. Or build it locally
 (`docker build -f ci/Dockerfile -t tlmbench-ci .`, about 6 GB) and remove it afterwards.
 
+## Large test recordings
+
+Recordings are generated, never stored or committed: the generator is deterministic from a seed. They go to
+`$TLMBENCH_DATA` (default `~/tlmbench-data`); point it at an external drive for the 10 GB and 100 GB sets. 10 GB serves
+the first-paint target and the CLI's flat-memory claim for `convert` and `check`; 100 GB serves `convert`'s. Neither suits
+CI runners (about 14 GB free), so they run on the Mac (`just gen-gate2`, below). Mounted read-only (an `hdiutil` image),
+they also extend `just ro-test`.
+
 ## Editor
 
 Cursor and VS Code read `.vscode/extensions.json` (rust-analyzer, Even Better TOML, Playwright, Python, basedpyright,

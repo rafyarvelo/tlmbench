@@ -1,5 +1,8 @@
 # Parity audit: the app against the prototype
 
+> **History (frozen Nov 15, 2026; last redone Nov 11).** Release step R3.0 re-runs the audit as a classification (Port, App
+> is better, Noise) in `docs/release/parity-classes.md`, which replaces this file. Don't update it.
+
 Audited Nov 2, 2026 on `main` (814feec), redone Nov 11 (see the Lead and "Parity pass, Nov 11"). Shared styles and sizes fixed Nov 3 (see "Fixed since the audit"); the rows below are as audited unless they say fixed or re-checked. The reference is `prototype/plotter.html`. The app is `app/ui/` (Svelte 5 and
 TypeScript), built with `npm run build` and run against the fake core (`app/ui/tests/fakecore.js`) with three
 recordings in a folder `/data`. Both were screenshotted at 1440×900 in dark theme, once in light theme and once at

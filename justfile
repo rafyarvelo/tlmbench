@@ -11,7 +11,7 @@ ro_dir := env("TLMBENCH_RO_DIR", "prototype/tests/fold")
 ro_required := env("TLMBENCH_RO_REQUIRED", "")
 # Commands run against that folder (ci/ro_cli.sh; its cache goes to a temp folder); each phase adds what it brings
 ro_commands := "--cmd 'ci/ro_cli.sh \"" + ro_dir + "\"'"
-# Generated recordings (never in the repo; see docs/follow-ups.md for the large sets)
+# Generated recordings (never in the repo; see docs/development.md, "Large test recordings")
 data := env("TLMBENCH_DATA", home_directory() / "tlmbench-data")
 
 default:

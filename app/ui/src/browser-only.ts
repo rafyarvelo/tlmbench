@@ -3,8 +3,9 @@
 // in the browser's private file storage (OPFS) so opening the same file again skips the parse. Nothing is written beside the
 // data, and nothing leaves the machine. (Design: Export to HTML › browser-only mode.)
 //
-// What it reads and does is smaller than the app's: CSV, Parquet and .tlm files, charts, tables, values and Measure. Binary formats, packet files,
-// descriptors, plugins, folders, live sources, derived channels and checks are the app's (see docs/follow-ups.md).
+// What it reads and does is smaller than the app's: CSV, Parquet and .tlm files, charts, tables, values and Measure. Descriptors,
+// packets, WASM plugins and folders are still to come (release plan R2.2); live sources and native plugins need the app; several
+// files, derived channels, events and checks in a tab are after v1 (docs/post-v1.md).
 
 import { isParquet, parquetDump } from './parquet-wasm';
 import { type Commands, installInternals, loadCore, stubs } from './wasmcore';

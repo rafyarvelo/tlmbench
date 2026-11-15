@@ -1,32 +1,94 @@
 # Release plan: from step 5.10 to v1.0.0
 
-Nov 11, 2026. What stands between `main` and a release people can install, and the order the work runs in. It follows
-`docs/roadmap.md` (which got the app to feature-complete as far as its own accounts go) and keeps its rules: one agent at
-a time, a step runs from a clean `main` to a clean `main`, tests and docs with every change, decisions belong to the owner.
-The hard requirements in `CLAUDE.md` still bind. Nothing here cuts scope: where the design promises a thing that isn't
-built, a step builds it.
+Written Nov 11, 2026; brought up to date Nov 15. What stands between `main` and a release people can install, and the
+order the work runs in. It follows `docs/roadmap.md` (which got the app to feature-complete as far as its own accounts go;
+that file is now history) and keeps its rules: one agent at a time, a step runs from a clean `main` to a clean `main`,
+tests and docs with every change, decisions belong to the owner. The hard requirements in `CLAUDE.md` still bind. Nothing
+here cuts design scope: where the design promises a thing that isn't built, a step builds it. What the owner places after
+v1 goes to `docs/post-v1.md`.
 
-## Where things stand (checked Nov 11)
+## One plan, one status
 
-- Steps 4.1 to 5.10 are built. 269 Rust tests pass, clippy and `just lint` are clean, `just gate5` passes on the Mac.
-- CI: run 43073397717 on `d45727c`. Linux passed everything but `t_live` ("Stop ends the recording"), a known Linux flake;
-  macOS passed on the previous two runs; Windows had two fixes pushed (the Python venv, then an extension link error
-  fixed by `opt-level = 2` in `python/Cargo.toml`) and its result is pending. The roadmap's 5.10 row still says
-  "pushed and CI-green is still to do".
-- The documents disagree about what is done. The feature matrix (204 rows, Nov 8) still marks Events ✗ though 5.2 is
-  built; the parity audit counts 283 rows with 251 ported and 20 partial; the roadmap's status table says "built" for
-  several steps whose notes say the app-parity harness never ran on them. Step R1 settles this.
-- Parity: `just app-parity` reports 214 differences over 23 scenes; most are scene-state mismatches or the app having
-  more menu items, but the audit ranks real ones (menus, Explorer, pane geometry, tables).
-- Open follow-ups, all v1 scope: Light mode's raw windows and trimmed exports in the viewer, several files in one
-  export, `--single-file`, a reduced viewer bundle, redaction inside checks, SVG and code widgets in exports, check
-  report links, browser-only mode's worker and formats, Python wheels and the missing calls, time going backwards in
-  fixed-width, packet and plugin decoders, an unmeasured Canvas 2D renderer, a static-host recipe.
-- **Nothing for release exists yet:** `bundle.active` is `false` in `app/src-tauri/tauri.conf.json`; there is no release
-  workflow in `.github/workflows/ci.yml`; no installer, signing or notarisation; no `LICENSE` (the crates say
-  `UNLICENSED`, `publish = false`); version is 0.1.0 everywhere; no CHANGELOG, CONTRIBUTING or SECURITY file; no Help
-  menu or manual in the app; no user manual or developer guide (the README, `docs/development.md` and `plugins/README.md`
-  are the only guides, and the README doubles as a progress report).
+- **This file is the plan, and its status table (below) is the only record of where each step stands.**
+- **`docs/release/ledger.md` is the only feature status**: a feature is done when its row is Done with evidence that
+  `ci/ledger_check.py` checks. Every step moves its rows in the same commits as its code.
+- `docs/release/next-agent-prompt.md` is a short hand-off: what the next agent does first. It never holds status of its
+  own; it points here.
+- `docs/release/owner-test-sheet.md` holds only what the owner has still to try; `docs/release/ui-audits.md` the audits'
+  findings; `docs/follow-ups.md` the design-doc notes owed; `docs/post-v1.md` what waits for after the release.
+- `docs/roadmap.md`, `docs/feature-matrix.md`, `docs/parity-audit.md` and `docs/release/review.md` are history (Nov 11 and
+  earlier). Don't update them; the ledger and the R3.0 classification replace them.
+
+**A step is done when** its ledger rows are Done (or Owner pass with what to look at), `python3 ci/ledger_check.py` passes,
+the owner has been asked to push and has, **CI is green on the pushed commit with no rerun**, and the status table says so
+with the commit and the run. An agent never pushes without the owner's go-ahead (CLAUDE.md), so "built, not pushed" is a
+state of its own in the table, not "done".
+
+## Status (Nov 15, 2026)
+
+| Step | State |
+| --- | --- |
+| R0 Close out 5.10 | **Open.** The two clean CI runs in a row never happened: the last run (43073397717 on `d45727c`, Nov 11) needed a rerun of `t_live` on Linux, and 62 commits (R1's follow-ups to R2.2's first half) were not pushed until this cleanup. Pushed Nov 15 with this cleanup; see the table's last row for the run |
+| R1 Review and the ledger | Done Nov 11 (`ledger.md`, `review.md`, `ci/ledger_check.py`) |
+| R2.1 Exports | Built Nov 11 (ledger rows naming R2.1; `docs/exports.md`, `docs/viewer-store.md`); CI with the Nov 15 push |
+| R2.1a The owner's first pass | Built Nov 14 and 15: the owner's 11 fixes, all nine decisions (owner-decisions memory, `follow-ups.md`), the sheet's R3 (Reset app), R12 (the viewer Locked, with Unlock) and B4 (`TLMBENCH_SLOW_BUILD`), the first UI audit. **The owner's re-test is open**: R12, B4, S1 to S4 and the older untested items on the sheet |
+| R3.0 Classification audit (new, moved up) | **Next.** Parity with the prototype and the start-of-R3 apple-design audit, classification only, no code (below) |
+| R2.2 Browser-only mode | **Half built** (D-brow-01 to -07: Worker, reload, static-host recipe, a tab offering only what it can do, `.tlm`, Parquet). Left, by the owner's scope of Nov 15: descriptors and packets, WASM decoder plugins, read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit |
+| R2.3 Decoders · R2.4 Python · R2.5 Core's Partial rows | Not started |
+| R3.1 to R3.4 Parity | Not started; their lists come from R3.0 |
+| R4 to R9 | Not started; release decisions 1 to 10 below are still the owner's to make (needed by R4) |
+| CI on the Nov 15 push | See the commit that closes this cleanup |
+
+## Recommended model per step
+
+Guidance from the owner's request (Nov 15), not a rule: the owner may run a cheaper model for cost. Opus 5.5 for work that
+needs judgement across many files or hard debugging (races, WASM, signing, design calls); Sonnet 5.5 for well-specified
+building from a list; Haiku 5.5 for mechanical work with a clear checklist. When a cheaper model than the recommendation
+runs a step, keep the step smaller and have it stop and report at the first design question rather than decide.
+
+| Step | Recommended | Why; what a cheaper model can take |
+| --- | --- | --- |
+| R0 CI de-flake | Opus | Finding races in `t_live`, `t_checks`, `t_windows`… on Linux CI, not adding retries. Sonnet can push and watch runs |
+| R3.0 Classification audit | Opus | Telling "the app is better" from "the app is behind" is a design judgement, and the apple-design audit with it. Sonnet can run the harness and take the screenshots |
+| R2.1a fixes from the owner's re-test | Sonnet | Each item is described by the owner; Opus for a bug only a real window shows that resists a first fix |
+| R2.2 descriptors and packets, WASM plugins | Opus | Splitting `packets.rs` for WASM, a streaming zstd shim, running WIT components in the browser's engine |
+| R2.2 folders, leaving out post-v1 controls | Sonnet | `showDirectoryPicker` and hiding controls by a known rule; the UI audit after it: Opus |
+| R2.3 Decoders | Sonnet | The CSV and Parquet path already shows the way (`backwards.rs`) |
+| R2.4 Python | Sonnet | Wheels, a CI matrix and trusted publishing are well documented; the Arrow C interface: Opus if it fights |
+| R2.5 Core's Partial rows | Opus | Mixed rows, several touch the store and the design; Sonnet for rows that are plainly UI |
+| R3.1 to R3.3 Parity ports | Sonnet | Ports from R3.0's classified list, with the prototype as the reference; the per-area audit after each: Opus |
+| R3.4 What the audit can't see, the pre-freeze audit | Opus | Copy, keyboard and motion review across the app is judgement |
+| R4 Packaging and release automation | Opus | Signing, notarisation and a release workflow that must work first time on three OSes |
+| R5 Real-window passes and fixes | Opus | Bugs headless tests can't see; writing the owner's checklists: Sonnet |
+| R6 Performance and security review | Opus | Measuring budgets honestly, a security review; re-running the gates: Sonnet |
+| R7 Documentation | Sonnet | The manual and guides from the design, the ledger and the app; generated reference pages and screenshot runs: Haiku |
+| R8 Cleanup | Haiku | Deleting the agreed list and pruning; dead code and dependency checks: Sonnet |
+| R9 Release candidate and release | Sonnet | Running the checklist; Opus for an RC bug that blocks the tag |
+| Status table, ledger counts, test sheet upkeep | Haiku | Bookkeeping, as part of any step |
+
+## Where things stand (checked Nov 15)
+
+- Ledger: Done 228 · Partial 45 · Missing 15 · Diverged 4 · Unverified 26 · Owner pass 17 (335 rows).
+- Tests at the last full local run (Nov 15): 104 of 104 app UI tests, `cargo nextest run --workspace` 283 passed (1
+  skipped), clippy clean. On CI: see the status table.
+- **Nothing for release exists yet:** `bundle.active` is `false` in `app/src-tauri/tauri.conf.json`; no release workflow;
+  no installer, signing or notarisation; no `LICENSE` (the crates say `UNLICENSED`); version 0.1.0 everywhere; no
+  CHANGELOG, CONTRIBUTING or SECURITY file; no manual or developer guide.
+
+### Drift found and corrected Nov 15
+
+- Steps were called done without CI: the rule "every step ends with CI green" (R0, the steps' preamble) stopped being
+  applied after Nov 11, and hand-offs began to say pushing was the owner's call without asking for it. The rule is restated
+  above.
+- R2.1a, R12 and B4 ran outside any plan table, and the roadmap's table stopped at R2.1. The status table above replaces it.
+- R2.2 had grown past the design: the plan's "derived channels, events, checks and several files as the design promises
+  for it" isn't in the design, which promises raw files, descriptors and WASM plugins in a tab. The owner set the scope
+  (below); the rest is in `docs/post-v1.md`.
+- The start-of-R3 parity audit risked porting the prototype over places where the app is now better (dialogs, the menu
+  bar, the viewer's lock, export tiers). R3 now starts with a classification the owner approves (R3.0).
+- Eight documents carried status and disagreed. They are reduced as "One plan, one status" says; `next-agent-5.8.md` and
+  `review-prompt.md` are deleted (git keeps them), the R2.1 plan became `docs/viewer-store.md`, and `follow-ups.md` keeps only
+  the design-doc notes owed (its open items were in the ledger since R1).
 
 ## Decisions the owner needs to make first
 
@@ -51,17 +113,17 @@ Sizes as in the roadmap: S a day or two, M a few days, L a week or more. One age
 sub-steps that run one after another. Every step ends with `ci/ledger_check.py` passing (after R1), CI green, and
 `docs/roadmap.md`'s status table updated.
 
-### R0 Close out 5.10 (S, in progress)
+### R0 Close out 5.10 (S, open)
 
 Get CI green on `main` (Windows' extension link, Linux's `t_live` flake), then update the roadmap's 5.10 row.
 Because releases will be built by a workflow, a test that needs "rerun failed jobs" is a release blocker:
 **de-flake `t_checks`, `t_live`, `t_folder`, `t_trigger` and `t_windows` on Linux** (find the race, not a retry; a
 retry wrapper is not a fix). Done when two consecutive full CI runs pass with no rerun.
 
-### R1 Review and the ledger (M) — prompt in `docs/release/review-prompt.md`
+### R1 Review and the ledger (M, done Nov 11)
 
-Check every roadmap step and every Accepted or Modified design decision against evidence; produce
-`docs/release/ledger.md`, `docs/release/review.md` and `ci/ledger_check.py`. **This is the strict confirmation:** from here
+Checked every roadmap step and every Accepted or Modified design decision against evidence; produced
+`docs/release/ledger.md`, `docs/release/review.md` and `ci/ledger_check.py` (the prompt it ran from is in git history). **This is the strict confirmation:** from here
 on a feature is done only when its ledger row is Done with evidence a script can check. Needs decisions: none.
 
 ### R2 Close the data-side gaps (XL, five sub-steps, in this order)
@@ -80,15 +142,26 @@ Sources: `docs/follow-ups.md` "Left from step 5.10" and the ledger's Missing and
   (`tlmbench check --report html` with `export html --checks`). Time-range views in the viewer. The reduced viewer bundle:
   dialogs and menus cut out, not hidden. Writer: `crates/export/src/html.rs`; viewer core: `crates/web/src/{data,ops}.rs`;
   page: `app/ui/src/viewer.ts`. Done when `ci/gate5.py` still passes and every export row in the ledger is Done.
-- **R2.1a The owner's first real-window pass (M, Nov 14).** The owner's findings in `docs/release/owner-test-sheet.md`,
-  triaged and ordered in `docs/release/next-agent-prompt.md`: fixes with no open decision first, nine decisions asked in
-  one message, then the release app rebuilt, the first UI audit (below), and a re-test list for the owner. It runs before
-  R2.2. The owner's F2 expectation (open folders and files in a browser, as the prototype does) is R2.2's job.
-- **R2.2 Browser-only mode (M).** Parse in a Worker (a big CSV must not freeze the tab); read Parquet, `.tlm`, packets
-  and descriptors (make `tlmbench-decode` build for WASM instead of including three of its files as source); derived
-  channels, events, checks and several files as the design promises for it, which needs the store for WASM (shared with
-  R2.1's decision); a reload remembers which files were open. A static-host recipe (GitHub Pages and a release asset)
-  for `app/browser/dist`, run by the release workflow.
+- **R2.1a The owner's first real-window pass (M, built Nov 14 and 15).** The owner's findings in
+  `docs/release/owner-test-sheet.md`: the fixes with no open decision, nine decisions (all accepted as recommended), the
+  release app rebuilt, the first UI audit, then the sheet's second round (R3 Reset app, R12 the viewer Locked with Unlock,
+  B4 a build slow enough to watch). Open: the owner's re-test of what the sheet still lists, and its question on keeping an
+  unlocked arrangement across reloads (recommendation: no; build nothing until answered).
+- **R2.2 Browser-only mode (M).** Scope (owner, Nov 15): what the design promises for a tab ("the core compiled to WASM,
+  opening raw files dropped into a browser tab. Descriptors and WASM plugins would work there, native plugins would not",
+  its cache in the browser's private storage) plus read-only folders as the prototype has them (sheet F2). Built: CSV in a
+  Worker, a reload bringing files back, the static-host recipe, `.tlm`, Parquet (D-brow-01 to -07). Left, each tested and
+  its ledger row moved before the next:
+  1. **Descriptors and packets** (D-brow-08): split the pure part of `packets.rs` (framing, checksums, payload codecs) the
+     way `parquet_core.rs` was split; the zstd shim gains a streaming decoder; descriptors kept in the browser and found by
+     file name pattern; the descriptor form on a binary file nothing claims.
+  2. **WASM decoder plugins** (D-brow-09) in the browser's own engine, with the app's limits; native plugins are named as
+     needing the app wherever they would be offered.
+  3. **Folders** (D-brow-10): `showDirectoryPicker` where the browser has it, a read-only Explorer listing and the folder's
+     `.tlmbench/` read for shared configuration; elsewhere it says so once and offers Open recording…
+  4. **Leave out what is after v1** (D-brow-05): several files and alignment, derived channels, events editing, rules and
+     checks, layouts. Hidden, not greyed: a tab shows only what it does.
+  Then the end-of-R2.2 UI audit (browser-only light and dark, each new screen). Not in R2.2: anything in `docs/post-v1.md`.
 - **R2.3 Decoders (S).** Time going backwards flagged and kept in file order in fixed-width, packet and plugin decoders,
   as CSV and Parquet already do (`crates/decode/src/backwards.rs`); the filters' causal form on live data if
   `docs/follow-ups.md` still lists it; any decoder row the ledger found Partial.
@@ -100,24 +173,35 @@ Sources: `docs/follow-ups.md` "Left from step 5.10" and the ledger's Missing and
   slots, scale and offset from settings and not only descriptors, event-aware stops, "Save as rule", the CSV import
   dialog's Panes and prefix-rule sections, and so on. The ledger is the list; nothing is dropped.
 
-### R3 App parity with the prototype (XL, sub-steps by area)
+### R3 App parity with the prototype (XL, a classification first, then sub-steps by area)
 
-The target is not zero harness differences (many are scene state), it is **every ledger row Done and every visible
-difference either fixed or in the owner's accepted-differences list**. Order by what the owner sees:
+The target is not zero harness differences (many are scene state), and it is not the prototype's look wherever the two
+differ. It is **every ledger row Done and every visible difference either fixed or approved by the owner as the app's
+way**. The app has moved past the prototype in places (the owner's decisions of Nov 14 and 15, the shared dialog frame,
+the native menu bar, the viewer's lock, export tiers, hover pane actions), and parity work must not undo them.
 
-- **R3.1 Menus and shell (M).** The tab menu's content (Save layout ⌘S, Revert changes, numbered file chip), item icons,
-  separators and group headings a pixel off; the new-tab menu; widths and padding throughout; pane geometry (204 against
-  222 px; the overview's pane picker; time range text); the channel tick.
-- **R3.2 Explorer, start page, dialogs (M).** Unit and pane badge shown only on hover (as the prototype); the heading row;
-  Explorer multi-select of categories, Enter, categories from descriptors; the start page's recent sessions and saved
-  sources; Connect's field widths and defaults; the drop-a-file flow.
-- **R3.3 Panes, charts and tables (M).** Dragging a channel to pane edges and between rows; event markers' tooltips;
-  the table's status line and Event column; slower channels held and dimmed; Stop at several categories; the Recipes and
-  profiles manager's profiles tab; Folder runs (several levels, trends tab); This tab shows.
+- **R3.0 Classification (S, runs first, before the rest of R2).** Re-run `just app-parity`, read the parity audit's rows and
+  look at both side by side; run the apple-design audit on the whole app in the same pass (the "start of R3" audit). Put
+  every difference in one of three classes, in `docs/release/parity-classes.md`:
+  - **Port**: the prototype's is better, or the app lacks it. Becomes a ledger row (or an existing row's gap) for R3.1 to
+    R3.4.
+  - **App is better**: the app's is more mature (a decision the owner made, a dialog or flow that does more, a fix of
+    something the prototype got wrong). Listed with a one-line reason and a screenshot of each for the owner. The owner's
+    decisions of Nov 14 and 15 and the roadmap's accepted list are already approved (ledger A-01 to A-04); the rest wait
+    for the owner, and **nothing in this class is ported back**. What the owner approves becomes an `A-NN` row.
+  - **Noise**: harness or scene-state differences (fake data, item counts, how the harness reads a page). Listed once, so
+    nobody chases them again.
+  No code changes in R3.0. Its output is the ordered lists for R3.1 to R3.4 and the owner's list to approve.
+- **R3.1 Menus and shell (M), R3.2 Explorer, start page, dialogs (M), R3.3 Panes, charts and tables (M).** The Port class
+  of each area, in the order the owner sees things. The lists written here before R3.0 (the tab menu's Save layout and
+  Revert, the new-tab menu, pane geometry, the channel tick; badges on hover, Explorer multi-select of categories, the
+  start page's sessions and saved sources, Connect's fields; edge drops, event marker tooltips, the table's status line and
+  Event column, slower channels dimmed, Stop at several categories, the profiles tab, folder runs, Play's lost test) are
+  candidates: R3.0 decides each one's class.
 - **R3.4 What the audit can't see (S).** Quiet interface; keyboard coverage compared with the prototype's list; every
   tooltip and empty state; copy review (plain, short, sentence case); the design's motion rules.
-- **After each sub-step:** rerun `just app-parity`, update the audit, screenshot with `node app/ui/tests/shots.js`, and run
-  the apple-design audit on that sub-step's area (see "UI audits with the apple-design skill").
+- **After each sub-step:** rerun `just app-parity`, update `parity-classes.md`, screenshot with `node app/ui/tests/shots.js`,
+  and run the apple-design audit on that sub-step's area.
 
 The UI freezes at the end of R3: after it only bug fixes touch `app/ui/src`. A full apple-design audit runs before the freeze.
 
@@ -131,7 +215,7 @@ relevant Svelte and CSS at these points, where the UI is about to settle:
 | --- | --- | --- |
 | End of R2.1a (the owner's list) | The screens that list touched: dialogs, the export dialog and its feedback, pane resize, XY, the Explorer header, the viewer | The owner called the export UI "disappointing"; set a baseline before more UI lands |
 | End of R2.2 | Browser-only mode and the viewer, light and dark | A new surface people will meet first |
-| Start of R3 | The whole app, against the prototype | It turns "looks wrong" into ranked items for R3.1 to R3.4; add ledger rows for the ones the owner accepts |
+| R3.0, moved before the rest of R2 (Nov 15) | The whole app, against the prototype, in the classification pass | It turns "looks wrong" into ranked items for R3.1 to R3.4, and names where the app is better so parity doesn't undo it |
 | End of each R3 sub-step | That sub-step's area only | Catch regressions while the code is fresh |
 | R3.4, before the UI freeze | The whole app, with motion and reduced motion | The last chance for anything that isn't a bug fix |
 | R5, on each OS's installed build | Fonts, high-DPI, the native window (WKWebView, WebView2, WebKitGTK) | Headless screenshots don't show these |
@@ -143,6 +227,8 @@ Rules for the audits:
 - Write the findings with the screenshot each comes from, ranked, in `docs/release/ui-audits.md` (one dated section per
   audit; kept until R8). Fixes cite the finding.
 - After the freeze (end of R3), a finding is either a bug fix or goes to `docs/post-v1.md`. It never adds scope.
+- Each audit is a line in the status table when it runs; a step with an audit point is not done until its audit is in
+  `ui-audits.md`.
 - If the skill isn't available in a session, say so and do the pass by hand against the same headings. Don't skip it.
 
 ### R4 Packaging and release automation (L)
@@ -250,7 +336,7 @@ Written against the frozen UI. Sources of truth: the design (what is promised), 
 After R7 has absorbed what the plan documents hold (git history keeps them). Nothing is deleted before the owner agrees to
 the list (decision 8).
 
-- Delete: `docs/next-agent-5.8.md`, `docs/roadmap.md`, `docs/feature-matrix.md`, `docs/parity-audit.md`,
+- Delete (`next-agent-5.8.md` and `review-prompt.md` already went Nov 15): `docs/roadmap.md`, `docs/feature-matrix.md`, `docs/parity-audit.md`,
   `docs/follow-ups.md`, and `docs/release/*` except what the guides link to (the ledger and its checker are kept until
   the tag; then the ledger becomes the shipped "features and where they are tested" appendix of the developers guide or is
   removed). `docs/images/` stays, pruned to what is used.
@@ -279,11 +365,14 @@ the list (decision 8).
 
 ## Order and dependencies
 
-R0 → R1 → R2.1 → R2.1a → R2.2 → R2.3 → R2.4 → R2.5 → R3.1 → R3.2 → R3.3 → R3.4 → R4 → R5 → R6 → R7 → R8 → R9.
+R0 → R1 → R2.1 → R2.1a → **R3.0** → R2.2 → R2.3 → R2.4 → R2.5 → R3.1 → R3.2 → R3.3 → R3.4 → R4 → R5 → R6 → R7 → R8 → R9.
+
+R0 closes with the first two clean CI runs; R2.1a closes with the owner's re-test, which can run alongside the steps after it.
 
 - R1 comes first because its ledger defines R2 and R3 (the lists above are what the follow-ups and the audit say today;
   the ledger will add and remove rows, and it wins).
-- R2.1 and R2.2 share one decision (the store for WASM), so the owner decides it once, before R2.1.
+- R2.1 settled the store for WASM (it builds behind a `native` feature; the viewer's queries stay in `crates/web`).
+- R3.0 runs before the rest of R2 because it is read-only and its "App is better" list protects work R2 might touch.
 - R4 comes before the real-window passes so there are installers to test, and before the docs so the manual PDF has a
   place in the bundle (use a placeholder PDF until R7). A bug R5 finds goes back to a short fix step, not to a new plan.
 - R7 needs the UI frozen (end of R3) and the packaging known (R4); screenshots are taken last, after R6's fixes.

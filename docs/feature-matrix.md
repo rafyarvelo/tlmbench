@@ -1,5 +1,8 @@
 # Feature matrix: design, prototype and app
 
+> **History (frozen Nov 15, 2026; last corrected Nov 11).** `docs/release/ledger.md` replaced this matrix as the feature
+> status. Don't update it.
+
 Nov 7, 2026, on `main` at 523a185; the App column updated Nov 8 after step 4.1. Every v1 feature in `docs/design.md`, and every feature the prototype or the app has,
 compared across the three. `docs/roadmap.md` turns the gaps into steps; the last column names the step that closes
 each one. `docs/parity-audit.md` holds the finer, control-by-control comparison of the app's UI against the prototype.
