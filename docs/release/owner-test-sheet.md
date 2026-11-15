@@ -26,7 +26,7 @@ In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/fligh
 
 ```
 Date:
-App: release build from commit (agent fills in): 18d127d (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
+App: release build from commit (agent fills in): 892b51e (Nov 15, 2026), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
@@ -40,7 +40,7 @@ Started with my usual settings, or a fresh profile?:
 
 ## R. Still open from the Nov 14 changes
 
-R12 failed on the Nov 15 build; the next agent fixes it (`docs/release/next-agent-prompt.md`), then asks you to re-test.
+R12 and B4 as changed on the Nov 15 build from the commit below: please re-test. One open question for you is under R12.
 
 ### R12. An export's viewer: locked, with Unlock (F1)
 You wrote: the exported view "isn't really 'read-only' since some of the panes 'duplicate' actions work, but the dragging
@@ -56,6 +56,7 @@ settings; the tab menu has no Save or Share.
 Do: export flight-1 to HTML (One file), open it. Try dragging a channel while Locked, then Unlock and drag it, with Option
 held, split, duplicate, close, resize. Open the Events panel and Settings. Open it in Safari too if you can.
 Expect: locked nothing moves and the greyed controls say why; unlocked it behaves like the app; no button that does nothing.
+Question: should an unlocked arrangement be kept when you reload the page? I recommend no: a reload is the exported view, which is what a reader of a shared link expects. (If yes, it would go only in that browser's storage, with a "Back to the exported view" action.)
 Result:
 Notes:
 
@@ -128,7 +129,7 @@ Do: quit the app. In a terminal: `target/release/tlmbench cache clear` (a file o
 opens at once), then
 `TLMBENCH_SLOW_BUILD=100 target/release/tlmbench-app ~/tlmbench-testdata/big/big-100M.tlm`
 (`just testdata big` first if the file isn't there).
-Expect: for about ten seconds the chart is hatched where it isn't built yet and fills in left to right; the min/max band shows
+Expect (seen in the release window on Nov 15: hatching right of the built part, "Reading 27%" in the middle of it, the overview hatched too): for about ten seconds the chart is hatched where it isn't built yet and fills in left to right; the min/max band shows
 on a spiky channel; "coarse" shows after 0.3 s; afterwards zoom is smooth. Without the variable it still opens in about a second. (L: X-win-06, X-win-11)
 Result:
 Notes:
