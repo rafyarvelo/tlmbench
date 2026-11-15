@@ -13,7 +13,8 @@
   import { onDestroy, tick } from 'svelte';
   import { type ColumnDef, type ColumnSizingState, createTable, getCoreRowModel, type TableState } from '@tanstack/table-core';
 
-  import { duration, frequency, timeLabel } from '../axes';
+  import { duration, timeLabel } from '../axes';
+  import { rateWords } from '../imports.svelte';
   import { live } from '../live.svelte';
   import { settings } from '../settings.svelte';
   import { isCopy } from '../dnd';
@@ -621,7 +622,7 @@
 <div class="ptable" data-table={i} bind:this={box} style={alone ? (h != null ? `flex: none; height: ${h}px` : '') : h != null ? `flex: 0 1 ${h}px; min-height: 90px` : ''}>
   <div class="tbar">
     <span class="tstat" role="status" data-tstat
-      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${frequency(1e9 / step)})`}{/if}</span
+      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${rateWords(1e9 / step)})`}{/if}</span
     >
     {#if ui.view.A != null || ui.view.B != null}
       <span class="tcur" data-tcur data-tip="Cursors: in Cursors mode click a row to set A, then B. In any mode, right-click a row, or press A or B with the pointer over it."
@@ -720,7 +721,7 @@
                   class="tfin"
                   class:bad={errors[col.id]}
                   data-filter={col.id}
-                  placeholder="Filter"
+                  placeholder={col.id === 't' ? 'Filter' : 'e.g. > 1.5'}
                   spellcheck="false"
                   aria-label="Filter {col.label}"
                   disabled={sortLocked()}

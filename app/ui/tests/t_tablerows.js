@@ -14,7 +14,9 @@ run('tablerows', async ({ p, check, text, until, wait }) => {
   await p.click('.viewmenu [data-vm="table"]');
   await until(() => document.querySelectorAll('[data-table] [data-row]').length > 3);
 
-  check('the status line says what a row is', / in view · one per accel_x sample \(1000\.000 Hz\)/.test(await text(`${T} [data-tstat]`)), await text(`${T} [data-tstat]`));
+  check('the status line says what a row is', / in view · one per accel_x sample \(1 kHz\)/.test(await text(`${T} [data-tstat]`)), await text(`${T} [data-tstat]`));
+
+  check('the filters show an example, not just "Filter" (D-ui-38)', (await p.$$eval(`${T} [data-filter]`, (e) => e.map((x) => x.placeholder))).some((x) => x === 'e.g. > 1.5'));
 
   // hover
   const t2 = await p.getAttribute(`${T} [data-row="2"]`, 'data-t');

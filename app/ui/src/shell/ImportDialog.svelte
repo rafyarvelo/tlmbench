@@ -5,7 +5,7 @@
 <script lang="ts">
   import { ICON } from '../icons';
   import { actions } from '../ui.svelte';
-  import { applyProfile, fmtRate, imp, type Job, type Kind, problem, rateFactor, RATE_UNITS, type RateMode, TIME_UNITS, type Where } from '../imports.svelte';
+  import { applyProfile, rateWords, imp, type Job, type Kind, problem, rateFactor, RATE_UNITS, type RateMode, TIME_UNITS, type Where } from '../imports.svelte';
 
   const job = $derived<Job>(imp.jobs[imp.sel]);
   const many = $derived(imp.jobs.length > 1 || job.paths.length > 1);
@@ -114,7 +114,7 @@
         <div class="imprate" role="radiogroup" aria-label="Data rate">
           <label class="radio" class:dis={!hasTime}>
             <input type="radio" name="imprate" value="recorded" checked={job.rateMode === 'recorded'} disabled={!hasTime} onchange={() => setRateMode('recorded')} />
-            <span>As recorded <small>{hasTime ? (job.insp.rate_hz ? `${fmtRate(job.insp.rate_hz)} (median step)` : '') : 'needs a time column'}</small></span>
+            <span>As recorded <small>{hasTime ? (job.insp.rate_hz ? rateWords(job.insp.rate_hz) : '') : 'needs a time column'}</small></span>
           </label>
           <label class="radio" class:dis={!hasTime}>
             <input type="radio" name="imprate" value="fixed" checked={job.rateMode === 'fixed'} disabled={!hasTime} onchange={() => setRateMode('fixed')} />

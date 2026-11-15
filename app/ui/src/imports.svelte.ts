@@ -86,6 +86,17 @@ export const fmtRate = (hz: number): string => {
   return `${+(hz / rateFactor(u)).toPrecision(4)} ${u === 'per minute' || u === 'per hour' ? u.replace('per ', '/') : u}`;
 };
 
+/** A rate as people say it: `1 kHz`, `100 Hz`, `daily · median interval 1 d`, `median interval 2.5 s`. */
+export const rateWords = (hz: number): string => {
+  if (!(hz > 0)) return '';
+  if (hz >= 1000) return `${+(hz / 1000).toPrecision(4)} kHz`;
+  if (hz >= 1) return `${+hz.toPrecision(4)} Hz`;
+  const p = 1 / hz;
+  const [n, unit, word] = p >= 86400 * 0.98 ? [p / 86400, 'd', 'daily'] : p >= 3600 * 0.98 ? [p / 3600, 'h', 'hourly'] : p >= 60 * 0.98 ? [p / 60, 'min', 'every minute'] : [p, 's', ''];
+  const every = `median interval ${+n.toPrecision(3)} ${unit}`;
+  return word && Math.abs(n - 1) < 0.02 ? `${word} · ${every}` : every;
+};
+
 export const TIME_UNITS: [string, string][] = [
   ['s', 'seconds'],
   ['ms', 'milliseconds'],
