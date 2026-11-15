@@ -277,7 +277,8 @@ Where (screen, tab, setting): Explorer, a tab with two files
 How often (always / sometimes / once):
 Severity (blocker / annoying / cosmetic): high priority (owner)
 ```
-(Agent: ledger S5.6-09, now Partial; the next agent's first item.)
+(Agent: you confirmed it works; the confusion is that only file 1 is marked. Ledger D-ui-45 (mark every file, slot and
+alignment) and D-ui-46 (Open together draws every file's starters).)
 
 Copy this block once per thing. Don't worry about being tidy.
 
