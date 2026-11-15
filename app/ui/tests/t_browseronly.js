@@ -66,6 +66,7 @@ try {
   check('the file opens in a tab, named as the file', await until(() => /bench run\.csv/.test(document.querySelector('#wsTabs .wstab')?.textContent ?? '')), await p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
   check('its channels list with the unit read from the header', await until(() => document.querySelectorAll('#explorer .tree .row.chan').length === 2 && /Speed/.test(document.querySelector('#explorer .tree')?.textContent ?? '')), await p.$$eval('#explorer .tree .row.chan', (r) => r.map((x) => x.textContent)));
   check('the first open parses the file', (await p.evaluate(() => window.__tlmCache)) === 'miss');
+  check('in a Worker, not on the page\'s thread (R2.2)', (await p.evaluate(() => window.__tlmParse)) === 'worker', await p.evaluate(() => window.__tlmParse));
   check('time that goes backwards is flagged on opening, not reordered', await until(() => /Time goes backwards in 1 row \(first at data row 1501/.test(document.body.textContent ?? '')), await p.evaluate(() => document.querySelector('#note, .note')?.textContent ?? ''));
   check('and the chart is drawn', await until(() => {
     const c = document.getElementById('gl');
@@ -84,13 +85,27 @@ try {
   check('what was read is kept in private storage', stored.length === 1 && stored[0].endsWith('.bin'), stored);
   await p.reload({ waitUntil: 'domcontentloaded' });
   await p.waitForSelector('#explorer');
-  const again = p.waitForEvent('filechooser');
-  await p.click('#explorer .exnone button:last-of-type');
-  await (await again).setFiles(csv);
-  check('the same file opens again', await until(() => /bench run\.csv/.test(document.querySelector('#wsTabs .wstab')?.textContent ?? '')));
+  check('the file is back after the reload, with no picker (R2.2)', await until(() => /bench run\.csv/.test(document.querySelector('#wsTabs .wstab')?.textContent ?? ''), null, 15000), await p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
   const how = await p.evaluate(() => window.__tlmCache);
-  check('from the stored columns, with no parse', how === 'hit', how);
-  check('with the same note about time', await until(() => /Time goes backwards in 1 row/.test(document.body.textContent ?? '')));
+  check('from the stored columns, with no parse', how === 'restored', how);
+  check('with its channels listed again', await until(() => document.querySelectorAll('#explorer .tree .row.chan').length === 2 && /Speed/.test(document.querySelector('#explorer .tree')?.textContent ?? '')));
+
+  // a big file: the page keeps answering while it is read (frames keep coming), and it opens
+  await p.evaluate(() => {
+    window.__frames = 0;
+    const tick = () => ((window.__frames += 1), requestAnimationFrame(tick));
+    requestAnimationFrame(tick);
+    const rows = ['time,a,b,c'];
+    for (let i = 0; i < 600000; i++) rows.push(`${i / 1000},${Math.sin(i / 500)},${i % 97},${(i * 7) % 1000}`);
+    const dt = new DataTransfer();
+    dt.items.add(new File([rows.join('\n') + '\n'], 'big.csv', { type: 'text/csv' }));
+    window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  });
+  const f0 = await p.evaluate(() => window.__frames);
+  check('a big CSV opens', await until(() => [...document.querySelectorAll('#wsTabs .wstab')].some((t) => /big\.csv/.test(t.textContent ?? '')), null, 60000));
+  const f1 = await p.evaluate(() => window.__frames);
+  check('and the page kept drawing frames while it was parsed', f1 - f0 >= 5, [f0, f1]);
 
   // a drop
   await p.evaluate(() => {

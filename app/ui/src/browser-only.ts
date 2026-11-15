@@ -62,6 +62,29 @@ async function writeCache(key: string, bytes: Uint8Array<ArrayBuffer>): Promise<
   }
 }
 
+/** Parses a file in a Worker: what the core keeps of it (its dump), or null where there is no Worker. A parse error throws. */
+async function parseInWorker(file: File, path: string, wasm: string): Promise<ArrayBuffer | null> {
+  if (typeof Worker === 'undefined') return null;
+  let w: Worker;
+  try {
+    w = new Worker(new URL('./browser-worker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    return null;
+  }
+  return new Promise((done, fail) => {
+    w.onmessage = (e: MessageEvent<{ dump?: ArrayBuffer; error?: string }>) => {
+      w.terminate();
+      if (e.data.dump) done(e.data.dump);
+      else fail(new Error(e.data.error ?? 'The file could not be read.'));
+    };
+    w.onerror = () => {
+      w.terminate();
+      done(null);
+    };
+    w.postMessage({ wasm, file, path });
+  });
+}
+
 /** The file picker: the names it chose as `local://name` paths (the files are kept for `open`). */
 function pick(files: Map<string, File>, multiple: boolean): Promise<string[] | null> {
   return new Promise((done) => {
@@ -83,16 +106,46 @@ function register(files: Map<string, File>, list: File[]): string[] {
   });
 }
 
-/** Files opened in an earlier visit can't be reopened by name (the page holds no handle to them): the saved session and the
- *  recent list that name them are dropped, so the app doesn't try. */
-function forgetLocalFiles(): void {
+const MANIFEST = 'tlmbench.local';
+
+/** The files this browser has read, by their `local://` path: the name of the entry that holds each one's columns. A reload
+ *  reopens them from there, with no picker. */
+function manifest(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(MANIFEST) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function remember(path: string, key: string): void {
+  try {
+    localStorage.setItem(MANIFEST, JSON.stringify({ ...manifest(), [path]: key }));
+  } catch {
+    /* nothing remembered */
+  }
+}
+
+/** A saved session, window or recent list that names a file this browser no longer holds can't reopen it: that entry is
+ *  dropped, so the app doesn't try. Files it still holds stay, and a reload brings them back. */
+async function forgetLocalFiles(): Promise<void> {
   try {
     const raw = localStorage.getItem('tlmbench.settings');
     if (!raw) return;
     const s = JSON.parse(raw) as Record<string, unknown>;
-    delete s.sessions;
-    delete s.windows;
-    if (Array.isArray(s.recent)) s.recent = s.recent.filter((p) => !String(p).startsWith(LOCAL_PREFIX));
+    const dir = await cacheDir();
+    const held = new Set<string>();
+    for (const [path, key] of Object.entries(manifest())) {
+      try {
+        await dir?.getFileHandle(`${key}.bin`);
+        held.add(path);
+      } catch {
+        /* gone */
+      }
+    }
+    const lost = (v: unknown) => [...JSON.stringify(v ?? '').matchAll(/local:\/\/[^"\\]*/g)].some((m) => !held.has(m[0]));
+    for (const k of ['sessions', 'windows'] as const) if (lost(s[k])) delete s[k];
+    if (Array.isArray(s.recent)) s.recent = s.recent.filter((p) => !String(p).startsWith(LOCAL_PREFIX) || held.has(String(p)));
     localStorage.setItem('tlmbench.settings', JSON.stringify(s));
   } catch {
     /* nothing saved yet */
@@ -100,7 +153,7 @@ function forgetLocalFiles(): void {
 }
 
 export async function installBrowserOnly(): Promise<void> {
-  forgetLocalFiles();
+  await forgetLocalFiles();
   const base = new URL('.', document.baseURI).href;
   const core = await loadCore(new URL('tlmbench_web.wasm', base).href);
   const files = new Map<string, File>();
@@ -111,11 +164,24 @@ export async function installBrowserOnly(): Promise<void> {
   /** Opens a file from the page: from the private storage when it was read before, else parsed (and then kept). */
   async function openLocal(path: string, progress: Handler | null) {
     const f = files.get(path);
-    if (!f) throw new Error(`${path.slice(LOCAL_PREFIX.length)} isn't open in this tab: choose it again, or drop it on the page.`);
+    if (!f) {
+      // opened in an earlier visit: its columns are still in this browser's storage
+      const saved = manifest()[path];
+      const kept = saved ? await readCache(saved) : null;
+      if (kept) {
+        const k = nextId++;
+        ids.set(path, k);
+        const r = core('load', { file: k, path }, kept);
+        (window as unknown as { __tlmCache?: string }).__tlmCache = 'restored';
+        return r;
+      }
+      throw new Error(`${path.slice(LOCAL_PREFIX.length)} isn't open in this tab: choose it again, or drop it on the page.`);
+    }
     if (!/\.(csv|tsv|txt)$/i.test(f.name)) throw new Error('Browser-only mode reads CSV files; the app reads more (binary files, packets, Parquet).');
     const k = nextId++;
     ids.set(path, k);
     const key = await keyOf(f);
+    remember(path, key);
     const note = (done: number, total: number) => progress?.({ message: { done, total, builtUntil: null, error: null }, index: 0 });
     const cached = await readCache(key);
     if (cached) {
@@ -128,15 +194,21 @@ export async function installBrowserOnly(): Promise<void> {
       }
     }
     note(0, f.size);
-    const bytes = new Uint8Array(await f.arrayBuffer());
-    // the parse takes the page's thread; the tab says so rather than appearing to hang
-    await new Promise((r) => setTimeout(r, 0));
-    const r = core('import_csv', { file: k, path }, bytes);
-    (window as unknown as { __tlmCache?: string }).__tlmCache = 'miss';
+    // the parse runs in a Worker, so the tab keeps drawing and answering while a big file is read; where there is no Worker it
+    // runs here, on the page's thread
+    const dump = await parseInWorker(f, path, new URL('tlmbench_web.wasm', base).href);
+    let r: unknown;
+    if (dump) r = core('load', { file: k, path }, new Uint8Array(dump));
+    else {
+      await new Promise((res) => setTimeout(res, 0));
+      r = core('import_csv', { file: k, path }, new Uint8Array(await f.arrayBuffer()));
+    }
+    (window as unknown as { __tlmCache?: string; __tlmParse?: string }).__tlmCache = 'miss';
+    (window as unknown as { __tlmParse?: string }).__tlmParse = dump ? 'worker' : 'page';
     // keep what was read, for next time, once the page is idle
     setTimeout(() => {
       try {
-        void writeCache(key, new Uint8Array(core('dump', { file: k }) as ArrayBuffer));
+        void writeCache(key, new Uint8Array(dump ?? (core('dump', { file: k }) as ArrayBuffer)));
       } catch {
         /* nothing kept */
       }
@@ -175,6 +247,7 @@ export async function installBrowserOnly(): Promise<void> {
     cache_clear: async () => {
       const root = await navigator.storage.getDirectory();
       await root.removeEntry(CACHE_DIR, { recursive: true }).catch(() => {});
+      localStorage.removeItem(MANIFEST);
       return 0;
     },
   };
