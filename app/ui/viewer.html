@@ -10,14 +10,60 @@
     <!-- A folder export opened from file:// can't run: the browser refuses to load the module script, so nothing
          below would ever say why. This plain script runs anyway (a one-file export carries its files and skips it). -->
     <script>
+      // The note says what to do for this very folder: the command that serves it, with Copy, and the address to open
+      // (sheet F2). Plain ES5 on purpose: it is all that runs from file://.
       if (location.protocol === 'file:' && !window.__tlmFiles) {
         document.addEventListener('DOMContentLoaded', function () {
+          var path = decodeURIComponent(location.pathname).replace(/\/[^/]*$/, '');
+          var win = /^\/[A-Za-z]:/.test(path);
+          var dir = win ? path.slice(1).replace(/\//g, '\\') : path;
+          var cmd = win ? 'python -m http.server --directory "' + dir + '"' : "python3 -m http.server --directory '" + dir.replace(/'/g, "'\\''") + "'";
+          var box = document.createElement('div');
+          box.id = 'file-note';
+          box.style.cssText = 'font:13px/1.5 system-ui,sans-serif;color:var(--fg,#141a22);max-width:640px;margin:12vh auto;padding:20px 22px;border:1px solid var(--border,#d0d7de);border-radius:12px;background:var(--surface,#f7f9fb)';
+          var h = document.createElement('div');
+          h.style.cssText = 'font-size:15px;font-weight:600;margin-bottom:6px';
+          h.textContent = 'This export needs a web server';
           var p = document.createElement('p');
-          p.id = 'file-note';
-          p.style.cssText = 'font:13px/1.5 system-ui,sans-serif;max-width:60ch;margin:12vh auto;padding:0 16px';
-          p.textContent =
-            'This export is a folder, and a page opened from a file can’t load the data beside it: the browser doesn’t allow it. Put the folder on a web server (any static host, or run python3 -m http.server in the folder), or export one HTML file with tlmbench export html --single-file, which opens from anywhere.';
-          document.body.appendChild(p);
+          p.style.cssText = 'margin:0 0 12px;color:var(--fg-muted,#57606a)';
+          p.textContent = 'It is a folder, and a browser won’t load the data beside a page opened from a file. Serve the folder from any static host, or run this in a terminal:';
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px;align-items:stretch';
+          var code = document.createElement('code');
+          code.id = 'file-cmd';
+          code.style.cssText = 'flex:1;min-width:0;overflow-x:auto;white-space:nowrap;padding:7px 10px;border:1px solid var(--border,#d0d7de);border-radius:8px;background:var(--raised,#fff);font:12px ui-monospace,SFMono-Regular,Menlo,monospace';
+          code.textContent = cmd;
+          var copy = document.createElement('button');
+          copy.id = 'file-copy';
+          copy.type = 'button';
+          copy.textContent = 'Copy';
+          copy.style.cssText = 'flex:none;padding:0 12px;border:1px solid var(--border,#d0d7de);border-radius:8px;background:var(--raised,#fff);color:inherit;font:inherit;cursor:pointer';
+          copy.onclick = function () {
+            var done = function () {
+              copy.textContent = 'Copied';
+              setTimeout(function () { copy.textContent = 'Copy'; }, 1500);
+            };
+            var fallback = function () {
+              var r = document.createRange();
+              r.selectNodeContents(code);
+              var sel = window.getSelection();
+              sel.removeAllRanges();
+              sel.addRange(r);
+              try { if (document.execCommand('copy')) done(); } catch (e) {}
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(cmd).then(done, fallback);
+            else fallback();
+          };
+          var then = document.createElement('p');
+          then.style.cssText = 'margin:10px 0 0';
+          then.innerHTML = 'Then open <b>http://localhost:8000</b>. Or export it as <b>One file</b> (Export to HTML in the app, or <code style="font:12px ui-monospace,SFMono-Regular,Menlo,monospace">tlmbench export html --single-file</code>), which opens from anywhere, with nothing to run.';
+          row.appendChild(code);
+          row.appendChild(copy);
+          box.appendChild(h);
+          box.appendChild(p);
+          box.appendChild(row);
+          box.appendChild(then);
+          document.body.appendChild(box);
         });
       }
     </script>

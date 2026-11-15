@@ -66,7 +66,7 @@ function unbase64(b64: string): Uint8Array {
  * folder), or a one-file export. */
 export function explainLoadFailure(e: unknown): string {
   if (location.protocol === 'file:')
-    return 'This export is a folder, and a page opened from a file can\u2019t load the data beside it: the browser doesn\u2019t allow it. Put the folder on a web server (any static host, or run python3 -m http.server in the folder), or export one HTML file with tlmbench export html --single-file, which opens from anywhere.';
+    return 'This export needs a web server: a browser won\u2019t load the data beside a page opened from a file. Run python3 -m http.server --directory with this folder and open http://localhost:8000, or export it as One file (tlmbench export html --single-file), which opens from anywhere.';
   return `This export couldn\u2019t be loaded: ${e instanceof Error ? e.message : String(e)}`;
 }
 

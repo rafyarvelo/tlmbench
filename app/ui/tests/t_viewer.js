@@ -250,6 +250,9 @@ try {
   await fold.goto('file://' + join(work, 'site', 'index.html'), { waitUntil: 'domcontentloaded' });
   await fold.waitForTimeout(1200);
   check('a folder export from file:// never draws data, and the page says it needs a server and offers --single-file', await fold.evaluate(() => window.__tlmFirstView == null && /web server/.test(document.body.textContent ?? '') && /--single-file/.test(document.body.textContent ?? '')), await fold.evaluate(() => document.body.textContent?.slice(0, 200)));
+  const cmd = await fold.$eval('#file-cmd', (e) => e.textContent).catch(() => null);
+  check('it gives the exact command for this folder (sheet F2)', cmd === `python3 -m http.server --directory '${join(work, 'site')}'`, cmd);
+  check('with a Copy button, the address to open, and One file as the way that opens anywhere', !!(await fold.$('#file-copy')) && await fold.evaluate(() => /localhost:8000/.test(document.body.textContent) && /One file/.test(document.body.textContent)));
 
   // widgets of your own: an SVG one drawn safe, a code one as a value card, and no widget host (nothing runs)
   for (const [d, toml, f, body] of [
