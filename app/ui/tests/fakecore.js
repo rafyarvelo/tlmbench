@@ -419,6 +419,10 @@
     folderChanged(path) {
       emit('folder-changed', { path: path ?? fake.watched });
     },
+    /** The native menu bar: a click on item `id`. */
+    menuClick(id) {
+      emit('menu-action', id);
+    },
     drop(paths) {
       for (const ev of ['tauri://drag-enter', 'tauri://drag-drop']) emit(ev, { paths, position: { x: 200, y: 200 } });
     },
@@ -1296,6 +1300,15 @@
     },
     // the settings every window shares (null before the first save); a save reaches the other windows as an event
     settings_get: () => fake.sharedSettings ?? null,
+    // the native menu bar: the command table the window sends, and the state of its items as it changes
+    menu_set({ entries }) {
+      fake.menuSet = entries;
+      return null;
+    },
+    menu_state({ updates }) {
+      fake.menuState = updates;
+      return null;
+    },
     settings_save({ text }) {
       fake.sharedSettings = text;
       return null;

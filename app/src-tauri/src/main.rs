@@ -3720,7 +3720,9 @@ macro_rules! commands {
             plugins_list,
             plugins_scan,
             plugins_reveal,
-            daemon::browser_access
+            daemon::browser_access,
+            menu::menu_set,
+            menu::menu_state
         ]
     };
 }
@@ -3743,6 +3745,7 @@ fn new_files() -> Files {
 }
 
 mod daemon;
+mod menu;
 mod plugins;
 
 fn main() {
@@ -3761,6 +3764,8 @@ fn main() {
             }
         })
         .manage(new_files())
+        .manage(menu::MenuState::default())
+        .on_menu_event(|app, ev| menu::clicked(app, ev.id().as_ref()))
         .manage(daemon::Browser::new(clients.clone()))
         .setup(|app| {
             let files = app.state::<Files>();
@@ -3782,6 +3787,21 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_menu_table_reads_and_a_menu_the_bar_lacks_is_refused() {
+        // (muda builds menus on the main thread only, so the bar itself is checked in the release app and t_menubar)
+        let entries: Vec<menu::Entry> = serde_json::from_str(
+            r#"[{"id":"open","menu":"File","label":"Open recording…","accel":"CmdOrCtrl+O","sep":false,"check":false},
+                {"id":"events","menu":"View","label":"Event markers (E)","accel":null,"sep":true,"check":true},
+                {"id":"x","menu":"Tools","label":"X","accel":null}]"#,
+        )
+        .unwrap();
+        assert_eq!(menu::unknown_menus(&entries), ["Tools"]);
+        assert!(menu::unknown_menus(&entries[..2]).is_empty());
+        let u: Vec<menu::Update> = serde_json::from_str(r#"[{"id":"events","enabled":true,"checked":false}]"#).unwrap();
+        assert_eq!(u.len(), 1);
+    }
 
     #[test]
     fn a_file_closes_with_its_last_window() {

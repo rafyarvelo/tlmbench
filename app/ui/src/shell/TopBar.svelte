@@ -126,6 +126,18 @@
     { label: 'Show performance details', checked: settings.showPerf, run: () => setSetting('showPerf', !settings.showPerf) },
     { label: 'Settings…', run: () => setSetting('leftPanel', 'settings') },
   ];
+  /** ⌘S (the command table's saveLayout) saves the layout in front; a file tab asks for a name. */
+  function saveFront() {
+    const t = tabs.list.find((t) => t.key === tabs.active);
+    if (t?.ws) actions.saveWs(t.key);
+    else if (t && !t.live) {
+      const el = document.querySelector<HTMLElement>(`[data-tab="${t.key}"]`);
+      openTabMenu(t.key, el ? { anchor: el } : { at: { x: 8, y: 44 } });
+      tabMenu!.naming = 'saveas';
+      startNaming('');
+    }
+  }
+  actions.saveFront = saveFront;
   function key(e: KeyboardEvent) {
     // Ctrl+PageUp / PageDown switch tabs; with Shift they move the tab
     if (e.ctrlKey && (e.key === 'PageUp' || e.key === 'PageDown') && tabs.list.length > 1) {
@@ -138,19 +150,6 @@
         moveTab(i, d > 0 ? j + 1 : j);
         actions.saveSession();
       } else actions.showTab(tabs.list[j].key);
-      return;
-    }
-    // ⌘S saves the layout in front (a file tab asks for a name)
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && tabs.active >= 0) {
-      e.preventDefault();
-      const t = tabs.list.find((t) => t.key === tabs.active);
-      if (t?.ws) actions.saveWs(t.key);
-      else if (t && !t.live) {
-        const el = document.querySelector<HTMLElement>(`[data-tab="${t.key}"]`);
-        openTabMenu(t.key, el ? { anchor: el } : { at: { x: 8, y: 44 } });
-        tabMenu!.naming = 'saveas';
-        startNaming('');
-      }
       return;
     }
   }

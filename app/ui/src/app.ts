@@ -23,7 +23,8 @@ const ENVELOPE_ALPHA = 0.16;
 import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
-import { applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
+import { COMMANDS, matches, menuLabel } from './commands';
+import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS } from './play.svelte';
 import { catColor, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
@@ -33,6 +34,8 @@ import {
   addChannels,
   addPaneBelow,
   assignColors,
+  clearChannels,
+  clearPanes,
   colorIdx,
   duplicate,
   fmtCh,
@@ -4875,13 +4878,100 @@ function clearCursors(): void {
   void refreshMeasure();
 }
 
+/** What each command of the table does (commands.ts): the menu bar, the shortcuts and the ⋯ menu run the same actions. */
+const RUN: Record<string, () => void> = {
+  open: () => void chooseFile(),
+  openFolder: () => void chooseFolder(),
+  saveLayout: () => actions.saveFront(),
+  exportData: () => actions.exportOpen(),
+  exportHtml: () => actions.htmlOpen(),
+  saveImage: () => actions.imageOpen(),
+  closeTab: () => tabs.active >= 0 && actions.closeTab(tabs.active),
+  // a focused text field keeps its own undo; anywhere else it is the app's
+  undo: () => (inTextField() ? void document.execCommand('undo') : undo()),
+  redo: () => (inTextField() ? void document.execCommand('redo') : redo()),
+  clearCursors,
+  back,
+  fit,
+  zoomIn: () => zoomBy(0.7),
+  zoomOut: () => zoomBy(1 / 0.7),
+  events: () => setSetting('eventsOn', !settings.eventsOn),
+  lock: () => setSetting('locked', !settings.locked),
+  overviewTop: () => setSetting('overviewTop', !settings.overviewTop),
+  theme: toggleTheme,
+  settings: () => setSetting('leftPanel', 'settings'),
+  newPane: () => addPaneBelow(stack.sel),
+  duplicate: () => duplicate(stack.sel, false),
+  duplicateBeside: () => duplicate(stack.sel, true),
+  removeChannels: clearChannels,
+  removePanes: clearPanes,
+  focus: () => toggleFocus(),
+  panels: toggleAllPanels,
+  perf: () => setSetting('showPerf', !settings.showPerf),
+  tipsAgain: () => (setSetting('tipsSeen', {}), note('Tips will show again.')),
+};
+/** When a command can run; none listed: always. */
+const ENABLED: Record<string, () => boolean> = {
+  saveLayout: () => tabs.active >= 0,
+  exportData: () => !!state.file && !ui.viewer,
+  exportHtml: () => !!state.file && !ui.viewer,
+  saveImage: () => !!state.file && stack.panes.length > 0,
+  closeTab: () => tabs.active >= 0,
+  undo: () => true,
+  clearCursors: () => ui.anyCursor,
+  back: () => ui.canBack,
+  fit: () => !!state.file,
+  zoomIn: () => !!state.file,
+  zoomOut: () => !!state.file,
+  newPane: () => !!state.file,
+  duplicate: () => !!state.file,
+  duplicateBeside: () => !!state.file,
+  removeChannels: () => stack.panes.some((p) => p.channels.length > 0),
+  removePanes: () => stack.panes.length > 0,
+};
+const CHECKED: Record<string, () => boolean> = {
+  events: () => settings.eventsOn,
+  lock: () => settings.locked,
+  overviewTop: () => settings.overviewTop,
+  perf: () => settings.showPerf,
+};
+const inTextField = (): boolean => !!document.activeElement?.closest('input, textarea, [contenteditable]');
+/** The command a key press just ran, so a menu click for the same key a moment later is ignored. */
+let lastKey: { id: string; at: number } | null = null;
+
+function runCommand(id: string, fromMenu = false): void {
+  if (fromMenu && lastKey?.id === id && performance.now() - lastKey.at < 250) return;
+  if (ENABLED[id] && !ENABLED[id]()) return;
+  RUN[id]?.();
+}
+
+/** The table, the actions and the state a test (or the menu) reads. */
+export const commandInfo = () => ({ commands: COMMANDS, run: Object.keys(RUN), enabled: Object.fromEntries(COMMANDS.map((c) => [c.id, ENABLED[c.id]?.() ?? true])) });
+
+/** Sends the table to the core, which builds the native menu bar from it (the app's own window only: a browser tab has no menu). */
+async function installMenu(): Promise<void> {
+  if (!('__TAURI_INTERNALS__' in window) || ui.viewer) return;
+  try {
+    await invoke('menu_set', { entries: COMMANDS.map((c) => ({ id: c.id, menu: c.menu, label: menuLabel(c), accel: c.accel ?? null, sep: !!c.sep, check: !!c.check })) });
+    await listen<string>('menu-action', (e) => runCommand(e.payload, true));
+    let sent = '';
+    const push = () => {
+      const state = COMMANDS.map((c) => ({ id: c.id, enabled: ENABLED[c.id]?.() ?? true, checked: CHECKED[c.id]?.() ?? false }));
+      const text = JSON.stringify(state);
+      if (text === sent) return;
+      sent = text;
+      void invoke('menu_state', { updates: state }).catch(() => {});
+    };
+    push();
+    setInterval(push, 400);
+  } catch {
+    /* no menu bar here (a test's fake core): the shortcuts still work */
+  }
+}
+void installMenu();
+
 window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
-  if ((e.metaKey || e.ctrlKey) && k === 'o') {
-    e.preventDefault();
-    void chooseFile();
-    return;
-  }
   if (e.key === 'Escape' && closePopup()) return;
   if (e.key === 'Escape' && ui.start) return void (ui.start = false);
   if (e.key === ' ' && state.file && !(e.target as HTMLElement).closest('input, select, textarea, button')) {
@@ -4889,20 +4979,20 @@ window.addEventListener('keydown', (e) => {
     togglePlay();
     return;
   }
+  // the command table's shortcuts (the menu binds them too; a text field keeps the ones marked `text`)
+  const cmd = COMMANDS.find((c) => matches(c, e));
+  if (cmd && !(cmd.text && (e.target as HTMLElement).closest('input, textarea, [contenteditable]'))) {
+    if (popup && cmd.id !== 'open') return;
+    if (ENABLED[cmd.id] && !ENABLED[cmd.id]()) return;
+    e.preventDefault();
+    lastKey = { id: cmd.id, at: performance.now() };
+    return RUN[cmd.id]?.();
+  }
   if (popup) return;
-  // ⌘Z / ⇧⌘Z (Ctrl on Windows and Linux): undo and redo the last change; a text field keeps its own (owner, Nov 14)
-  if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y') && !(e.target as HTMLElement).closest('input, textarea, [contenteditable]')) {
+  // ⌘Y also redoes (Windows and Linux); a text field keeps its own
+  if ((e.metaKey || e.ctrlKey) && k === 'y' && !(e.target as HTMLElement).closest('input, textarea, [contenteditable]')) {
     e.preventDefault();
-    return void (k === 'y' || e.shiftKey ? redo() : undo());
-  }
-  if ((e.metaKey || e.ctrlKey) && e.key === '.') return toggleFocus();
-  if ((e.metaKey || e.ctrlKey) && k === 'd' && state.file) {
-    e.preventDefault();
-    return duplicate(stack.sel, e.shiftKey);
-  }
-  if ((e.metaKey || e.ctrlKey) && k === 'n' && e.shiftKey && state.file) {
-    e.preventDefault();
-    return addPaneBelow(stack.sel);
+    return redo();
   }
   if (e.metaKey || e.ctrlKey) return;
   if (e.key === 'Escape' && ui.focus) return toggleFocus(false);
@@ -5330,6 +5420,10 @@ export const gateApi = {
   sel: () => stack.sel,
   mode: () => settings.mode,
   drawn: () => state.layers.map((l) => (l ? [...l.traces.keys()] : null)),
+  /** The command table, the actions and what is enabled (t_menubar). */
+  commandInfo,
+  settingsNow: () => ({ ...settings }),
+  focusOn: () => ui.focus,
   /** Per pane and channel: the runs of the min/max band under a reduced line (0 for a raw trace). */
   envelopes: () => state.layers.map((l) => (l ? [...l.traces.values()].map((t) => t.gl.env?.runs.length ?? 0) : null)),
   /** Per pane and channel: the connected stretches drawn dashed, and the solid runs. */

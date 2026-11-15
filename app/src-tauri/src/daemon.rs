@@ -191,7 +191,7 @@ pub fn serve<R: Runtime>(
     let addr = listener.local_addr()?;
     let token = token.unwrap_or_else(new_token);
     // events reach every client (the windows of the app take them from the runtime itself)
-    for name in ["settings-changed", "view-linked", "table-progress", "html-export-progress", "folder-changed"] {
+    for name in ["settings-changed", "view-linked", "table-progress", "html-export-progress", "folder-changed", "menu-action"] {
         let clients = clients.clone();
         app.listen_any(name, move |e| {
             clients.broadcast(&frame(5, 0, format!("{{\"event\":\"{name}\",\"payload\":{}}}", e.payload()).as_bytes()));

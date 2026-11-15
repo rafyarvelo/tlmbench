@@ -267,6 +267,8 @@ export const actions = {
    * Revert changes, Delete layout, open one in a tab (on the file in front), and a new empty one. */
   saveAs: (_key: number, _name: string): string | null => null,
   saveWs: (_key: number) => {},
+  /** ⌘S: saves the layout in front (a file tab asks for a name first). */
+  saveFront: () => {},
   revertWs: (_key: number) => {},
   deleteWs: (_name: string) => {},
   openWs: (_name: string) => {},
