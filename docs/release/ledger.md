@@ -106,7 +106,7 @@ on a real window). The last column names the step of `docs/release/release-plan.
 | S5.2-08 | roadmap 5.2 | Limit lines and shading on charts. | Owner pass | `app/ui/src/app.ts` (no test reads the lines) | Look at a chart of a channel with warn and alarm limits: dashed lines, yellow and red shading beyond them. R5 |
 | S5.2-09 | roadmap 5.2 | Events: the store, per recording in the app cache. | Done | `tlmbench-store::derived::events_are_kept_per_recording_in_the_cache_in_start_order`, `t_events` | |
 | S5.2-10 | roadmap 5.2 | Markers and ranges from the cursors; the Events panel (filters, chips, grouping, inline edit). | Done | `t_events` | |
-| S5.2-11 | roadmap 5.2 | Event categories in Settings. | Done | `t_eventmarks`, `t_rules` | |
+| S5.2-11 | roadmap 5.2 | Event categories in Settings. | Done | `t_eventmarks`, `t_rules` (Nov 14: colour and Charts in the editor too) | Owner sheet E2 (Nov 14): the Rules and checks editor showed a category's colour as a dot only; it now edits the colour and Charts there, as Settings and the prototype's editor do |
 | S5.2-12 | roadmap 5.2 | Markers on charts, ticks on the overview. | Done | `t_eventmarks` | The hover tooltip is D-ui-11 |
 | S5.2-13 | roadmap 5.2 | The table's Event column and tinted rows. | Partial | `t_eventstop` (tint, stripe and ▸ ◂ ● tags in the Time cell) | No Event column, no stronger tint on the channels an event concerns, a tag click doesn't reveal the event. R3.3 |
 | S5.2-14 | roadmap 5.2 | The top bar's E toggle and each pane's. | Done | `t_eventmarks` | |

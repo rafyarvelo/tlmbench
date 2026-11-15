@@ -93,7 +93,7 @@ alignment estimators, the daemon) plus a few details (copy as CSV, bitfields).
 | Drop a file on the window | v1 | ✓ | ◐ (a CSV without a saved profile asks first; each dropped file opens in its own tab: Open together puts them in one) | |
 | Settings: Basic and All, ⓘ explanations, Reset, Reset UI layout | v1 | ✓ | ✓ (rows for later steps' features come with them) |  |
 | Settings: time formats Samples and Wall clock | v1 | ✓ | ✓ |  |
-| Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ◐ (recipes in Explorer's ⋯ and folder menus; Channels list done; event categories wait) | 5.2 |
+| Settings: event categories, channel display list, recipes and profiles | v1 | ✓ | ◐ (recipes in Explorer's ⋯ and folder menus; Channels list done; event categories in Settings and in the Rules and checks editor: name, colour, Charts) | 5.2 |
 | Settings: Record live sessions to | v1 | ✓ | ✓ | |
 | Sidebars: collapse, move, resize, swap sides | v1 | ✓ | ✓ | |
 | Drag a sidebar panel to reorder it | v1 | ✓ | ✓ (and to the other sidebar) |  |

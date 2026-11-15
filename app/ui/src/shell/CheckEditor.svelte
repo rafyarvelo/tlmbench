@@ -102,7 +102,11 @@
   const catStats = (id: string) => ({ events: events.list.filter((e) => e.category === id).length, rules: ed!.set.check.filter((k) => k.kind === 'rule' && k.category === id).length });
   function renameCat(i: number, name: string) {
     if (!name.trim()) return;
-    setSetting('eventCats', settings.eventCats.map((c, j) => (j === i ? { ...c, name: name.trim() } : c)));
+    editCat(i, { name: name.trim() });
+  }
+  /** A category's colour and whether charts mark it, edited here as in Settings (sheet E2). */
+  function editCat(i: number, patch: Partial<(typeof settings.eventCats)[number]>) {
+    setSetting('eventCats', settings.eventCats.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   }
   function plusCategory() {
     addCategory('New category');
@@ -357,11 +361,11 @@
       {/if}
 
       <details class="ckcats" data-ckcats open={ed.cats} ontoggle={(e) => (checks.editor!.cats = e.currentTarget.open)}>
-        <summary>Event categories</summary>
+        <summary>Event categories <span class="cksum">{#each settings.eventCats as c (c.id)}<i style="background:{c.color}"></i>{c.name}{/each}</span></summary>
         <div class="ckcatrows">
           {#each settings.eventCats as c, i (c.id)}
             {@const n = catStats(c.id)}
-            <div class="ckcat"><i style="background:{c.color}"></i><input class="sel" data-cname={i} value={c.name} spellcheck="false" onchange={(e) => renameCat(i, e.currentTarget.value)} /><span class="muted">{n.events} event{n.events === 1 ? '' : 's'} · {n.rules} rule{n.rules === 1 ? '' : 's'}</span></div>
+            <div class="ckcat"><input type="color" class="catcol" data-ccolor={i} aria-label="Colour of {c.name}" value={c.color} oninput={(e) => editCat(i, { color: e.currentTarget.value })} /><input class="sel" data-cname={i} value={c.name} spellcheck="false" onchange={(e) => renameCat(i, e.currentTarget.value)} /><span class="muted">{n.events} event{n.events === 1 ? '' : 's'} · {n.rules} rule{n.rules === 1 ? '' : 's'}</span><label class="ckshow" data-tip="Mark this category's events on charts"><input type="checkbox" data-cshow={i} checked={c.chart} onchange={(e) => editCat(i, { chart: e.currentTarget.checked })} />Charts</label></div>
           {/each}
           <button class="linkbtn" data-cadd onclick={plusCategory}>+ Category</button>
         </div>
@@ -582,9 +586,37 @@
     gap: 8px;
     font-size: 12px;
   }
-  .ckcat i {
-    width: 10px;
-    height: 10px;
+  .catcol {
+    flex: none;
+    width: 26px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .catcol::-webkit-color-swatch-wrapper {
+    padding: 2px;
+  }
+  .catcol::-webkit-color-swatch {
+    border: 0;
+    border-radius: 4px;
+  }
+  .ckshow {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .cksum {
+    margin-left: 8px;
+  }
+  .cksum i {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin: 0 4px 0 8px;
     border-radius: 50%;
   }
   .ckcat .sel {

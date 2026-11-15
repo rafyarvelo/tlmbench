@@ -1,6 +1,7 @@
 // Rules and checks in one editor: the "Event rules" set holds rules that mark events in a category; a row is a Check
 // (pass or fail) or a Rule (events); lists cover magnitude, outside and "past its limits"; rows turn on and off; the
-// Events panel's Rules… opens the set; editing a rule event opens its row; categories are edited in the editor.
+// Events panel's Rules… opens the set; editing a rule event opens its row; categories are edited in the editor (name, colour,
+// Charts).
 import { run } from './lib.js';
 
 const RULES = {
@@ -81,6 +82,13 @@ run(
     await p.dispatchEvent(`#recDlg [data-cname="${j}"]`, 'change');
     check("renaming a category updates the rules' lists and settings", (await p.evaluate(() => [...document.querySelectorAll('#recDlg [data-kf="cat"] option')].some((o) => o.textContent === 'GPS signal'))) && ((await settingsLS()).eventCats ?? []).some((c) => c.name === 'GPS signal'));
     check('the section stays open after a change', await p.evaluate(() => document.querySelector('#recDlg [data-ckcats]').open));
+    // colour and "Charts" in the editor itself (sheet E2: "can't edit the colours")
+    await p.evaluate((k) => { const i = document.querySelector(`#recDlg [data-ccolor="${k}"]`); i.value = '#ff8800'; i.dispatchEvent(new Event('input', { bubbles: true })); }, j);
+    check('a category\'s colour is edited in the editor and kept in settings', await until(() => true) && ((await settingsLS()).eventCats ?? []).find((c) => c.name === 'GPS signal')?.color === '#ff8800');
+    check('and shows in the section\'s summary', await p.evaluate(() => [...document.querySelectorAll('#recDlg .cksum i')].some((i) => i.style.background.includes('255, 136, 0'))));
+    await p.uncheck(`#recDlg [data-cshow="${j}"]`);
+    check('Charts turns its marks off on charts', ((await settingsLS()).eventCats ?? []).find((c) => c.name === 'GPS signal')?.chart === false);
+    await p.check(`#recDlg [data-cshow="${j}"]`);
     await p.click('#recDlg [data-cadd]');
     check('+ Category adds one, ready to name', await until(() => document.activeElement?.matches('[data-cname]') && document.activeElement.value === 'New category'));
     p.once('dialog', (d) => d.accept('Thermal'));
