@@ -8,8 +8,8 @@ menu, ⋯ menu and table. The apple-design audit of the whole app ran in the sam
 Every difference is in one class:
 
 - **Port**: the prototype's is better, or the app lacks it. Goes to R3.1 to R3.3, ranked by how visible it is.
-- **App is better**: the app's is more mature. **Never ported back.** *Approved* rows are the owner's decisions; *For the
-  owner* rows wait for a yes or no, with a recommendation.
+- **App is better**: the app's is more mature. **Never ported back.** Every row is approved by the owner
+  (B1 to B9 earlier, B10 to B16 on Nov 15) and is a ledger accepted difference (A-01 to A-11).
 - **Noise**: the harness or the scene's data, not something a person sees. Listed so nobody chases it again.
 
 ## Port (ranked; the step and the ledger row each closes)
@@ -46,13 +46,13 @@ categories (S5.2-15), Play's lost transport test (D-ui-13, D-ui-14), folder runs
 | B7 | Viewer | Opens Locked, Unlock to rearrange | Sheet R12 | Approved Nov 15 |
 | B8 | Settings | One Reset app… with a list | Sheet R3 | Approved Nov 15 |
 | B9 | Tab strip, menus | ‹ › scroll buttons, full-width checked row, arrow keys in menus | Ledger A-01 to A-03 | Approved Nov 7 |
-| B10 | Tab menu | Export file… and Move to new window | Features the prototype doesn't have (several windows, sharing a layout as a file) | **For the owner.** Recommendation: approve (they sit below P4's Save and Revert) |
-| B11 | Folder menu (`folder-menu`) | Refresh, with the folder watched, and more items (9 against 5) | A network share doesn't send changes; Refresh is the only way to see new files there (D-ui-02) | **For the owner.** Recommendation: approve |
-| B12 | Alignment (`alignment`) | The file's name and slot number in the section | The design's numbered slots; you can tell which file you are aligning | **For the owner.** Recommendation: approve |
-| B13 | Import dialog | A Category column per row, and names filled in | A category set per column without a prefix rule | **For the owner.** Recommendation: approve, alongside P5's prefix rule (both) |
-| B14 | Descriptor form (`descriptor`) | A Bits column | Bit fields, which the design accepted | **For the owner.** Recommendation: approve |
-| B15 | Settings (`settings`) | Sections the prototype can't have: Plugins, Browser access, Cache, Shared configuration, Record live sessions to | Real features | **For the owner.** Recommendation: approve |
-| B16 | Table bar | Go to A, Go to B and the table's height grip always in reach | Fewer clicks for the frequent move | **For the owner.** Recommendation: approve |
+| B10 | Tab menu | Export file… and Move to new window | Features the prototype doesn't have (several windows, sharing a layout as a file) | Approved Nov 15 |
+| B11 | Folder menu (`folder-menu`) | Refresh, with the folder watched, and more items (9 against 5) | A network share doesn't send changes; Refresh is the only way to see new files there (D-ui-02) | Approved Nov 15 |
+| B12 | Alignment (`alignment`) | The file's name and slot number in the section | The design's numbered slots; you can tell which file you are aligning | Approved Nov 15 |
+| B13 | Import dialog | A Category column per row, and names filled in | A category set per column without a prefix rule | Approved Nov 15 |
+| B14 | Descriptor form (`descriptor`) | A Bits column | Bit fields, which the design accepted | Approved Nov 15 |
+| B15 | Settings (`settings`) | Sections the prototype can't have: Plugins, Browser access, Cache, Shared configuration, Record live sessions to | Real features | Approved Nov 15 |
+| B16 | Table bar | Go to A, Go to B and the table's height grip always in reach | Fewer clicks for the frequent move | Approved Nov 15 |
 
 ## Noise (not to chase)
 

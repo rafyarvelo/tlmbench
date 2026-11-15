@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 228 · **Partial** 46 · **Missing** 21 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 17 (342 rows).
+Counts: **Done** 235 · **Partial** 46 · **Missing** 21 · **Diverged** 4 · **Unverified** 26 · **Owner pass** 17 (349 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -216,6 +216,13 @@ where each step stands, and nothing else records either.
 | A-02 | accepted differences | The view menu's checked row is highlighted across its full width. | Owner pass | `app/ui/src/shell/Menu.svelte` | Open a pane's view menu and look at the checked row. R5 |
 | A-03 | accepted differences | Arrow keys, Home and End move between menu items. | Done | `t_menus` | |
 | A-04 | accepted differences | Thin one-pixel lines on software GL (headless tests only). | Done | `t_lines` | |
+| A-05 | accepted differences (owner, Nov 15; parity-classes B10) | The tab menu has Export file… and Move to new window, which the prototype doesn't. | Done | `t_windows`, `t_tabs` (passed in CI run 43727929100, Linux, Nov 15) | |
+| A-06 | accepted differences (owner, Nov 15; parity-classes B11) | The folder menu has Refresh and the folder is watched, so it holds more items than the prototype's. | Done | `t_watch` (passed in CI run 43727929100, Linux, Nov 15) | |
+| A-07 | accepted differences (owner, Nov 15; parity-classes B12) | The Alignment section names the file and its slot number. | Done | `t_slots` (passed in CI run 43727929100, Linux, Nov 15) | |
+| A-08 | accepted differences (owner, Nov 15; parity-classes B13) | The import dialog has a Category column per row and fills in the names. | Done | `t_import` (passed in CI run 43727929100, Linux, Nov 15) | The prototype's prefix rule is still to come beside it (P5, D-share-01) |
+| A-09 | accepted differences (owner, Nov 15; parity-classes B14) | The descriptor form has a Bits column for bit fields. | Done | `t_descriptor` (passed in CI run 43727929100, Linux, Nov 15) | |
+| A-10 | accepted differences (owner, Nov 15; parity-classes B15) | Settings has the sections only real software has: Plugins, Browser access, Cache, Shared configuration, Record live sessions to. | Done | `t_plugins`, `t_shell` (passed in CI run 43727929100, Linux, Nov 15) | |
+| A-11 | accepted differences (owner, Nov 15; parity-classes B16) | The table bar keeps Go to A, Go to B and the table's height grip in reach. | Done | `t_tablerows`, `t_height` (passed in CI run 43727929100, Linux, Nov 15) | |
 | D-req-01 | CLAUDE.md, design Storage | Full capability from the app cache alone; nothing is written next to the data except by Share and exports. | Done | `just ro-test` (Nov 11, this review: pass), `tlmbench-store::config::nothing_is_written_outside_the_dot_tlmbench_folder`, `tlmbench::export_html::writes_the_layout_channels_and_nothing_beside_the_input` | `ro-test` runs CLI commands only; the app on a read-only image is X-win-09 |
 | D-req-02 | CLAUDE.md, design Ingestion | The app never runs Python or other external programs. | Done | `grep -rn "Command::new" app/src-tauri/src crates/*/src cli/src` (Nov 11: no hits) | |
 | D-req-03 | CLAUDE.md | Exports are static files that open from any static host with nothing to install. | Done | `t_viewer`, `t_exportreal`, `just gate5` | A folder export does not open from `file://` (the browser won't fetch the WASM core): say so in the manual, and see D-cli-05 |
