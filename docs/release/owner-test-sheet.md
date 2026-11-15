@@ -40,7 +40,7 @@ Started with my usual settings, or a fresh profile?:
 
 ## R. Still open from the Nov 14 changes
 
-R12 and B4 as changed on the Nov 15 build from the commit below: please re-test. One open question for you is under R12.
+R12 and B4 as changed on the Nov 15 build from the commit below: please re-test. 
 
 ### R12. An export's viewer: locked, with Unlock (F1)
 You wrote: the exported view "isn't really 'read-only' since some of the panes 'duplicate' actions work, but the dragging
@@ -56,7 +56,7 @@ settings; the tab menu has no Save or Share.
 Do: export flight-1 to HTML (One file), open it. Try dragging a channel while Locked, then Unlock and drag it, with Option
 held, split, duplicate, close, resize. Open the Events panel and Settings. Open it in Safari too if you can.
 Expect: locked nothing moves and the greyed controls say why; unlocked it behaves like the app; no button that does nothing.
-Question: should an unlocked arrangement be kept when you reload the page? I recommend no: a reload is the exported view, which is what a reader of a shared link expects. (If yes, it would go only in that browser's storage, with a "Back to the exported view" action.)
+You decided (Nov 15): an unlocked arrangement is not kept when you reload; a reload is the exported view.
 Result:
 Notes:
 

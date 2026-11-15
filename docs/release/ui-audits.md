@@ -137,4 +137,4 @@ is ranked with the parity differences.
 Checked, no change: dialogs share one frame, open centred over a scrim and close the way they came (B1); pane actions and
 XY's controls appear on hover only (B5); sizes and radii stay on the tokens; reduced motion is honoured (earlier audits).
 
-For the owner: the ⋯ menu trim (P3 in `parity-classes.md`). The "App is better" rows were all approved Nov 15.
+The owner approved every "App is better" row and decided P3 (trim the ⋯ menu) and P10 (fixed-width time range) as recommended, Nov 15.

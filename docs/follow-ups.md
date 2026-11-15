@@ -26,6 +26,10 @@ removed Nov 15; git history keeps them.
   Locked/Unlocked pill; what a viewer or a tab can't do is left out, or disabled with the reason.
 - `TLMBENCH_SLOW_BUILD=<ms>` slows a pyramid build so a person can watch it.
 - Opening one file twice at once makes one tab.
+- An unlocked viewer arrangement is not kept across reloads: a reload is the exported view.
+- Parity with the prototype is classed (`docs/release/parity-classes.md`): the "App is better" rows are accepted
+  differences (ledger A-01 to A-11); the ⋯ menu is trimmed to what the top bar and menu bar don't hold; the time range is
+  a fixed-width field.
 - Browser-only mode: v1 is raw files (CSV, `.tlm`, Parquet, fixed-width and packets through descriptors), WASM decoder
   plugins and read-only folders, with the cache in OPFS and a reload bringing files back; the parse runs in a Worker; the
   Parquet reader is a separate WASM module (about 1 MB gzipped) fetched only when a Parquet file opens. Several files,

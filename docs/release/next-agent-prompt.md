@@ -21,11 +21,9 @@ later (R3.1 to R3.3) ports only its Port rows and never touches an "App is bette
 
 ## Open with the owner
 
-- The ⋯ menu trim (P3 in `parity-classes.md`); every "App is better" row is approved (Nov 15).
-
 - The re-test on the owner test sheet (R12, B4, S1 to S4 and the older items). When the owner confirms an item, remove it.
-- Sheet R12's question: keep an unlocked viewer arrangement across reloads? Recommendation: no. Build nothing until answered.
-- Release decisions 1 to 10 in the release plan (licence, platforms, signing…), needed by R4.
+- Release decisions 6, 7, 8 and 10 (Help and the manual, the web copy, the final deletion list, package managers); 1 to 5
+  and 9 were decided Nov 15.
 
 ## Rules
 

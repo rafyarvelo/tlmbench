@@ -32,11 +32,11 @@ state of its own in the table, not "done".
 | R1 Review and the ledger | Done Nov 11 (`ledger.md`, `review.md`, `ci/ledger_check.py`) |
 | R2.1 Exports | Built Nov 11 (ledger rows naming R2.1; `docs/exports.md`, `docs/viewer-store.md`); CI with the Nov 15 push |
 | R2.1a The owner's first pass | Built Nov 14 and 15: the owner's 11 fixes, all nine decisions (owner-decisions memory, `follow-ups.md`), the sheet's R3 (Reset app), R12 (the viewer Locked, with Unlock) and B4 (`TLMBENCH_SLOW_BUILD`), the first UI audit. **The owner's re-test is open**: R12, B4, S1 to S4 and the older untested items on the sheet |
-| R3.0 Classification audit (new, moved up) | **Done Nov 15** (`parity-classes.md`: 11 Port rows, 16 App is better, the rest Noise; apple-design audit in `ui-audits.md`; ledger D-ui-36 to D-ui-41, D-live-11). The owner approved every "App is better" row Nov 15 (ledger A-05 to A-11). **Open with the owner:** the ⋯ menu trim (P3) |
+| R3.0 Classification audit (new, moved up) | **Done Nov 15** (`parity-classes.md`: 11 Port rows, 16 App is better, the rest Noise; apple-design audit in `ui-audits.md`; ledger D-ui-36 to D-ui-41, D-live-11). The owner approved every "App is better" row Nov 15 (ledger A-05 to A-11). The owner decided P3 (trim the ⋯ menu) and P10 (a fixed-width time range) as recommended, Nov 15 |
 | R2.2 Browser-only mode | **Next.** Half built (D-brow-01 to -07: Worker, reload, static-host recipe, a tab offering only what it can do, `.tlm`, Parquet). Left, by the owner's scope of Nov 15: descriptors and packets, WASM decoder plugins, read-only folders, leaving out the post-v1 controls (D-brow-05, -08, -09, -10), then the end-of-R2.2 UI audit |
 | R2.3 Decoders · R2.4 Python · R2.5 Core's Partial rows | Not started |
 | R3.1 to R3.4 Parity | Not started; their lists come from R3.0 |
-| R4 to R9 | Not started; release decisions 1 to 10 below are still the owner's to make (needed by R4) |
+| R4 to R9 | Not started. Release decisions 1 to 5 and 9 decided Nov 15; 6, 7, 8 and 10 open (needed by R7 and R8) |
 | CI on the Nov 15 push | See the commit that closes this cleanup |
 
 ## Recommended model per step
@@ -90,21 +90,23 @@ runs a step, keep the step smaller and have it stop and report at the first desi
   `review-prompt.md` are deleted (git keeps them), the R2.1 plan became `docs/viewer-store.md`, and `follow-ups.md` keeps only
   the design-doc notes owed (its open items were in the ledger since R1).
 
-## Decisions the owner needs to make first
+## Release decisions
 
-Each step below says which of these it needs. Recommendations are mine; none is built until the owner answers.
+Each step below says which of these it needs. **Decided Nov 15 by the owner, as recommended: 1, 2, 3, 4, 5 and 9**, and the
+CLI ships beside the app (R4). Still open: 6, 7, 8 (partly: the plan documents were reduced Nov 15; the final deletion
+list is agreed at R8) and 10. Nothing open is built until the owner answers.
 
-| # | Decision | Recommendation |
+| # | Decision | Recommendation (and state) |
 | --- | --- | --- |
-| 1 | Licence for the code, and for the manual and screenshots | Apache-2.0 for code (patent grant, plugins and bindings are meant to be extended); CC BY 4.0 for the manual. The owner's call; it changes every `Cargo.toml`, `pyproject.toml` and the README |
-| 2 | Platforms and architectures to ship | macOS arm64 and x86_64 (universal `.dmg`), Windows x64 (installer + portable zip), Linux x64 (AppImage and `.deb`; `.rpm` if wanted), Linux arm64 for the CLI only. Windows arm64 only if a runner is available |
-| 3 | Signing: an Apple Developer ID and notarisation; a Windows code-signing certificate (or Azure Trusted Signing) | Sign both for the release. Unsigned builds trigger Gatekeeper and SmartScreen warnings that make a "production" release look broken. The owner holds the credentials and adds them as repository secrets; an agent never sees them |
-| 4 | Where installers are published | GitHub Releases on the repo, built by a tag-triggered workflow; the same workflow publishes the Python wheels and attaches the CLI archives |
-| 5 | PyPI: the project name (`tlmbench` is what `python/` uses), a trusted-publisher setup | Register the name now; publish with PyPI trusted publishing (no stored token) |
+| 1 | Licence for the code, and for the manual and screenshots | Apache-2.0 for code (patent grant, plugins and bindings are meant to be extended); CC BY 4.0 for the manual. The owner's call; it changes every `Cargo.toml`, `pyproject.toml` and the README **Decided Nov 15.** |
+| 2 | Platforms and architectures to ship | macOS arm64 and x86_64 (universal `.dmg`), Windows x64 (installer + portable zip), Linux x64 (AppImage and `.deb`; `.rpm` if wanted), Linux arm64 for the CLI only. Windows arm64 only if a runner is available **Decided Nov 15.** |
+| 3 | Signing: an Apple Developer ID and notarisation; a Windows code-signing certificate (or Azure Trusted Signing) | Sign both for the release. Unsigned builds trigger Gatekeeper and SmartScreen warnings that make a "production" release look broken. The owner holds the credentials and adds them as repository secrets; an agent never sees them **Decided Nov 15.** |
+| 4 | Where installers are published | GitHub Releases on the repo, built by a tag-triggered workflow; the same workflow publishes the Python wheels and attaches the CLI archives **Decided Nov 15.** |
+| 5 | PyPI: the project name (`tlmbench` is what `python/` uses), a trusted-publisher setup | Register the name now; publish with PyPI trusted publishing (no stored token) **Decided Nov 15.** |
 | 6 | How Help opens the manual in the app | Open the bundled PDF with the OS's default viewer through Tauri's opener (the app doesn't run a program of its own: it asks the OS to open a document), plus a "Online manual" link. The alternative is a manual window inside the app, which needs the manual as HTML too |
 | 7 | Where the web copy of the manual lives | GitHub Pages from the repo (`docs/site`), next to the browser-only app and a sample HTML export |
 | 8 | What happens to the plan documents (the list in R8) | Delete them from `main` once their content is absorbed (git history keeps them); keep the prototype under `prototype/` as the design reference and its tests as they are |
-| 9 | Version and tag | `1.0.0`, tag `v1.0.0`; a `v1.0.0-rc.N` tag series for the dry runs |
+| 9 | Version and tag | `1.0.0`, tag `v1.0.0`; a `v1.0.0-rc.N` tag series for the dry runs **Decided Nov 15.** |
 | 10 | Homebrew tap, winget, Flathub, crates.io | Not for v1.0.0; a Homebrew cask is the first to add after |
 
 ## The steps
@@ -146,7 +148,7 @@ Sources: `docs/follow-ups.md` "Left from step 5.10" and the ledger's Missing and
   `docs/release/owner-test-sheet.md`: the fixes with no open decision, nine decisions (all accepted as recommended), the
   release app rebuilt, the first UI audit, then the sheet's second round (R3 Reset app, R12 the viewer Locked with Unlock,
   B4 a build slow enough to watch). Open: the owner's re-test of what the sheet still lists, and its question on keeping an
-  unlocked arrangement across reloads (recommendation: no; build nothing until answered).
+  unlocked arrangement across reloads, answered no (Nov 15): a reload is the exported view.
 - **R2.2 Browser-only mode (M).** Scope (owner, Nov 15): what the design promises for a tab ("the core compiled to WASM,
   opening raw files dropped into a browser tab. Descriptors and WASM plugins would work there, native plugins would not",
   its cache in the browser's private storage) plus read-only folders as the prototype has them (sheet F2). Built: CSV in a
@@ -236,8 +238,8 @@ Rules for the audits:
 Needs decisions 1 to 5 and 9. Built before the docs so that every platform's installer exists for R5's real-window passes.
 
 - **Bundles:** turn `bundle.active` on; targets per decision 2 (macOS `.app` and `.dmg`, Windows NSIS and/or MSI, Linux
-  AppImage and `.deb`); icons (present); the bundle ships the CLI next to the app (or the app can install its
-  command-line link: decide with the owner), the plugin templates, the example `.tlmbench/` and the manual PDF as a
+  AppImage and `.deb`); icons (present); the bundle ships the CLI next to the app, with an "Install command-line tool…" item in
+  the app (owner, Nov 15), the plugin templates, the example `.tlmbench/` and the manual PDF as a
   resource; file associations for `.tlm`, `.csv` and the descriptor extensions; the viewer pack is already embedded
   (`just viewer` first).
 - **Signing:** macOS Developer ID and `notarytool`, hardened runtime and the entitlements the app needs (read-only
