@@ -26,6 +26,8 @@ removed Nov 15; git history keeps them.
   Locked/Unlocked pill; what a viewer or a tab can't do is left out, or disabled with the reason.
 - `TLMBENCH_SLOW_BUILD=<ms>` slows a pyramid build so a person can watch it.
 - Opening one file twice at once makes one tab.
+- A file's right-click in the Explorer has Open with layout ▸ (your and the folder's layouts; those the file lacks
+  channels for are greyed with what they need), the manual counterpart of an import profile's starter layout.
 - An unlocked viewer arrangement is not kept across reloads: a reload is the exported view.
 - Parity with the prototype is classed (`docs/release/parity-classes.md`): the "App is better" rows are accepted
   differences (ledger A-01 to A-11); the ⋯ menu is trimmed to what the top bar and menu bar don't hold; the time range is
