@@ -29,7 +29,14 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
       browser tab are post-v1 (owner, Nov 15). Never touch an "App is better" row.
    2. **R2.3 Decoders**, following the CSV and Parquet path (`backwards.rs`).
    3. **R2.4 Python:** wheels, the CI matrix, trusted publishing. If the Arrow C interface fights you, stop: Opus.
-   4. The ledger rows each step closes (evidence you ran), the tests README, the status table, the sheet.
+   4. **R3.3's UI-only rows, pulled forward by the owner (Nov 15)** so Sonnet has them before Opus is needed: pane names
+      (D-ui-43), Open together draws every file (D-ui-46), Duplicate for ▸ file N (D-ui-47), From file ▸ and Add from every
+      file (D-ui-48), limits shared by every file's copy of a channel (D-ui-49), and the table's Event column, dimmed slower
+      channels and status line (S5.2-13, S4.2-09), plus the other UI-only Port rows of `parity-classes.md` (edge drops
+      D-ui-17 and -18, event marker tooltips D-ui-11, Stop at several categories S5.2-15, Play's lost test D-ui-13 and -14).
+      Anything that needs the core (recipes or events across the files of a tab: D-derive-03, S5.6-12; the profiles tab)
+      stays with R2.5. Do these after 1 to 3, or first if 1 to 3 block.
+   5. The ledger rows each step closes (evidence you ran), the tests README, the status table, the sheet.
    After each: run the apple-design audit of the area and record it in `ui-audits.md`, saying it was run by Sonnet (the
    Opus pass is owed).
 4. **What needs Opus; don't start it** (it is Opus in the plan: judgement across many files or hard debugging): R2.2's
@@ -37,9 +44,7 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
    components in the browser), then the end-of-R2.2 UI audit; **R2.5** (the core's Partial rows: the import dialog's
    sections and Derived list S5.1-10, D-share-01, Connect's reconnect D-live-11, the profile's starter layout, recipes
    and events across the files of a tab D-derive-03, S5.6-12); **R3.4** and everything from R4 on except R7 and R9 (Sonnet)
-   and R8 (Haiku). R3.3 comes after R2.5 in the plan; its UI-only rows (D-ui-43 pane names, D-ui-46 to D-ui-49, the table's
-   Event column and dimmed rows) need no core work, so **ask the owner** whether Sonnet may take them before R2.5, and
-   say so in your report. When your Sonnet work is done, report what the next Opus step is and why, and stop.
+   and R8 (Haiku). The rest of R3.3 (its core-dependent rows) follows R2.5. When your Sonnet work is done, report what the next Opus step is and why, and stop.
 
 Built, pushed and CI-green Nov 15: R3.1 (D-ui-37, -39, -40, -41, -44, S4.4-04) and R3.2 (D-ui-36, -38, -42, -45,
 D-derive-02; D-ui-01 and D-ui-10 Partial). The release app was rebuilt for the owner from that code; its leftover-slot-numbers

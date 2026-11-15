@@ -376,7 +376,9 @@ the list (decision 8).
 
 ## Order and dependencies
 
-R0 → R1 → R2.1 → R2.1a → **R3.0** → **R3.1 → R3.2** → R2.2 → R2.3 → R2.4 → R2.5 → R3.3 → R3.4 → R4 → R5 → R6 → R7 → R8 → R9.
+R0 → R1 → R2.1 → R2.1a → **R3.0** → **R3.1 → R3.2** → R2.2 → R2.3 → R2.4 → R2.5 → R3.3 → R3.4 → R4
+
+(Owner, Nov 15: R3.3's UI-only rows, the ones that need no core work, are pulled forward for Sonnet to take after R2.2's Sonnet part, R2.3 and R2.4, before the Opus steps. Its core-dependent rows stay after R2.5.) → R5 → R6 → R7 → R8 → R9.
 
 R0 closes with the first two clean CI runs; R2.1a closes with the owner's re-test, which can run alongside the steps after it.
 
