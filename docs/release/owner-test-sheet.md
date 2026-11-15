@@ -26,7 +26,7 @@ In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/fligh
 
 ```
 Date:
-App: release build from commit (agent fills in):
+App: release build from commit (agent fills in): 2778484 (Nov 14, 2026), `target/release/tlmbench-app`. Re-test list: docs/release/next-agent-prompt.md, "The owner's re-test list"
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
