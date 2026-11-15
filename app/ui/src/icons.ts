@@ -42,6 +42,11 @@ export const ICON = {
   folder: s('<path d="M3 7h6l2 2h10v10H3z"/>'),
   expand: s('<path d="M7 15l5 5 5-5M7 9l5-5 5 5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   collapse: s('<path d="M7 20l5-5 5 5M7 4l5 5 5-5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
+  /** A pane's Duplicate and Split, as the prototype's */
+  dup: s('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0014.5 4h-9A1.5 1.5 0 004 5.5v9A1.5 1.5 0 005.5 16H8"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+  split: s('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>', 'fill="none" stroke="currentColor" stroke-width="2"'),
+  /** Export: a tray with an arrow out of it */
+  export: s('<path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   /** Explorer: list only the open files (a funnel) */
   onlyOpen: s('<path d="M4 5h16l-6 7.5V18l-4 2v-7.5z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   /** move a sidebar panel to the other side */

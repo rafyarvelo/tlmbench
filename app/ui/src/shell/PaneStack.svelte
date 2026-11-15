@@ -188,9 +188,14 @@
   function fitChips(node: HTMLElement, i: number) {
     const fit = () => {
       const chips = [...node.querySelectorAll<HTMLElement>('.chip')];
+      // the actions that can fit show (owner decision 9): the rarer ones give way first, each stays in ⋯; then chips fold
+      const acts = ['.pact-split', '.pact-dup', '.pact-close', '.pact-axis', '.pact-ev'].map((q) => node.querySelector<HTMLElement>(q)).filter((a) => !!a);
       chips.forEach((c) => (c.hidden = false));
+      acts.forEach((a) => (a.hidden = false));
+      const over = () => node.scrollWidth > node.clientWidth + 1;
+      for (let k = 0; over() && k < acts.length; k++) acts[k].hidden = true;
       let n = 0;
-      while (node.scrollWidth > node.clientWidth + 1 && n < chips.length - 1) chips[chips.length - 1 - n++].hidden = true;
+      while (over() && n < chips.length - 1) chips[chips.length - 1 - n++].hidden = true;
       if ((folded[i] ?? 0) !== n) folded[i] = n;
     };
     const ro = new ResizeObserver(fit);
@@ -392,9 +397,6 @@
                   <button class="tbtn xyb" data-xyeq aria-pressed={xyEqualOf(i)} data-tip="Equal scale: one unit is the same length on both axes (longitude is corrected for latitude), so shapes aren't stretched" onclick={() => setXy(i, { xyEqual: !xyEqualOf(i), xyView: undefined })}>1:1</button>
                   <button class="tbtn xyb" data-xyfit disabled={!p.xyView} data-tip="Fit: back to automatic ranges (or double-click the plot). Scroll zooms at the pointer; drag with Box zoom or Pan as the toolbar's mouse mode says." onclick={() => setXy(i, { xyView: undefined })}>Fit</button>
                 {/if}
-                {#if !p.mode || p.mode === 'chart' || p.mode === 'both' || p.mode === 'cv' || p.mode === 'table'}
-                  <button class="pmore" data-pevents aria-pressed={paneEvents(i)} aria-label="Event markers in pane {i + 1}" data-tip={paneEvents(i) ? 'Hide event markers in this pane' : 'Show event markers in this pane'} onclick={() => toggleEvents(i)}>{@html ICON.events}</button>
-                {/if}
                 <button
                   class="pmore vmenu"
                   data-vmenu
@@ -407,6 +409,18 @@
                     views = views?.i === i ? null : { i, anchor: e.currentTarget as HTMLElement };
                   }}>{@html VIEW_ICON[p.mode ?? 'chart']}<span class="vchev">{@html ICON.chev}</span></button
                 >
+                <!-- the prototype's pane actions, in its order, on hover or focus; those that don't fit give way, rarer first
+                     (each is also in ⋯; see fitChips) (owner decision 9) -->
+                {#if hasChart(i)}
+                  <button class="pmore pact-axis" data-paxis aria-label="Axis and scale of pane {i + 1}" data-tip="Pane settings: axis range, label, decimals, log scale" onclick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); axes = { i, x: Math.max(8, Math.min(r.left, window.innerWidth - 400)), y: Math.min(r.bottom + 4, window.innerHeight - 460) }; }}>{@html ICON.settings}</button>
+                {/if}
+                {#if p.channels.length && (!p.mode || p.mode === 'chart' || p.mode === 'both' || p.mode === 'cv' || p.mode === 'table')}
+                  <button class="pmore pact-ev" data-pevents aria-pressed={paneEvents(i)} aria-label="Event markers in pane {i + 1}" data-tip={paneEvents(i) ? 'Hide event markers in this pane' : 'Show event markers in this pane'} onclick={() => toggleEvents(i)}>{@html ICON.events}</button>
+                {/if}
+                {#if p.channels.length}
+                  <button class="pmore pact-dup" data-pdup aria-label="Duplicate pane {i + 1}" data-tip="Duplicate this pane below, with the same channels, view, sort and filters. Shift-click puts the copy beside it." onclick={(e) => duplicate(i, e.shiftKey && canSplitRight(i))}>{@html ICON.dup}</button>
+                {/if}
+                <button class="pmore pact-split" data-psplit disabled={!canSplitRight(i)} aria-label="Split pane {i + 1}" data-tip={canSplitRight(i) ? 'Split: add an empty pane on the right. To pick a side, drag a channel onto the left or right edge of a pane.' : 'A row holds up to 4 panes'} onclick={() => splitRight(i)}>{@html ICON.split}</button>
                 <button
                   class="pmore"
                   data-pmenu
@@ -416,6 +430,7 @@
                   aria-expanded={menu?.i === i}
                   onclick={(e) => (menu?.i === i ? (menu = null) : open(i, { anchor: e.currentTarget as HTMLElement }))}>{@html ICON.more}</button
                 >
+                <button class="pmore pact-close" data-pclose aria-label="Close pane {i + 1}" data-tip="Close this pane" onclick={() => closePane(i)}>{@html ICON.close}</button>
               </div>
               {#if p.mode === 'values'}
                 {@render tileGrid(p)}
@@ -808,6 +823,9 @@
   .xysel,
   .xyb {
     visibility: hidden;
+  }
+  .phead :global(.pmore[hidden]) {
+    display: none;
   }
   .pmore[data-pevents][aria-pressed='true'] {
     color: var(--accent);
