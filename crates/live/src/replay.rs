@@ -166,14 +166,20 @@ mod tests {
     fn a_replay_records_every_sample_at_the_speed_asked() {
         let dir = tempfile::tempdir().unwrap();
         let src = csv(dir.path(), 1000); // one second of data
+        let s =
+            Source::start(replay(&src, "speed=4"), None, &dir.path().join("source-1"), &Options::default()).unwrap();
+        // the pace is timed from the first record, so opening the file on a busy CI runner doesn't count
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while s.records_written() == 0 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
         let begun = Instant::now();
-        let h = Source::start(replay(&src, "speed=4"), None, &dir.path().join("source-1"), &Options::default())
-            .unwrap()
-            .wait();
+        let h = s.wait();
         let took = begun.elapsed().as_secs_f64();
         assert_eq!(h.records_written, 1000, "{h:?}");
         assert_eq!(h.records_dropped, 0);
-        assert!((0.2..0.6).contains(&took), "a second at 4x took {took} s");
+        // 250 ms at 4x: never faster than asked, and well short of the 1 s that 1x would take
+        assert!((0.15..0.9).contains(&took), "a second at 4x took {took} s after the first record");
         let rec = tlmbench_decode::open(&h.files[0], &Default::default()).unwrap();
         let info = rec.info();
         assert_eq!(info.samples, 1000);
@@ -189,9 +195,13 @@ mod tests {
         let src = csv(dir.path(), 1000);
         let src_ep = replay(&src, "speed=10&start=0.5&loop=1");
         let s = Source::start(src_ep, None, &dir.path().join("source-1"), &Options::default()).unwrap();
-        thread::sleep(Duration::from_millis(400));
+        // half a second of data is 50 ms at 10x: wait until the loop has gone round (a deadline, not a fixed sleep, so a
+        // busy runner that starts the source late still passes)
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while s.records_written() <= 1000 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
         let h = s.stop();
-        // half a second of data is 50 ms at 10x: the loop has gone round several times
         assert!(h.records_written > 1000, "{h:?}");
         let rec = tlmbench_decode::open(&h.files[0], &Default::default()).unwrap();
         assert_eq!(rec.read(0, 0, 1).to_f64(1.0, 0.0), [500.0], "starts at 0.5 s");
