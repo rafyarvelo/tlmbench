@@ -150,6 +150,88 @@ impl Rec {
         py.detach(move || o.build(&mut |_, _| {})).map_err(err)
     }
 
+    /// Derived channels (design: Derived channels): `recipes` are `(name, expression, unit, category, decimals)` computed
+    /// over this recording's channels; with none given, the recipes of the nearest `.tlmbench/` that apply. Returns a new
+    /// recording holding this one's channels and then the derived ones, and the recipes that don't apply with why.
+    #[pyo3(signature = (recipes=None))]
+    #[allow(clippy::type_complexity)]
+    fn derive(
+        &self,
+        py: Python<'_>,
+        recipes: Option<Vec<(String, String, Option<String>, Option<String>, Option<u8>)>>,
+    ) -> PyResult<(Rec, Vec<(String, String)>)> {
+        let list: Vec<tlmbench_expr::Recipe> = match recipes {
+            Some(r) => r
+                .into_iter()
+                .map(|(name, expr, unit, category, decimals)| tlmbench_expr::Recipe { name, expr, unit, category, decimals, automatic: false })
+                .collect(),
+            None => tlmbench_store::config::shared_recipes(&self.config),
+        };
+        let base = self.opened.clone();
+        let store = base.store().clone();
+        let (joined, skipped) = py
+            .detach(move || -> Result<_, tlmbench_store::Error> {
+                let d = store.open_derived(&base, &list)?;
+                let skipped: Vec<(String, String)> = d.skipped.iter().map(|(n, e)| (n.clone(), e.msg.clone())).collect();
+                let opened = match d.opened {
+                    Some(o) => store.join(base.clone(), Arc::new(o))?,
+                    None => return Ok((None, skipped)),
+                };
+                Ok((Some(opened), skipped))
+            })
+            .map_err(err)?;
+        let opened = match joined {
+            Some(o) => Arc::new(o),
+            None => self.opened.clone(),
+        };
+        Ok((Rec { opened, config: self.config.clone() }, skipped))
+    }
+
+    /// The events kept for this recording, as JSON: the ones you added (in the app's cache) and the ones shared in the
+    /// nearest `.tlmbench/events/`, in start order.
+    fn events(&self) -> PyResult<String> {
+        let o = &self.opened;
+        let mut all = tlmbench_store::events::list(o.store().root(), o.identity()).map_err(err)?;
+        let name = o.recording().info().path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        for e in tlmbench_store::config::shared_events(&self.config, o.identity(), &name) {
+            if !all.iter().any(|x| x.id == e.id) {
+                all.push(e);
+            }
+        }
+        all.sort_by_key(|e| e.start.parse::<i64>().unwrap_or(0));
+        serde_json::to_string(&all).map_err(err)
+    }
+
+    /// Adds an event (a marker when `duration_ns` is 0, else a range) to this recording's own events in the app's cache:
+    /// nothing is written beside the data. Returns the event as JSON.
+    #[pyo3(signature = (name, start_ns, duration_ns=0, category="", channels=None))]
+    fn add_event(&self, name: &str, start_ns: i64, duration_ns: i64, category: &str, channels: Option<Vec<String>>) -> PyResult<String> {
+        if name.trim().is_empty() {
+            return Err(PyValueError::new_err("an event needs a name"));
+        }
+        let o = &self.opened;
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        let ev = tlmbench_store::events::Event {
+            id: format!("py{at:x}"),
+            name: name.trim().to_owned(),
+            start: start_ns.to_string(),
+            duration: duration_ns.to_string(),
+            category: category.to_owned(),
+            source: "user".into(),
+            channels: channels.unwrap_or_default(),
+            by: None,
+        };
+        tlmbench_store::events::save(o.store().root(), o.identity(), ev.clone()).map_err(err)?;
+        serde_json::to_string(&ev).map_err(err)
+    }
+
+    /// Removes one of the events you added, by id.
+    fn delete_event(&self, id: &str) -> PyResult<()> {
+        let o = &self.opened;
+        tlmbench_store::events::delete(o.store().root(), o.identity(), id).map_err(err)?;
+        Ok(())
+    }
+
     /// Runs a check set (TOML text, or the name of one in the nearest `.tlmbench/checks`): its results as JSON.
     fn check(&self, py: Python<'_>, set: &str) -> PyResult<String> {
         let set = if set.contains('\n') || set.contains('=') {
@@ -248,9 +330,30 @@ impl Rec {
     }
 }
 
+/// Every object in a `.tlmbench/` folder (or the nearest one above `path`), as JSON: `{"dir", "objects": [{"kind", "name",
+/// "files": {relative path: text}}], "problems": [{"path", "why"}]}`. A folder with none has nothing.
+#[pyfunction]
+fn config_objects(path: &str) -> PyResult<String> {
+    let p = Path::new(path);
+    let dir = if p.file_name().is_some_and(|n| n == ".tlmbench") { Some(p.to_path_buf()) } else { tlmbench_store::config::nearest(p) };
+    let Some(dir) = dir else { return Ok(json(&serde_json::json!({ "dir": null, "objects": [], "problems": [] }))) };
+    let (items, problems) = tlmbench_store::config::read_folder(&dir);
+    let objects: Vec<serde_json::Value> = items
+        .iter()
+        .map(|i| {
+            let files: serde_json::Map<String, serde_json::Value> =
+                i.files.iter().map(|(p, b)| (p.clone(), serde_json::Value::String(String::from_utf8_lossy(b).into_owned()))).collect();
+            serde_json::json!({ "kind": i.kind, "name": i.name, "files": files })
+        })
+        .collect();
+    let problems: Vec<serde_json::Value> = problems.iter().map(|x| serde_json::json!({ "path": x.path, "why": x.why })).collect();
+    Ok(json(&serde_json::json!({ "dir": dir.display().to_string(), "objects": objects, "problems": problems })))
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(open, m)?)?;
+    m.add_function(wrap_pyfunction!(config_objects, m)?)?;
     m.add_class::<Rec>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())

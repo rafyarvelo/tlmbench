@@ -75,6 +75,10 @@ run(
     check('with tags: ▸ on the first row, ◂ on the last, ● on an instant', await until(() => { const t = [...document.querySelectorAll('#stack [data-evtag]')].map((e) => e.textContent).join(''); return t.includes('▸') && t.includes('◂') && t.includes('●'); }), await p.$$eval('#stack [data-evtag]', (e) => e.map((x) => x.textContent)));
     // the Event column names the event at each row (S5.2-13): last, display only
     check('an Event column comes last and names the event on its rows', await until(() => [...document.querySelectorAll('#stack .tth')].at(-1)?.dataset.col === 'e') && await p.evaluate(() => [...document.querySelectorAll('#stack .trw.inev')].some((r) => /Early|Climb|Spike/.test(r.lastElementChild?.textContent ?? ''))), await p.$$eval('#stack .tth', (h) => h.map((x) => x.dataset.col)));
+    // a tag click shows the event in the Events panel (S5.2-13)
+    await p.click('#stack [data-evtag]');
+    check('a click on an event tag opens the Events panel on that event', await until(() => !!document.querySelector('#eventsPanel .ev.revealed')), await p.$$eval('#eventsPanel .ev', (e) => e.length));
+    await p.click('[data-rail="explorer"]');
     check('and has no sort, filter or column menu', !(await p.$('#stack .tth[data-col="e"] [data-filter]')) && !(await p.$('#stack .tth[data-col="e"] [data-colmenu]')));
     await p.keyboard.press('e');
     check('E hides them', await until(() => document.querySelectorAll('#stack .trw.inev').length === 0));

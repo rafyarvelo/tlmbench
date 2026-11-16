@@ -10,6 +10,16 @@
   import { movePanel, setPanelOpen, settings, sideOf } from '../settings.svelte';
   import { actions, ui } from '../ui.svelte';
 
+  // a table's event tag pointed here: scroll to the event and mark it for a moment
+  $effect(() => {
+    const id = events.reveal;
+    if (!id) return;
+    const t = window.setTimeout(() => {
+      document.querySelector(`#eventsPanel [data-ev="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' });
+      window.setTimeout(() => events.reveal === id && (events.reveal = null), 1600);
+    }, 50);
+    return () => clearTimeout(t);
+  });
   const closed = $derived(settings.panelsClosed.includes('events'));
   const other = $derived(sideOf('events') === 'left' ? 'right' : 'left');
   const shown = $derived(listed());
@@ -109,7 +119,7 @@
       <div class="evsum" id="evSum">{shown.length === events.list.length ? `${events.list.length} ${events.list.length === 1 ? 'event' : 'events'}` : `${shown.length} of ${events.list.length} events`}{#if events.auto.length} · {events.mine.length} yours, {events.auto.filter((e) => e.source === 'rule').length} from rules, {events.auto.filter((e) => e.source === 'check').length} from checks{/if}{#if events.checking} · checking rules…{/if}</div>
       {#snippet row(e: TlmEvent)}
         <div class="evitem" class:editing={events.editing === e.id}>
-          <button class="ev" data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? (e.by ? ` · added by ${e.by}` : ' · added by you') : e.source === 'shared' ? ` · shared${e.by ? ` by ${e.by}` : ''}` : e.source === 'rule' ? ' · from a rule' : e.source === 'check' ? ' · a check failed' : ''}" onclick={() => actions.eventShow(e.id)}>
+          <button class="ev" class:revealed={events.reveal === e.id} data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? (e.by ? ` · added by ${e.by}` : ' · added by you') : e.source === 'shared' ? ` · shared${e.by ? ` by ${e.by}` : ''}` : e.source === 'rule' ? ' · from a rule' : e.source === 'check' ? ' · a check failed' : ''}" onclick={() => actions.eventShow(e.id)}>
             <i></i><span class="evname">{e.name}</span><span class="evwhen num">{when(e)}<small>{lasts(e)}</small></span>
           </button>
           {#if ui.browserOnly}
@@ -242,6 +252,9 @@
   }
   .evgroup .chv.shut {
     transform: rotate(-90deg);
+  }
+  .ev.revealed {
+    background: var(--accent-soft);
   }
   .evitem {
     display: flex;

@@ -1,0 +1,108 @@
+name: Python wheels
+
+# One abi3 wheel per platform (Linux manylinux 2_28, macOS universal2, Windows x64) and an sdist. Every run builds them and
+# installs each wheel into a clean virtual environment, where the package's own tests run against the installed package
+# (not the source tree). A tag `py-v<version>` also publishes to PyPI through trusted publishing (no token is stored).
+
+on:
+  push:
+    branches: [main]
+    tags: ["py-v*"]
+    paths:
+      - "python/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/python.yml"
+  pull_request:
+    paths:
+      - "python/**"
+      - ".github/workflows/python.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: python-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  wheel:
+    name: wheel (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: "2_28"
+          - os: macos-15
+            target: universal2-apple-darwin
+          - os: windows-2025
+            target: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Pinned versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' ci/versions.env >> "$GITHUB_ENV"
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: "1.16.0"
+          working-directory: python
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux || 'auto' }}
+          args: --release --out dist
+          # hdf5 builds from source (static): the manylinux image needs cmake
+          before-script-linux: |
+            yum install -y cmake perl-IPC-Cmd || true
+      - name: Install it into a clean environment and run the package's tests
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/clean"
+          if [ -x "$RUNNER_TEMP/clean/Scripts/python.exe" ]; then PY="$RUNNER_TEMP/clean/Scripts/python.exe"; else PY="$RUNNER_TEMP/clean/bin/python"; fi
+          "$PY" -m pip install --quiet pytest numpy pyarrow
+          "$PY" -m pip install --quiet --no-index --find-links python/dist tlmbench
+          # from a folder with no `tlmbench` source in it, so the installed package is what the tests import
+          cd "$RUNNER_TEMP"
+          "$PY" -m pytest "$GITHUB_WORKSPACE/python/tests" -p no:cacheprovider
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheel-${{ matrix.os }}
+          path: python/dist/*.whl
+
+  sdist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: "1.16.0"
+          working-directory: python
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: python/dist/*.tar.gz
+
+  publish:
+    name: publish to PyPI
+    if: startsWith(github.ref, 'refs/tags/py-v')
+    needs: [wheel, sdist]
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1

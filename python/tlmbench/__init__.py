@@ -8,6 +8,10 @@
     rec.view("motor_rpm", 0, 60, width=1200)      # what the app draws for a 1200 px wide chart
     rec.stats(["motor_rpm"], 0, 60)               # exact count, min, max, mean, std
     rec.check("Flight acceptance")                # a check set's results, as the CLI's JSON report holds them
+    rec.derive("speed_kmh", "speed * 3.6", unit="km/h")   # a new Recording with a derived channel (a recipe's expression)
+    rec.add_event("Spike", "12.5 s", duration="2 s")       # an event of your own, kept in the app's cache
+    rec.events()                                   # yours and the ones shared in .tlmbench/events/
+    tlmbench.config("runs/")                       # the nearest .tlmbench/'s recipes, checks, views... as objects
     rec.convert("out/flight.parquet", "parquet")
     rec.export_html("site/", layout=...)          # the same folder as `tlmbench export html`
 
@@ -26,7 +30,7 @@ import numpy as np
 
 from . import _core
 
-__all__ = ["open", "Recording", "Channel", "__version__"]
+__all__ = ["open", "config", "Recording", "Channel", "Config", "ConfigObject", "__version__"]
 __version__ = _core.__version__
 
 
@@ -167,8 +171,142 @@ class Recording:
         """The `.tlmbench/` folders configuration is read from."""
         return self._rec.config_dirs()
 
+    # -- derived channels and events ------------------------------------------------------------------------------
+
+    def derive(
+        self,
+        name: str | None = None,
+        expr: str | None = None,
+        *,
+        unit: str | None = None,
+        category: str | None = None,
+        decimals: int | None = None,
+        recipes: Sequence[dict[str, Any]] | None = None,
+    ) -> "Recording":
+        """A new Recording with this one's channels and then derived ones, computed as the app computes them.
+
+        `derive("speed_kmh", "speed * 3.6", unit="km/h")` makes one; `recipes=[{"name": ..., "expr": ..., "unit": ...}]`
+        makes several; with neither, the recipes of the nearest `.tlmbench/` that apply to this recording are used.
+        Raises `ValueError` when a recipe you gave doesn't apply (a channel it names is missing, a mistake in it); shared
+        recipes that don't apply are skipped with a warning. This recording is not changed."""
+        if (name is None) != (expr is None):
+            raise ValueError("derive needs both a name and an expression")
+        given: list[dict[str, Any]] = list(recipes or [])
+        if name is not None:
+            given.append({"name": name, "expr": expr, "unit": unit, "category": category, "decimals": decimals})
+        rows = [(r["name"], r["expr"], r.get("unit"), r.get("category"), r.get("decimals")) for r in given] or None
+        core, skipped = self._rec.derive(rows)
+        if skipped:
+            what = "; ".join(f"{n}: {why}" for n, why in skipped)
+            if rows is not None:
+                raise ValueError(f"these recipes don't apply: {what}")
+            import warnings
+
+            warnings.warn(f"shared recipes skipped: {what}", stacklevel=2)
+        return Recording(core)
+
+    def events(self) -> list[dict[str, Any]]:
+        """The events of this recording in start order: the ones you added (in the app's cache) and the ones shared in the
+        nearest `.tlmbench/events/`. Each is `{id, name, start, duration, category, source, channels}` with `start` and
+        `duration` as nanosecond integers."""
+        out = json.loads(self._rec.events())
+        for e in out:
+            e["start"], e["duration"] = int(e["start"]), int(e["duration"])
+        return out
+
+    def add_event(self, name: str, start: Any, duration: Any = 0, category: str = "", channels: Sequence[str] | None = None) -> dict[str, Any]:
+        """Adds an event: a marker at `start`, or a range when `duration` isn't 0. Times are as for `read` (seconds from the
+        first sample, "10 s" text or ISO 8601); `duration` is a length ("2 s", "250 ms" or seconds). Kept in the app's cache for
+        this recording, so the app shows it too; nothing is written beside the data. Returns the event."""
+        if isinstance(duration, str):
+            m = _SECONDS.match(duration)
+            if not m:
+                raise ValueError(f"{duration!r} isn't a length (try '2 s' or 0.25)")
+            length = round(float(m.group(1)) * _UNIT[m.group(2)])
+        else:
+            length = round(float(duration) * 1e9)
+        e = json.loads(self._rec.add_event(name, self.ns(start), length, category, None if channels is None else list(channels)))
+        e["start"], e["duration"] = int(e["start"]), int(e["duration"])
+        return e
+
+    def delete_event(self, id: str) -> None:
+        """Removes one of the events you added, by its id."""
+        self._rec.delete_event(id)
+
 
 def open(path: str, descriptor: str | None = None, cache: str | None = None, config: Sequence[str] | None = None) -> Recording:
     """Opens a recording (CSV, Parquet, .tlm, packets, ...). `descriptor` names a format descriptor for a binary file;
     `config` lists `.tlmbench/` folders to read instead of the nearest one; `cache` overrides the cache folder."""
     return Recording(_core.open(str(path), descriptor, cache, None if config is None else [str(c) for c in config]))
+
+
+@dataclass(frozen=True)
+class ConfigObject:
+    """One object in a `.tlmbench/` folder: a recipe, a check set, a shared view, an import profile, ... `files` maps each of
+    its files (relative to the folder) to its text; `text` is the first one, and `data` parses it (TOML or JSON)."""
+
+    kind: str
+    name: str
+    files: dict[str, str]
+
+    @property
+    def text(self) -> str:
+        return next(iter(self.files.values()), "")
+
+    @property
+    def data(self) -> Any:
+        path = next(iter(self.files), "")
+        if path.endswith(".json"):
+            return json.loads(self.text)
+        try:
+            import tomllib  # Python 3.11+
+        except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+            import tomli as tomllib  # type: ignore[no-redef]
+        return tomllib.loads(self.text)
+
+
+@dataclass(frozen=True)
+class Config:
+    """What a `.tlmbench/` folder holds, as objects. `dir` is the folder (None when there is none); `problems` lists files
+    that did not read, each `{path, why}`."""
+
+    dir: str | None
+    objects: list[ConfigObject]
+    problems: list[dict[str, str]]
+
+    def of(self, kind: str) -> list[ConfigObject]:
+        return [o for o in self.objects if o.kind == kind]
+
+    @property
+    def recipes(self) -> list[ConfigObject]:
+        return self.of("recipes")
+
+    @property
+    def checks(self) -> list[ConfigObject]:
+        return self.of("checks")
+
+    @property
+    def views(self) -> list[ConfigObject]:
+        return self.of("views")
+
+    @property
+    def events(self) -> list[ConfigObject]:
+        return self.of("events")
+
+    @property
+    def profiles(self) -> list[ConfigObject]:
+        return self.of("profiles")
+
+    @property
+    def decoders(self) -> list[ConfigObject]:
+        return self.of("decoders")
+
+    @property
+    def widgets(self) -> list[ConfigObject]:
+        return self.of("widgets")
+
+
+def config(path: str) -> Config:
+    """The `.tlmbench/` folder at `path` (or the nearest one above it, for a recording or a folder), as objects."""
+    r = json.loads(_core.config_objects(str(path)))
+    return Config(r["dir"], [ConfigObject(o["kind"], o["name"], o["files"]) for o in r["objects"]], r["problems"])

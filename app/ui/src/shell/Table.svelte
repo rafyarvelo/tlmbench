@@ -16,11 +16,11 @@
   import { duration, timeLabel } from '../axes';
   import { rateWords } from '../imports.svelte';
   import { live } from '../live.svelte';
-  import { settings } from '../settings.svelte';
+  import { setSetting, settings } from '../settings.svelte';
   import { isCopy } from '../dnd';
   import { ICON } from '../icons';
   import { chCss, chName, chUnit } from '../display.svelte';
-  import { catColor, catName, marked, type TlmEvent } from '../events.svelte';
+  import { catColor, catName, events, marked, type TlmEvent } from '../events.svelte';
   import { fmtCh, learnDecimals, moveChannel, newPaneWith, note, paneEvents, setTable, sortLocked, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
@@ -305,6 +305,14 @@
   }
 
   /** Whether event `e` names channel `ch` (by its name in the file; an event with no channels concerns none in particular). */
+  /** A click on an event tag shows the event in the Events panel. */
+  function revealEvent(id: string): void {
+    events.q = '';
+    events.hidden = [];
+    events.reveal = id;
+    setSetting('leftPanel', 'events');
+  }
+
   const concerns = (e: TlmEvent, ch: number): boolean => !!e.channels?.length && e.channels.includes(ui.channels[ch]?.name ?? '');
 
   /** A channel of another file than the one the rows are counted by: it holds its last sample between its own, and a cell
@@ -804,7 +812,7 @@
                   class:evch={!!ev && col.ch != null && concerns(ev.e, col.ch)}
                   class:held={c >= 2 && heldCol(col.ch) && x != null && r > 0 && v != null && row(r - 1)?.v[c - 2] === v}
                   style="width: {h.getSize()}px{c < 2 ? `; left: ${leftOf(col.id)}px` : ''}"
-                  role="gridcell">{x == null ? '' : cellText(x, col, c)}{#if ev?.tag && col.id === 't'}<em class="evtag" data-evtag data-tip="{ev.e.name} · {catName(ev.e.category)}{ev.tag === '◂' ? ' (end)' : ''}">{ev.tag}</em>{/if}</span
+                  role="gridcell">{x == null ? '' : cellText(x, col, c)}{#if ev?.tag && col.id === 't'}<button type="button" class="evtag" data-evtag tabindex="-1" onclick={(e) => (e.stopPropagation(), revealEvent(ev.e.id))} data-tip="{ev.e.name} · {catName(ev.e.category)}{ev.tag === '◂' ? ' (end)' : ''}">{ev.tag}</button>{/if}</span
                 >
               {/each}
             </div>
@@ -1288,8 +1296,12 @@
   }
   .evtag {
     margin-left: 6px;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: var(--ev);
-    font-style: normal;
+    font: inherit;
+    cursor: pointer;
   }
   .trw.ca > span:first-child {
     box-shadow: inset 3px 0 0 var(--cursor);

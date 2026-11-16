@@ -35,6 +35,8 @@ export const events = $state({
   hidden: [] as string[],
   closed: [] as string[],
   editing: null as string | null,
+  /** An event a table tag pointed at: the panel opens on it and scrolls to it (cleared when shown). */
+  reveal: null as string | null,
   /** A line under the panel's buttons ("Place cursor A first"). */
   msg: '',
 });

@@ -121,3 +121,56 @@ def test_export_html_matches_the_command_line(csv: Path, rec: tlmbench.Recording
     subprocess.run([cli, "export", "html", str(csv), "--layout", str(layout), "--no-viewer", "--out", str(theirs)], check=True, env=env, capture_output=True)
     # the same data, byte for byte (the checksum manifest)
     assert json.loads((theirs / "export.json").read_text())["checksums"] == m["checksums"]
+
+
+def test_derive_makes_a_new_recording_with_the_channel(rec: tlmbench.Recording):
+    d = rec.derive("double", "rpm * 2", unit="rpm2")
+    assert [c.name for c in d.channels] == ["rpm", "temp", "double"]
+    assert d.channels[2].unit == "rpm2"
+    got = d.read(["rpm", "double"], until=1)
+    assert got["double"] == pytest.approx(got["rpm"] * 2)
+    # the recording it came from is untouched
+    assert [c.name for c in rec.channels] == ["rpm", "temp"]
+    # several at once, and a recipe that doesn't apply is an error that says why
+    two = rec.derive(recipes=[{"name": "a", "expr": "rpm + 1"}, {"name": "b", "expr": "temp - 1"}])
+    assert [c.name for c in two.channels][2:] == ["a", "b"]
+    with pytest.raises(ValueError, match="nope"):
+        rec.derive("bad", "nope + 1")
+    with pytest.raises(ValueError):
+        rec.derive("only_a_name")
+
+
+def test_events_are_kept_in_the_cache_and_come_back(csv: Path, tmp_path: Path):
+    cache = str(tmp_path / "cache")
+    rec = tlmbench.open(csv, cache=cache, config=[])
+    assert rec.events() == []
+    e = rec.add_event("Spike", "1 s", duration="0.5 s", category="alarm", channels=["rpm"])
+    assert (e["start"], e["duration"]) == (1_000_000_000, 500_000_000)
+    again = tlmbench.open(csv, cache=cache, config=[]).events()
+    assert [(x["name"], x["start"], x["duration"], x["category"], x["channels"]) for x in again] == [("Spike", 1_000_000_000, 500_000_000, "alarm", ["rpm"])]
+    rec.add_event("Early", 0.25)
+    assert [x["name"] for x in rec.events()] == ["Early", "Spike"]
+    rec.delete_event(e["id"])
+    assert [x["name"] for x in rec.events()] == ["Early"]
+    with pytest.raises(ValueError):
+        rec.add_event("  ", 1)
+    # nothing was written beside the recording
+    assert sorted(p.name for p in csv.parent.iterdir() if p.is_file()) == ["bench.csv"]
+
+
+def test_the_folders_configuration_reads_as_objects(csv: Path, tmp_path: Path):
+    folder = tmp_path / "runs"
+    (folder / ".tlmbench" / "recipes").mkdir(parents=True)
+    (folder / ".tlmbench" / "recipes" / "extra.toml").write_text('schema = 1\n[[recipe]]\nname = "half"\nexpr = "rpm / 2"\n')
+    data = folder / "bench.csv"
+    data.write_text(csv.read_text())
+    cfg = tlmbench.config(data)
+    assert cfg.dir is not None and cfg.dir.endswith(".tlmbench")
+    assert [o.name for o in cfg.recipes] == ["half"]
+    assert cfg.recipes[0].data["recipe"][0]["expr"] == "rpm / 2"
+    assert cfg.problems == [] and cfg.checks == [] and cfg.views == []
+    assert tlmbench.config(tmp_path / "elsewhere").dir is None
+    # the recording opened from that folder derives the shared recipes without being told them
+    rec = tlmbench.open(data, cache=str(tmp_path / "cache"))
+    d = rec.derive()
+    assert [c.name for c in d.channels] == ["rpm", "temp", "half"]
