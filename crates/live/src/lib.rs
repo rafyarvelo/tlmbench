@@ -17,6 +17,7 @@
 //! A live session is a folder, `session-<start>/`, with a `source-N.tlm` per source and a `session.json`. Sessions go
 //! to the app's data folder (see [`recordings_dir`]), never next to the data: they are kept, not cache.
 
+mod packets;
 pub mod replay;
 pub mod tail;
 
@@ -210,7 +211,10 @@ pub struct Source {
     parts: Arc<Parts>,
     stop: Arc<AtomicBool>,
     started: Instant,
-    ingest: Option<JoinHandle<()>>,
+    /// The thread reading the endpoint: sources of one packet stream share it (and `stop`).
+    ingest: Arc<Mutex<Option<JoinHandle<()>>>>,
+    /// The packet type it records, in a packet stream.
+    part: Option<String>,
     writer: Option<JoinHandle<()>>,
 }
 
@@ -230,7 +234,7 @@ impl Source {
                 d.validate().map_err(|e| invalid(e.to_string()))?;
                 if d.packets.is_some() {
                     return Err(invalid(
-                        "live sources don't read [packets] framing yet: frames are fixed-width records".into(),
+                        "a packet stream records a source per packet type: start it with Source::start_packets".into(),
                     ));
                 }
                 Some(d.clone())
@@ -281,9 +285,101 @@ impl Source {
             parts,
             stop,
             started: Instant::now(),
-            ingest: Some(ingest),
+            ingest: Arc::new(Mutex::new(Some(ingest))),
+            part: None,
             writer: Some(writer),
         })
+    }
+
+    /// Starts reading a packet stream (`d` has `[packets]`) from a socket or serial port: one source per packet type,
+    /// all from one connection (owner, Nov 16; ledger D-ingest-11), recorded to `base_for(k)`.tlm for type `k`.
+    /// Stopping any of them ends the connection, and so all of them.
+    pub fn start_packets(
+        endpoint: Endpoint,
+        d: &Descriptor,
+        base_for: &dyn Fn(usize) -> PathBuf,
+        opts: &Options,
+    ) -> io::Result<Vec<Source>> {
+        let invalid = |m: String| io::Error::new(ErrorKind::InvalidInput, m);
+        d.validate().map_err(|e| invalid(e.to_string()))?;
+        if matches!(endpoint, Endpoint::File(_) | Endpoint::Replay(_)) {
+            return Err(invalid(
+                "packets come live from a socket or a serial port: open a packet file as a file".into(),
+            ));
+        }
+        let plans = packets::plans(d).map_err(invalid)?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let ingest = Arc::new(Mutex::new(None));
+        let (mut sources, mut ends) = (Vec::new(), Vec::new());
+        for (k, plan) in plans.iter().enumerate() {
+            let ring_bytes = opts.ring_bytes.unwrap_or_else(|| default_ring(&plan.record));
+            let (producer, consumer) = rtrb::RingBuffer::<u8>::new(ring_bytes);
+            let (counters, parts) = (Arc::new(Counters::default()), Arc::new(Parts::default()));
+            let mut w = Writer::new(&base_for(k), consumer, parts.clone());
+            w.open(&plan.record)?;
+            let writer = {
+                let counters = counters.clone();
+                thread::Builder::new().name(format!("record {}", base_for(k).display())).spawn(move || {
+                    if let Err(e) = w.run(&counters) {
+                        counters.fail(e);
+                    }
+                })?
+            };
+            ends.push((producer, ring_bytes, counters.clone(), parts.clone(), plan.record.record_size as usize));
+            sources.push(Source {
+                endpoint: endpoint.clone(),
+                ring_bytes,
+                counters,
+                parts,
+                stop: stop.clone(),
+                started: Instant::now(),
+                ingest: ingest.clone(),
+                part: plan.name.clone(),
+                writer: Some(writer),
+            });
+        }
+        let mut demux = packets::Demux::new(d, plans).map_err(invalid)?;
+        let handle = {
+            let (endpoint, stop, opts) = (endpoint.clone(), stop.clone(), opts.clone());
+            thread::Builder::new().name(format!("ingest {endpoint}")).spawn(move || {
+                let all: Vec<Arc<Counters>> = ends.iter().map(|e| e.2.clone()).collect();
+                let held: Vec<(Arc<Counters>, Arc<Parts>)> = ends.iter().map(|e| (e.2.clone(), e.3.clone())).collect();
+                let mut rings: Vec<Ring> = ends
+                    .into_iter()
+                    .zip(&held)
+                    .map(|((producer, cap, _, _, rs), (c, p))| Ring {
+                        producer,
+                        rs,
+                        cap,
+                        pushed: 0,
+                        counters: c,
+                        parts: p,
+                    })
+                    .collect();
+                let mut feed = |b: &[u8]| demux.feed(b, &mut rings);
+                let r = match &endpoint {
+                    Endpoint::Tcp(a) => connect_tcp(a, &stop, &opts).and_then(|mut s| pump(&mut s, &stop, &mut feed)),
+                    Endpoint::Serial { port, baud } => {
+                        open_serial(port, *baud).and_then(|mut s| pump(&mut *s, &stop, &mut feed))
+                    }
+                    Endpoint::Udp(a) => pump_udp(a, &stop, &opts, &mut feed),
+                    Endpoint::File(_) | Endpoint::Replay(_) => Ok(()),
+                };
+                for c in &all {
+                    if let Err(e) = &r {
+                        c.fail(e);
+                    }
+                    c.ended.store(true, Ordering::Release);
+                }
+            })?
+        };
+        *ingest.lock().unwrap() = Some(handle);
+        Ok(sources)
+    }
+
+    /// The packet type this source records, in a packet stream.
+    pub fn part(&self) -> Option<&str> {
+        self.part.as_deref()
     }
 
     /// The recording's files so far, part by part.
@@ -340,7 +436,8 @@ impl Source {
     }
 
     fn join(&mut self) {
-        for h in [self.ingest.take(), self.writer.take()].into_iter().flatten() {
+        let ingest = self.ingest.lock().unwrap().take();
+        for h in [ingest, self.writer.take()].into_iter().flatten() {
             if h.join().is_err() {
                 self.counters.fail("a source thread panicked");
             }
@@ -421,9 +518,14 @@ fn resolve(addr: &str) -> io::Result<std::net::SocketAddr> {
 }
 
 fn ingest_tcp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) -> io::Result<()> {
+    let mut stream = connect_tcp(addr, stop, opts)?;
+    read_stream(&mut stream, ring, stop)
+}
+
+fn connect_tcp(addr: &str, stop: &AtomicBool, opts: &Options) -> io::Result<TcpStream> {
     let to = resolve(addr)?;
     let deadline = Instant::now() + opts.connect_timeout;
-    let mut stream = loop {
+    let stream = loop {
         match TcpStream::connect_timeout(&to, POLL) {
             Ok(s) => break s,
             Err(_) if Instant::now() < deadline && !stop.load(Ordering::Acquire) => thread::sleep(POLL),
@@ -432,7 +534,26 @@ fn ingest_tcp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) ->
     };
     stream.set_read_timeout(Some(POLL))?;
     stream.set_nodelay(true)?;
-    read_stream(&mut stream, ring, stop)
+    Ok(stream)
+}
+
+/// Reads a byte stream into `feed` until it ends or the source stops (a packet stream: framing is the feed's).
+fn pump(stream: &mut dyn Read, stop: &AtomicBool, feed: &mut dyn FnMut(&[u8])) -> io::Result<()> {
+    let mut buf = vec![0u8; 1 << 20];
+    while !stop.load(Ordering::Acquire) {
+        match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                feed(&buf[..n]);
+                if n < BATCH {
+                    thread::sleep(GATHER);
+                }
+            }
+            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// Reads a byte stream (a TCP connection, a serial port) into whole records until it ends or the source stops.
@@ -467,14 +588,25 @@ fn read_stream(stream: &mut dyn Read, ring: &mut Ring, stop: &AtomicBool) -> io:
 pub const DEFAULT_BAUD: u32 = 115_200;
 
 fn ingest_serial(port: &str, baud: u32, ring: &mut Ring, stop: &AtomicBool) -> io::Result<()> {
-    let mut serial = serialport::new(port, baud)
-        .timeout(POLL)
-        .open()
-        .map_err(|e| io::Error::other(format!("couldn't open {port}: {e}")))?;
+    let mut serial = open_serial(port, baud)?;
     read_stream(&mut *serial, ring, stop)
 }
 
+fn open_serial(port: &str, baud: u32) -> io::Result<Box<dyn serialport::SerialPort>> {
+    serialport::new(port, baud).timeout(POLL).open().map_err(|e| io::Error::other(format!("couldn't open {port}: {e}")))
+}
+
 fn ingest_udp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) -> io::Result<()> {
+    pump_udp(addr, stop, opts, &mut |d: &[u8]| {
+        ring.counters.bytes_in.fetch_add(d.len() as u64, Ordering::Relaxed);
+        let whole = d.len() / ring.rs * ring.rs;
+        ring.counters.malformed.fetch_add((d.len() - whole) as u64, Ordering::Relaxed);
+        ring.push(&d[..whole]);
+    })
+}
+
+/// Receives datagrams into `feed` until the source stops (or goes quiet for `opts.idle_end`, once one has come).
+fn pump_udp(addr: &str, stop: &AtomicBool, opts: &Options, feed: &mut dyn FnMut(&[u8])) -> io::Result<()> {
     // a large receive buffer rides out the moments the thread isn't reading (the default, 768 KB on macOS, holds
     // about 30 ms at 24 MB/s); the OS may cap it
     let at = resolve(addr)?;
@@ -494,10 +626,7 @@ fn ingest_udp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) ->
         match socket.recv(&mut buf) {
             Ok(n) => {
                 last = Some(Instant::now());
-                ring.counters.bytes_in.fetch_add(n as u64, Ordering::Relaxed);
-                let whole = n / ring.rs * ring.rs;
-                ring.counters.malformed.fetch_add((n - whole) as u64, Ordering::Relaxed);
-                ring.push(&buf[..whole]);
+                feed(&buf[..n]);
             }
             Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted) => {
                 if let (Some(t), Some(idle)) = (last, opts.idle_end)
@@ -714,6 +843,29 @@ impl Session {
         self.sources.push(SourceEntry { files: Vec::new(), endpoint: endpoint.to_string(), descriptor: name });
         self.update(self.sources.len() - 1, &source)?;
         Ok(source)
+    }
+
+    /// Starts recording `endpoint` into the session: one source, or one per packet type for a packet stream (a
+    /// descriptor with `[packets]`, all from one connection; see [`Source::start_packets`]), as its next `source-N`s.
+    pub fn add_sources(
+        &mut self,
+        endpoint: Endpoint,
+        descriptor: Option<&Descriptor>,
+        opts: &Options,
+    ) -> io::Result<Vec<Source>> {
+        let Some(d) = descriptor.filter(|d| d.packets.is_some()) else {
+            return Ok(vec![self.add_source(endpoint, descriptor, opts)?]);
+        };
+        let first = self.sources.len();
+        let dir = self.dir.clone();
+        let sources =
+            Source::start_packets(endpoint.clone(), d, &|k| dir.join(format!("source-{}", first + k + 1)), opts)?;
+        for s in &sources {
+            let name = s.part().map(str::to_owned).or_else(|| d.name.clone());
+            self.sources.push(SourceEntry { files: Vec::new(), endpoint: endpoint.to_string(), descriptor: name });
+            self.update(self.sources.len() - 1, s)?;
+        }
+        Ok(sources)
     }
 
     /// Notes source `index`'s files in `session.json` (call it when a part starts, or when the source stops).

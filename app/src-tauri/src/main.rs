@@ -1352,12 +1352,31 @@ struct LiveArgs {
 /// Connects a live source (`tcp://`, `udp://`, `serial://`, `file://` or `replay://`; sockets need the frames'
 /// descriptor, a TOML file) into a new session in the Recordings folder (or the one of `addTo`), and returns it opened
 /// like a file once its first samples are recorded.
+/// What `live_connect` opened: the source, and for a packet stream the other packet types' sources from the same
+/// connection, each opened as a live file of its own (owner, Nov 16; ledger D-ingest-11).
+#[derive(Serialize)]
+struct LiveOpened {
+    #[serde(flatten)]
+    opened: Opened,
+    /// What its tab is called: the name given (or the endpoint), with the packet type in a packet stream.
+    name: String,
+    /// The other packet types, with the name of each (those with no packet yet are recorded and come later).
+    siblings: Vec<LiveSibling>,
+}
+
+#[derive(Serialize)]
+struct LiveSibling {
+    #[serde(flatten)]
+    opened: Opened,
+    name: String,
+}
+
 #[tauri::command]
 async fn live_connect<R: tauri::Runtime>(
     args: LiveArgs,
     window: tauri::Window<R>,
     files: State<'_, Files>,
-) -> Result<Opened, String> {
+) -> Result<LiveOpened, String> {
     let store = files.store.clone();
     let shared = match args.add_to {
         Some(id) => {
@@ -1366,7 +1385,7 @@ async fn live_connect<R: tauri::Runtime>(
         }
         None => None,
     };
-    let entry = spawn_blocking(move || -> Result<LiveEntry, String> {
+    let entries = spawn_blocking(move || -> Result<Vec<LiveEntry>, String> {
         let endpoint: tlmbench_live::Endpoint = args.endpoint.parse()?;
         let desc = match args.descriptor.filter(|d| !d.is_empty()) {
             Some(p) => {
@@ -1387,16 +1406,18 @@ async fn live_connect<R: tauri::Runtime>(
                 Arc::new(Mutex::new(tlmbench_live::Session::create(&root).map_err(|e| e.to_string())?))
             }
         };
-        let (source, index, session) = {
+        // one source, or one per packet type of a packet stream, all from one connection
+        let (sources, first, session) = {
             let mut session = recording.lock().unwrap();
-            let source =
-                session.add_source(endpoint.clone(), desc.as_ref(), &Default::default()).map_err(|e| e.to_string())?;
-            (source, session.sources() - 1, session.dir().to_owned())
+            let first = session.sources();
+            let sources =
+                session.add_sources(endpoint.clone(), desc.as_ref(), &Default::default()).map_err(|e| e.to_string())?;
+            (sources, first, session.dir().to_owned())
         };
-        // the recording opens once it holds a sample
+        // the recording opens once it holds a sample; the other packet types get a moment more to send theirs
         let started = Instant::now();
-        while source.records_written() == 0 {
-            let h = source.health();
+        while sources[0].records_written() == 0 {
+            let h = sources[0].health();
             if let Some(e) = h.error {
                 return Err(e);
             }
@@ -1405,30 +1426,57 @@ async fn live_connect<R: tauri::Runtime>(
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        let files_now = source.files();
-        let live = store.open_live(files_now.last().expect("a record was written")).map_err(|e| e.to_string())?;
-        let _ = recording.lock().unwrap().update(index, &source);
-        let name = args.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| endpoint.to_string());
-        Ok(LiveEntry {
-            last: Mutex::new(source.health()),
-            source: Mutex::new(Some(source)),
-            follow: RwLock::new(Arc::new(live)),
-            derived: RwLock::new(None),
-            part: AtomicUsize::new(files_now.len()),
-            session,
-            name,
-            recording,
-            keep,
-            closed: AtomicBool::new(false),
-        })
+        let first_data = Instant::now();
+        while sources.iter().any(|s| s.records_written() == 0) && first_data.elapsed() < Duration::from_secs(2) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let base = args.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| endpoint.to_string());
+        let several = sources.len() > 1;
+        let mut out = Vec::new();
+        for (k, source) in sources.into_iter().enumerate() {
+            let files_now = source.files();
+            let live = store
+                .open_live(files_now.last().expect("a source's file exists from the start"))
+                .map_err(|e| e.to_string())?;
+            let _ = recording.lock().unwrap().update(first + k, &source);
+            let name = match (several, source.part()) {
+                (true, Some(p)) => format!("{base} · {p}"),
+                _ => base.clone(),
+            };
+            out.push(LiveEntry {
+                last: Mutex::new(source.health()),
+                source: Mutex::new(Some(source)),
+                follow: RwLock::new(Arc::new(live)),
+                derived: RwLock::new(None),
+                part: AtomicUsize::new(files_now.len()),
+                session: session.clone(),
+                name,
+                recording: recording.clone(),
+                keep,
+                closed: AtomicBool::new(false),
+            });
+        }
+        Ok(out)
     })
     .await
     .map_err(|e| e.to_string())??;
+    let mut opened = Vec::new();
+    for entry in entries {
+        let name = entry.name.clone();
+        opened.push((register_live(&files, &window, entry), name));
+    }
+    let mut it = opened.into_iter();
+    let (first, name) = it.next().expect("at least one source");
+    Ok(LiveOpened { opened: first, name, siblings: it.map(|(opened, name)| LiveSibling { opened, name }).collect() })
+}
+
+/// Keeps a live source open under a new file id and follows it as it grows (and a tailed file into its next part),
+/// until its tab closes.
+fn register_live<R: tauri::Runtime>(files: &Files, window: &tauri::Window<R>, entry: LiveEntry) -> Opened {
     let entry = Arc::new(entry);
     let id = files.next.fetch_add(1, Ordering::Relaxed) + 1;
     files.holds.add(id, window.label());
     files.live.lock().unwrap().insert(id, entry.clone());
-    // follows the file as it grows (and a tailed file into its next part), until the tab closes
     let store = files.store.clone();
     let follower = entry.clone();
     std::thread::spawn(move || {
@@ -1460,7 +1508,7 @@ async fn live_connect<R: tauri::Runtime>(
     let o = entry.opened();
     let info = o.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
-    Ok(Opened { id, info, range, status: Status::Built, derived: Vec::new(), skipped: Vec::new(), missing: Vec::new() })
+    Opened { id, info, range, status: Status::Built, derived: Vec::new(), skipped: Vec::new(), missing: Vec::new() }
 }
 
 fn tlmbench_decode_descriptor(text: &str) -> Result<tlmbench_decode::descriptor::Descriptor, String> {

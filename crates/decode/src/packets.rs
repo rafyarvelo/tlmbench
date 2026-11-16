@@ -33,7 +33,7 @@ use crate::fixed::gather_tile;
 use crate::strided::{Ordering, Pod, clamp, decode, wrapped};
 
 // framing, checksums and decompression are in `packets_core.rs` (the browser-only page includes it as source)
-pub use crate::packets_core::{checksum, decompress};
+pub use crate::packets_core::{StreamFraming, StreamPacket, checksum, decompress, frame_stream, packet_records_of};
 pub(crate) use crate::packets_core::{frame, frame_packet, head_packets, packet_records, packets_of, read_bits};
 
 const INDEX_VERSION: u32 = 2;

@@ -1077,9 +1077,23 @@
     },
     // a live source: a recording that grows with the clock at its rate, until stopped. A replay's pause stops its clock;
     // a device's doesn't (the recording goes on, with a gap).
+    // a packet stream (`spec.types`): a source per packet type from one connection, the first's tab and the others as
+    // siblings (D-ingest-11)
     live_connect({ args }) {
-      const { endpoint, descriptor, name, record, dir, addTo } = args;
+      const spec = fake.sources[args.endpoint];
+      if (!spec?.types) return commands.live_connect_one({ args });
       fake.liveConnects.push(JSON.parse(JSON.stringify(args)));
+      const base = args.name || args.endpoint;
+      const all = spec.types.map((t) => {
+        fake.sources[`${args.endpoint}#${t}`] = { ...spec, types: undefined };
+        const o = commands.live_connect_one({ args: { ...args, endpoint: `${args.endpoint}#${t}`, name: `${base} · ${t}` }, quiet: true });
+        return { ...o, name: `${base} · ${t}` };
+      });
+      return { ...all[0], siblings: all.slice(1) };
+    },
+    live_connect_one({ args, quiet }) {
+      const { endpoint, descriptor, name, record, dir, addTo } = args;
+      if (!quiet) fake.liveConnects.push(JSON.parse(JSON.stringify(args)));
       const replay = endpoint.startsWith('replay://');
       const spec = fake.sources[endpoint] ?? (replay ? { rate: 1000, already: 1 } : null);
       if (!spec) throw `couldn't connect to ${endpoint}: connection refused`;

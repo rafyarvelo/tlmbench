@@ -223,6 +223,107 @@ pub(crate) fn frame_checked(
     out
 }
 
+/// A packet a stream framing found: where it starts in the bytes scanned, its stored payload length and its type's id
+/// (with `[packets] id`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StreamPacket {
+    pub offset: usize,
+    pub stored: usize,
+    pub id: Option<i64>,
+}
+
+/// What [`frame_stream`] found in some bytes of a stream.
+#[derive(Debug, Default)]
+pub struct StreamFraming {
+    pub packets: Vec<StreamPacket>,
+    /// Bytes the scan is done with: keep the rest (a packet that has only partly arrived) for the next read.
+    pub consumed: usize,
+    /// Bytes skipped as damaged (a bad length or checksum, an id no type claims, nothing to sync on).
+    pub skipped: usize,
+}
+
+/// Frames packets as they arrive on a stream (a socket, a serial port), by the same rules as a file: `known` gives each
+/// type's id and record size (to frame packets with no length field), `record_size` the size without types. A packet
+/// that hasn't fully arrived stops the scan, and `consumed` says where to resume once more bytes come (live sources,
+/// ledger D-ingest-11).
+pub fn frame_stream(
+    data: &[u8],
+    p: &Packets,
+    known: &[(i64, u64)],
+    record_size: u64,
+    sync: &[u8],
+    big: bool,
+) -> StreamFraming {
+    let hs = p.header_size as usize;
+    let cks = p.checksum.size() as usize;
+    let finder = (!sync.is_empty()).then(|| memchr::memmem::Finder::new(sync));
+    let mut out = StreamFraming::default();
+    let mut pos = 0;
+    while pos < data.len() {
+        if let Some(f) = &finder {
+            match f.find(&data[pos..]) {
+                Some(i) => {
+                    out.skipped += i;
+                    pos += i;
+                }
+                None => {
+                    // keep what could be the start of a sync word
+                    let keep = (sync.len() - 1).min(data.len() - pos);
+                    out.skipped += data.len() - pos - keep;
+                    pos = data.len() - keep;
+                    break;
+                }
+            }
+        }
+        if pos + hs > data.len() {
+            break; // its header hasn't all arrived
+        }
+        let id = p.id.map(|f| read_int(&data[pos + f.offset as usize..], f.dtype, big));
+        let size_of = id.map_or(Some(record_size), |id| known.iter().find(|k| k.0 == id).map(|k| k.1));
+        let stored = match &p.length {
+            None => size_of.map(|n| n as i64),
+            Some(l) => {
+                let raw = read_int(&data[pos + l.offset as usize..], l.dtype, big).saturating_add(l.adjust);
+                Some(match l.counts {
+                    Counts::Payload => raw,
+                    Counts::Packet => raw.saturating_sub((hs + cks) as i64),
+                })
+            }
+        };
+        let good_len = stored.filter(|s| (0..=MAX_PAYLOAD as i64).contains(s) && size_of.is_some());
+        let Some(stored) = good_len else {
+            // an impossible length or an id no type claims: resync one byte on (without a sync word, nothing to find)
+            if finder.is_none() {
+                out.skipped += data.len() - pos;
+                pos = data.len();
+                break;
+            }
+            out.skipped += 1;
+            pos += 1;
+            continue;
+        };
+        let end = pos + hs + stored as usize + cks;
+        if end > data.len() {
+            break; // the rest of it is still to come
+        }
+        let body = pos + hs + stored as usize;
+        if cks > 0 && read_uint(&data[body..], cks, big) != checksum(p.checksum, &data[pos..body]) {
+            if finder.is_none() {
+                out.skipped += end - pos;
+                pos = end;
+                continue;
+            }
+            out.skipped += 1;
+            pos += 1;
+            continue;
+        }
+        out.packets.push(StreamPacket { offset: pos, stored: stored as usize, id });
+        pos = end;
+    }
+    out.consumed = pos;
+    out
+}
+
 /// The records of the packet at `offset` of `data` with `stored` payload bytes, as read: the packet header, then
 /// the record, for each. `None` when the payload doesn't decompress to whole records.
 pub(crate) fn packet_records(data: &[u8], p: &Packets, record_size: u64, offset: u64, stored: u64) -> Option<Vec<u8>> {
@@ -239,6 +340,12 @@ pub(crate) fn packet_records(data: &[u8], p: &Packets, record_size: u64, offset:
         out.extend_from_slice(r);
     }
     Some(out)
+}
+
+/// [`packet_records`] for a caller outside the crate (a live source): the records of the packet at `offset` of `data`,
+/// as read (header, then record, each), or `None` when its payload doesn't decompress to whole records.
+pub fn packet_records_of(data: &[u8], p: &Packets, record_size: u64, offset: u64, stored: u64) -> Option<Vec<u8>> {
+    packet_records(data, p, record_size, offset, stored)
 }
 
 /// What the descriptor form's preview reads from the first bytes of a file laid out as packets: each packet's

@@ -1304,44 +1304,62 @@ fn record(
         idle_end: idle_end.map(Duration::from_secs_f64),
         ..Default::default()
     };
-    let source = session.add_source(endpoint, desc.as_ref(), &opts).map_err(|e| Fail(3, e.to_string()))?;
+    // one source, or one per packet type of a packet stream (one connection)
+    let sources = session.add_sources(endpoint, desc.as_ref(), &opts).map_err(|e| Fail(3, e.to_string()))?;
     let (started, live) = (Instant::now(), std::io::stderr().is_terminal() && !json);
     let mut last = Instant::now();
-    while !source.health().ended && seconds.is_none_or(|s| started.elapsed().as_secs_f64() < s) {
+    let written = |s: &[tlmbench_live::Source]| s.iter().map(|s| s.health().records_written).sum::<u64>();
+    while !sources.iter().all(|s| s.health().ended) && seconds.is_none_or(|s| started.elapsed().as_secs_f64() < s) {
         std::thread::sleep(Duration::from_millis(50));
         if live && last.elapsed() >= Duration::from_secs(1) {
             last = Instant::now();
-            let h = source.health();
+            let h = sources[0].health();
             eprint!(
                 "\r{} records, {} dropped, {} missing   ",
-                h.records_written, h.records_dropped, h.sequence_missing
+                written(&sources),
+                h.records_dropped,
+                h.sequence_missing
             );
         }
     }
-    let _ = session.update(0, &source);
-    let h = source.stop();
-    let _ = session.update_files(0, &h.files);
+    let parts: Vec<Option<String>> = sources.iter().map(|s| s.part().map(str::to_owned)).collect();
+    let mut healths = Vec::new();
+    for (k, source) in sources.into_iter().enumerate() {
+        let _ = session.update(k, &source);
+        let h = source.stop();
+        let _ = session.update_files(k, &h.files);
+        healths.push(h);
+    }
     if live {
         eprintln!();
     }
     if json {
-        let v = serde_json::json!({ "session": session.dir(), "file": h.files.first(), "health": h });
+        let v = match healths.as_slice() {
+            [h] => serde_json::json!({ "session": session.dir(), "file": h.files.first(), "health": h }),
+            all => serde_json::json!({
+                "session": session.dir(),
+                "sources": all.iter().zip(&parts).map(|(h, p)| serde_json::json!({ "type": p, "file": h.files.first(), "health": h })).collect::<Vec<_>>(),
+            }),
+        };
         println!("{v}");
     } else {
-        for f in &h.files {
-            println!("{}", f.display());
+        for (h, p) in healths.iter().zip(&parts) {
+            for f in &h.files {
+                println!("{}", f.display());
+            }
+            println!(
+                "{}{} records in {:.1} s · {} dropped · {} missing, {} repeated by sequence · ring high water {:.0}%",
+                p.as_ref().map(|p| format!("{p}: ")).unwrap_or_default(),
+                h.records_written,
+                h.seconds,
+                h.records_dropped,
+                h.sequence_missing,
+                h.sequence_repeated,
+                100.0 * h.ring_high_water_bytes as f64 / h.ring_bytes.max(1) as f64
+            );
         }
-        println!(
-            "{} records in {:.1} s · {} dropped · {} missing, {} repeated by sequence · ring high water {:.0}%",
-            h.records_written,
-            h.seconds,
-            h.records_dropped,
-            h.sequence_missing,
-            h.sequence_repeated,
-            100.0 * h.ring_high_water_bytes as f64 / h.ring_bytes.max(1) as f64
-        );
     }
-    match h.error {
+    match healths.into_iter().find_map(|h| h.error) {
         Some(e) => Err(Fail(2, e)),
         None => Ok(()),
     }

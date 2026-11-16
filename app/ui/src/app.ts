@@ -1819,23 +1819,29 @@ async function openLive(a: ConnectArgs, save: boolean, form: ConnectForm): Promi
   try {
     const target = live.addTo != null ? fileOf(live.addTo) : null;
     const addTo = target ? liveId(target) : null;
-    const o = await invoke<Opened>('live_connect', {
+    const o = await invoke<Opened & { name?: string; siblings?: (Opened & { name: string })[] }>('live_connect', {
       args: { endpoint: a.endpoint, descriptor: a.descriptor || null, name: a.name || null, record: a.record, dir: settings.recordTo || null, addTo },
     });
     if (!o.range) throw new Error('no samples yet');
+    // a packet stream's other packet types, from the same connection: a live tab each (owner, Nov 16; D-ingest-11)
+    const end = o.range[1];
+    const siblingTabs = () => (o.siblings ?? []).map((s) => addLiveTab(s.id, s.info, s.range ?? [end, end], s.name, a.endpoint));
     // a source added to a live tab joins it as the next slot, on the session's clock
     if (target && target === state.file) {
       const have = membersOf(target);
       have[0].name ||= tabs.list.find((t) => t.key === tabs.active)?.name;
       const m: Member = { id: o.id, path: o.info.path, name: a.name || baseName(a.endpoint), info: o.info, first: 0, count: o.info.channels.length, knots: [], derived: [], missing: [], align: { ...freshAlign(), method: 'clock' }, own: [BigInt(o.range[0]), BigInt(o.range[1])] };
       await groupApply(target, [...have, m]);
+      siblingTabs();
       live.connect = false;
       setSetting('liveForm', form);
       void pollLive();
       return;
     }
-    const name = a.name || baseName(a.endpoint);
+    // a packet stream's tab names its packet type
+    const name = (o.siblings?.length ? o.name : '') || a.name || baseName(a.endpoint);
     const key = addLiveTab(o.id, o.info, o.range, name, a.endpoint);
+    siblingTabs();
     live.connect = false;
     if (save) setSetting('savedConnections', [...settings.savedConnections, { ...form, id: 's' + Date.now().toString(36) }]);
     setSetting('liveForm', form);
