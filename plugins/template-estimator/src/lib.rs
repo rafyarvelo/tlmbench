@@ -54,3 +54,31 @@ impl Guest for Peak {
 }
 
 export!(Peak);
+
+// The test harness: `cargo test` runs your code on this machine (no WASM needed). Check the built component the way
+// the app runs it with `tlmbench plugins --check`.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn series(name: &str, peak_at: i64, offset: i64) -> Series {
+        let t: Vec<i64> = (0..1000).map(|i| i * 1_000_000 + offset).collect();
+        let v = t.iter().map(|&t| -((t - peak_at - offset) as f64).abs()).collect();
+        Series { name: name.into(), t, v }
+    }
+
+    #[test]
+    fn two_peaks_line_up_with_one_knot() {
+        let params = r#"{"channel":"accel"}"#.to_string();
+        assert_eq!(Peak::needs(params.clone()).unwrap(), ["accel"]);
+        let e = Peak::estimate(vec![series("accel", 400_000_000, 0)], vec![series("accel", 400_000_000, 7_000_000)], Vec::new(), params)
+            .unwrap();
+        assert_eq!(e.knots.len(), 1);
+        assert_eq!(e.knots[0].shared - e.knots[0].file, -7_000_000);
+    }
+
+    #[test]
+    fn missing_params_say_what_to_give() {
+        assert!(Peak::needs("{}".into()).unwrap_err().contains("channel"));
+    }
+}

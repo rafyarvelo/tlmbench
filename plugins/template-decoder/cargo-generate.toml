@@ -1,0 +1,3 @@
+# A plugin template for `cargo generate` (see ../README.md). The crate builds as it is; the new crate gets your name.
+[template]
+ignore = ["target"]

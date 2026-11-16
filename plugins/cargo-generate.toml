@@ -1,0 +1,3 @@
+# `cargo generate` starts a plugin from one of these (see README.md): it asks which, and for the new crate's name.
+[template]
+sub_templates = ["template-decoder", "template-estimator", "template-payload"]
