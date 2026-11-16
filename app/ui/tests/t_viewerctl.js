@@ -15,7 +15,9 @@ const DIR = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = join(DIR, '../../..');
 const CLI = [join(ROOT, 'target/release/tlmbench'), join(ROOT, 'target/debug/tlmbench')].filter(existsSync).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
 const VIEWER = join(ROOT, 'app/viewer/dist');
-const { chromium } = createRequire(join(ROOT, 'prototype/tests/package.json'))('playwright');
+const pw = createRequire(join(ROOT, 'prototype/tests/package.json'))('playwright');
+// TLM_BROWSER=webkit runs it in Safari's engine (the owner's chip drag after Unlock failed there, Nov 16)
+const chromium = pw[process.env.TLM_BROWSER ?? 'chromium'];
 if (!CLI || !existsSync(join(VIEWER, 'index.html')) || !existsSync(join(VIEWER, 'tlmbench_web.wasm'))) {
   console.log('SKIP viewerctl: needs the CLI (cargo build --release -p tlmbench) and the viewer (just viewer)');
   console.log('PASS viewerctl: 0 ok, 0 failed (skipped)');

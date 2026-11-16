@@ -243,7 +243,22 @@
   let listDrag = $state(false);
   /** Hides the chips that don't fit the header, from the last, and counts them. */
   function fitChips(node: HTMLElement, i: number) {
+    // not while a chip is pressed or dragged: the fit un-hides and re-hides every chip, and a layout that changes under the
+    // press makes Safari drop the drag it was about to start (owner, Nov 16: chips didn't drag in Safari, Explorer rows did)
+    let pressing = false;
+    let owed = false;
+    const press = (e: PointerEvent) => (pressing = !!(e.target as HTMLElement).closest('.chip, .pnum'));
+    const release = () => {
+      if (!pressing) return;
+      pressing = false;
+      if (owed) ((owed = false), fit());
+    };
+    node.addEventListener('pointerdown', press);
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('dragend', release);
     const fit = () => {
+      if (pressing) return void (owed = true);
       const chips = [...node.querySelectorAll<HTMLElement>('.chip')];
       // the actions that can fit show (owner decision 9): the rarer ones give way first, each stays in ⋯; then chips fold
       const acts = ['.pact-split', '.pact-dup', '.pact-close', '.pact-axis', '.pact-ev'].map((q) => node.querySelector<HTMLElement>(q)).filter((a) => !!a);
@@ -268,6 +283,10 @@
       destroy() {
         ro.disconnect();
         mo.disconnect();
+        node.removeEventListener('pointerdown', press);
+        window.removeEventListener('pointerup', release);
+        window.removeEventListener('pointercancel', release);
+        window.removeEventListener('dragend', release);
       },
     };
   }

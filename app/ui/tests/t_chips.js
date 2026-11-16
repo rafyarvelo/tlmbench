@@ -84,7 +84,16 @@ run('chips', async ({ p, check, wait, until, text, visible }) => {
   check('a channel of the +N list drags to another pane (the list fades while it does)', moved.faded && after[1].includes(moved.ch) && !after[0].includes(moved.ch) && before[0].includes(moved.ch), [moved, before, after]);
   check('and the list closes when the drag ends', await until(() => !document.querySelector('.chanlist')));
   await p.keyboard.press('Escape');
+  // a press on a chip holds the chips as they are until it ends (Safari dropped the drag when they were laid out again under
+  // the press; owner, Nov 16): widening the window mid-press changes nothing, letting go does
+  const hiddenNow = () => p.evaluate(() => [...document.querySelectorAll('#stack [data-pane="0"] .chip')].map((c) => c.hidden).join());
+  const held = await hiddenNow();
+  await p.evaluate(() => document.querySelector('#stack [data-pane="0"] .chip').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
   await p.setViewportSize({ width: 1440, height: 900 });
+  await wait(400);
+  check('while a chip is pressed the chips are not laid out again', (await hiddenNow()) === held && held.includes('true'), [held, await hiddenNow()]);
+  await p.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })));
+  check('and letting go fits them again', await until(() => [...document.querySelectorAll('#stack [data-pane="0"] .chip')].every((c) => !c.hidden)), await hiddenNow());
   await wait(500);
   check('wide again: no "+N"', !(await visible('#stack [data-pane="0"] [data-more-chips]')));
 });
