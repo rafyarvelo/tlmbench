@@ -22,6 +22,11 @@ lexical-core = "1.0.6"
 memchr = "2.8.3"
 bytemuck = "1.25.2"
 toml = "1.1.8"
+# packet payloads (packets_core.rs): pure Rust only, since the WASM build has no C compiler. zstd is the shim (below).
+crc32fast = "1.5.4"
+lz4_flex = { version = "0.14.0", default-features = false, features = ["frame", "std"] }
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+zstd = "0.14"
 
 [dev-dependencies]
 # the decoder's CSV reader is included as source, with its tests
@@ -30,6 +35,10 @@ tempfile = "3.27.0"
 
 # Its own workspace and target folder: the WASM build must not share the native one.
 [workspace]
+
+# the zstd crate binds to C: the browser's build reads Zstandard through ruzstd instead (decode only)
+[patch.crates-io]
+zstd = { path = "../web-parquet/zstd-shim" }
 
 [profile.release]
 opt-level = 3

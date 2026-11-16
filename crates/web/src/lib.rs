@@ -25,6 +25,10 @@ mod descriptor;
 #[path = "../../decode/src/error.rs"]
 #[allow(dead_code)]
 mod error;
+// framing, checksums and decompression of packet files, as the app reads them (pure Rust codecs, zstd through the shim)
+#[path = "../../decode/src/packets_core.rs"]
+#[allow(dead_code)]
+mod packets_core;
 #[path = "../../decode/src/profile.rs"]
 #[allow(dead_code)]
 mod profile;

@@ -109,6 +109,74 @@ pub fn import_tlm(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
     let stride = desc.record_size as usize;
     let n = (bytes.len() - header_len) / stride;
     let records = &bytes[header_len..header_len + n * stride];
+    import_records(st, k, path, "tlmbench reference", &desc, records, stride, Vec::new())
+}
+
+/// The packet types of a descriptor kept in the page (TOML), each a recording of its own: their names, or one empty
+/// name for a descriptor without `[[packet_types]]`. The page opens one file per type (`flight.bin · gps`).
+pub fn described_parts(toml: &str) -> Result<Vec<String>, String> {
+    let d = Descriptor::parse(toml).map_err(|e| e.to_string())?;
+    d.validate().map_err(|e| e.to_string())?;
+    Ok(d.parts().into_iter().map(|(_, p)| p.map(|p| p.name).unwrap_or_default()).collect())
+}
+
+/// Reads a binary file laid out by a descriptor the page keeps (fixed-width records after `header_size` bytes, or
+/// packets: framing, checksums and decompression by the app's own `packets_core.rs`) into file `k`: packet type `part`
+/// of the descriptor's (0 when it has none). Damaged packets are skipped and counted, as the app does.
+pub fn import_described(
+    st: &mut crate::data::State,
+    k: usize,
+    path: &str,
+    bytes: &[u8],
+    toml: &str,
+    part: usize,
+) -> Result<Reply, String> {
+    use crate::packets_core::{frame, packet_records};
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let bad = |msg: String| format!("{name}: {msg}");
+    let whole = Descriptor::parse(toml).map_err(|e| bad(e.to_string()))?;
+    whole.validate().map_err(|e| bad(e.to_string()))?;
+    let (desc, part) =
+        whole.parts().into_iter().nth(part).ok_or_else(|| bad("the descriptor has no such packet type".into()))?;
+    let start = (desc.header_size as usize).min(bytes.len());
+    let Some(p) = desc.packets.clone() else {
+        let stride = desc.record_size as usize;
+        let n = (bytes.len() - start) / stride;
+        return import_records(st, k, path, "Descriptor", &desc, &bytes[start..start + n * stride], stride, Vec::new());
+    };
+    let big = desc.endian == Endian::Big;
+    let sync = p.sync_bytes().map_err(|e| bad(e.to_string()))?;
+    let framing = frame(bytes, start, &p, desc.record_size, part.as_ref(), &sync, big);
+    let mut records = Vec::new();
+    let mut damaged = framing.bad;
+    for f in &framing.packets {
+        match packet_records(bytes, &p, desc.record_size, f.offset, f.stored) {
+            Some(r) => records.extend_from_slice(&r),
+            None => damaged += 1,
+        }
+    }
+    let notes = (damaged > 0)
+        .then(|| format!("{damaged} damaged packet{} skipped", if damaged == 1 { "" } else { "s" }))
+        .into_iter()
+        .collect();
+    let stride = (p.header_size + desc.record_size) as usize;
+    import_records(st, k, path, "Descriptor", &desc, &records, stride, notes)
+}
+
+/// Whole records of `stride` bytes laid out by `desc` (a packet file's: the packet header then the record) into file
+/// `k`: the time base, each channel's values (scaled), and time that goes backwards flagged and held.
+#[allow(clippy::too_many_arguments)]
+fn import_records(
+    st: &mut crate::data::State,
+    k: usize,
+    path: &str,
+    format: &str,
+    desc: &Descriptor,
+    records: &[u8],
+    stride: usize,
+    mut notes: Vec<String>,
+) -> Result<Reply, String> {
+    let n = records.len() / stride;
     let big = desc.endian == Endian::Big;
     let times_of = |field: &str, scale_ns: i64, t0_ns: i64| -> FieldTimes<'_> {
         let tf = desc.fields.iter().find(|x| x.name == field).expect("validated");
@@ -153,8 +221,9 @@ pub fn import_tlm(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
         .iter()
         .map(|f| ChannelInfo { name: f.name.clone(), unit: f.unit.clone(), dtype: f.dtype.name(), category: None })
         .collect();
-    let mut d = Ds::new(path, "tlmbench reference", None, n, time, tm, channels);
-    d.info.notes = found.note_of("record", "record").into_iter().collect();
+    let mut d = Ds::new(path, format, None, n, time, tm, channels);
+    notes.extend(found.note_of("record", "record"));
+    d.info.notes = notes;
     for (col, f) in d.cols.iter_mut().zip(&fields) {
         col.raw = crate::data::Raw::whole(field_values(records, stride, f.offset as usize, f.dtype, big, f));
     }
@@ -354,5 +423,122 @@ offset = 6
         assert_eq!(st.files[0].as_ref().unwrap().info.format, "CSV");
         let cut = &tlm(&[(0, 0, 0)], FIELD_TIME)[..20];
         assert!(import_file(&mut st, 1, "b.tlm", cut).is_err());
+    }
+
+    /// Zstandard frames (made by the `zstd` tool) of three records (t u16 ms, v i16): (0, 10), (10, 20), (20, 30); and
+    /// of one, (30, 40).
+    const ZST_3: [u8; 25] = [
+        0x28, 0xb5, 0x2f, 0xfd, 0x24, 0x0c, 0x61, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x0a, 0x00, 0x14, 0x00, 0x14,
+        0x00, 0x1e, 0x00, 0x59, 0x7c, 0x80, 0x63,
+    ];
+    const ZST_1: [u8; 17] =
+        [0x28, 0xb5, 0x2f, 0xfd, 0x24, 0x04, 0x21, 0x00, 0x00, 0x1e, 0x00, 0x28, 0x00, 0x23, 0xfc, 0x9d, 0xa9];
+
+    /// A packet: sync EB90, the u16 payload length, a type byte and a pad byte, the payload, then a sum8 checksum.
+    fn packet(kind: u8, payload: &[u8]) -> Vec<u8> {
+        let mut out = vec![0xeb, 0x90];
+        out.extend_from_slice(&(payload.len() as u16).to_le_bytes());
+        out.extend_from_slice(&[kind, 0]);
+        out.extend_from_slice(payload);
+        out.push(out.iter().fold(0u8, |a, &b| a.wrapping_add(b)));
+        out
+    }
+
+    const PACKETS_ZSTD: &str = r#"
+schema = 1
+name = "zp"
+record_size = 4
+[time]
+source = "field"
+field = "t"
+unit = "ms"
+[packets]
+sync = "EB90"
+header_size = 6
+length = { offset = 2, type = "u16" }
+checksum = "sum8"
+compression = "zstd"
+[[fields]]
+name = "t"
+type = "u16"
+offset = 6
+[[fields]]
+name = "v"
+type = "i16"
+offset = 8
+unit = "V"
+"#;
+
+    #[test]
+    fn packets_frame_check_and_decompress_zstd_in_the_page() {
+        // two good packets with a damaged one between them (its checksum is wrong) and a byte of junk before the first
+        let mut bytes = vec![0x55];
+        bytes.extend(packet(0, &ZST_3));
+        let mut broken = packet(0, &ZST_1);
+        *broken.last_mut().unwrap() ^= 0xff;
+        bytes.extend(broken);
+        bytes.extend(packet(0, &ZST_1));
+        assert_eq!(described_parts(PACKETS_ZSTD).unwrap(), [""]);
+        let mut st = State::default();
+        import_described(&mut st, 0, "local://run.bin", &bytes, PACKETS_ZSTD, 0).unwrap();
+        let d = st.files[0].as_ref().unwrap();
+        assert_eq!(d.len, 4, "three records, then one");
+        assert_eq!(d.info.format, "Descriptor");
+        let Tm::Col(t) = &d.tm else { panic!("a time field") };
+        assert_eq!(t, &[0, 10_000_000, 20_000_000, 30_000_000]);
+        assert_eq!(d.cols[0].raw.slice(4).unwrap(), [10.0, 20.0, 30.0, 40.0]);
+        assert_eq!(d.info.notes, ["1 damaged packet skipped"]);
+    }
+
+    #[test]
+    fn packet_types_open_one_at_a_time_and_fixed_width_needs_only_a_descriptor() {
+        let types = r#"
+schema = 1
+name = "two"
+[packets]
+sync = "EB90"
+header_size = 6
+length = { offset = 2, type = "u16" }
+id = { offset = 4, type = "u8" }
+[[packet_types]]
+id = 1
+name = "gps"
+record_size = 4
+time = { source = "field", field = "t", unit = "ms" }
+fields = [ { name = "t", type = "u16", offset = 6 }, { name = "alt", type = "i16", offset = 8 } ]
+[[packet_types]]
+id = 2
+name = "imu"
+record_size = 2
+time = { source = "index" }
+fields = [ { name = "ax", type = "i16", offset = 6 } ]
+"#;
+        let unchecked = |kind: u8, payload: &[u8]| {
+            let mut p = packet(kind, payload);
+            p.pop();
+            p
+        };
+        let mut bytes = unchecked(1, &[0, 0, 5, 0]);
+        bytes.extend(unchecked(2, &[7, 0, 8, 0]));
+        bytes.extend(unchecked(1, &[100, 0, 6, 0]));
+        bytes.extend(unchecked(9, &[1, 2]));
+        assert_eq!(described_parts(types).unwrap(), ["gps", "imu"]);
+        let mut st = State::default();
+        import_described(&mut st, 0, "x.bin · gps", &bytes, types, 0).unwrap();
+        import_described(&mut st, 1, "x.bin · imu", &bytes, types, 1).unwrap();
+        let (gps, imu) = (st.files[0].as_ref().unwrap(), st.files[1].as_ref().unwrap());
+        assert_eq!(gps.cols[0].raw.slice(2).unwrap(), [5.0, 6.0]);
+        assert_eq!(imu.cols[0].raw.slice(2).unwrap(), [7.0, 8.0]);
+        assert!(import_described(&mut st, 2, "x.bin", &bytes, types, 5).is_err());
+
+        // fixed-width records after a header, with the descriptor kept in the page (no packets)
+        let fixed = FIELD_TIME.replace("record_size = 8", "record_size = 8\nheader_size = 4");
+        let mut raw = vec![0xaa; 4];
+        raw.extend(
+            &tlm(&[(0, 1000, 1), (500, 2000, 0)], FIELD_TIME)
+                [crate::reference::read_header(&tlm(&[], FIELD_TIME)).unwrap().0..],
+        );
+        import_described(&mut st, 3, "plain.bin", &raw, &fixed, 0).unwrap();
+        assert_eq!(st.files[3].as_ref().unwrap().cols[0].raw.slice(2).unwrap(), [2.0, 3.0]);
     }
 }

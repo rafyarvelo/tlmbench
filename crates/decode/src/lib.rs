@@ -20,6 +20,7 @@ pub mod descriptor;
 mod error;
 pub mod fixed;
 pub mod packets;
+mod packets_core;
 pub mod parquet;
 mod parquet_core;
 mod parquet_pages;

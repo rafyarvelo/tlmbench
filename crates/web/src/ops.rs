@@ -70,6 +70,18 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
         "import_file" => crate::import::import_file(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
         "import_tlm" => crate::import::import_tlm(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
         "import_csv" => crate::import::import_csv(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
+        // a binary file laid out by a descriptor the page keeps: its packet types, then one file per type
+        "described_parts" => {
+            Ok(Reply::Json(serde_json::json!(crate::import::described_parts(&arg::<String>(a, "descriptor")?)?)))
+        }
+        "import_described" => crate::import::import_described(
+            st,
+            arg::<usize>(a, "file")?,
+            &arg::<String>(a, "path")?,
+            bin,
+            &arg::<String>(a, "descriptor")?,
+            arg::<usize>(a, "part").unwrap_or(0),
+        ),
         "dump" => {
             let (meta, data) = crate::import::dump(st, arg::<usize>(a, "file")?)?;
             let json = serde_json::to_vec(&meta).map_err(|e| e.to_string())?;

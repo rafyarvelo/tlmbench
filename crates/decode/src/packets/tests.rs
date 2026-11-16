@@ -2,7 +2,10 @@ use tlmbench_core::chunks::Held;
 use tlmbench_core::{Recording, TraceKind, Viewport};
 
 use super::*;
+use crate::descriptor::Checksum;
 use crate::descriptor::{Field, LengthField, TimeUnit};
+#[allow(unused_imports)]
+use crate::packets_core::*;
 
 /// 12-byte header: sync EB90, u16 payload length, u32 packet counter, 4 spare bytes. Records: u64 time (µs) and
 /// an f32 and an i16 (scaled), 14 bytes.
