@@ -192,7 +192,9 @@
         ondragover={(e) => dragTab != null && e.preventDefault()}
         ondrop={(e) => {
           e.preventDefault();
-          if (dragTab != null) moveTab(dragTab, i);
+          // the half of the tab under the pointer says which side it lands on (a drag onto the right-hand neighbour moves it)
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          if (dragTab != null) moveTab(dragTab, e.clientX > r.left + r.width / 2 ? i + 1 : i);
           dragTab = null;
           actions.saveSession();
         }}

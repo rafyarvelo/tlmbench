@@ -43,8 +43,13 @@ run('tabs', async ({ p, check, fake, paneCount, plotAt, until, settingsLS, wait 
   check('every pane drawn after switching', await until(() => window.__tlmApp.drawn().every((d) => d && d.length)));
 
   // reorder by dragging; the order is saved
-  await p.locator(tab(C)).dragTo(p.locator(tab(A)));
-  check('drag reorders tabs', (await names()).join() === 'c.tlm,a.tlm*,b.csv', await names());
+  await p.locator(tab(C)).dragTo(p.locator(tab(A)), { targetPosition: { x: 6, y: 10 } });
+  check('drag reorders tabs: onto the left half, before it', (await names()).join() === 'c.tlm,a.tlm*,b.csv', await names());
+  // onto the right half of the next tab: after it (sheet C2: a drag onto the right-hand neighbour did nothing)
+  const wA = (await p.locator(tab(A)).boundingBox()).width;
+  await p.locator(tab(C)).dragTo(p.locator(tab(A)), { targetPosition: { x: wA - 6, y: 10 } });
+  check('onto the right half of its neighbour, after it', (await names()).join() === 'a.tlm*,c.tlm,b.csv', await names());
+  await p.locator(tab(C)).dragTo(p.locator(tab(A)), { targetPosition: { x: 6, y: 10 } });
 
   // middle-click and × close tabs and their files; the neighbour comes to the front
   await p.click(tab(B), { button: 'middle' });
