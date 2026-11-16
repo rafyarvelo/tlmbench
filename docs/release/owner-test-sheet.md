@@ -59,8 +59,7 @@ Expect: locked nothing moves and the greyed controls say why; unlocked it behave
 You decided (Nov 15): an unlocked arrangement is not kept when you reload; a reload is the exported view.
 Result:
 Notes:
-(Agent, Nov 16: your decision changed this: the Locked pill is now the pencil "Edit layout" button, and the time-view lock is
-gone from the viewer. Re-test it with V7.)
+(Agent, Nov 16: your decision changed this twice; the viewer now has the app's one padlock Lock (D-ui-62). Re-test it with V7.)
 
 ---
 
@@ -134,7 +133,8 @@ You confirmed (removed): the ⋯ menu, the time range, Explorer's quiet rows, Op
 filters; on Nov 16 C2 (tabs and the panel overlap), C3 (windows), F10 (exports), V3 (Open with its default app, the menu note), V1, V2, T5, T1 (slot numbers), T2 (Rename, Save layout), T3 (Duplicate recipe), D1 and D2, G1 and H1 to H4. Left:
 
 ### T4. The viewer's tab name, when it's long
-You wrote (Nov 16): the layout "Altitude and battery" couldn't be found after `just testdata` (ledger D-ui-64). Waits for that fix.
+You wrote (Nov 16): the layout "Altitude and battery" couldn't be found after `just testdata` (ledger D-ui-64).
+Agent, Nov 16 night: fixed: the test data named the file `.json`; the app reads `*.tlmview.json`. Run `just testdata` again.
 Result:
 Notes:
 
@@ -193,7 +193,16 @@ serve it (`python3 -m http.server --directory app/browser/dist`).
 
 ### V7. Exports of a tab of several files, and the viewer's lock (your T4 notes, Nov 16)
 You wrote (Nov 16): chips still don't drag in Safari after Edit layout (Explorer rows do); and keep the prototype's one Lock
-icon, locking both the time view and moving channels, in the app and in exports. Both are open (ledger D-ui-62, D-ui-63).
+icon, locking both the time view and moving channels, in the app and in exports (ledger D-ui-62, D-ui-63).
+Agent, Nov 16 night: built as you chose. The padlock is on the bar in the app and the viewer; L toggles it; locked, zoom, pan,
+Fit and Back are refused (a note offers Unlock) and panes and channels stay put, while cursors and table sort and filter work.
+Safari: a drag's first moment no longer moves the chip (the drop gaps waited for the next frame; Safari dropped drags whose
+chip moved under it). No headless test can show this, so it's yours to confirm.
+Do: rebuild (above, and `cargo build --release -p tlmbench`). In the app: press L, try to zoom, drag a chip, add a pane; click the
+padlock. Export flight-1 as One file and open it in Safari: it opens locked; try to zoom; click the padlock; drag a chip to
+another pane, with Option held too; drag a pane number; press L.
+Expect: locked, nothing zooms or moves and the note offers Unlock; unlocked, chips and pane numbers drag in Safari as in Chrome;
+a reload of the export is locked again.
 Result:
 Notes:
 
