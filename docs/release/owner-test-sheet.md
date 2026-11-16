@@ -135,7 +135,7 @@ filters; on Nov 16 C2 (tabs and the panel overlap), C3 (windows), F10 (exports),
 ### T4. The viewer's tab name, when it's long
 You wrote (Nov 16): the layout "Altitude and battery" couldn't be found after `just testdata` (ledger D-ui-64).
 Agent, Nov 16 night: fixed: the test data named the file `.json`; the app reads `*.tlmview.json`. Run `just testdata` again.
-Result:
+Result: Pass (Nov 16 night): the layout is found after `just testdata`.
 Notes:
 
 ---
@@ -203,7 +203,7 @@ padlock. Export flight-1 as One file and open it in Safari: it opens locked; try
 another pane, with Option held too; drag a pane number; press L.
 Expect: locked, nothing zooms or moves and the note offers Unlock; unlocked, chips and pane numbers drag in Safari as in Chrome;
 a reload of the export is locked again.
-Result:
+Result: Pass (Nov 16 night): the lock in the app, a One file export and a folder export; chips and pane numbers drag in Safari, with Option too.
 Notes:
 
 ### V4. Browser-only mode: binary files and descriptors (D-brow-08)
