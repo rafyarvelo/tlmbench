@@ -452,6 +452,8 @@
 {#snippet file(path: string, name: string, depth: number)}
   {@const open = isOpen(path)}
   {@const sl = ui.slots.length > 1 ? slotOf(path) : undefined}
+  <!-- the primary's row holds every file of the tab: it reads as the tab does ("flight-1 + flight-2"; owner, Nov 16) -->
+  {@const group = sl?.slot === 1 ? tabs.list.find((t) => t.path === path && t.tip && !t.ws)?.name : undefined}
   <div
     class="row file"
     class:open
@@ -470,7 +472,7 @@
     oncontextmenu={(e) => fileMenu(e, path)}
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
-    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}{#if sl}<b class="slotn" data-fslot={sl.slot}>{sl.slot}</b>{/if}<span class="nm">{name}</span>{#if sl}<span class="meta" data-fslotmeta>{sl.slot === 1 ? 'primary' : `${sl.align.locked ? 'locked · ' : ''}${alignWord(sl)}`}</span>{/if}<CheckBadge {path} />{#if open && ui.slots.length < 2 && frontState}{@const fs = frontState}<span class="meta lvst" data-state={fs} data-lvstate>{WORD[fs]}</span>{/if}{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}{#if sl}<b class="slotn" data-fslot={sl.slot}>{sl.slot}</b>{/if}<span class="nm" data-tip={group ? name : undefined}>{group ?? name}</span>{#if sl}<span class="meta" data-fslotmeta>{sl.slot === 1 ? (group ? `${ui.slots.length} files` : 'primary') : `${sl.align.locked ? 'locked · ' : ''}${alignWord(sl)}`}</span>{/if}<CheckBadge {path} />{#if open && ui.slots.length < 2 && frontState}{@const fs = frontState}<span class="meta lvst" data-state={fs} data-lvstate>{WORD[fs]}</span>{/if}{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>

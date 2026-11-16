@@ -123,7 +123,7 @@ run(
     check('separate runs line up at their starts', /starts aligned/.test(await text('#explorer .row.slot[data-slot="2"] [data-asum]')) || /same clock/.test(await text('#explorer .row.slot[data-slot="2"] [data-asum]')));
     // D-ui-45: the folder's rows mark every file of the tab, with its slot and alignment
     check('every file of the tab is marked in the tree, with its slot number', await until(() => document.querySelectorAll('#explorer .row.file.slotted').length === 2) && (await p.$$eval('#explorer .row.file.slotted [data-fslot]', (e) => e.map((x) => x.textContent))).join() === '1,2');
-    check('file 1 says primary and file 2 its alignment', /primary/.test(await text('#explorer .row.file.slotted:has([data-fslot="1"]) [data-fslotmeta]')) && /starts aligned|same clock/.test(await text('#explorer .row.file.slotted:has([data-fslot="2"]) [data-fslotmeta]')));
+    check('file 1 reads as the tab, with how many files, and file 2 says its alignment', /2 files/.test(await text('#explorer .row.file.slotted:has([data-fslot="1"]) [data-fslotmeta]')) && /starts aligned|same clock/.test(await text('#explorer .row.file.slotted:has([data-fslot="2"]) [data-fslotmeta]')));
     // D-ui-10: quiet rows, the unit and the pane show on hover
     const op = (sel) => p.$eval(sel, (e) => getComputedStyle(e).opacity);
     const u = '#explorer .row.chan .unit';
