@@ -419,6 +419,10 @@
     folderChanged(path) {
       emit('folder-changed', { path: path ?? fake.watched });
     },
+    /** The window's close button (or ⌘W): the event Tauri sends the page. */
+    closeRequested() {
+      emit('tauri://close-requested', null);
+    },
     /** The native menu bar: a click on item `id`. */
     menuClick(id) {
       emit('menu-action', id);
@@ -1366,6 +1370,11 @@
     window_frame: () => fake.frame ?? { x: 10, y: 20, w: 1200, h: 760 },
     window_place({ frame }) {
       fake.placed = frame;
+      return null;
+    },
+    // a window closing itself (onCloseRequested closes it once its handler is done)
+    'plugin:window|destroy'({ label }) {
+      (fake.destroyed ??= []).push(label ?? 'main');
       return null;
     },
     'plugin:window|set_title'({ value }) {

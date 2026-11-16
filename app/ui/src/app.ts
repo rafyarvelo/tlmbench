@@ -2226,8 +2226,10 @@ async function restoreWindows(): Promise<void> {
     setSetting('windows', saved.main ? { main: saved.main } : {});
     for (const [, w] of others) await invoke('window_new', { handoff: { session: w.session, folder: w.folder }, frame: w.frame ?? null });
   } else {
-    // a window the user closes is forgotten; quitting the app keeps every window for the next run
-    void here.listen('tauri://close-requested', () => setSetting('windows', Object.fromEntries(Object.entries(settings.windows).filter(([k]) => k !== WINDOW))));
+    // a window the user closes is forgotten; quitting the app keeps every window for the next run. onCloseRequested, not a
+    // plain listen: any page listener for close-requested makes Tauri hold the close for the page, and onCloseRequested
+    // closes the window once the handler is done (a plain listener left it open, and forgotten: sheet C3)
+    void here.onCloseRequested(() => setSetting('windows', Object.fromEntries(Object.entries(settings.windows).filter(([k]) => k !== WINDOW))));
   }
   void here.listen('tauri://move', later);
   void here.listen('tauri://resize', later);

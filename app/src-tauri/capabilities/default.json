@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Every window: core APIs and the open and save dialogs",
   "windows": ["main", "win-*"],
-  "permissions": ["core:default", "core:window:allow-set-title", "dialog:allow-open", "dialog:allow-save", "dialog:allow-ask"]
+  "permissions": ["core:default", "core:window:allow-set-title", "core:window:allow-destroy", "dialog:allow-open", "dialog:allow-save", "dialog:allow-ask"]
 }
