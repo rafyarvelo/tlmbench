@@ -39,6 +39,7 @@ pub mod checks;
 mod chunks;
 #[cfg(feature = "native")]
 pub mod config;
+mod config_core;
 mod derived;
 mod error;
 pub mod events;

@@ -48,6 +48,10 @@ mod packets {
         crate::packets_core::frame_packet(p, big, header, payload)
     }
 }
+// a folder's `.tlmbench/` as the app reads it (categories, widgets, icons), over the texts the page read from its handle
+#[path = "../../store/src/config_core.rs"]
+#[allow(dead_code)]
+mod config_core;
 #[path = "../../decode/src/profile.rs"]
 #[allow(dead_code)]
 mod profile;

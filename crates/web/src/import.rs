@@ -120,6 +120,57 @@ pub fn descriptor_of(v: &Value) -> Result<Descriptor, String> {
     }
 }
 
+/// A folder's `.tlmbench/` as the page read it from its directory handle: each file's text by its path inside it.
+pub struct Listing(pub std::collections::BTreeMap<String, String>);
+
+impl Listing {
+    /// The names directly in `rel` (`dirs`: the folders, else the files ending in `ext`), in name order.
+    fn names(&self, rel: &str, dirs: bool, ext: &str) -> Vec<String> {
+        let prefix = if rel.is_empty() { String::new() } else { format!("{rel}/") };
+        let mut out: Vec<String> = self
+            .0
+            .keys()
+            .filter_map(|k| k.strip_prefix(&prefix))
+            .filter_map(|rest| match rest.split_once('/') {
+                Some((d, _)) if dirs => Some(d.to_owned()),
+                None if !dirs && rest.ends_with(ext) => Some(rest.to_owned()),
+                _ => None,
+            })
+            .collect();
+        out.dedup();
+        out
+    }
+}
+
+impl crate::config_core::Tree for Listing {
+    fn text(&self, rel: &str) -> Option<String> {
+        self.0.get(rel).cloned()
+    }
+    fn dirs(&self, rel: &str) -> Vec<String> {
+        self.names(rel, true, "")
+    }
+    fn files(&self, rel: &str, ext: &str) -> Vec<String> {
+        self.names(rel, false, ext)
+    }
+}
+
+/// What a folder's `.tlmbench/` holds for the page: its categories, widgets and icons (as the app's `config_use` gives
+/// them), and its `decoders/` as descriptors (the form's JSON, by id; one that doesn't parse is left out, as the app does).
+pub fn config_of(files: &Value) -> Result<Value, String> {
+    let map: std::collections::BTreeMap<String, String> =
+        serde_json::from_value(files.clone()).map_err(|e| e.to_string())?;
+    let l = Listing(map);
+    let from = crate::config_core::from_tree(&l);
+    let decoders: Vec<Value> = crate::config_core::Tree::files(&l, "decoders", ".toml")
+        .into_iter()
+        .filter_map(|n| {
+            let d = Descriptor::parse(l.0.get(&format!("decoders/{n}"))?).ok()?;
+            Some(json!({ "id": n.trim_end_matches(".toml"), "descriptor": d }))
+        })
+        .collect();
+    Ok(json!({ "from": from, "decoders": decoders }))
+}
+
 /// The packet types of a descriptor kept in the page, each a recording of its own: their names, or one empty name for a
 /// descriptor without `[[packet_types]]`. The page opens one file per type (`flight.bin · gps`), as the app does.
 pub fn described_parts(desc: &Value) -> Result<Vec<String>, String> {
@@ -523,6 +574,29 @@ unit = "V"
         assert_eq!(t, &[0, 10_000_000, 20_000_000, 30_000_000]);
         assert_eq!(d.cols[0].raw.slice(4).unwrap(), [10.0, 20.0, 30.0, 40.0]);
         assert_eq!(d.info.notes, ["1 damaged packet skipped"]);
+    }
+
+    #[test]
+    fn a_folders_tlmbench_reads_from_a_listing_as_the_app_reads_it() {
+        let files = json!({
+            "categories.toml": "schema = 1\n[[category]]\nid = \"warn\"\nname = \"Warnings\"\ncolor = \"#f80\"\n",
+            "widgets/dial/widget.toml": "schema = 1\nname = \"Dial\"\nkind = \"svg\"\nentry = \"dial.svg\"\n",
+            "widgets/dial/dial.svg": "<svg/>",
+            "widgets/broken/widget.toml": "schema = 9\nname = \"x\"\nkind = \"svg\"\nentry = \"x.svg\"\n",
+            "icons/flag.svg": "<svg id='flag'/>",
+            "decoders/esc.toml": FIELD_TIME.replace("name = \"t\"\nrecord_size", "name = \"t\"\nfiles = [\"*.esc\"]\nrecord_size"),
+            "decoders/bad.toml": "not toml [",
+            "views/a.tlmview.json": "{}",
+        });
+        let c = config_of(&files).unwrap();
+        assert_eq!(c["from"]["categories"][0]["name"], "Warnings");
+        assert_eq!(c["from"]["widgets"].as_array().unwrap().len(), 1, "a widget of another schema is left out");
+        assert_eq!(c["from"]["widgets"][0]["id"], "dial");
+        assert_eq!(c["from"]["widgets"][0]["svg"], "<svg/>");
+        assert_eq!(c["from"]["icons"][0]["name"], "flag");
+        let d = c["decoders"].as_array().unwrap();
+        assert_eq!(d.len(), 1, "a descriptor that doesn't parse is left out");
+        assert_eq!((d[0]["id"].as_str(), d[0]["descriptor"]["files"][0].as_str()), (Some("esc"), Some("*.esc")));
     }
 
     #[test]

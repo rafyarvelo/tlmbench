@@ -19,7 +19,8 @@ use serde::{Deserialize, Serialize};
 use crate::events::Event;
 use crate::{Error, Result};
 
-pub const SCHEMA: u32 = 1;
+pub use crate::config_core::{Category, FromFolder, Icon, SCHEMA, Tree, Widget, from_tree};
+use crate::config_core::{CategoryFile, WidgetFile, schema_ok};
 
 /// The kinds of object a `.tlmbench/` holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -100,43 +101,6 @@ pub fn slug(name: &str, empty: &str) -> String {
 // ---------------------------------------------------------------------------------------------------------------
 // What the app's settings own (they reach the core as JSON, and come out in the same shape)
 
-/// An event category, as the folder's `categories.toml` holds it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Category {
-    pub id: String,
-    pub name: String,
-    pub color: String,
-    #[serde(default = "yes")]
-    pub show_on_charts: bool,
-    /// The name of an icon in `.tlmbench/icons/`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-}
-
-fn yes() -> bool {
-    true
-}
-
-/// A widget of your own: a declarative SVG or code.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Widget {
-    pub id: String,
-    pub name: String,
-    pub icon: Option<String>,
-    pub svg: Option<String>,
-    pub angle: Option<[f64; 2]>,
-    pub code: Option<String>,
-    pub by: Option<String>,
-}
-
-/// An icon: an SVG that uses `currentColor`.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Icon {
-    pub name: String,
-    pub svg: String,
-}
-
 /// A layout, by its file name (`flight-review.tlmview.json`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct View {
@@ -166,38 +130,8 @@ pub struct Own {
     pub recordings: Vec<Recording>,
 }
 
-/// What a folder holds of those, for the app to take into its settings.
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
-pub struct FromFolder {
-    pub categories: Vec<Category>,
-    pub widgets: Vec<Widget>,
-    pub icons: Vec<Icon>,
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // File formats
-
-#[derive(Serialize, Deserialize)]
-struct CategoryFile {
-    schema: u32,
-    #[serde(default, rename = "category")]
-    categories: Vec<Category>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct WidgetFile {
-    schema: u32,
-    name: String,
-    /// `svg` or `code`.
-    kind: String,
-    entry: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    icon: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    angle: Option<[f64; 2]>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    by: Option<String>,
-}
 
 /// An import profile with the header it belongs to, as `.tlmbench/profiles/<profile>.toml`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -286,10 +220,6 @@ pub fn timemap_from_toml(text: &str) -> std::result::Result<TimeMapFile, String>
         return Err(format!("time map schema {} isn't supported (this version reads {SCHEMA})", t.schema));
     }
     Ok(t)
-}
-
-fn schema_ok(n: u32, what: &str) -> std::result::Result<(), String> {
-    if n == SCHEMA { Ok(()) } else { Err(format!("{what} schema {n} isn't supported (this version reads {SCHEMA})")) }
 }
 
 fn toml_of<T: Serialize>(v: &T) -> Vec<u8> {
@@ -393,6 +323,38 @@ fn files_in(dir: &Path, ext: &str) -> Vec<PathBuf> {
 
 fn name_of(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// A folder on disk, read as a [`Tree`] (the browser reads its folder's `.tlmbench/` through one over a listing).
+struct FsTree<'a>(&'a Path);
+
+impl Tree for FsTree<'_> {
+    fn text(&self, rel: &str) -> Option<String> {
+        fs::read_to_string(self.0.join(rel)).ok()
+    }
+    fn dirs(&self, rel: &str) -> Vec<String> {
+        let mut v: Vec<String> = fs::read_dir(self.0.join(rel))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    }
+    fn files(&self, rel: &str, ext: &str) -> Vec<String> {
+        files_in(&self.0.join(rel), ext).iter().map(|p| name_of(p)).collect()
+    }
+}
+
+fn read_widget(dir: &Path) -> std::result::Result<Widget, String> {
+    crate::config_core::read_widget(&FsTree(dir), "")
+}
+
+/// What a folder holds that lives in the app's settings: categories, widgets and icons.
+pub fn from_folder(dir: &Path) -> FromFolder {
+    from_tree(&FsTree(dir))
 }
 
 /// Makes a file's text canonical: its name to a person and its bytes.
@@ -548,58 +510,6 @@ fn sorted_rows(mut v: Vec<EventRow>) -> Vec<EventRow> {
 }
 
 /// A widget folder (`widget.toml` and its entry) read as a [`Widget`].
-fn read_widget(dir: &Path) -> std::result::Result<Widget, String> {
-    let head = fs::read_to_string(dir.join("widget.toml")).map_err(|e| format!("widget.toml: {e}"))?;
-    let f: WidgetFile = toml::from_str(&head).map_err(|e| e.to_string())?;
-    schema_ok(f.schema, "widget")?;
-    if f.entry.contains(['/', '\\']) || f.entry.starts_with('.') {
-        return Err("the entry must be a file in the widget's folder".into());
-    }
-    let body = fs::read_to_string(dir.join(&f.entry)).map_err(|e| format!("{}: {e}", f.entry))?;
-    let icon = match &f.icon {
-        Some(i) if !i.contains(['/', '\\']) => fs::read_to_string(dir.join(i)).ok(),
-        _ => None,
-    };
-    let mut w = Widget { id: String::new(), name: f.name, icon, by: f.by, ..Default::default() };
-    match f.kind.as_str() {
-        "code" => w.code = Some(body),
-        "svg" => {
-            w.svg = Some(body);
-            w.angle = f.angle;
-        }
-        other => return Err(format!("widget kind {other:?} isn't svg or code")),
-    }
-    Ok(w)
-}
-
-/// What a folder holds that lives in the app's settings: categories, widgets and icons.
-pub fn from_folder(dir: &Path) -> FromFolder {
-    let mut out = FromFolder::default();
-    if let Ok(f) = fs::read_to_string(dir.join("categories.toml"))
-        .map_err(|e| e.to_string())
-        .and_then(|t| toml::from_str::<CategoryFile>(&t).map_err(|e| e.to_string()))
-        && f.schema == SCHEMA
-    {
-        out.categories = f.categories;
-    }
-    if let Ok(rd) = fs::read_dir(dir.join("widgets")) {
-        let mut dirs: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
-        dirs.sort();
-        for d in dirs {
-            if let Ok(mut w) = read_widget(&d) {
-                w.id = name_of(&d);
-                out.widgets.push(w);
-            }
-        }
-    }
-    for p in files_in(&dir.join("icons"), ".svg") {
-        if let Ok(svg) = fs::read_to_string(&p) {
-            out.icons.push(Icon { name: name_of(&p).trim_end_matches(".svg").into(), svg });
-        }
-    }
-    out
-}
-
 /// Every object the cache (under `root`) and `own` hold, in the form a folder holds them.
 pub fn cache_items(root: &Path, own: &Own) -> Vec<Item> {
     // the cache keeps these in the folder's own formats
