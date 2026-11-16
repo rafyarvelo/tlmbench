@@ -292,7 +292,7 @@ impl Store {
         let hz = tlmbench_expr::Env::hz(&hz).unwrap_or(1.0);
         let mut ok = Vec::new();
         for r in resolved {
-            if tlmbench_expr::is_stateless(&r.expr) || tlmbench_expr::warm_rows_at(&r.expr, hz).is_some() {
+            if tlmbench_expr::is_stateless(&r.expr) || tlmbench_expr::warm_rows_live(&r.expr, hz).is_some() {
                 ok.push(r);
             } else {
                 skipped.push((
@@ -374,8 +374,9 @@ impl LiveDerived {
                 let v = if tlmbench_expr::is_stateless(&r.expr) {
                     tlmbench_expr::eval_range(&r.expr, &env, a..n).map(Some)
                 } else {
-                    let warm = tlmbench_expr::warm_rows_at(&r.expr, hz).unwrap_or(0);
-                    tlmbench_expr::eval_warm(&r.expr, &env, a..n, warm)
+                    // filters are causal live (S5.1-06): forward only, settled by the warm-up
+                    let warm = tlmbench_expr::warm_rows_live(&r.expr, hz).unwrap_or(0);
+                    tlmbench_expr::eval_warm_live(&r.expr, &env, a..n, warm)
                 };
                 let col = match v {
                     Ok(Some(tlmbench_expr::Val::Ser(s))) if s.len() == rows => s.v,

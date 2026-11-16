@@ -32,6 +32,9 @@ fn descriptor() -> Descriptor {
             scale: 1.0,
             value_offset: 0.0,
             bits: None,
+            plugin: None,
+            size: 0,
+            params: None,
         }],
     }
 }
@@ -115,6 +118,22 @@ fn it_reads_an_expression_with_a_window_over_the_new_samples_only() {
     let ev = events_of(&store, &live);
     assert_eq!(ev.len(), 1);
     assert!((at(&ev[0]) - 653).abs() <= 3, "{}", ev[0].start);
+}
+
+#[test]
+fn a_filter_triggers_live_running_forward_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let (store, live, path) = live(dir.path());
+    // causal live (S5.1-06): a 10 Hz low-pass of a 1.6 Hz sine lags it by its group delay, about 22 samples
+    live.arm_trigger(spec("lowpass(a, 10)", Kind::Rise, 0.0, false), &[]).unwrap();
+    for (from, to) in [(100, 600), (600, 640), (640, 900)] {
+        append(&path, from, to);
+        live.refresh().unwrap();
+    }
+    let ev = events_of(&store, &live);
+    assert_eq!(ev.len(), 1);
+    let lag = at(&ev[0]) - 628;
+    assert!((15..=30).contains(&lag), "fired {lag} samples after the signal rose through 0");
 }
 
 #[test]

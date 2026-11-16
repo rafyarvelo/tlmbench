@@ -207,3 +207,41 @@ fn windowed_recipes_compute_a_chunk_from_a_replay() {
         assert_eq!(warm_rows(&parse(src).unwrap()), None, "{src}");
     }
 }
+
+#[test]
+fn live_filters_are_causal_and_a_chunk_settles_from_its_warm_up() {
+    use tlmbench_expr::{eval_warm_live, warm_rows_at, warm_rows_live};
+    let r = rec(4000);
+    for src in ["lowpass(x, 2)", "highpass(x, 5)", "bandpass(x, 1, 5)", "sma(lowpass(x, 3), 5)"] {
+        let e = parse(src).unwrap();
+        // a file's filter is zero-phase and runs in one piece; live it runs forward only, after a warm-up
+        assert_eq!(warm_rows_at(&e, 100.0), None, "{src}");
+        let warm = warm_rows_live(&e, 100.0).expect("a filter follows a live source");
+        assert!(warm > 50, "{src}: {warm}");
+        let whole = eval_warm_live(&e, &r, 0..4000, 0).unwrap().unwrap();
+        let w = whole.series().unwrap();
+        for a in (1000..4000).step_by(500) {
+            let s = eval_warm_live(&e, &r, a..a + 500, warm).unwrap().unwrap();
+            let s = s.series().unwrap();
+            for i in 0..500 {
+                let (p, q) = (s.v[i], w.v[a + i]);
+                assert!((p.is_nan() && q.is_nan()) || (p - q).abs() <= 1e-6, "{src} at {}: {p} vs {q}", a + i);
+            }
+        }
+    }
+    // causal: a step's response starts at the step, never before it (a zero-phase filter rings ahead of it)
+    let step = Rec {
+        x: Series::new(
+            (0..1000).map(|i| if i < 500 { 0.0 } else { 1.0 }).collect(),
+            Grid::Rate { t0: 0.0, hz: 100.0, start: 0 },
+        ),
+        stamps: Series::new(vec![0.0; 1000], Grid::Rate { t0: 0.0, hz: 100.0, start: 0 }),
+    };
+    let e = parse("lowpass(x, 5)").unwrap();
+    let live = eval_warm_live(&e, &step, 0..1000, 0).unwrap().unwrap();
+    let live = live.series().unwrap();
+    assert!(live.v[..500].iter().all(|v| v.abs() < 1e-12), "nothing before the step");
+    assert!(live.v[600] > 0.99, "{}", live.v[600]);
+    let file = eval_chunked(&e, &step, usize::MAX).unwrap();
+    assert!(file.series().unwrap().v[495].abs() > 1e-6, "the file's zero-phase filter moves before the step");
+}

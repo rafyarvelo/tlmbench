@@ -81,6 +81,24 @@ pub fn zero_phase(bq: &Biquad, carry: &mut Carry, v: &[f64], k: usize) -> Vec<f6
     back
 }
 
+/// Causal filtering, for live data (S5.1-06): the forward pass alone, continuing from `carry` and leaving it after the
+/// committed `k` samples. Unlike [`zero_phase`] its output lags the input (by the filter's group delay).
+pub fn forward(bq: &Biquad, carry: &mut Carry, v: &[f64], k: usize) -> Vec<f64> {
+    if v.is_empty() {
+        return Vec::new();
+    }
+    if !carry.started {
+        carry.state = bq.start(v[0]);
+        carry.started = true;
+    }
+    let mut out = bq.run(&mut carry.state, &v[..k.min(v.len())]);
+    if k < v.len() {
+        let mut tmp = carry.state;
+        out.extend(bq.run(&mut tmp, &v[k..]));
+    }
+    out
+}
+
 /// Samples after a chunk's end that a zero-phase pass at cutoff `fc` (sample rate `fs`) needs: the start-up of the
 /// backward pass decays as exp(-n * w0 / sqrt 2); 20 time constants leave less than 1e-8 of it.
 pub fn margin(fc: f64, fs: f64) -> usize {

@@ -117,8 +117,18 @@ pub fn eval_range(e: &Expr, env: &dyn Env, r: Range<usize>) -> R<Val> {
         ));
     }
     let mut st = vec![St::default(); plan.nodes.len()];
-    let mut cx =
-        Ctx { env, commit: r.len(), range: r, pass: 0, cursor: 0, st: &mut st, plan: &plan, resolved: &[], warm: 0 };
+    let mut cx = Ctx {
+        env,
+        commit: r.len(),
+        range: r,
+        pass: 0,
+        cursor: 0,
+        st: &mut st,
+        plan: &plan,
+        resolved: &[],
+        warm: 0,
+        causal: false,
+    };
     ev(e, &mut cx)
 }
 
@@ -137,7 +147,22 @@ pub fn warm_rows_at(e: &Expr, hz: f64) -> Option<usize> {
 /// Samples `r` of a recipe with a [warm-up](warm_rows), computed alone from `warm` samples before it. `None` when a
 /// window needed more real samples than the replay held (gaps), and the recipe must then run in one piece.
 pub fn eval_warm(e: &Expr, env: &dyn Env, r: Range<usize>, warm: usize) -> R<Option<Val>> {
-    let plan = analyze(e, env.hz())?;
+    warm_eval(e, env, r, warm, false)
+}
+
+/// [`warm_rows_at`] on live data, where filters run forward only (causal): they settle within the warm-up too, so
+/// they follow a live source (S5.1-06). `None` for a recipe that needs the whole recording (a running total).
+pub fn warm_rows_live(e: &Expr, hz: f64) -> Option<usize> {
+    analyze_with(e, Some(hz), true).ok().filter(|p| p.warmable && !p.stateless && p.depth == 0).map(|p| p.warm)
+}
+
+/// [`eval_warm`] on live data: filters are causal, run from the warm-up's first sample (as [`warm_rows_live`] counts).
+pub fn eval_warm_live(e: &Expr, env: &dyn Env, r: Range<usize>, warm: usize) -> R<Option<Val>> {
+    warm_eval(e, env, r, warm, true)
+}
+
+fn warm_eval(e: &Expr, env: &dyn Env, r: Range<usize>, warm: usize, causal: bool) -> R<Option<Val>> {
+    let plan = analyze_with(e, env.hz(), causal)?;
     let from = r.start.saturating_sub(warm);
     let mut st = vec![St::default(); plan.nodes.len()];
     let n = r.len();
@@ -151,6 +176,7 @@ pub fn eval_warm(e: &Expr, env: &dyn Env, r: Range<usize>, warm: usize) -> R<Opt
         plan: &plan,
         resolved: &[],
         warm: r.start - from,
+        causal,
     };
     let v = ev(e, &mut cx)?;
     if st.iter().any(|s| s.short) {
@@ -191,6 +217,7 @@ pub fn run(e: &Expr, env: &dyn Env, chunk: usize, sink: &mut dyn FnMut(usize, &S
                 plan: &plan,
                 resolved: &resolved,
                 warm: 0,
+                causal: false,
             };
             let val = ev(e, &mut cx)?;
             if last {
@@ -314,11 +341,16 @@ impl Env for NoEnv {
 }
 
 fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
-    fn walk(e: &Expr, plan: &mut Plan, hz: Option<f64>) -> R<(usize, usize)> {
+    analyze_with(e, hz, false)
+}
+
+/// The plan; `causal` (live data) counts a filter's settling as warm-up, since it runs forward only there.
+fn analyze_with(e: &Expr, hz: Option<f64>, causal: bool) -> R<Plan> {
+    fn walk(e: &Expr, plan: &mut Plan, hz: Option<f64>, causal: bool) -> R<(usize, usize)> {
         match e {
-            Expr::Un { a, .. } => walk(a, plan, hz),
+            Expr::Un { a, .. } => walk(a, plan, hz, causal),
             Expr::Bin { a, b, .. } => {
-                let (x, y) = (walk(a, plan, hz)?, walk(b, plan, hz)?);
+                let (x, y) = (walk(a, plan, hz, causal)?, walk(b, plan, hz, causal)?);
                 Ok((x.0.max(y.0), x.1.max(y.1)))
             }
             Expr::Call { f, args, .. } => {
@@ -326,7 +358,7 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
                 plan.nodes.push(Node::default());
                 let (mut depth, mut ahead) = (0, 0);
                 for a in args {
-                    let (d, h) = walk(a, plan, hz)?;
+                    let (d, h) = walk(a, plan, hz, causal)?;
                     (depth, ahead) = (depth.max(d), ahead.max(h));
                 }
                 let kind = metric_kind(f, args.len());
@@ -351,10 +383,13 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
                         },
                         None => None,
                     };
+                    let filter = matches!(f.as_str(), "lowpass" | "highpass" | "bandpass");
                     match (w, hz) {
                         (Some(Window::Samples(n)), _) => plan.warm += n,
                         // a time window is that long at the recording's rate
                         (Some(Window::Secs(t)), Some(fs)) if fs > 0.0 => plan.warm += (t * fs).ceil() as usize + 1,
+                        // forward only, a filter settles within its margin (counted below, as its read-ahead is)
+                        (None, Some(fs)) if causal && filter && fs > 0.0 => {}
                         _ => plan.warmable = false,
                     }
                 }
@@ -380,13 +415,18 @@ fn analyze(e: &Expr, hz: Option<f64>) -> R<Plan> {
                         .sum(),
                     _ => 0,
                 };
+                if causal {
+                    // nothing is read ahead live: the filter's settling comes before the chunk instead
+                    plan.warm += own;
+                    return Ok((depth, ahead));
+                }
                 Ok((depth, ahead + own))
             }
             _ => Ok((0, 0)),
         }
     }
     let mut plan = Plan { stateless: true, warmable: true, ..Plan::default() };
-    (plan.depth, plan.ahead) = walk(e, &mut plan, hz)?;
+    (plan.depth, plan.ahead) = walk(e, &mut plan, hz, causal)?;
     Ok(plan)
 }
 
@@ -426,6 +466,8 @@ struct Ctx<'a> {
     resolved: &'a [Option<f64>],
     /// Of the samples read, how many come before the chunk and only bring the windows up to date.
     warm: usize,
+    /// Live data: filters run forward only (causal), from the warm-up's first sample (S5.1-06).
+    causal: bool,
 }
 
 fn num_of(v: &Val) -> Option<f64> {
@@ -1025,7 +1067,11 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
             let k = idx.as_ref().map_or(cx.commit.min(v.len()), |idx| idx.partition_point(|&i| i < cx.commit));
             let mut v = v.into_owned();
             for (stage, bq) in bqs.iter().enumerate() {
-                v = filters::zero_phase(bq, &mut cx.st[id].carry[stage], &v, k);
+                v = if cx.causal {
+                    filters::forward(bq, &mut cx.st[id].carry[stage], &v, k)
+                } else {
+                    filters::zero_phase(bq, &mut cx.st[id].carry[stage], &v, k)
+                };
             }
             scatter(s, idx.as_deref(), v)
         }

@@ -13,7 +13,8 @@ pub mod series;
 
 pub use ast::{BinOp, Expr, ExprError, UnOp};
 pub use eval::{
-    CHUNK, Env, Val, eval, eval_chunked, eval_range, eval_str, eval_warm, is_stateless, run, warm_rows, warm_rows_at,
+    CHUNK, Env, Val, eval, eval_chunked, eval_range, eval_str, eval_warm, eval_warm_live, is_stateless, run, warm_rows,
+    warm_rows_at, warm_rows_live,
 };
 pub use fft::{Spectrum, spectrum};
 pub use parse::parse;

@@ -9,7 +9,7 @@
 //! beginning) can't trigger, and says so.
 
 use serde::{Deserialize, Serialize};
-use tlmbench_expr::{Env, Expr, Recipe, Val, eval_range, eval_warm, is_stateless, warm_rows_at};
+use tlmbench_expr::{Env, Expr, Recipe, Val, eval_range, eval_warm_live, is_stateless, warm_rows_live};
 
 use crate::checks::prepare;
 use crate::derived::RecEnv;
@@ -118,9 +118,9 @@ impl Trigger {
         let text = if named { format!("\"{}\"", spec.channel) } else { spec.channel.clone() };
         let expr = prepare(&text, recipes, &env).map_err(|(_, m)| m)?;
         let hz = env.hz().unwrap_or(1.0);
-        if !is_stateless(&expr) && warm_rows_at(&expr, hz).is_none() {
+        if !is_stateless(&expr) && warm_rows_live(&expr, hz).is_none() {
             return Err("This channel needs the whole recording to compute, so it can't trigger live: a running \
-                        total or a filter that starts at the beginning. Rolling windows and element-wise maths can."
+                        total. Rolling windows, filters (causal live) and element-wise maths can."
                 .into());
         }
         let label = spec.channel.clone();
@@ -173,9 +173,10 @@ impl Trigger {
         let got = if is_stateless(&self.expr) {
             eval_range(&self.expr, &env, a..n).map(Some)
         } else {
-            // the window of an expression such as rolling_mean(x, 50ms) is as many samples as the rate says
-            let warm = warm_rows_at(&self.expr, env.hz().unwrap_or(1.0)).unwrap_or(0);
-            eval_warm(&self.expr, &env, a..n, warm)
+            // the window of an expression such as rolling_mean(x, 50ms) is as many samples as the rate says; a
+            // filter runs forward only live, and settles within its warm-up
+            let warm = warm_rows_live(&self.expr, env.hz().unwrap_or(1.0)).unwrap_or(0);
+            eval_warm_live(&self.expr, &env, a..n, warm)
         };
         let series = match got {
             Ok(Some(Val::Ser(s))) => s,
