@@ -58,6 +58,12 @@ removed Nov 15; git history keeps them.
   WIT package. A `[[packet_types]]` entry with `plugin = "name"` hands the plugin each packet's payload after framing,
   checksum and decompression, and gets rows for the channels the plugin declares; a field with `plugin = "name"` and a
   `size` gets that field's bytes for many records at once and returns one value per record. Ledger D-ingest-09.
+  Built Nov 16 (night): the world's exports are `describe`, `packet-schema`, `decode-packets` (a batch of packets, each
+  header and payload) and `decode-field`; `params` (a TOML table on the type or field) reaches the plugin as JSON. A
+  plugin type has no record layout of its own and needs `packets.length`; a plugin field has no bits, scale or
+  value_offset. A plugin type decodes into the cache once, as a plugin file does; a plugin field's columns are cached
+  and follow the file's own channels in the channel list. A file a payload plugin decodes needs that plugin loaded to
+  open, cached or not. Settings lists such plugins as Payload. Browser-only mode doesn't run them yet (left in D-ingest-09).
 - Browser-only mode runs WASM decoder plugins by translating the same `.wasm` component in the page (jco, fetched only
   when a plugin is used); each plugin runs in a Worker of its own, reads the file only through `File.slice`, is ended at
   the app's CPU limit, and has its memory capped at the app's limit. Ledger D-brow-09.
@@ -183,3 +189,7 @@ removed Nov 15; git history keeps them.
 - **Open together draws every file (D-ui-46).** A new tab gets a pane per shared channel (each holding every file's copy, spread like a starter's), then each file's own starter charts; a tab that was open already keeps its panes.
 - **Duplicate for file N, From file N, Add from every file (D-ui-47, -48).** Items in the pane's ⋯ menu and the channel's right-click menu, one per other file that has the channel, rather than a submenu.
 - **Limits belong to the channel's own name (D-ui-49).** `temp`, `temp·2` and every file's copy of a derived channel share them.
+- Filters on live data (S5.1-06, Nov 16 night): `lowpass`, `highpass` and `bandpass` run forward only (causal) in live
+  derived channels and live triggers, so they lag the signal by their group delay; each new chunk replays the filter's
+  settling margin first. A recorded file's filters stay zero-phase, so a live channel and the same recipe on the saved
+  file differ by that lag. A running total (`cumsum`) still can't follow a live source.
