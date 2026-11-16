@@ -30,28 +30,40 @@ and the Sonnet work that is left in the same steps, through **R3.4**. Stop after
 
 ## Your step
 
-Nov 16 (Opus) finished R2.2 and part of R2.3 and R2.5; the list below is what is left, in order. The ledger query above is the
-full list; these are the notes that aren't in the ledger rows.
+Written Nov 16 evening for **Opus 5.5** (recommended: the first items are a Safari-only bug no headless test reproduces, and a
+lock redesign across the app and the viewer; R2.3 has the plugin `payload` world, a WIT and host change). The ledger query above is
+the full list; these are the notes the ledger rows don't hold. **CI is green on `6bda02c` (run 43908728143, no rerun).** `main` is
+one docs commit ahead or more: **don't push until the owner says the repo is public again** (it is private for Nov 16 to save
+Actions minutes; a full run bills about 545 minutes, mostly macOS at 10x). When it is, push code and docs together, once.
 
-1. **Push and CI first.** Ask the owner for the push go-ahead (CLAUDE.md), push, and `gh run watch` until CI is green with no
-   rerun. Nov 16's first push (`f262664`, run 43880338915) failed once on Linux in `t_live` ("Stop ends the recording"): a test
-   race, fixed in the next commit. If `t_browser` times out under full-suite load (seen once locally, passes alone), say so.
-2. **R2.3 (left):**
-   - **D-ingest-09, the `payload` world (decided Nov 16, `docs/follow-ups.md`):** a third world in `crates/plugin/wit/tlmbench.wit`
-     (and the copies under `plugins/*/wit`, which `just plugin-template` diffs); the host for it in `crates/plugin`; a descriptor
-     `plugin` key on a `[[packet_types]]` entry (the plugin gets each payload after framing, checksum and decompression and returns
-     rows for channels it declares) and on a field with a `size` (many records' bytes at once, one value each). A packet type
-     decoded by a plugin isn't fixed-width records, so it needs a decode path into the cache of its own (as `plugin::open_with`
-     builds one). A template plugin for the world, and tests with it.
-   - **D-ingest-10:** hot reload is done (Nov 16). Left: the templates as a `cargo generate` template, with a test harness.
-   - **D-ingest-11** (packets and plugins live, `crates/live`) and **S5.1-06** (filters causal on live data): not started.
-3. **R2.5 (the ledger's R2.5 rows):** as the old prompt listed; the owner's v1 ideas joined it on Nov 16: **D-ui-57** (the import
-   dialog's choice of how a file opens) and **D-ingest-12** (CSV text columns as labelled channels, ≤256 values, decided Nov 16).
-   D-ui-58 (Open with its default app) is built (Owner pass).
-4. **R3.3 (the rest)** as the ledger lists, plus **D-ui-59** (a code widget made from the app without the JSON; owner sheet G3).
-5. **R3.4**, then the pre-freeze whole-app apple-design audit (both themes, the viewer, browser-only). After R3.4 the UI is frozen.
-6. **Each step closes with** the ledger rows moved with evidence, `python3 ci/ledger_check.py` and its counts line, the status
-   table, the tests README, `docs/follow-ups.md` where behaviour differs from the design, and the owner sheet.
+1. **The owner's open findings (sheet V7 and T4), first:**
+   - **D-ui-62, one Lock (owner, Nov 16 evening, superseding the morning's Edit layout button):** keep the prototype's single
+     Lock icon, in the app and in exports alike, locking both the time view and moving channels and panes. Read the prototype's
+     `#b-lock` and `lock-layout` (`prototype/plotter.html`), propose the exact behaviour to the owner in one paragraph (what
+     each click does in the app and the viewer, what L does, what the viewer opens as), then build it. It replaces `#b-vlock`
+     (Edit layout) and the app's time-only lock; `t_viewer`, `t_viewerctl`, `t_controls` and the tips "Click Edit layout to …"
+     change with it.
+   - **D-ui-63, chips don't drag in Safari** (Explorer rows do; Chrome is fine). The Nov 16 `fitChips` change didn't fix it.
+     Playwright's WebKit crashes on this Mac, so test in Safari itself (export flight-1 as One file, open it in Safari) or on CI
+     (`TLM_BROWSER=webkit` in `t_viewerctl.js`). Candidates: `-webkit-user-drag: element` on `.chip`; the chip is an inline
+     span inside a header with `overflow: hidden`; the stack's `pointerdown` (`app.ts`, `stackEl`) selects the pane on press.
+     The app's own window uses the pointer-driven drag (`dnd.ts`), so only browsers and exports are affected.
+   - **D-ui-64:** `just testdata` doesn't give the flights folder the layout "Altitude and battery" the sheet's T4 asks for
+     (`tools/testdata/make.py`; shared views live in `.tlmbench/views/`).
+2. **R2.3 (left):** D-ingest-09, the `payload` world (decided Nov 16, `docs/follow-ups.md`: a packet type's payload or a field's
+   bytes to a plugin; a plugin-decoded packet type needs a decode path into the cache of its own, as `plugin::open_with`);
+   D-ingest-10's `cargo generate` template and harness (hot reload is done); D-ingest-11 (packets and plugins live); S5.1-06
+   (causal filters live).
+3. **R2.5:** the ledger's R2.5 rows, with the owner's v1 ideas D-ui-57 (the import dialog's open-as choice) and D-ingest-12 (CSV
+   text columns as labelled channels, ≤256 values, decided Nov 16).
+4. **R3.3 (the rest)** and **D-ui-59** (a code widget made without the JSON). Then **R3.4** and the pre-freeze whole-app
+   apple-design audit (both themes, the viewer, browser-only). After R3.4 the UI is frozen.
+5. **Each step closes with** the ledger rows moved with evidence, `python3 ci/ledger_check.py` and its counts line, the status
+   table, the tests README, `docs/follow-ups.md` where behaviour differs from the design, and the owner sheet. Run the whole UI
+   suite before every push: a menu or label change breaks tests that list items exactly (`t_channels` did on Nov 16).
+
+Known flakes under full-suite load (pass alone; say so if they fail): `t_browser`, `t_descriptor`. Browser-only tests need
+`just viewer` first; `t_browserplugin` needs `just plugin-template` (or the Rust tests, which build the plugins).
 
 ## What is decided, and what you must not decide
 
@@ -87,9 +99,9 @@ full list; these are the notes that aren't in the ledger rows.
 
 ## Open with the owner (first thing)
 
-- The push go-ahead.
-- The re-test of the owner sheet: section V (the Nov 16 build), C2's screenshot, C3, F10, then T, U, R12, B4 and S.
-- Real-window looks no test can give (ledger Owner pass rows and `ui-audits.md`).
+- Whether the repo is public again (then the push go-ahead for what `main` holds).
+- D-ui-62's behaviour, before building it (above).
+- The rest of the sheet: V4 to V6 (browser-only), V7 once D-ui-62 and D-ui-63 are done, T4 once D-ui-64 is, then U, R12, B4, S.
 
 ## Report when you stop (after R3.4)
 
@@ -97,7 +109,7 @@ Say what changed and what is left, in that order: the ledger counts, the status 
 you are waiting on (each with your recommendation), and the CI result. Say which Opus work was judgement and which was
 Sonnet-sized, so the next step can be chosen with the owner. Then stop.
 
-Written Nov 16 after the Opus session that finished R2.2 (descriptors, packets, WASM plugins by jco, the folder's
-`.tlmbench/`, the end-of-R2.2 audit), the owner sheet's fixes (F10, C2's tabs, C3, T1's tab name, U2, the menu spacing, Open
-with its default app), D-ui-18 and plugin hot reload. Owner decisions of Nov 16 are in the memory file `owner-decisions-nov16.md`
-and `docs/follow-ups.md`.
+Written Nov 16 evening. The Nov 16 Opus session finished R2.2 (descriptors and packets, WASM plugins by jco, the folder's
+`.tlmbench/`, the end-of-R2.2 audit), fixed the owner sheet's findings (F10, C2, C3, V1, V2, export names), D-ui-18, plugin hot
+reload and Open with its default app; CI green on `6bda02c`. Owner decisions of Nov 16: the memory file
+`owner-decisions-nov16.md` and `docs/follow-ups.md`.

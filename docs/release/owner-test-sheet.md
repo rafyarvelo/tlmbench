@@ -131,21 +131,10 @@ Notes:
 ## T. R3.1 and R3.2 (Nov 15 build): what you haven't checked yet
 
 You confirmed (removed): the ⋯ menu, the time range, Explorer's quiet rows, Open with layout ▸, the start page, rates and
-filters; on Nov 16 C2 (tabs and the panel overlap), C3 (windows), F10 (exports), V3 (Open with its default app, the menu note), V1's tab and V2's outlines, T1 (slot numbers), T2 (Rename, Save layout), T3 (Duplicate recipe), D1 and D2, G1 and H1 to H4. Left:
+filters; on Nov 16 C2 (tabs and the panel overlap), C3 (windows), F10 (exports), V3 (Open with its default app, the menu note), V1, V2, T5, T1 (slot numbers), T2 (Rename, Save layout), T3 (Duplicate recipe), D1 and D2, G1 and H1 to H4. Left:
 
 ### T4. The viewer's tab name, when it's long
-Do: open `flights/flight-bad.csv`, choose the layout "Altitude and battery" (tab menu ⌄ › Open layout, or the Layouts panel),
-then Export ▸ Export to HTML…, Save as One file. Open the `.html` it wrote. Look at the tab at the top left of the viewer.
-Expect: the tab's name starts at its beginning ("Altitude and batt…"), cut with … at the end if it doesn't fit; before the fix
-it was cut at the start ("…titude and battery").
-Result:
-Notes:
-
-### T5. The start page in a narrow window
-Do: with a file open, click the logo at the top of the left rail (the start page opens over the file). Drag the window's right
-edge left until it won't go narrower. Then press Escape, Close all files, open the start page again, and look again.
-Expect: the cards and the two lists stack in one column, no text is cut off or overlapping; with no file open the Layouts rows
-are greyed and their tooltip says to open a recording first.
+You wrote (Nov 16): the layout "Altitude and battery" couldn't be found after `just testdata` (ledger D-ui-64). Waits for that fix.
 Result:
 Notes:
 
@@ -202,25 +191,9 @@ Notes:
 Rebuild first (`just viewer`, then `cargo tauri build --no-bundle` in `app/src-tauri`) and, for V4 to V6, `just browser-site` and
 serve it (`python3 -m http.server --directory app/browser/dist`).
 
-### V1. Open together: Explorer's row (your V1 note, Nov 16)
-You wrote: the tab is right, but the Explorer row holding both files still says flight-1. Changed: that row reads
-"flight-1 + flight-2 · 2 files" (the file's own name is its tooltip). Re-test: Open together on two files, look at Explorer.
-Result:
-Notes:
-
-### V2. A pane's +N list (your V2 note, Nov 16)
-You wrote: outlines work, but the channels in a pane's "+N" list can't be dragged as in the prototype. Changed: they drag as
-chips do; the list fades while one is dragged and closes after. Re-test: narrow the window until a pane says "+N", open it,
-drag a channel to another pane.
-Result:
-Notes:
-
-### V7. Exports of a tab of several files, and the viewer's one lock (your T4 notes, Nov 16)
-Changed: an export of "flight-1 + flight-2" is named so (the One file, the folder "flight-1 + flight-2-export", the viewer's
-tab). The viewer has one lock now, as you chose: the pencil "Edit layout" button in place of the Locked pill, and no time-view
-lock. Its chips should drag in Safari after Edit layout (the likely cause is fixed; it couldn't be tried in Safari here).
-Do: Open together on flight-1 and flight-2, Export to HTML as One file and as a Folder, open the One file in Safari, Edit
-layout, drag a chip to another pane.
+### V7. Exports of a tab of several files, and the viewer's lock (your T4 notes, Nov 16)
+You wrote (Nov 16): chips still don't drag in Safari after Edit layout (Explorer rows do); and keep the prototype's one Lock
+icon, locking both the time view and moving channels, in the app and in exports. Both are open (ledger D-ui-62, D-ui-63).
 Result:
 Notes:
 
