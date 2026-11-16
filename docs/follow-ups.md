@@ -193,3 +193,11 @@ removed Nov 15; git history keeps them.
   derived channels and live triggers, so they lag the signal by their group delay; each new chunk replays the filter's
   settling margin first. A recorded file's filters stay zero-phase, so a live channel and the same recipe on the saved
   file differ by that lag. A running total (`cumsum`) still can't follow a live source.
+- Live packet streams (D-ingest-11, owner Nov 16): a descriptor with `[packets]` on a socket or serial port records one
+  session source per packet type from one connection, each with its own card and tab named "name · type"; stopping one
+  ends the connection, so all of them. Each type's `.tlm` holds its records as read (the packet header, then the record),
+  so its fields keep their offsets; a payload plugin field's value is appended to each record, and a type a payload
+  plugin decodes is written as the plugin's rows. A type with no packet yet when the connection opens gets its tab
+  anyway, filling in as its packets come. Packets aren't read live from a tailed file or a replay.
+- Checks (D-check-02, Nov 16 night): the option that makes missing values fail is per check, `missing = "fail"` in a
+  set's TOML and "Missing values fail" in the check editor; it applies inside the check's When only. Rules don't have it.
