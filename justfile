@@ -72,7 +72,11 @@ test: ui
     # the WASM crates' own tests, run natively (their own targets)
     cd crates/web && cargo test && cd ../web-parquet && cargo test
     if [ -d python ]; then VIRTUAL_ENV="$(dirname "$(dirname "{{python}}")")" "{{python}}" -m maturin develop -m python/Cargo.toml \
-      && "{{python}}" -m pytest python; else echo "test: no python/ yet, skipping binding tests"; fi
+      && "{{python}}" -m pytest python && "{{python}}" tools/python_docs.py --check; else echo "test: no python/ yet, skipping binding tests"; fi
+
+# The Python API reference (docs/python-api.md) from the module's docstrings; `just python-docs --check` fails when it is stale
+python-docs *args:
+    "{{python}}" tools/python_docs.py {{args}}
 
 # Criterion benchmarks (run on the Mac: CI runners are too noisy for timing); extra args go to cargo bench
 bench *args:

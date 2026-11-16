@@ -15,7 +15,9 @@ use std::sync::{Arc, RwLock};
 
 use serde::Serialize;
 
-use crate::cache::{self, Backwards, CachedRecording, MANIFEST_VERSION, Manifest, ManifestChannel, Source, clamp_backwards};
+use crate::cache::{
+    self, Backwards, CachedRecording, MANIFEST_VERSION, Manifest, ManifestChannel, Source, clamp_backwards,
+};
 use crate::descriptor::DType;
 use crate::error::{Result, format_err, io_err};
 

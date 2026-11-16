@@ -200,7 +200,14 @@ impl FixedWidth {
     fn counter_times<'a>(&'a self, field: &str, clock_hz: f64, wraps_at: Option<u64>, t0_ns: i64) -> CounterTimes<'a> {
         let tf = self.desc.fields.iter().find(|x| x.name == field).expect("validated");
         let range = counter_range(tf, wraps_at).expect("validated");
-        CounterTimes { raw: self.field_times(tf, 1, 0), wraps: &self.counter_wraps, range, clock_hz, t0_ns, plateaus: &self.plateaus }
+        CounterTimes {
+            raw: self.field_times(tf, 1, 0),
+            wraps: &self.counter_wraps,
+            range,
+            clock_hz,
+            t0_ns,
+            plateaus: &self.plateaus,
+        }
     }
 
     /// Calls `f` with this file's sample times, whichever kind they are.
@@ -931,7 +938,11 @@ mod tests {
         // a step back of less than half the range is time going backwards, not a wrap: the time holds, and says so
         let times = f.with_times(|t| (0..t.len()).map(|i| t.at(i)).collect::<Vec<_>>());
         assert_eq!(times, [1_000_011, 9_000_011, 9_000_011]);
-        assert!(f.info().notes.join(" ").contains("Time goes backwards in 1 record (first at record 3"), "{:?}", f.info().notes);
+        assert!(
+            f.info().notes.join(" ").contains("Time goes backwards in 1 record (first at record 3"),
+            "{:?}",
+            f.info().notes
+        );
         // a 64-bit counter needs its range
         let mut d = desc.clone();
         (d.fields[0].dtype, d.record_size) = (DType::U64, 12);

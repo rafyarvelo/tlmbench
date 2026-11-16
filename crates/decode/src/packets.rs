@@ -26,6 +26,7 @@ use tlmbench_core::{
     Times, TimesOp, Timestamp,
 };
 
+use crate::backwards::Backwards;
 use crate::bytes::{self, Bytes};
 use crate::cache::Source;
 use crate::descriptor::{
@@ -33,7 +34,6 @@ use crate::descriptor::{
 };
 use crate::error::{Result, format_err, io_err};
 use crate::fixed::gather_tile;
-use crate::backwards::Backwards;
 use crate::strided::{Ordering, Pod, clamp, decode, wrapped};
 
 const INDEX_VERSION: u32 = 2;
@@ -549,7 +549,7 @@ impl PacketFile {
             frame(&self.bytes, self.desc.header_size as usize, &p, self.desc.record_size, part, &sync, self.big());
         let mut index = Vec::with_capacity(framing.packets.len());
         let mut bad = framing.bad;
-        let (mut t_first, mut t_last) = (None, None::<i64>);
+        let (t_first, t_last): (Option<i64>, Option<i64>);
         let field_time = matches!(self.desc.time, TimeSpec::Field { .. });
         let counter = match &self.desc.time {
             TimeSpec::Counter { field, wraps_at, .. } => {
@@ -562,7 +562,9 @@ impl PacketFile {
         let mut last_raw: Option<i64> = None;
         let mut order = Ordering::default();
         let ticks_ns = |ticks: i64| match &self.desc.time {
-            TimeSpec::Counter { clock_hz, t0_ns, .. } => t0_ns.saturating_add((ticks as f64 * 1e9 / clock_hz).round() as i64),
+            TimeSpec::Counter { clock_hz, t0_ns, .. } => {
+                t0_ns.saturating_add((ticks as f64 * 1e9 / clock_hz).round() as i64)
+            }
             _ => 0,
         };
         let mut records_so_far = 0usize;
@@ -591,7 +593,10 @@ impl PacketFile {
                             wraps.push(records_so_far + j);
                         }
                         last_raw = Some(raw);
-                        order.push(records_so_far + j, ticks_ns(raw.saturating_add(range.saturating_mul(wraps.len() as i64))));
+                        order.push(
+                            records_so_far + j,
+                            ticks_ns(raw.saturating_add(range.saturating_mul(wraps.len() as i64))),
+                        );
                     }
                 } else {
                     for (j, &t) in vals.iter().enumerate() {
