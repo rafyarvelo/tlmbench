@@ -153,7 +153,7 @@ def make(root):
     write_flight(flights / "flight-bad.csv", run=2, bad=True)
     write_flight(flights / "flight-gap.csv", run=3, gap=(25.0, 55.0), seconds=90)
     (cfg / "checks" / "flight-limits.toml").write_text(CHECKS)
-    (cfg / "views" / "altitude-and-battery.json").write_text(LAYOUT)
+    (cfg / "views" / "altitude-and-battery.tlmview.json").write_text(LAYOUT)
     (cfg / "events" / "flight-1.toml").write_text(
         'schema = 1\nrecording = "flight-1.csv"\nidentity = ""\n\n'
         '[[event]]\nid = "ev-takeoff"\nname = "Takeoff"\nstart = 5000000000\nduration = 0\nchannels = ["altitude"]\n\n'
