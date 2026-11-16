@@ -150,8 +150,8 @@ Notes: Nominal behavior.
 Do: make a derived channel (±2σ or a delta); right-click it ▸ Duplicate recipe…; then Edit recipe…, change the
 expression, Save as new.
 Expect: the first opens the Derive dialog filled in and named "… copy"; the second adds a recipe and leaves the first as it was.
-Result:
-Notes:
+Result: This works as expected.
+Notes: Nominal behavior.
 
 ### T4. The viewer's tab name
 Do: export flight-bad to HTML as One file with the layout "Altitude and battery"; open it.
@@ -237,27 +237,27 @@ Notes:
 ## C. Dragging and windows
 
 ### C2. Drag sidebar panels, tabs, and pane numbers to reorder (L: X-win-03)
-Result:
-Notes:
+Result: Dragging sidebar panels correctly allows them to switch sides, but there is a rendering issue when dropping the second pane initially to the right from the left. Dragging tabs does not reorder them
+Notes: 
 
 ### C3. Drag a tab out to a new window, then onto another window's tab strip (L: X-win-04)
 Expect: a window opens with that tab; dropping on the other strip joins it; quit and reopen puts windows back.
-Result:
-Notes:
+Result: The initial dragging out to a new window works, but the 2nd window can't be closed?
+Notes: Doing Cmd Q on a mac correctly closes all windows, but doesn't open up with the window
 
 ## D. Several files in one tab
 
 ### D1. Add a second file to the tab
 Do: With flight-1 open, add flight-2 to the tab (import dialog "This tab", or the tab menu).
 Expect: channels from both, the second named `…·2` or by file name; the time axis spans both; alignment shown.
-Result:
-Notes:
+Result: Works as expected.
+Notes: Nominal
 
 ### D2. Align
 Do: Change the alignment (start, clock, nudge). 
 Expect: the second file moves; nothing is rebuilt or slow; undo works.
-Result:
-Notes:
+Result: Works as expected.
+Notes: Nominal
 
 ## F. Export (what R2.1 added): the most important section
 
@@ -303,16 +303,16 @@ Notes:
 ### F10. Other exports
 Do: Export data… (CSV, Parquet) and Save the view as an image… (PNG, SVG).
 Expect: each opens a native save dialog starting in a sensible folder; the files open correctly elsewhere. (L: X-win-02)
-Result:
-Notes:
+Result: This did not work when trying to export a CSV as a CSV. This also failed the same way for .parquet and .tlm. Export to PNG works but it's awkward because the export dialog doesn't close after export.
+Notes: Error text: "Couldn't export: TypeError: undefined is not an object (evaluating 'e.split')"
 
 ## G. Live and plugins (skip what you don't use)
 
 ### G1. A growing file
 Do: Live › a growing `.tlm` or CSV; append rows from a terminal.
 Expect: the chart follows; Stop ends the recording; the file opens afterwards. (L: X-win-08)
-Result:
-Notes:
+Result: This works.
+Notes: Is the refresh rate throttle or something? Speeding up file writes didn't seem to speed up the plots
 
 ### G2. TCP or UDP source with a trigger
 Result:
@@ -321,7 +321,7 @@ Notes:
 ### G3. A code widget in the app
 Expect: asks once per folder before running shared code; then runs. (L: X-win-07)
 Result:
-Notes:
+Notes: I don't know how to do this, it's not obvious in the app
 
 ## H. Settings and look
 
@@ -338,13 +338,13 @@ Notes: As expected.
 
 ### H3. Tooltips
 Expect: short, helpful, they stop appearing after three uses.
-Result:
-Notes:
+Result: Works as expected.
+Notes: Changing the tooltip mode is also nominal
 
 ### H4. Calm UI
 Expect: controls appear on selection or hover, not all at once; frequent actions are one click.
-Result:
-Notes:
+Result: Works as expected.
+Notes: Looks good.
 
 ### H5. Memory and speed
 Do: Open the 100M-sample file (B4). Watch the status bar memory number and the feel of zoom.
@@ -391,6 +391,12 @@ Needed for v1? (yes / no): yes
 ```
 Idea: There needs to be better support for text fields, The prototype supports enumerations and plotting text fields that automatically enumerates labels
 Why it matters: It's required for fields that place state transitions and enumerations as text
+Needed for v1? (yes / no): yes
+```
+
+```
+Idea: The file explorer context menu should have an "Open with System Editor" action to use the OS file opener for a file type
+Why it matters: To verify the raw data in a file when testing the app
 Needed for v1? (yes / no): yes
 ```
 

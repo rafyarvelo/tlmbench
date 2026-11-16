@@ -47,7 +47,7 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
    everything from R4 on except R7 and R9 (Sonnet) and R8 (Haiku). When your Sonnet work is done, report what the next Opus
    step is and why, and stop.
 
-Built Nov 15, with CI-green pushes at `fd076bd` (R3.1, R3.2): see the status table for what is pushed since.
+Built Nov 15. CI is green on `87322e1` (run 43791981674), but the Linux job failed once and passed on a rerun, with no rustc error text (it looks like the compiler being killed on the runner, and it doesn't reproduce locally). Watch for it recurring; if it does, make the Linux test step's debug build lighter. The Python wheels workflow (run 43791981655) is green on all three OSes.
 
 ## Open with the owner
 
