@@ -4899,8 +4899,8 @@ function filesItems(ch: number, pane: number | null): MenuItem[] {
   if (!twins.length) return [];
   const lk = viewLocked();
   return [
-    ...twins.map((t): MenuItem => ({ label: `From file ${t.sl.slot} · ${t.sl.name}`, data: { cm: `from${t.sl.slot}` }, disabled: lk, tip: lk ? 'Unlock the view to change panes' : 'Read this channel from that file instead', run: () => swapChannel(pane, ch, t.to) })),
-    { label: 'Add from every file', data: { cm: 'every' }, disabled: lk, tip: lk ? 'Unlock the view to change panes' : "Put every file's version of this channel in the pane", run: () => addChannelsTo(pane, twins.map((t) => t.to)) },
+    ...twins.map((t): MenuItem => ({ label: `From file ${t.sl.slot} · ${t.sl.name}`, data: { cm: `from${t.sl.slot}` }, disabled: lk, tip: lk ? 'Click Edit layout to change panes' : 'Read this channel from that file instead', run: () => swapChannel(pane, ch, t.to) })),
+    { label: 'Add from every file', data: { cm: 'every' }, disabled: lk, tip: lk ? 'Click Edit layout to change panes' : "Put every file's version of this channel in the pane", run: () => addChannelsTo(pane, twins.map((t) => t.to)) },
     { sep: true },
   ];
 }
@@ -5169,7 +5169,8 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && ui.focus) return toggleFocus(false);
   if (!(e.target as HTMLElement).closest('input, select, textarea')) {
     if (k === 't') return toggleTheme();
-    if (k === 'l') return setSetting('locked', !settings.locked);
+    // the viewer has no time-view lock (owner, Nov 16)
+    if (k === 'l') return ui.viewer ? undefined : setSetting('locked', !settings.locked);
   }
   if ((e.altKey && e.key === 'ArrowLeft') || (e.key === 'Backspace' && !(e.target as HTMLElement).closest('input, textarea, select'))) return back();
   if (e.altKey && e.key === 'ArrowRight') return forward();

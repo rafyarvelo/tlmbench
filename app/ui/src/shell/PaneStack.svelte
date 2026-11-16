@@ -57,7 +57,7 @@
 
   /** the pane menu: under its ⋯ button, or at the pointer on a right-click */
   const lk = $derived(viewLocked());
-  const LOCKED = 'Unlock the view to change panes';
+  const LOCKED = 'Click Edit layout to change panes';
   /** The pane ⋯ menu's Duplicate for file N items: shown for a file that has at least one of the pane's channels. */
   const duplicateForItems = (i: number): MenuItem[] =>
     ui.slots.length < 2
@@ -388,7 +388,7 @@
     aria-label={label}
     tabindex="0"
     aria-disabled={lk}
-    data-tip={lk ? 'Unlock the view to resize panes' : tip}
+    data-tip={lk ? 'Click Edit layout to resize panes' : tip}
     onpointerdown={(e) => gripDown(e, i)}
     onpointermove={gripMove}
     onpointerup={() => (grip = null)}
@@ -440,7 +440,7 @@
                   role="button"
                   tabindex="-1"
                   draggable={lk ? undefined : 'true'}
-                  data-tip={lk ? 'Unlock the view to move panes' : `Drag to move this pane; hold ${COPY_KEY} to copy it`}
+                  data-tip={lk ? 'Click Edit layout to move panes' : `Drag to move this pane; hold ${COPY_KEY} to copy it`}
                   ondragstart={(e) => {
                     dragging = i;
                     e.dataTransfer?.setData('text/plain', `pane ${i + 1}`);
@@ -475,7 +475,7 @@
                   <span
                     class="chip"
                     data-ch={ch}
-                    data-tip={lk ? 'Click for its display settings. Unlock the view to move it' : `Click for its display settings. Drag to another pane to move it; hold ${COPY_KEY} to copy`}
+                    data-tip={lk ? 'Click for its display settings. Click Edit layout to move it' : `Click for its display settings. Drag to another pane to move it; hold ${COPY_KEY} to copy`}
                     style="--c: {chCss(ch)}"
                     draggable={lk ? undefined : 'true'}
                     role="presentation"
@@ -514,7 +514,7 @@
                   aria-haspopup="menu"
                   aria-label="View of pane {i + 1}: {viewName(i)}"
                   disabled={lk}
-                  data-tip={lk ? `View: ${viewName(i).toLowerCase()}. Unlock the view to change it` : `View: ${viewName(i).toLowerCase()}. Click to change`}
+                  data-tip={lk ? `View: ${viewName(i).toLowerCase()}. Click Edit layout to change it` : `View: ${viewName(i).toLowerCase()}. Click to change`}
                   aria-expanded={views?.i === i}
                   onclick={(e) => {
                     menu = null;

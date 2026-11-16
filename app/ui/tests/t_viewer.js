@@ -70,7 +70,7 @@ try {
   check('the raw samples arrive in the background', await until(() => window.__tlmViewerLoaded === true));
   await p.click('[data-rail="explorer"]');
   const vinfo = await p.$eval('#viewerInfo', (e) => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => null);
-  check('the header says it is a read-only view, with the file and the app version (decision 6)', /Locked/.test(vinfo ?? '') && /bench\.csv/.test(vinfo ?? '') && /\d{4}/.test(vinfo ?? '') && /TelemetryBench \d/.test(vinfo ?? ''), vinfo);
+  check('the header has Edit layout (not pressed) and the file and app version (decision 6; one lock, owner Nov 16)', (await p.getAttribute('#b-vlock', 'aria-label')) === 'Edit layout' && (await p.getAttribute('#b-vlock', 'aria-pressed')) === 'false' && /bench\.csv/.test(vinfo ?? '') && /\d{4}/.test(vinfo ?? '') && /TelemetryBench \d/.test(vinfo ?? ''), vinfo);
   check('and has no Export button (nothing is exported from an export)', !(await p.$('#b-export')));
   check('Explorer lists the exported channels, with the layout\'s panes', await until(() => document.querySelectorAll('#explorer .tree .row.chan').length === 2 && /pane 2/.test(document.querySelector('#explorer .tree')?.textContent ?? '')), await p.$$eval('#explorer .tree .row', (r) => r.map((x) => x.className)));
   check('nothing edits: no new tab, no layouts, no live, no start page', !(await p.$('#wsTabNew')) && !(await p.$('[data-rail="layouts"]')) && !(await p.$('[data-rail="live"]')) && !(await p.$('#b-start')));

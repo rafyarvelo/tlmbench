@@ -96,7 +96,7 @@
   /** The desktop app has a menu bar; a browser page and an export's viewer have not. */
   const desktop = !ui.browserOnly && !__VIEWER__;
   const lk = $derived(viewLocked());
-  const LOCKED = 'Unlock the view to change panes';
+  const LOCKED = 'Click Edit layout to change panes';
   const moreItems = (): MenuItem[] => [
     ...(ui.viewer ? [] : [{ label: 'Open recording…', kbd: '⌘O', run: actions.open }]),
     ...(narrow
@@ -271,7 +271,8 @@
   {#if !narrow}<span class="vsep" aria-hidden="true"></span>{/if}
   {#if !narrow}
     {#if !ui.browserOnly}<button class="tb" id="b-events" aria-pressed={settings.eventsOn} aria-label="Event markers" data-tip="Show or hide event markers on the charts and the overview (E)" onclick={() => setSetting('eventsOn', !settings.eventsOn)}>{@html ICON.events}</button>{/if}
-    <button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>
+    <!-- the viewer has one lock, its layout's (owner, Nov 16): no time-view lock there -->
+    {#if !ui.viewer}<button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>{/if}
   {/if}
   {#if barW >= 1200}
     <div class="seg allmodes" role="group" aria-label="All panes view">
@@ -289,7 +290,8 @@
   {#if ui.viewer}
     <!-- an export says whether its arrangement is locked, and where it came from (owner decision 6, R12) -->
     <span class="viewinfo" id="viewerInfo">
-      <button class="vpill" id="b-vlock" aria-pressed={!ui.locked} data-tip={(ui.locked ? 'Locked: unlock to move, add and close panes and channels. ' : 'Unlocked: your changes last until you reload. ') + (ui.viewerInfo ? [ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ') : '')} onclick={() => (ui.locked = !ui.locked)}>{ui.locked ? 'Locked' : 'Unlocked'}</button>
+      <!-- the layout's one control (owner, Nov 16): an icon as the bar's others, pressed while you edit -->
+      <button class="tb" id="b-vlock" aria-pressed={!ui.locked} aria-label={ui.locked ? 'Edit layout' : 'Done editing the layout'} data-tip={(ui.locked ? 'Edit layout: move, add and close panes and channels. ' : 'Done: your changes last until you reload. ') + (ui.viewerInfo ? [ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ') : '')} onclick={() => (ui.locked = !ui.locked)}>{@html ICON.edit}</button>
       {#if ui.viewerInfo}<span class="vprov">{[ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ')}</span>{/if}
     </span>
   {/if}
@@ -854,21 +856,6 @@
     max-width: 46vw;
     margin-right: 6px;
     font-size: 12px;
-  }
-  .vpill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    cursor: pointer;
-    font: inherit;
-    font-weight: 500;
-    flex: none;
-    padding: 2px 8px;
-    border: 1px solid var(--accent-line);
-    border-radius: 12px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-weight: 500;
   }
   .vprov {
     overflow: hidden;

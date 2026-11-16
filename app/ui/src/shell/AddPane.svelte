@@ -16,13 +16,13 @@
 </script>
 
 <div class="addrow" hidden={!ui.file}>
-  <button id="addPane" class="addpane" disabled={viewLocked()} data-tip={viewLocked() ? 'Unlock the view to add panes' : undefined}>{@html ICON.plus}Add pane</button><button
+  <button id="addPane" class="addpane" disabled={viewLocked()} data-tip={viewLocked() ? 'Click Edit layout to add panes' : undefined}>{@html ICON.plus}Add pane</button><button
     id="addPaneKinds"
     class="addpane kinds"
     disabled={viewLocked()}
     aria-haspopup="menu"
     aria-label="Kind of pane to add"
-    data-tip={viewLocked() ? 'Unlock the view to add panes' : 'Add a table, a chart with its table, or value tiles'}
+    data-tip={viewLocked() ? 'Click Edit layout to add panes' : 'Add a table, a chart with its table, or value tiles'}
     aria-expanded={!!menu}
     onclick={(e) => (menu = menu ? null : (e.currentTarget as HTMLElement))}>{@html ICON.chev}</button
   >

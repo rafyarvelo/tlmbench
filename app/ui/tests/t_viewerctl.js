@@ -91,9 +91,9 @@ try {
 
   // ---- the state it opens in, and the pill
   await load();
-  const pill = () => p.$eval('#b-vlock', (e) => ({ text: e.textContent.trim(), pressed: e.getAttribute('aria-pressed'), tip: e.getAttribute('data-tip') }));
+  const pill = () => p.$eval('#b-vlock', (e) => ({ text: e.getAttribute('aria-label'), pressed: e.getAttribute('aria-pressed'), tip: e.getAttribute('data-tip') }));
   let s0 = await pill();
-  check('the viewer opens locked, and the pill says so', s0.text === 'Locked' && s0.pressed === 'false', s0);
+  check('the viewer opens locked: Edit layout, not pressed; no time-view lock there (owner, Nov 16)', s0.text === 'Edit layout' && s0.pressed === 'false' && !(await p.$('#b-lock')), s0);
   check('the pill’s tip keeps the export’s file, date and version', /bench\.csv/.test(s0.tip) && /\d{4}/.test(s0.tip) && /TelemetryBench \d/.test(s0.tip), s0.tip);
   const before = await panes();
   check('three panes as exported', before === '[[0,1],[2],[3]]', before);
@@ -103,7 +103,7 @@ try {
   check('locked: a chip does not drag to another pane', (await panes()) === before, await panes());
   await drag('#explorer .row.chan >> nth=2', '#stack [data-pane="1"] .plot');
   check('locked: an Explorer row does not drag into a pane', (await panes()) === before, await panes());
-  check('locked: pane actions are disabled and say why', await p.evaluate(() => ['[data-pdup]', '[data-pclose]', '[data-psplit]', '[data-pmenu]', '[data-chip-x]', '[data-vmenu]', '#addPane', '#addPaneKinds'].every((q) => [...document.querySelectorAll(q)].every((b) => b.disabled && /Unlock/.test(b.getAttribute('data-tip') ?? '')))));
+  check('locked: pane actions are disabled and say why', await p.evaluate(() => ['[data-pdup]', '[data-pclose]', '[data-psplit]', '[data-pmenu]', '[data-chip-x]', '[data-vmenu]', '#addPane', '#addPaneKinds'].every((q) => [...document.querySelectorAll(q)].every((b) => b.disabled && /Edit layout/.test(b.getAttribute('data-tip') ?? '')))));
   await p.keyboard.press('Meta+d');
   await p.keyboard.press('Control+d');
   await p.waitForTimeout(150);
@@ -112,7 +112,7 @@ try {
   // ---- unlock: the same moves work
   await p.click('#b-vlock');
   s0 = await pill();
-  check('Unlock: the pill says Unlocked', s0.text === 'Unlocked' && s0.pressed === 'true' && /bench\.csv/.test(s0.tip), s0);
+  check('Edit layout: the button is pressed and says Done', s0.text === 'Done editing the layout' && s0.pressed === 'true' && /bench\.csv/.test(s0.tip), s0);
   await drag('#stack [data-pane="0"] .chip >> nth=0', '#stack [data-pane="2"]');
   check('unlocked: a chip moves to another pane', (await panes()) === '[[1],[2],[3,0]]', await panes());
   await drag('#explorer .row.chan >> nth=1', '#stack [data-pane="1"] .plot');
@@ -155,11 +155,11 @@ try {
   await p.click('#b-vlock');
   const locked = await panes();
   await drag('#stack [data-pane="0"] .chip >> nth=0', '#stack [data-pane="1"]');
-  check('Lock puts it back: nothing drags again', (await pill()).text === 'Locked' && (await panes()) === locked, await panes());
+  check('Lock puts it back: nothing drags again', (await pill()).text === 'Edit layout' && (await panes()) === locked, await panes());
 
   // ---- a reload is the exported view again (nothing was written into the export or kept)
   await load();
-  check('a reload is the exported arrangement, locked', (await panes()) === before && (await pill()).text === 'Locked', await panes());
+  check('a reload is the exported arrangement, locked', (await panes()) === before && (await pill()).text === 'Edit layout', await panes());
 
   // ---- the sweep: every visible control acts, or is disabled with a tip that says why
   const controls = () =>
@@ -247,7 +247,7 @@ try {
       if (!info) continue;
       if (info.disabled) {
         // a menu item that can't act is greyed; the reason shows when it is a locked one or a viewer-only one
-        if (state === 'locked' && /^\d+::(New pane|Remove every|Every pane as|Close pane|Close others|Duplicate|Split)/.test(it) && !/Unlock/.test(info.tip)) bad_.push(`${state}: ${label} › "${it}" is disabled and doesn't say why`);
+        if (state === 'locked' && /^\d+::(New pane|Remove every|Every pane as|Close pane|Close others|Duplicate|Split)/.test(it) && !/Edit layout/.test(info.tip)) bad_.push(`${state}: ${label} › "${it}" is disabled and doesn't say why`);
         continue;
       }
       errs.length = 0;
