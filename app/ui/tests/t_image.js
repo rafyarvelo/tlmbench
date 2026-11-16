@@ -19,7 +19,10 @@ run(
     let f = (await saved())[0];
     check('at the path chosen', f.path === '/out/flight.png', f.path);
     check('with the PNG signature', f.head.join() === '137,80,78,71,13,10,26,10', f.head);
-    check('and says so', await until(() => /Saved flight\.png \(3 panes\)/.test(document.querySelector('#imDone')?.textContent ?? '')), await text('#imDone'));
+    check('it closes and says so, with Show in…', await until(() => !document.querySelector('#imageDlg') && /Saved flight\.png \(3 panes\)/.test(document.querySelector('#wsNote .txt')?.textContent ?? '') && /Show in/.test(document.querySelector('#wsNote')?.textContent ?? '')), await text('#wsNote'));
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="image"]');
+    await until(() => !!document.querySelector('#imageDlg'));
 
     // the selected pane as SVG
     await p.selectOption('#imFormat', 'svg');
@@ -36,7 +39,10 @@ run(
     check('the legend names the channels', /accel_x/.test(f.text) && /accel_y/.test(f.text));
     check('one pane only', !/roll/.test(f.text));
 
-    // every pane as SVG; cursors appear
+    // every pane as SVG; cursors appear (the dialog closed after the save: open it again)
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="image"]');
+    await until(() => !!document.querySelector('#imageDlg'));
     await p.selectOption('#imWhat', 'all');
     await p.click('#imGo');
     await until(() => window.__tlmFake.saved_files.length === 3);
@@ -45,6 +51,9 @@ run(
 
     check('the choices are remembered', (await settingsLS()).exportImage?.format === 'svg' && (await settingsLS()).exportImage?.what === 'all');
     // cancelling the file dialog writes nothing
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="image"]');
+    await until(() => !!document.querySelector('#imageDlg'));
     await fake(() => (window.__tlmFake.savePick = null));
     await p.click('#imGo');
     await p.waitForTimeout(300);

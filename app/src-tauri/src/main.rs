@@ -2859,6 +2859,7 @@ struct ExportRequest {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Exported {
     path: String,
     channels_file: String,

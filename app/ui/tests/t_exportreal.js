@@ -71,6 +71,21 @@ try {
   const m = existsSync(join(out, 'export.json')) ? JSON.parse(readFileSync(join(out, 'export.json'), 'utf8')) : null;
   check('the manifest holds the layout in front', m?.layout?.panes?.length > 0 && m?.files?.[0]?.samples === 5000, m?.layout);
 
+  // Export data… against the real core (sheet F10: the reply's field names didn't match and the success message threw)
+  const dataDir = join(home, 'data-out');
+  mkdirSync(dataDir);
+  answer = dataDir;
+  await page.click('#wsNote [aria-label="Dismiss"]').catch(() => {});
+  await page.click('#b-export');
+  await page.click('.exportmenu [data-xm="data"]');
+  await until(page, () => !!document.getElementById('exGo'));
+  await page.selectOption('#exFormat', 'csv');
+  await page.selectOption('#exChannels', 'all');
+  await page.click('#exGo');
+  check('Export data… writes a CSV, closes and says what it wrote', await until(page, () => /Wrote 5,000 rows of 2 channels to bench run\.csv and bench run\.channels\.csv/.test(document.querySelector('#wsNote .txt')?.textContent ?? '') && !document.querySelector('#exportDlg'), 20000), await page.$eval('#wsNote', (e) => e.textContent).catch(() => [errs, document.querySelector('#exErr')?.textContent]));
+  check('the CSV and its channel list are on disk', existsSync(join(dataDir, 'bench run.csv')) && existsSync(join(dataDir, 'bench run.channels.csv')), existsSync(dataDir));
+  await page.click('#wsNote [aria-label="Dismiss"]').catch(() => {});
+
   // One file (decision 7): the core writes a single page with every raw sample, and it opens from file://
   await page.click('#b-export');
   await page.click('.exportmenu [data-xm="html"]');

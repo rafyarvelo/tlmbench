@@ -4246,6 +4246,10 @@ async function exportGo(): Promise<void> {
       req: { file: f.id, format: o.format, out, channels: chans.map((c) => c[0]), from: span ? String(span[0]) : null, until: span ? String(span[1]) : null, layout: o.layout, time: o.time, raw: o.raw, resampleHz: o.resample ? o.hz : null },
     });
     exp.result = `Wrote ${w.rows.toLocaleString('en-US')} rows of ${chans.length} channel${chans.length === 1 ? '' : 's'} to ${nameOf(w.path)} and ${nameOf(w.channelsFile)} in ${folder}.`;
+    // Done: the dialog closes and the note says what was written (sheet F10), as Export to HTML… does.
+    exp.open = false;
+    note(exp.result, () => void invoke('reveal_path', { path: w.path }).catch((e) => note(`Couldn't show it: ${e}`)), REVEAL);
+    ui.noteOk = true;
   } catch (e) {
     exp.error = `Couldn't export: ${e}`;
   } finally {
@@ -4518,6 +4522,9 @@ async function imageGo(): Promise<void> {
     const bytes = o.format === 'png' ? await imagePng(boxes, o.scale) : new TextEncoder().encode(imageSvg(boxes));
     await invoke('save_file', { path, bytes: Array.from(bytes) });
     img.result = `Saved ${nameOf(path)} (${boxes.length} pane${boxes.length === 1 ? '' : 's'}).`;
+    img.open = false;
+    note(img.result, () => void invoke('reveal_path', { path }).catch((e) => note(`Couldn't show it: ${e}`)), REVEAL);
+    ui.noteOk = true;
   } catch (e) {
     img.error = `Couldn't save the image: ${e}`;
   } finally {

@@ -49,7 +49,10 @@ run(
     check('with the format, shape, rate, time and stored values', r.format === 'parquet' && r.layout === 'long' && r.resampleHz === 50 && r.time === 'ns' && r.raw === true, r);
     check('every channel of the file', r.channels.join() === '0,1,2,3,4,5', r.channels);
     check('the whole recording: no span', r.from === null && r.until === null, [r.from, r.until]);
-    check('it says what it wrote', await until(() => /Wrote 1,234 rows of 6 channels to flight\.parquet and flight\.channels\.csv/.test(document.querySelector('#exDone')?.textContent ?? '')), await text('#exDone'));
+    check('it closes and says what it wrote, with Show in…', await until(() => !document.querySelector('#exportDlg') && /Wrote 1,234 rows of 6 channels to flight\.parquet and flight\.channels\.csv/.test(document.querySelector('#wsNote .txt')?.textContent ?? '') && /Show in/.test(document.querySelector('#wsNote')?.textContent ?? '')), await text('#wsNote'));
+    await p.click('#b-export');
+    await p.click('.exportmenu [data-xm="data"]');
+    await until(() => !!document.querySelector('#exportDlg'));
 
     // the time view: the span goes with the request; a failure is shown
     await p.selectOption('#exRange', 'view');
