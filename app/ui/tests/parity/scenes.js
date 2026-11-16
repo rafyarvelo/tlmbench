@@ -34,6 +34,39 @@ const tableOpen = (side) => async (p) => {
   await p.waitForSelector('.trw');
 };
 
+/** Holds a drag in progress (D-ui-18): a synthetic dragstart on `src`, then dragenter and dragover at a point of `target` given
+ *  as fractions of its box (the element under that point gets them, as a real drag). Nothing is dropped, so the outlines
+ *  stay up for the screenshot and the measures. */
+const holdDrag = (src, target, fx, fy) => async (p) => {
+  await p.evaluate(([src, n]) => {
+    const s = document.querySelectorAll(src)[n];
+    const r = s.getBoundingClientRect();
+    window.__parityDT = new DataTransfer();
+    // a press first, as a real drag has (the prototype's pane header drags only from a press on its number)
+    s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: r.x + 4, clientY: r.y + 4 }));
+    s.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: window.__parityDT, clientX: r.x + 4, clientY: r.y + 4 }));
+  }, Array.isArray(src) ? src : [src, 0]);
+  await p.waitForTimeout(120);
+  await p.evaluate(([target, fx, fy]) => {
+    const t = [...document.querySelectorAll(target)].find((e) => e.getBoundingClientRect().height > 0);
+    const r = t.getBoundingClientRect();
+    const [x, y] = [r.x + r.width * fx, r.y + r.height * fy];
+    const at = document.elementFromPoint(x, y) ?? t;
+    for (const type of ['dragenter', 'dragover']) at.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: window.__parityDT, clientX: x, clientY: y }));
+  }, [target, fx, fy]);
+};
+/** The outline of a pane a drag is over: the pane's box, and the label box drawn in its ::after. */
+const outline = (pp, ap) => [
+  ['pane under the drag', pp, ap, ['border-color', 'box-shadow', 'background-color', 'outline-style', 'outline-color']],
+  ['its label box', `${pp}::after`, `${ap}::after`, ['content', 'width', 'height', 'border-width', 'border-style', 'border-color', 'border-radius', 'background-color', 'color', 'font-size', 'font-weight']],
+];
+/** The first chip of pane 2 (the source of a channel drag), and pane 2's drag handle. */
+const PROTO_CHIP = ['#stack section.pane .phead .chip', 2];
+const APP_CHIP = ['#stack section.pane .phead .chip', 2];
+const PROTO_PANE2 = ['#stack section.pane .phead .pnum', 1];
+const APP_PANE2 = ['#stack section.pane .pnum', 1];
+const PANE1 = '#stack section.pane';
+
 export const SCENES = [
   {
     name: 'main',
@@ -372,5 +405,56 @@ export const SCENES = [
       ['card', '.stcard', '.start.overlay .stcard'],
       ['row', '.strow', '.start.overlay .strow'],
     ],
+  },
+  {
+    name: 'drag-edge',
+    about: 'A channel chip of pane 2 held over the left edge of pane 1: "Place on the left" (D-ui-18).',
+    proto: holdDrag(PROTO_CHIP, PANE1, 0.08, 0.6),
+    app: holdDrag(APP_CHIP, PANE1, 0.08, 0.6),
+    pairs: outline('#stack section.pane.over-left', '#stack section.pane[data-side="left"]'),
+    focus: ['#stack section.pane.over-left', '#stack section.pane[data-side="left"]'],
+  },
+  {
+    name: 'drag-edge-right',
+    about: 'The same chip over the right edge: "Place on the right".',
+    proto: holdDrag(PROTO_CHIP, PANE1, 0.92, 0.6),
+    app: holdDrag(APP_CHIP, PANE1, 0.92, 0.6),
+    pairs: outline('#stack section.pane.over-right', '#stack section.pane[data-side="right"]'),
+    focus: ['#stack section.pane.over-right', '#stack section.pane[data-side="right"]'],
+  },
+  {
+    name: 'drag-into',
+    about: 'The chip over the middle of pane 1: it joins that pane.',
+    proto: holdDrag(PROTO_CHIP, PANE1, 0.5, 0.6),
+    app: holdDrag(APP_CHIP, PANE1, 0.5, 0.6),
+    pairs: [['pane under the drag', '#stack section.pane.over', '#stack section.pane.chanover', ['border-color', 'box-shadow', 'background-color', 'outline-style', 'outline-color']]],
+    focus: ['#stack section.pane.over', '#stack section.pane.chanover'],
+  },
+  {
+    name: 'drag-gap',
+    about: 'The chip over the gap before pane 1: "Drop here for a new pane", with the other gaps shown.',
+    proto: holdDrag(PROTO_CHIP, '.dropgap', 0.5, 0.5),
+    app: holdDrag(APP_CHIP, '.dropgap', 0.5, 0.5),
+    pairs: [
+      ['gap under the drag', '.dropgap.over', '.dropgap.over'],
+      ['another gap', '.dropgap:not(.over)', '.dropgap:not(.over)'],
+    ],
+    focus: ['#stack', '#stack'],
+  },
+  {
+    name: 'drag-pane-top',
+    about: 'Pane 2 dragged by its header (the app: its number) over the top of pane 1: "Move to a new row above".',
+    proto: holdDrag(PROTO_PANE2, PANE1, 0.5, 0.12),
+    app: holdDrag(APP_PANE2, PANE1, 0.5, 0.12),
+    pairs: outline('#stack section.pane.over-top', '#stack section.pane[data-zone="top"]'),
+    focus: ['#stack', '#stack'],
+  },
+  {
+    name: 'drag-pane-merge',
+    about: 'Pane 2 dragged over the middle of pane 1: "Merge into this pane".',
+    proto: holdDrag(PROTO_PANE2, PANE1, 0.5, 0.5),
+    app: holdDrag(APP_PANE2, PANE1, 0.5, 0.5),
+    pairs: [...outline('#stack section.pane.over-merge', '#stack section.pane[data-zone="middle"]'), ['gap during a pane drag', '.dropgap', '.dropgap', ['content', 'font-size', 'color', 'border-color']]],
+    focus: ['#stack', '#stack'],
   },
 ];

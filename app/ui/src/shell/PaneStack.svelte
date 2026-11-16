@@ -118,12 +118,32 @@
   let gapOver = $state<number | null>(null);
   const dragStart = (e: DragEvent) => (carrying = isChans(e) || isChip(e));
   function overGap(e: DragEvent, r: number) {
+    if (dragging != null) {
+      e.preventDefault();
+      e.stopPropagation();
+      paneCopy = isCopy(e);
+      gapOver = r;
+      return;
+    }
     if (!isChans(e) && !isChip(e)) return;
     e.preventDefault();
     e.stopPropagation();
     gapOver = r;
   }
-  function dropGap(e: DragEvent, first: number) {
+  /** A drop on the gap before row `r` (`r` = the number of rows: after the last). A pane moves (or copies) to a row of its
+   *  own there; channels get a new pane there. */
+  function dropGap(e: DragEvent, r: number) {
+    const all = rows();
+    const first = r < all.length ? all[r][0] : stack.panes.length;
+    if (dragging != null) {
+      e.preventDefault();
+      e.stopPropagation();
+      const from = dragging;
+      dragging = dropAt = zoneAt = gapOver = null;
+      if (r < all.length) dropPane(from, first, 'top', isCopy(e));
+      else dropPane(from, all[all.length - 1][0], 'bottom', isCopy(e));
+      return;
+    }
     if (!isChans(e) && !isChip(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -137,6 +157,7 @@
       if (chs.length) newPaneBefore(chs, first);
     }
   }
+  const gapText = () => (dragging == null ? 'Drop here for a new pane' : paneCopy ? 'Copy the pane here' : 'Move the pane here');
   /** Over a pane's left or right edge a dragged channel would get a pane of its own there (when the row has room). */
   let chanSide = $state<null | 'left' | 'right'>(null);
   function sideOf(e: DragEvent, to: number): null | 'left' | 'right' {
@@ -252,15 +273,23 @@
   let dropAt = $state<number | null>(null);
   /** Where on a pane a dragged pane would land: which pane and which part of it. */
   let zoneAt = $state<null | { i: number; zone: Zone }>(null);
+  /** The copy key is down during a pane drag: the drop boxes say Copy. */
+  let paneCopy = $state(false);
+  /** The prototype's zones: the outer 22% of the width places beside, the top and bottom 30% start a row, the rest merges. */
   function zoneOf(e: DragEvent): Zone {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const [fx, fy] = [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
-    return fx < 0.2 ? 'left' : fx > 0.8 ? 'right' : fy < 0.25 ? 'top' : fy > 0.75 ? 'bottom' : 'middle';
+    return fx < 0.22 ? 'left' : fx > 0.78 ? 'right' : fy < 0.3 ? 'top' : fy > 0.7 ? 'bottom' : 'middle';
   }
   function paneOver(e: DragEvent, i: number) {
     if (dragging == null) return overChans(e, i);
+    paneCopy = isCopy(e);
+    const zone = zoneOf(e);
+    // over itself a pane only moves out of a shared row (or copies), as the prototype: nothing to show otherwise
+    const alone = (rows().find((r) => r.includes(i)) ?? []).length === 1;
+    if (dragging === i && !paneCopy && (zone === 'middle' || alone)) return void (zoneAt = null);
     e.preventDefault();
-    zoneAt = { i, zone: zoneOf(e) };
+    zoneAt = { i, zone };
   }
   function paneDrop(e: DragEvent, i: number) {
     if (dragging == null) return dropChans(e, i);
@@ -369,15 +398,15 @@
 
 <div id="stack" class="stack" class:nopanes={!stack.panes.length} class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = chanSide = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length <= 5 ? 125 : 105}px">
   {#each rows() as row, r (r)}
-    {#if carrying}
-      <div class="dropgap" class:over={gapOver === r} data-dropgap={r} role="presentation" ondragover={(e) => overGap(e, r)} ondragleave={() => (gapOver = null)} ondrop={(e) => dropGap(e, row[0])}>Drop here for a new pane</div>
+    {#if carrying || dragging != null}
+      <div class="dropgap" class:over={gapOver === r} data-dropgap={r} role="presentation" ondragover={(e) => overGap(e, r)} ondragleave={() => (gapOver = null)} ondrop={(e) => dropGap(e, r)}>{gapText()}</div>
     {/if}
     <div class="prow">
       {#each columns(row) as col, c (c)}
         <div class="pcol">
           {#each col as i (i)}
             {@const p = stack.panes[i]}
-            <section class="pane" class:tablemode={p.mode === 'table'} class:sel={i === stack.sel} class:drop={dropAt === i} class:chanover={chanOver === i} data-side={chanOver === i ? (chanSide ?? undefined) : undefined} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => (zoneAt?.i === i && (zoneAt = null), chanOver === i && (chanSide = null))} ondrop={(e) => paneDrop(e, i)} role="presentation">
+            <section class="pane" class:tablemode={p.mode === 'table'} class:sel={i === stack.sel} class:dragging={dragging === i} class:drop={dropAt === i} class:chanover={chanOver === i} data-side={chanOver === i ? (chanSide ?? undefined) : undefined} class:zone={zoneAt?.i === i} data-zone={zoneAt?.i === i ? zoneAt.zone : undefined} data-copy={zoneAt?.i === i && paneCopy ? '' : undefined} data-pane={i} style={p.h ? `--ph: ${p.h}px` : undefined} ondragover={(e) => paneOver(e, i)} ondragleave={() => (zoneAt?.i === i && (zoneAt = null), chanOver === i && (chanSide = null))} ondrop={(e) => paneDrop(e, i)} role="presentation">
               <div
                 class="phead"
                 use:fitChips={i}
@@ -395,7 +424,7 @@
                     dragging = i;
                     e.dataTransfer?.setData('text/plain', `pane ${i + 1}`);
                   }}
-                  ondragend={() => (dragging = dropAt = zoneAt = null)}
+                  ondragend={() => (dragging = dropAt = zoneAt = gapOver = null)}
                   ondblclick={() => startRename(i)}>{i + 1}</span
                 >
                 {#if renaming === i}
@@ -531,6 +560,9 @@
       <div class="rgap"><button data-gap={r} disabled={lk} aria-label="Add a pane here" data-tip={lk ? LOCKED : 'Add a pane between these rows'} onclick={() => addPaneBelow(row[row.length - 1])}>{@html ICON.plus}</button></div>
     {/if}
   {/each}
+  {#if (carrying || dragging != null) && stack.panes.length}
+    <div class="dropgap" class:over={gapOver === rows().length} data-dropgap={rows().length} role="presentation" ondragover={(e) => overGap(e, rows().length)} ondragleave={() => (gapOver = null)} ondrop={(e) => dropGap(e, rows().length)}>{gapText()}</div>
+  {/if}
   {#if !stack.panes.length && ui.file}
     <div class="nopanes" data-nopanes>
       <p class="np-title">No channels plotted</p>
@@ -746,26 +778,26 @@
   .hgrip:active {
     background: var(--accent-line);
   }
-  .pane.chanover {
-    background: var(--accent-soft);
-    outline: 2px dashed var(--accent-line);
-    outline-offset: -2px;
+  /* the drop outlines, as the prototype's: the pane under a drag gets an accent ring, and a labelled box shows where the drop
+     lands (a channel at an edge; a pane at an edge, the top or bottom, or the middle) */
+  .pane.chanover,
+  .pane.zone {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent) inset;
   }
   .stack.chanover {
     box-shadow: inset 0 -2px 0 var(--accent);
   }
-  /* a channel over a pane's edge: "Place on the left / right" in a box on that side, as the prototype's */
-  .pane[data-side]::after {
-    content: 'Place on the left';
+  .pane.dragging {
+    opacity: 0.45;
+  }
+  .pane[data-side]::after,
+  .pane[data-zone]::after {
     position: absolute;
     z-index: 5;
-    top: 4px;
-    bottom: 4px;
-    left: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22%;
     border: 1.5px dashed var(--accent);
     border-radius: 8px;
     background: color-mix(in srgb, var(--accent) 16%, var(--plot-bg));
@@ -775,33 +807,55 @@
     text-align: center;
     pointer-events: none;
   }
-  .pane[data-side='right']::after {
+  .pane[data-side]::after,
+  .pane[data-zone='left']::after,
+  .pane[data-zone='right']::after {
+    content: 'Place on the left';
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: 22%;
+  }
+  .pane[data-side='right']::after,
+  .pane[data-zone='right']::after {
     content: 'Place on the right';
     right: 4px;
     left: auto;
   }
-  .pane.chanover[data-side] {
-    background: none;
-    outline: none;
+  .pane[data-zone='top']::after,
+  .pane[data-zone='bottom']::after {
+    content: 'Move to a new row above';
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    height: 30%;
   }
-  .pane.zone {
-    background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
+  .pane[data-zone='bottom']::after {
+    content: 'Move to a new row below';
+    top: auto;
+    bottom: 4px;
   }
-  .pane[data-zone='top'] {
-    box-shadow: inset 0 3px 0 var(--accent);
+  .pane[data-zone='middle']::after {
+    content: 'Merge into this pane';
+    top: 30%;
+    bottom: 30%;
+    left: 22%;
+    right: 22%;
   }
-  .pane[data-zone='bottom'] {
-    box-shadow: inset 0 -3px 0 var(--accent);
+  .pane[data-zone='left'][data-copy]::after {
+    content: 'Copy to the left';
   }
-  .pane[data-zone='left'] {
-    box-shadow: inset 3px 0 0 var(--accent);
+  .pane[data-zone='right'][data-copy]::after {
+    content: 'Copy to the right';
   }
-  .pane[data-zone='right'] {
-    box-shadow: inset -3px 0 0 var(--accent);
+  .pane[data-zone='top'][data-copy]::after {
+    content: 'Copy to a new row above';
   }
-  .pane[data-zone='middle'] {
-    outline: 2px dashed var(--accent-line);
-    outline-offset: -2px;
+  .pane[data-zone='bottom'][data-copy]::after {
+    content: 'Copy to a new row below';
+  }
+  .pane[data-zone='middle'][data-copy]::after {
+    content: 'Add its channels here';
   }
   .pnum {
     cursor: grab;

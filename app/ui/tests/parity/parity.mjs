@@ -25,15 +25,20 @@ const PROPS = ['font-family', 'font-size', 'font-weight', 'line-height', 'letter
 
 /** In the page: the computed styles and box of the last visible element matching `sel`, or null. */
 function measure([sel, props]) {
+  // `sel::after` (or ::before) measures that pseudo-element of the last match: its computed style, and its box from width and height
+  const pseudo = /::(after|before)$/.exec(sel)?.[0] ?? null;
+  if (pseudo) sel = sel.slice(0, -pseudo.length);
   const els = [...document.querySelectorAll(sel)].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; });
   const e = els[els.length - 1];
   if (!e) return null;
-  const cs = getComputedStyle(e);
+  const cs = getComputedStyle(e, pseudo);
+  if (pseudo && (cs.content === 'none' || cs.content === 'normal')) return null;
   const v = {};
   for (const p of props) {
     if (p === 'padding') v[p] = ['top', 'right', 'bottom', 'left'].map((s) => cs.getPropertyValue('padding-' + s)).join(' ');
     else if (p === 'border-width') v[p] = ['top', 'right', 'bottom', 'left'].map((s) => cs.getPropertyValue(`border-${s}-width`)).join(' ');
     else if (p === 'border-color') v[p] = cs.getPropertyValue('border-top-width') === '0px' && cs.getPropertyValue('border-bottom-width') === '0px' ? 'none' : cs.getPropertyValue('border-top-color');
+    else if ((p === 'width' || p === 'height') && pseudo) v[p] = Math.round(parseFloat(cs.getPropertyValue(p)) * 10) / 10 + 'px';
     else if (p === 'width' || p === 'height') v[p] = Math.round(e.getBoundingClientRect()[p] * 10) / 10 + 'px';
     else if (p === 'font-family') v[p] = cs.fontFamily.split(',')[0].replace(/["']/g, '').trim();
     else v[p] = cs.getPropertyValue(p);
