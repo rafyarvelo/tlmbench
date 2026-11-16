@@ -127,10 +127,12 @@ try {
   answer = dest2;
   await page.click('#wsNote [aria-label="Dismiss"]').catch(() => {});
   await page.click('#htmlGo');
-  check('Export writes both files', await until(page, () => /Exported to bench run-export/.test(document.querySelector('#wsNote .txt')?.textContent ?? '') && !document.querySelector('#wsTask'), 20000), await page.$eval('#wsNote', (e) => e.textContent).catch(() => null));
-  const two = join(dest2, 'bench run-export');
+  // a tab of two files is exported under the tab's name, and its tab in the viewer reads so (owner, Nov 16)
+  check('Export writes both files, named for the tab', await until(page, () => /Exported to bench run \+ second run-export/.test(document.querySelector('#wsNote .txt')?.textContent ?? '') && !document.querySelector('#wsTask'), 20000), await page.$eval('#wsNote', (e) => e.textContent).catch(() => null));
+  const two = join(dest2, 'bench run + second run-export');
   const m2 = existsSync(join(two, 'export.json')) ? JSON.parse(readFileSync(join(two, 'export.json'), 'utf8')) : null;
   check('the export holds both files, the second with its map to the shared timeline', m2?.files?.length === 2 && m2.files[1].samples === 3000 && m2.group?.slots?.length === 1 && m2.group.slots[0].knots.length >= 1, [m2?.files?.map((f) => f.samples), m2?.group]);
+  check('the export\'s layout is named for the tab too', m2?.layout?.name === 'bench run + second run', m2?.layout?.name);
   check('and the second file\'s channels are in the data', existsSync(join(two, 'data/f1/c0.pyr.bin')), existsSync(two));
   await page.keyboard.press('Escape');
 

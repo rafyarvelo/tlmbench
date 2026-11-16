@@ -3089,15 +3089,22 @@ async function dscShareGo(): Promise<void> {
 
 // ---------- Export data… and Save the view as an image… ----------
 
+/** What an export of the front tab is named: its file, or for a tab of several files the tab's name ("flight-1 + flight-2";
+ *  owner, Nov 16), with what file names can't hold replaced. */
+function exportBase(f: OpenFile): string {
+  const own = nameOf(f.info.path).replace(/\.[^.]*$/, '') + (f.info.part ? `.${f.info.part}` : '');
+  const tab = f.members && f.members.length > 1 ? frontTab()?.name : null;
+  return (tab && !frontTab()?.ws ? tab : own).replace(/[\\/:*?"<>|]+/g, '-').trim() || own;
+}
+
 /** What the front tab shows, for Export data…: its channels, the time view, the cursors and the whole recording. */
 function exportContext(): ExportContext | null {
   const f = state.file;
   if (!f) return null;
-  const part = f.info.part ? `.${f.info.part}` : '';
   const named = (c: number): [number, string] => [c, f.info.channels[c].name];
   const inPanes = [...new Set(stack.panes.flatMap((p) => p.channels))].filter((c) => c < f.info.channels.length);
   return {
-    base: `${nameOf(f.info.path).replace(/\.[^.]*$/, '')}${part}`,
+    base: exportBase(f),
     tab: inPanes.map(named),
     all: f.info.channels.map((_, c) => named(c)),
     view: [state.t0, state.t1],
@@ -4390,7 +4397,7 @@ const IMAGE_GAP = 8;
 function imageOpen(): void {
   const f = state.file;
   if (!f) return;
-  Object.assign(img, { open: true, busy: false, error: '', result: '', panes: stack.panes.length, sel: stack.sel, base: nameOf(f.info.path).replace(/\.[^.]*$/, '') + (f.info.part ? `.${f.info.part}` : '') });
+  Object.assign(img, { open: true, busy: false, error: '', result: '', panes: stack.panes.length, sel: stack.sel, base: exportBase(f) });
 }
 
 /** The panes as a PNG: the plot canvases as they are drawn now (traces, axes, cursors, markers), a legend over each. */
