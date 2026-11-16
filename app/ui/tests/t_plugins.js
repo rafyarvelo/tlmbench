@@ -50,6 +50,12 @@ run(
     const n = await calls('scans');
     await p.click('#pluginsRescan');
     check('Rescan reads the folders again', await until((n) => window.__tlmFake.scans > n, n));
+    // hot reload: the core read a changed plugins folder by itself; Settings follows without Rescan
+    await fake(() => {
+      window.__tlmFake.plugins = [...window.__tlmFake.plugins, { file: 'rebuilt.wasm', path: '/plugins/rebuilt.wasm', tier: 'wasm', kind: 'decoder', name: 'rebuilt', version: '0.2.0', description: null, shared: false, status: { state: 'loaded' } }];
+      window.__tlmFake.pluginsChanged();
+    });
+    check('a plugin built again shows by itself, and a note says so', await until(() => !!document.querySelector('[data-plugin="rebuilt.wasm"]') && /Plugins changed on disk/.test(document.querySelector('#wsNote')?.textContent ?? '')), await p.evaluate(() => document.querySelector('#wsNote')?.textContent));
 
     // an alignment plugin in the Alignment section
     await fake((d) => (window.__tlmFake.pickFolder = d), DIR);

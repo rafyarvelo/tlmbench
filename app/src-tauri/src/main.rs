@@ -2494,6 +2494,8 @@ async fn config_use<R: tauri::Runtime>(folder: Option<String>, app: AppHandle<R>
         let files = app.state::<Files>();
         if files.plugins.set_shared(dir.as_ref().map(|d| d.join("plugins"))) {
             files.plugins.scan(plugins::own_dir(&app));
+            // and watched with yours, so a plugin built again there reloads by itself
+            files.plugins.watch(&app, plugins::own_dir(&app));
         }
         // where Share writes: the folder's own .tlmbench/ (as config_scan), not the nearest one above it
         let writable =

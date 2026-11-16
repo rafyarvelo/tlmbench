@@ -419,6 +419,10 @@
     folderChanged(path) {
       emit('folder-changed', { path: path ?? fake.watched });
     },
+    /** A plugins folder changed and the core read it again (hot reload): the event it sends every window. */
+    pluginsChanged() {
+      emit('plugins-changed', (fake.plugins ?? []).length);
+    },
     /** The window's close button (or ⌘W): the event Tauri sends the page. */
     closeRequested() {
       emit('tauri://close-requested', null);

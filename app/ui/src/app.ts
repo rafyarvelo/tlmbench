@@ -2799,6 +2799,11 @@ async function showFolder(path: string): Promise<void> {
 
 /** The folder the core watches for new and removed files (D-ui-02). */
 let watching = '';
+// a plugin built again, added or removed in a plugins folder: the core read them again (hot reload); Settings follows
+void listen('plugins-changed', () => {
+  void readPlugins().then(() => note('Plugins changed on disk: read them again.'));
+});
+
 void listen<{ path: string }>('folder-changed', (e) => {
   if (e.payload.path === settings.folder && ui.folder) void listFolder(settings.folder);
 });

@@ -1,11 +1,13 @@
 //! Plugins in the app: the folders they are read from, what Settings lists, and the trust rules (see
 //! `tlmbench_plugin`). Plugin files are found in `plugins/` in the app's data folder (yours) and in the open folder's
-//! `.tlmbench/plugins/` (shared; only sandboxed WASM plugins load from there).
+//! `.tlmbench/plugins/` (shared; only sandboxed WASM plugins load from there). Both are watched: a plugin built again,
+//! added or removed is read again by itself (hot reload), and the windows are told (`plugins-changed`).
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use tauri::{AppHandle, Manager, Runtime};
+use notify::{RecursiveMode, Watcher};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tlmbench_plugin::Found;
 
 #[derive(Default)]
@@ -17,6 +19,15 @@ pub struct State {
     native_on: Mutex<Vec<String>>,
     /// The shared plugins folders (`.tlmbench/plugins`, by path) the person trusts.
     trusted: Mutex<Vec<String>>,
+    /// What watches the plugins folders, and the folders it watches.
+    watcher: Mutex<Option<(notify::RecommendedWatcher, Vec<PathBuf>)>>,
+}
+
+/// Whether a changed path is a plugin's file (a WASM component or a native library): the only changes that reload.
+pub fn is_plugin_file(p: &std::path::Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| ["wasm", "dylib", "so", "dll"].contains(&e.to_ascii_lowercase().as_str()))
 }
 
 impl State {
@@ -39,6 +50,48 @@ impl State {
 
     pub fn set_trusted(&self, folders: Vec<String>) {
         *self.trusted.lock().unwrap() = folders;
+    }
+
+    /// Watches `own` and the shared folder (again when either changed): a plugin file that changes there is read again
+    /// half a second after the last change, and every window hears `plugins-changed`.
+    pub fn watch<R: Runtime>(self: &Arc<Self>, app: &AppHandle<R>, own: Option<PathBuf>) {
+        let dirs: Vec<PathBuf> =
+            own.into_iter().chain(self.shared.lock().unwrap().iter().cloned()).filter(|d| d.is_dir()).collect();
+        let mut slot = self.watcher.lock().unwrap();
+        if slot.as_ref().is_some_and(|(_, d)| *d == dirs) {
+            return;
+        }
+        *slot = None;
+        if dirs.is_empty() {
+            return;
+        }
+        let pending = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (me, app2, own2) = (Arc::downgrade(self), app.clone(), own_dir(app));
+        let Ok(mut w) = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
+            let Ok(ev) = ev else { return };
+            if matches!(ev.kind, notify::EventKind::Access(_)) || !ev.paths.iter().any(|p| is_plugin_file(p)) {
+                return;
+            }
+            // a build writes a file in several steps: one reload for the burst
+            if pending.swap(true, std::sync::atomic::Ordering::AcqRel) {
+                return;
+            }
+            let (me, app, own, pending) = (me.clone(), app2.clone(), own2.clone(), pending.clone());
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                pending.store(false, std::sync::atomic::Ordering::Release);
+                if let Some(state) = me.upgrade() {
+                    let found = state.scan(own);
+                    let _ = app.emit("plugins-changed", found.len());
+                }
+            });
+        }) else {
+            return;
+        };
+        for d in &dirs {
+            let _ = w.watch(d, RecursiveMode::NonRecursive);
+        }
+        *slot = Some((w, dirs));
     }
 
     pub fn native_on(&self) -> Vec<String> {
@@ -74,6 +127,11 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, settings: Option<String>, state: Ar
     state.set_native_on(list("nativePlugins"));
     state.set_trusted(list("trustedPluginFolders"));
     let own = own_dir(app);
+    if let Some(d) = &own {
+        // yours is there to watch (and for plugins to be dropped into) from the first start
+        let _ = std::fs::create_dir_all(d);
+    }
+    state.watch(app, own.clone());
     std::thread::spawn(move || {
         state.scan(own);
     });
@@ -82,6 +140,21 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, settings: Option<String>, state: Ar
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_plugin_files_reload() {
+        for (p, yes) in [
+            ("a/dec.wasm", true),
+            ("a/LIB.DYLIB", true),
+            ("x.so", true),
+            ("x.dll", true),
+            ("a/notes.md", false),
+            ("a/dec.wasm.tmp", false),
+            ("a/plugins", false),
+        ] {
+            assert_eq!(is_plugin_file(std::path::Path::new(p)), yes, "{p}");
+        }
+    }
 
     #[test]
     fn native_plugins_turned_on_come_from_the_saved_settings() {
