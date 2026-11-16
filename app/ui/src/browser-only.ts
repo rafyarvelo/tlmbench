@@ -9,7 +9,7 @@
 // (browser-folder.ts). WASM plugins are still to come (release plan R2.2); live sources and native plugins need the app; several
 // files, derived channels, events and checks in a tab are after v1 (docs/post-v1.md).
 
-import { folderFile, listFolder, pickFolder } from './browser-folder';
+import { folderFile, listFolder, pickFolder, readConfig } from './browser-folder';
 import { isParquet, parquetDump } from './parquet-wasm';
 import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
 
@@ -135,6 +135,11 @@ function keptDescriptors(): Kept[] {
   }
 }
 
+/** The open folder's `.tlmbench/decoders/`, read with it (shared: the form edits a copy, never the folder's file). */
+let sharedDescriptors: Kept[] = [];
+/** Every descriptor the page knows, best first: the folder's, then this browser's (as the app looks: the folder's, then its cache). */
+const allDescriptors = (): (Kept & { shared: boolean })[] => [...sharedDescriptors.map((k) => ({ ...k, shared: true })), ...keptDescriptors().map((k) => ({ ...k, shared: false }))];
+
 /** A descriptor's `files` pattern against a file name (`*` is any text), as the decoder matches them. */
 export function nameMatches(pattern: string, name: string): boolean {
   const [first, ...rest] = pattern.split('*');
@@ -151,9 +156,10 @@ export function nameMatches(pattern: string, name: string): boolean {
 }
 
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
-const keptAsKnown = (k: Kept, path: string) => ({ id: k.id, path: `browser://decoders/${k.id}.toml`, shared: false, descriptor: k.descriptor, claims: (k.descriptor.files ?? []).some((g) => nameMatches(g, fileName(path))) });
+const keptAsKnown = (k: Kept & { shared?: boolean }, path: string) => ({ id: k.id, path: `${k.shared ? '.tlmbench/decoders' : 'browser://decoders'}/${k.id}.toml`, shared: !!k.shared, descriptor: k.descriptor, claims: (k.descriptor.files ?? []).some((g) => nameMatches(g, fileName(path))) });
+const names = (k: Kept, name: string) => (k.descriptor.files ?? []).some((g) => nameMatches(g, name));
 /** The descriptor that names this file, if one does. */
-const claimOf = (path: string) => keptDescriptors().find((k) => (k.descriptor.files ?? []).some((g) => nameMatches(g, fileName(path)))) ?? null;
+const claimOf = (path: string) => allDescriptors().find((k) => names(k, fileName(path))) ?? null;
 
 /** Save in the descriptor form: kept in this browser under an id from its name (`replace`: the one being edited). */
 function saveDescriptor(descriptor: Kept['descriptor'], replace: string | null): ReturnType<typeof keptAsKnown> {
@@ -228,6 +234,14 @@ export async function installBrowserOnly(): Promise<void> {
   let callbacks = new Map<number, Handler>();
 
   /** Opens a file from the page: from the private storage when it was read before, else parsed (and then kept). */
+  /** Reads a folder's `.tlmbench/` (null: it has none) and keeps its descriptors for finding files' readers. */
+  async function readShared(folder: string): Promise<{ from: unknown; decoders: Kept[] } | null> {
+    const files = folder.startsWith('local-folder://') ? await readConfig(folder).catch(() => null) : null;
+    const c = files ? (core('config_of', { files }) as { from: unknown; decoders: Kept[] }) : null;
+    sharedDescriptors = c?.decoders ?? [];
+    return c;
+  }
+
   /** The file's first bytes, for the descriptor form and for telling binary from text. */
   async function headOf(path: string, n = 64 << 10): Promise<Uint8Array> {
     const f = files.get(path) ?? (await folderFile(path));
@@ -330,7 +344,7 @@ export async function installBrowserOnly(): Promise<void> {
       const head = await headOf(path, 4096).catch(() => new Uint8Array());
       return head.length > 0 && (core('looks_binary', {}, head) as boolean);
     },
-    descriptor_list: (a) => keptDescriptors().map((k) => keptAsKnown(k, String(a.path))),
+    descriptor_list: (a) => allDescriptors().map((k) => keptAsKnown(k, String(a.path))),
     descriptor_save: (a) => saveDescriptor(a.descriptor as Kept['descriptor'], (a.replace as string | null) ?? null),
     descriptor_preview: async (a) => core('descriptor_preview', { descriptor: a.descriptor }, await headOf(String(a.path))),
     descriptor_find_frames: async (a) => core('descriptor_find_frames', {}, await headOf(String(a.path))),
@@ -343,10 +357,20 @@ export async function installBrowserOnly(): Promise<void> {
     stats: (a) => core('stats', a),
     rows: (a) => core('rows', a),
     events_list: () => [],
-    list_folder: (a) => listFolder(String(a.path)),
+    list_folder: async (a) => {
+      // the folder's own descriptors first, so the files they name list as openable (the app reads them with the listing)
+      await readShared(String(a.path).split('/').slice(0, 3).join('/'));
+      return listFolder(String(a.path), { claims: (n) => allDescriptors().some((k) => names(k, n)), binary: (head) => core('looks_binary', {}, head) as boolean });
+    },
     watch_folder: () => null,
-    // a tab reads no shared configuration yet (D-brow-10: the folder's .tlmbench/ is still to come)
-    config_use: () => ({ dir: null, from: { categories: [], widgets: [] }, recipes: [], checks: [], problems: [], writable: false }),
+    // the folder's .tlmbench/, read through its handle (D-brow-10): categories, widgets and icons as the app takes them, and
+    // its decoders/ as descriptors. Never written: a browser tab has no Share
+    config_use: async (a) => {
+      const folder = typeof a.folder === 'string' ? a.folder : '';
+      const c = await readShared(folder);
+      if (!c) return { dir: null, from: { categories: [], widgets: [], icons: [] }, recipes: [], checks: [], problems: [], writable: false };
+      return { dir: `${folder}/.tlmbench`, from: c.from, recipes: [], checks: [], problems: [], writable: false };
+    },
     cache_info: async () => {
       const dir = await cacheDir();
       let bytes = 0;

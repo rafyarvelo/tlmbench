@@ -64,6 +64,8 @@ removed Nov 15; git history keeps them.
 - Browser-only mode reads binary files through descriptors kept in the page's own storage (localStorage), found by their
   file name patterns; a binary file none names opens the descriptor form, which has no Share there. A file with several
   packet types opens a tab per type (several files in one browser tab are after v1). Ledger D-brow-08.
+- Browser-only mode reads the folder's `.tlmbench/` through its directory handle: categories, widgets, icons and
+  `decoders/` only (the rest of it is for what a tab leaves out until after v1). Ledger D-brow-10.
 - Open together names the tab after its files ("flight-1 + flight-2", "flight-1 + 2 more"). In browser-only mode the
   Events panel leaves the rail. Export data… and Save image… close when done and say what they wrote, as Export to HTML… does.
 

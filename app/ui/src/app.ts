@@ -5567,6 +5567,8 @@ export const gateApi = {
 
 /** What the UI tests read (app/ui/tests): the view, cursors and build state, as plain values. */
 (window as unknown as { __tlmApp: unknown }).__tlmApp = {
+  /** What the folder's .tlmbench/ gave: its dir, categories and widgets (tests of shared configuration). */
+  sharedConfig: () => ({ dir: cfg.dir, categories: JSON.parse(JSON.stringify(cfg.categories)), widgets: cfg.widgets.map((w) => ({ id: w.id, name: w.name, svg: !!w.svg, code: !!w.code })) }),
   /** Adds a file to the tab in front, on its timeline (what the import dialog's "This tab" does). */
   addToTab: (path: string) => addToTab(path),
   /** What a drop or the Explorer's Open does: files the user chose. */

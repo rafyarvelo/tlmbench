@@ -74,16 +74,28 @@ export async function pickFolder(): Promise<string | null> {
 
 const OPENABLE = /\.(csv|tsv|txt|tlm|parquet)$/i;
 
-/** The folder's tree for Explorer, as `list_folder` gives it: dot files and folders left out, folders before files, a folder
- *  with nothing in it left out, every file marked openable or not. */
-export async function listFolder(path: string): Promise<FolderEntry> {
-  const name = path.slice(FOLDER_PREFIX.length).split('/')[0];
+/** What the page knows about files it has no reader of its own for: a descriptor that names the file, and whether its
+ *  first bytes are binary (then the descriptor form opens for it, as in the app). */
+export interface Readers {
+  claims(name: string): boolean;
+  binary(head: Uint8Array): boolean;
+}
+
+async function rootOf(name: string): Promise<DirHandle> {
   let root = roots.get(name) ?? null;
   if (!root) {
     root = await recall(name);
     if (root) roots.set(name, root);
   }
   if (!root) throw new Error('Choose the folder again: a browser tab doesn’t keep folders from an earlier visit.');
+  return root;
+}
+
+/** The folder's tree for Explorer, as `list_folder` gives it: dot files and folders left out, folders before files, a folder
+ *  with nothing in it left out, every file marked openable or not (a binary file no descriptor names: `needsDescriptor`). */
+export async function listFolder(path: string, readers?: Readers): Promise<FolderEntry> {
+  const name = path.slice(FOLDER_PREFIX.length).split('/')[0];
+  const root = await rootOf(name);
   if ((await root.queryPermission?.({ mode: 'read' })) !== 'granted') {
     const asked = await root.requestPermission?.({ mode: 'read' }).catch(() => 'denied' as PermissionState);
     if (asked !== 'granted') throw new Error('Choose the folder again: the browser asks for permission on each visit.');
@@ -102,7 +114,10 @@ export async function listFolder(path: string): Promise<FolderEntry> {
           const fp = `${FILE_PREFIX}${name}/${sub}`;
           fileHandles.set(fp, e as FileSystemFileHandle);
           const f = await (e as FileSystemFileHandle).getFile();
-          children.push({ path: fp, name: e.name, dir: false, bytes: f.size, openable: OPENABLE.test(e.name), children: [] });
+          const own = OPENABLE.test(e.name);
+          const claimed = !own && !!readers?.claims(e.name);
+          const needs = !own && !claimed && !!readers && f.size > 0 && readers.binary(new Uint8Array(await f.slice(0, 4096).arrayBuffer()));
+          children.push({ path: fp, name: e.name, dir: false, bytes: f.size, openable: own || claimed || needs, ...(needs ? { needsDescriptor: true } : {}), children: [] });
         }
       }
     }
@@ -117,4 +132,30 @@ export async function listFolder(path: string): Promise<FolderEntry> {
 export async function folderFile(path: string): Promise<File | null> {
   const h = fileHandles.get(path);
   return h ? h.getFile() : null;
+}
+
+/** The folder's own `.tlmbench/` as texts by their path inside it (`widgets/dial/widget.toml`), for the core to read as
+ *  the app reads one; none when it has none. Text files only, and none over 1 MB. Read access only, as everything here. */
+export async function readConfig(path: string): Promise<Record<string, string> | null> {
+  const name = path.slice(FOLDER_PREFIX.length).split('/')[0];
+  let dir: DirHandle;
+  try {
+    dir = (await (await rootOf(name)).getDirectoryHandle('.tlmbench')) as DirHandle;
+  } catch {
+    return null;
+  }
+  const out: Record<string, string> = {};
+  async function walk(h: DirHandle, rel: string, depth: number): Promise<void> {
+    if (depth > 3) return;
+    for await (const e of h.values()) {
+      const sub = rel ? `${rel}/${e.name}` : e.name;
+      if (e.kind === 'directory') await walk(e as DirHandle, sub, depth + 1);
+      else if (/\.(toml|json|svg|html|js|css|txt)$/i.test(e.name)) {
+        const f = await (e as FileSystemFileHandle).getFile();
+        if (f.size <= 1 << 20) out[sub] = await f.text();
+      }
+    }
+  }
+  await walk(dir, '', 0);
+  return out;
 }

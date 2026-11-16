@@ -74,6 +74,15 @@ try {
         await put(sub, 'run a.csv', window.__csv);
         const hid = await dir.getDirectoryHandle('.tlmbench', { create: true });
         await put(hid, 'secret.toml', 'a = 1');
+        // shared configuration (D-brow-10): a category, a widget, and a descriptor for *.esc files
+        await put(hid, 'categories.toml', 'schema = 1\n[[category]]\nid = "warn"\nname = "Warnings"\ncolor = "#f80"\n');
+        const wd = await (await hid.getDirectoryHandle('widgets', { create: true })).getDirectoryHandle('dial', { create: true });
+        await put(wd, 'widget.toml', 'schema = 1\nname = "Dial"\nkind = "svg"\nentry = "dial.svg"\n');
+        await put(wd, 'dial.svg', '<svg viewBox="0 0 10 10"><text>{{value}}</text></svg>');
+        await put(await hid.getDirectoryHandle('decoders', { create: true }), 'esc.toml', 'schema = 1\nname = "ESC"\nfiles = ["*.esc"]\nrecord_size = 4\n[time]\nsource = "rate"\nrate_hz = 100\n[[fields]]\nname = "rpm"\ntype = "u16"\noffset = 0\n[[fields]]\nname = "amps"\ntype = "i16"\noffset = 2\nunit = "A"\n');
+        const bin = (n, salt) => Uint8Array.from({ length: n }, (_, i) => (i === 0 ? 0 : (i * 37 + salt) & 255));
+        await put(dir, 'bench.esc', bin(800, 3));
+        await put(dir, 'blob.bin', bin(400, 9));
         await dir.getDirectoryHandle('empty', { create: true });
         return dir;
       };
@@ -96,7 +105,7 @@ try {
       const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('runs');
       const names = [];
       for await (const [n] of dir.entries()) names.push(n);
-      return names.sort().join() === '.tlmbench,day 1,empty,notes.md,readme.pdf';
+      return names.sort().join() === '.tlmbench,bench.esc,blob.bin,day 1,empty,notes.md,readme.pdf';
     }));
     check('the folder menu has no Share… and no Recipes… (a tab writes nothing, recipes come after v1)', await (async () => {
       await p.click('#exFolder');
@@ -104,6 +113,18 @@ try {
       await p.keyboard.press('Escape');
       return !t.some((x) => /Share|Recipes/.test(x)) && t.some((x) => /Refresh/.test(x));
     })(), await p.$$eval('.exmenu .mi', (e) => e.map((x) => x.textContent)).catch(() => null));
+
+    // the folder's .tlmbench/ (D-brow-10): its categories and widgets reach the app; its descriptor names bench.esc
+    const sc = await p.evaluate(() => window.__tlmApp.sharedConfig());
+    check('the folder\'s .tlmbench/ is read: its categories and widgets', sc.dir === 'local-folder://runs/.tlmbench' && sc.categories[0]?.name === 'Warnings' && sc.widgets.some((w) => w.name === 'Dial' && w.svg), sc);
+    check('a file the folder\'s descriptor names lists as openable, with no "no descriptor"', await until(() => !!document.querySelector('#explorer .row.file[data-path="local://runs/bench.esc"]')) && !/no descriptor/.test(await p.$eval('#explorer .row.file[data-path="local://runs/bench.esc"]', (e) => e.textContent)));
+    check('a binary file none names says "no descriptor"', /no descriptor/.test(await p.$eval('#explorer .row.file[data-path="local://runs/blob.bin"]', (e) => e.textContent).catch(() => '')));
+    await p.dblclick('#explorer .row.file[data-path="local://runs/bench.esc"]');
+    check('it opens through the folder\'s descriptor', await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].some((x) => x.textContent === 'bench.esc')) && (await until(() => [...document.querySelectorAll('#explorer .tree .row.chan')].map((r) => r.textContent.trim().replace(/pane \d+/, '')).join() === 'rpm,ampsA')), await p.$$eval('#explorer .tree .row.chan', (r) => r.map((x) => x.textContent.trim())));
+    await p.dblclick('#explorer .row.file[data-path="local://runs/blob.bin"]');
+    check('the descriptor form lists the folder\'s descriptor as shared', await until(() => [...document.querySelectorAll('#dscPick option')].some((o) => /ESC.*\(shared\)/.test(o.textContent))), await p.$$eval('#dscPick option', (o) => o.map((x) => x.textContent)).catch(() => null));
+    await p.keyboard.press('Escape');
+    check('the descriptor stays in the folder: nothing kept in this browser for it', await p.evaluate(() => !localStorage.getItem('tlmbench.descriptors')));
     check('no page errors', errs.length === 0, errs);
     await ctx.close();
   }

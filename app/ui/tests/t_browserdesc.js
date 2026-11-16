@@ -86,7 +86,8 @@ try {
     );
   await p.goto(url, { waitUntil: 'domcontentloaded' });
   // the page takes drops once browser-only mode is installed (it sets __tlmBrowserOnly to its handle then)
-  await until(() => /No recording open/.test(document.body.textContent ?? '') && typeof window.__tlmBrowserOnly?.add === 'function');
+  await until(() => /No recording open/.test(document.body.textContent ?? '') && typeof window.__tlmBrowserOnly?.add === 'function' && !!window.__tlmApp);
+  await p.waitForTimeout(300);
 
   // a Zstandard packet file, by the descriptor whose pattern names it
   await choose(zfile);
