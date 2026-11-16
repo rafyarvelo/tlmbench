@@ -152,7 +152,7 @@
   $effect(() => {
     if (!ed) return;
     const rows = $state.snapshot(ed.set.check);
-    const sig = rows.map((k) => JSON.stringify([k.expect, k.when, k.grace, k.settle, k.severity, k.kind, k.enabled]));
+    const sig = rows.map((k) => JSON.stringify([k.expect, k.when, k.grace, k.settle, k.missing, k.severity, k.kind, k.enabled]));
     clearTimeout(timer);
     timer = setTimeout(async () => {
       for (let i = 0; i < rows.length; i++) {
@@ -335,6 +335,7 @@
             {#if row.when === undefined}<button class="linkbtn" data-kwhen data-tip={FIELD_HELP.when} onclick={() => ((row.when = ''), (asText[`${i}.when`] = true))}>+ When</button>{/if}
             <label class="lvg" data-tip={FIELD_HELP.grace}>Grace <input class="sel num" data-kf="grace" type="number" min="0" step="any" bind:value={row.grace} /> s</label>
             {#if row.when !== undefined}<label class="lvg" data-tip={FIELD_HELP.settle}>Settle <input class="sel num" data-kf="settle" type="number" min="0" step="any" bind:value={row.settle} /> s</label>{/if}
+            {#if row.kind === 'check'}<label class="lvg" data-tip={FIELD_HELP.missing}><input type="checkbox" data-kf="missing" checked={row.missing === 'fail'} onchange={(e) => (row.missing = e.currentTarget.checked ? 'fail' : undefined)} /> Missing values fail</label>{/if}
             <span class="kp muted" data-kp>{prev[i] ?? 'Checking on the open file…'}</span>
           </div>
         </div>

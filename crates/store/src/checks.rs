@@ -50,6 +50,23 @@ fn yes() -> bool {
     true
 }
 
+/// What a missing value (no sample, or one called missing) means to a check.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Missing {
+    /// No data: it neither passes nor fails.
+    #[default]
+    Skip,
+    /// It breaks the check, as a value outside its limits would (D-check-02).
+    Fail,
+}
+
+impl Missing {
+    fn is_skip(&self) -> bool {
+        *self == Missing::Skip
+    }
+}
+
 fn default_group() -> String {
     "Checks".into()
 }
@@ -77,6 +94,9 @@ pub struct Check {
     /// Seconds after the scope starts that don't count.
     #[serde(default)]
     pub settle: f64,
+    /// `missing = "fail"`: a missing value breaks the check; by default missing values are no data.
+    #[serde(default, skip_serializing_if = "Missing::is_skip")]
+    pub missing: Missing,
     #[serde(default = "yes")]
     pub enabled: bool,
 }
@@ -485,14 +505,17 @@ pub fn run_check(env: &dyn Env, k: &Check, t_first: i64, recipes: &[Recipe]) -> 
     let mut in_scope = 0usize;
     let mut runs: Vec<(f64, f64)> = Vec::new(); // first and last sample time of each violation
     let mut cur: Option<(f64, f64)> = None;
+    // a missing value breaks a check that says so, inside its scope (outside it, When masks samples to missing too)
+    let missing_fails = k.missing == Missing::Fail && !mark;
+    let in_scope_at = |t: f64| !scoped || scope.iter().any(|&(a, b)| a <= t && t < b);
     let got = stream(&expect, env, &mut |s| {
         for i in 0..s.len() {
             let v = s.v[i];
-            if v.is_nan() {
+            if v.is_nan() && !(missing_fails && in_scope_at(s.time(i))) {
                 continue;
             }
             in_scope += 1;
-            if truthy(v) == mark {
+            if v.is_nan() || truthy(v) == mark {
                 let t = s.time(i);
                 match &mut cur {
                     Some((_, last)) if t - *last <= JOIN_SECS + 1e-9 => *last = t,

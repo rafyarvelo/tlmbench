@@ -140,10 +140,12 @@ run(
     await p.dispatchEvent(`${nrow} input[data-xp="v"]`, 'change');
     await p.fill(`${nrow} [data-kf="name"]`, 'Sixteen volts');
     await p.fill(`${nrow} [data-kf="group"]`, 'Power');
+    check('a check offers Missing values fail, off at first (missing values are no data; D-check-02)', !(await p.isChecked(`${nrow} [data-kf="missing"]`)));
+    await p.check(`${nrow} [data-kf="missing"]`);
     await p.click('#recDlg [data-ssave]');
     check('Save keeps the set in the core', await until(() => window.__tlmFake.checkSetSaves.length === 1), await fake(() => window.__tlmFake.checkSetSaves.length));
     const saved = await fake(() => window.__tlmFake.checkSetSaves[0]);
-    check('with the edits', saved.replacing === 'Flight acceptance' && saved.set.check.length === 5 && saved.set.check[1].expect === 'motor_rpm > 3' && saved.set.check[4].expect === 'battery_v >= 16' && saved.set.check[4].name === 'Sixteen volts', saved.set.check.map((k) => k.expect));
+    check('with the edits', saved.replacing === 'Flight acceptance' && saved.set.check.length === 5 && saved.set.check[1].expect === 'motor_rpm > 3' && saved.set.check[4].expect === 'battery_v >= 16' && saved.set.check[4].name === 'Sixteen volts' && saved.set.check[4].missing === 'fail' && saved.set.check[0].missing === undefined, saved.set.check.map((k) => k.expect));
     check('and runs it again, showing the new check', await until(() => /Sixteen volts/.test(document.querySelector('#checksBody').innerText), null, 6000), await body());
 
     // the Checks pane view, on the pane that holds flight_mode and accel_x

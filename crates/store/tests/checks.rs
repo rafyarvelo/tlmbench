@@ -169,6 +169,25 @@ fn missing_values_are_no_data_not_failures() {
 }
 
 #[test]
+fn an_option_makes_missing_values_fail() {
+    // the same hole, 30 s..31 s: with missing = "fail" it is a violation of about a second
+    let mut k = check("sat", "sat >= 10");
+    k.missing = tlmbench_store::checks::Missing::Fail;
+    let o = run(&k);
+    assert_eq!((o.verdict, o.count), (Verdict::Fail, 1));
+    assert!((o.secs - 1.0).abs() < 0.05, "{}", o.secs);
+    assert!((o.scope_secs.unwrap() - 60.0).abs() < 0.02);
+    // read from a set's TOML, and written back only when set
+    let set = tlmbench_store::checks::from_toml(
+        "schema = 1\nname = \"s\"\n[[check]]\nname = \"a\"\nexpect = \"sat >= 10\"\nmissing = \"fail\"\n[[check]]\nname = \"b\"\nexpect = \"sat >= 10\"\n",
+    )
+    .unwrap();
+    assert_eq!(set.checks[0].missing, tlmbench_store::checks::Missing::Fail);
+    let text = tlmbench_store::checks::to_toml(&set);
+    assert_eq!(text.matches("missing").count(), 1, "{text}");
+}
+
+#[test]
 fn rules_mark_where_the_condition_holds() {
     let mut r = check("hot", "past_warn(temp)");
     r.kind = Kind::Rule;

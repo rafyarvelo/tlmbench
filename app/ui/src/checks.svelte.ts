@@ -18,6 +18,8 @@ export interface Check {
   category?: string;
   grace: number;
   settle: number;
+  /** "fail": a missing value counts as breaking the check (else missing values are no data; D-check-02). */
+  missing?: 'fail';
   enabled: boolean;
 }
 
@@ -88,6 +90,7 @@ export const FIELD_HELP = {
   when: 'Only look while this holds, for example while armed. Leave it out to look at the whole file.',
   grace: 'How long it may break before it counts, in seconds. Short blips under this are ignored.',
   settle: 'How long to wait after When starts before looking, in seconds.',
+  missing: 'On: a missing value breaks the check. Off: missing values are no data.',
   sev: 'Fail or Warn: how a broken check counts in the summary.',
 } as const;
 export const ICONCH: Record<Verdict, string> = { fail: '✗', warn: '!', err: '?', cant: '–', pass: '✓', na: '·', mark: '⚑', off: '○' };
