@@ -278,3 +278,39 @@ fn the_html_report_links_failing_cells_to_an_export_at_the_first_violation() {
     );
     assert!(!std::fs::read_to_string(plain.path().join("report.html")).unwrap().contains("index.html#show="));
 }
+
+#[test]
+fn watch_checks_each_new_recording_once_it_is_complete() {
+    let (data, cache, out) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let f = folder(data.path());
+    let bad = std::fs::read(f.join("bad.csv")).unwrap();
+    std::fs::remove_file(f.join("bad.csv")).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tlmbench"))
+        .args(["check", f.to_str().unwrap(), "--set", "Acceptance", "--allow-cant-run", "--watch", "--settle", "0.5"])
+        .args(["--stop-after", "6", "--report", "json", "--out", out.path().to_str().unwrap(), "--cache"])
+        .arg(cache.path())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    // once it watches, a new recording arrives in two writes, as a logger would write it
+    use std::io::{BufRead, Read};
+    let mut err = std::io::BufReader::new(child.stderr.take().unwrap());
+    let mut first = String::new();
+    err.read_line(&mut first).unwrap();
+    assert!(first.starts_with("Watching"), "{first}");
+    let half = bad.len() / 2;
+    std::fs::write(f.join("new.csv"), &bad[..half]).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::fs::write(f.join("new.csv"), &bad).unwrap();
+    let o = child.wait_with_output().unwrap();
+    let mut rest = String::new();
+    err.read_to_string(&mut rest).unwrap();
+    let t = format!("{}{rest}", text(&o));
+    // only the new file was checked (good.csv was there first), once, whole: the low-battery stretch is in it
+    assert_eq!(code(&o), 1, "{t}");
+    assert!(t.contains("new.csv") && !t.contains("good.csv"), "{t}");
+    assert_eq!(t.matches("Battery above 12 V · Fail").count(), 1, "{t}");
+    let json = std::fs::read_to_string(out.path().join("new.csv").join("results.json")).unwrap();
+    assert!(json.contains("\"fail\""), "{json}");
+}

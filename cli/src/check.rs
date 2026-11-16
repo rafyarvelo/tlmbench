@@ -63,6 +63,17 @@ pub struct Args {
     /// A check that can't run (a channel is missing) doesn't fail the build
     #[arg(long)]
     allow_cant_run: bool,
+    /// Watch the folders instead: check each new recording once it is complete (its size has held still for
+    /// --settle seconds), printing its results and writing its reports to `<out>/<file name>/`; files already there are
+    /// left alone. Runs until stopped; exits with the worst result seen
+    #[arg(long)]
+    watch: bool,
+    /// With --watch: seconds a new file's size must hold still before it counts as complete
+    #[arg(long, default_value_t = 2.0)]
+    settle: f64,
+    /// With --watch: stop after this many seconds (for scripts)
+    #[arg(long)]
+    stop_after: Option<f64>,
     #[command(flatten)]
     common: Common,
 }
@@ -182,11 +193,30 @@ pub fn run(args: Args) -> Result<(), Fail> {
         }
     }
     let store = store(&args.common);
+    if args.watch {
+        return watch(&args, &store, &lookup);
+    }
+    let results = check_files(&files, &args, &store, &lookup)?;
+    print_summary(&results);
+    if let Some(out) = &args.out {
+        reports(&results, out, &args)?;
+    }
+    let code = exit_code(&results, &args);
+    if code == 0 { Ok(()) } else { Err(Fail(code, String::new())) }
+}
+
+/// Checks `files` (`args.jobs` at a time) with the sets `lookup` finds.
+fn check_files(
+    files: &[PathBuf],
+    args: &Args,
+    store: &tlmbench_store::Store,
+    lookup: &(dyn Fn(&str) -> Option<CheckSet> + Sync),
+) -> Result<Vec<FileRes>, Fail> {
     let next = AtomicUsize::new(0);
     let slots: Vec<Mutex<Option<FileRes>>> = files.iter().map(|_| Mutex::new(None)).collect();
     let config_error = Mutex::new(None::<String>);
     std::thread::scope(|sc| {
-        for _ in 0..args.jobs.clamp(1, files.len()) {
+        for _ in 0..args.jobs.clamp(1, files.len().max(1)) {
             sc.spawn(|| {
                 loop {
                     let i = next.fetch_add(1, Ordering::SeqCst);
@@ -232,31 +262,31 @@ pub fn run(args: Args) -> Result<(), Fail> {
     if let Some(m) = config_error.into_inner().unwrap() {
         return Err(Fail(3, m));
     }
-    let results: Vec<FileRes> =
-        slots.into_iter().map(|s| s.into_inner().unwrap().expect("every file was done")).collect();
+    Ok(slots.into_iter().map(|s| s.into_inner().unwrap().expect("every file was done")).collect())
+}
 
-    print_summary(&results);
-    if let Some(out) = &args.out {
-        std::fs::create_dir_all(out).map_err(|e| Fail(2, format!("{}: {e}", out.display())))?;
-        let links = if args.views && args.report.contains(&Report::Html) {
-            export_views(&results, out, &args)?
-        } else {
-            Vec::new()
+/// Writes the reports `args` asks for into `out`.
+fn reports(results: &[FileRes], out: &Path, args: &Args) -> Result<(), Fail> {
+    std::fs::create_dir_all(out).map_err(|e| Fail(2, format!("{}: {e}", out.display())))?;
+    let links =
+        if args.views && args.report.contains(&Report::Html) { export_views(results, out, args)? } else { Vec::new() };
+    for r in &args.report {
+        let (name, text) = match r {
+            Report::Junit => ("junit.xml", junit(results, args.fail_on)),
+            Report::Csv => ("results.csv", csv(results)),
+            Report::Json => ("results.json", json(results)),
+            Report::Html => ("report.html", html(results, &links)),
         };
-        for r in &args.report {
-            let (name, text) = match r {
-                Report::Junit => ("junit.xml", junit(&results, args.fail_on)),
-                Report::Csv => ("results.csv", csv(&results)),
-                Report::Json => ("results.json", json(&results)),
-                Report::Html => ("report.html", html(&results, &links)),
-            };
-            let p = out.join(name);
-            std::fs::write(&p, text).map_err(|e| Fail(2, format!("{}: {e}", p.display())))?;
-        }
+        let p = out.join(name);
+        std::fs::write(&p, text).map_err(|e| Fail(2, format!("{}: {e}", p.display())))?;
     }
+    Ok(())
+}
 
+/// The exit code results come to: 0 all pass, 1 a check failed, 2 a file or check couldn't run, 3 a configuration error.
+fn exit_code(results: &[FileRes], args: &Args) -> u8 {
     let mut code = 0u8;
-    for f in &results {
+    for f in results {
         if f.error.is_some() {
             code = code.max(2);
         }
@@ -272,7 +302,56 @@ pub fn run(args: Args) -> Result<(), Fail> {
             }
         }
     }
-    if code == 0 { Ok(()) } else { Err(Fail(code, String::new())) }
+    code
+}
+/// `--watch`: checks each new recording in the folders once its size has held still for `--settle` seconds.
+fn watch(
+    args: &Args,
+    store: &tlmbench_store::Store,
+    lookup: &(dyn Fn(&str) -> Option<CheckSet> + Sync),
+) -> Result<(), Fail> {
+    use std::collections::HashMap;
+    use std::time::{Duration, Instant};
+    if let Some(p) = args.paths.iter().find(|p| !p.is_dir()) {
+        return Err(Fail(3, format!("--watch takes folders: {} is not one", p.display())));
+    }
+    let started = Instant::now();
+    let settle = Duration::from_secs_f64(args.settle.max(0.0));
+    // what is there already is left alone
+    let mut done: std::collections::HashSet<PathBuf> = discover(&args.paths, &args.common)?.into_iter().collect();
+    let mut growing: HashMap<PathBuf, (u64, Instant)> = HashMap::new();
+    let mut worst = 0u8;
+    eprintln!(
+        "Watching {} for new recordings (Ctrl-C stops)",
+        args.paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+    );
+    while args.stop_after.is_none_or(|s| started.elapsed().as_secs_f64() < s) {
+        for f in discover(&args.paths, &args.common)? {
+            if done.contains(&f) {
+                continue;
+            }
+            let size = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
+            let e = growing.entry(f.clone()).or_insert((size, Instant::now()));
+            if e.0 != size {
+                *e = (size, Instant::now());
+                continue;
+            }
+            if e.1.elapsed() < settle || size == 0 {
+                continue;
+            }
+            growing.remove(&f);
+            done.insert(f.clone());
+            let results = check_files(std::slice::from_ref(&f), args, store, lookup)?;
+            print_summary(&results);
+            if let Some(out) = &args.out {
+                let name = f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                reports(&results, &out.join(name), args)?;
+            }
+            worst = worst.max(exit_code(&results, args));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    if worst == 0 { Ok(()) } else { Err(Fail(worst, String::new())) }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
