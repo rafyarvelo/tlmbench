@@ -116,4 +116,17 @@ run('chips', async ({ p, check, wait, until, text, visible }) => {
   });
   check('a chip doesn\'t move during its dragstart; the drop gaps come just after', gaps.during[0] === 0 && gaps.during[1] && gaps.after > 0, gaps);
   check('and a drag that ends at once leaves no drop gaps', gaps.ended === 0, gaps);
+  const pnum = await p.evaluate(async () => {
+    const n = document.querySelector('#stack [data-pane="0"] .pnum');
+    const dt = new DataTransfer();
+    const y0 = n.getBoundingClientRect().top;
+    n.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    await Promise.resolve();
+    const during = document.querySelectorAll('.dropgap').length === 0 && n.getBoundingClientRect().top === y0;
+    await new Promise((r) => setTimeout(r, 50));
+    const after = document.querySelectorAll('.dropgap').length;
+    n.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+    return { during, after };
+  });
+  check('a pane number too: nothing moves during its dragstart, the gaps come just after', pnum.during && pnum.after > 0, pnum);
 });

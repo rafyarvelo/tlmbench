@@ -128,7 +128,7 @@
     afterDragStart(() => (carrying = on));
   };
   function overGap(e: DragEvent, r: number) {
-    if (dragging != null) {
+    if (dragFrom != null) {
       e.preventDefault();
       e.stopPropagation();
       paneCopy = isCopy(e);
@@ -145,11 +145,11 @@
   function dropGap(e: DragEvent, r: number) {
     const all = rows();
     const first = r < all.length ? all[r][0] : stack.panes.length;
-    if (dragging != null) {
+    if (dragFrom != null) {
       e.preventDefault();
       e.stopPropagation();
-      const from = dragging;
-      dragging = dropAt = zoneAt = gapOver = null;
+      const from = dragFrom;
+      dragFrom = dragging = dropAt = zoneAt = gapOver = null;
       if (r < all.length) dropPane(from, first, 'top', isCopy(e));
       else dropPane(from, all[all.length - 1][0], 'bottom', isCopy(e));
       return;
@@ -300,6 +300,9 @@
       },
     };
   }
+  /** The pane being dragged, as soon as the drag starts (what drops act on); `dragging` is how the stack shows it, which
+   * waits for the next task (see `afterDragStart`). */
+  let dragFrom: number | null = null;
   let dragging = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
   /** Where on a pane a dragged pane would land: which pane and which part of it. */
@@ -313,20 +316,20 @@
     return fx < 0.22 ? 'left' : fx > 0.78 ? 'right' : fy < 0.3 ? 'top' : fy > 0.7 ? 'bottom' : 'middle';
   }
   function paneOver(e: DragEvent, i: number) {
-    if (dragging == null) return overChans(e, i);
+    if (dragFrom == null) return overChans(e, i);
     paneCopy = isCopy(e);
     const zone = zoneOf(e);
     // over itself a pane only moves out of a shared row (or copies), as the prototype: nothing to show otherwise
     const alone = (rows().find((r) => r.includes(i)) ?? []).length === 1;
-    if (dragging === i && !paneCopy && (zone === 'middle' || alone)) return void (zoneAt = null);
+    if (dragFrom === i && !paneCopy && (zone === 'middle' || alone)) return void (zoneAt = null);
     e.preventDefault();
     zoneAt = { i, zone };
   }
   function paneDrop(e: DragEvent, i: number) {
-    if (dragging == null) return dropChans(e, i);
+    if (dragFrom == null) return dropChans(e, i);
     e.preventDefault();
-    if (zoneAt) dropPane(dragging, i, zoneAt.zone, isCopy(e));
-    dragging = dropAt = zoneAt = null;
+    if (zoneAt) dropPane(dragFrom, i, zoneAt.zone, isCopy(e));
+    dragFrom = dragging = dropAt = zoneAt = null;
   }
 
   const items = (i: number): MenuItem[] => [
@@ -452,10 +455,11 @@
                   draggable={lk ? undefined : 'true'}
                   data-tip={lk ? 'Unlock to move panes' : `Drag to move this pane; hold ${COPY_KEY} to copy it`}
                   ondragstart={(e) => {
+                    dragFrom = i;
                     afterDragStart(() => (dragging = i));
                     e.dataTransfer?.setData('text/plain', `pane ${i + 1}`);
                   }}
-                  ondragend={() => (dragging = dropAt = zoneAt = gapOver = null)}
+                  ondragend={() => (dragFrom = dragging = dropAt = zoneAt = gapOver = null)}
                   ondblclick={() => startRename(i)}>{i + 1}</span
                 >
                 {#if renaming === i}
