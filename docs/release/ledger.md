@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 272 · **Partial** 37 · **Missing** 18 · **Diverged** 3 · **Unverified** 25 · **Owner pass** 17 (372 rows).
+Counts: **Done** 272 · **Partial** 37 · **Missing** 17 · **Diverged** 3 · **Unverified** 25 · **Owner pass** 18 (372 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -217,7 +217,7 @@ where each step stands, and nothing else records either.
 | D-ui-55 | owner sheet, Other things (Nov 16) | The folder's ⌄ menu has a space between Refresh and "New files show by themselves". | Done | `t_watch` (Nov 16) | Every menu item's note: a space apart, muted, 11 px |
 | D-ui-56 | owner sheet U2, decided Nov 16 | In browser-only mode the Events panel is not on the rail (it comes back when events reach the browser, after v1). | Done | `t_browseronly` (Nov 16) | |
 | D-ui-57 | owner idea, v1 (sheet, Nov 15) | The import dialog has a choice of how the file opens, defaulting to Settings' "Files opened for the first time", so one file can open differently without changing the setting. | Missing | | R2.5 |
-| D-ui-58 | owner idea, v1 (sheet, Nov 15) | Explorer's file menu has Open in the system's app: the OS opens the file with its default app, as Help opens the manual (decision 6; the app runs no program itself). | Missing | | R2.5 |
+| D-ui-58 | owner idea, v1 (sheet, Nov 15) | Explorer's file menu has Open in the system's app: the OS opens the file with its default app, as Help opens the manual (decision 6; the app runs no program itself). | Owner pass | `t_exmenus` (Nov 16: the request reaches the core), `app/src-tauri/src/main.rs` (`open_with_system`, the opener plugin) | Built Nov 16: Explorer's file menu › Open with its default app (left out in a browser tab). Look in the real window: a CSV opens in your spreadsheet app or editor, a `.tlm` in whatever the OS has for it, and the app stays as it was. R5 |
 | D-ui-59 | owner sheet G3 (Nov 16) | A code widget can be made from the app without knowing the JSON: the widget editor offers a new SVG widget and a new code widget, each filled in with a working example. | Missing | | R3.3 |
 | D-derive-03 | owner (Nov 15) | A recipe scoped "any file with the channels" gives every file in a tab that has them its own copy (`temp_avg`, `temp_avg·2`), each from its own channels; a recipe that reads two files on purpose (`temp - temp·2`) stays one channel. | Missing | | Today it reaches file 1 only (an automatic recipe doesn't reach other files' channels). R2.5 |
 | D-derive-02 | owner (Nov 15), after making ±2σ bands | A recipe is duplicated from where you work: a derived channel's right-click has Duplicate recipe… (the Derive dialog prefilled with the expression, unit, scope and colour, named "… copy"), and the Edit recipe dialog has Save as new beside Save. | Done | `t_derived` | Nov 15: Duplicate recipe… on a derived channel (the Derive dialog prefilled, "… copy") and Save as new in Edit recipe. The colour is the channel's display setting and isn't copied |

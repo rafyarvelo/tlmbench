@@ -74,6 +74,11 @@ run('exmenus', async ({ p, check, text, visible, fake, paneCount, until, setting
   check('⋯ heads its items with the channels shown', /^6 channels/i.test(await text('.exmenu')), await text('.exmenu'));
   await p.keyboard.press('Escape');
 
+  // Open with its default app: the OS opens the file (the app runs nothing itself)
+  await p.click('#explorer .row.file[data-path$="flight.tlm"]', { button: 'right' });
+  await p.click('.filemenu [data-fm="system"]');
+  check('Open with its default app asks the OS to open the file', await until(() => window.__tlmFake.openedWithSystem?.length === 1 && window.__tlmFake.openedWithSystem[0].endsWith('flight.tlm')), await fake(() => window.__tlmFake.openedWithSystem));
+
   // Open only this
   await p.dblclick('#explorer .row.file[data-path$="hover.csv"]');
   await until(() => document.querySelectorAll('#wsTabs .wstab').length === 2);

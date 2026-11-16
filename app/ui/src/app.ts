@@ -5282,6 +5282,7 @@ Object.assign(actions, {
     })(),
   moveToWindow: (key: number, keep = false) => void moveTabToWindow(key, keep),
   dropTab: (key: number, x: number, y: number) => void dropTabAt(key, x, y),
+  openWithSystem: (path: string) => void invoke('open_with_system', { path }).catch((e) => note(`Couldn't open ${nameOf(path)} in its default app: ${e}`)),
   closePath: (path: string) =>
     void (async () => {
       for (const t of tabs.list.filter((t) => t.path === path)) await closeTab(t.key);

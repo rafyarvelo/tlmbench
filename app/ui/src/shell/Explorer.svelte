@@ -265,12 +265,14 @@
     { label: 'Add to this tab', data: { fm: 'add' }, disabled: !ui.file || inTab(path) || !listedPath(path), run: () => actions.addToTab(path) },
     { label: 'Make primary', data: { fm: 'primary' }, disabled: !slotOf(path) || slotOf(path)!.slot === 1, run: () => actions.makePrimary(slotOf(path)!.slot) },
     { label: 'Alignment and channel prefix…', data: { fm: 'align' }, disabled: !slotOf(path) || slotOf(path)!.slot === 1, run: () => (alignOpen = slotOf(path)!.slot) },
+    // the OS opens the file with its default app (to look at the raw data; owner, v1): the app asks, it runs nothing itself
+    { label: 'Open with its default app', data: { fm: 'system' }, run: () => actions.openWithSystem(path) },
     { label: 'Close this file', data: { fm: 'close' }, disabled: !inTab(path), run: () => (slotOf(path) ? actions.closeSlot(slotOf(path)!.slot) : actions.closePath(path)) },
     { label: 'Close all files', data: { fm: 'closeall' }, disabled: !tabs.list.length, run: actions.closeFile },
   ];
   /** A browser tab has one file per tab: no layouts, Compare, Add to tab, primary or alignment there (they come after v1). */
   const AFTER_V1 = ['withlayout', 'compare', 'add', 'primary', 'align'];
-  const fileItems = (path: string): MenuItem[] => fileItemsAll(path).filter((it) => !(ui.browserOnly && 'data' in it && AFTER_V1.includes(it.data?.fm ?? '')));
+  const fileItems = (path: string): MenuItem[] => fileItemsAll(path).filter((it) => !(ui.browserOnly && 'data' in it && [...AFTER_V1, 'system'].includes(it.data?.fm ?? '')));
   const inSel = (ch: number) => stack.panes[stack.sel]?.channels.includes(ch) ?? false;
   const addShownTip = $derived(shownChans.length ? `Add ${q.trim() ? `the ${shownChans.length} matching` : `all ${shownChans.length}`} channels to pane ${stack.sel + 1}` : 'No channels shown');
 

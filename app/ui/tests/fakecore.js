@@ -1297,6 +1297,10 @@
     'plugin:event|unlisten': () => null,
     // the cache: `cache` is its entries (bytes each; open: in use, kept by Clear)
     cache_info: () => ({ path: '/Users/me/Library/Caches/tlmbench', bytes: fake.cache.reduce((a, e) => a + e.bytes, 0), cap: 20 * 2 ** 30 }),
+    open_with_system({ path }) {
+      (fake.openedWithSystem ??= []).push(path);
+      return null;
+    },
     reveal_path({ path }) {
       (fake.revealedPaths ??= []).push(path);
       return null;

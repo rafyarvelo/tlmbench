@@ -147,6 +147,7 @@ export const actions = {
   dropTab: (_key: number, _x: number, _y: number) => {},
   /** Closes a file: every tab showing it. */
   closePath: (_path: string) => {},
+  openWithSystem: (_path: string) => {},
   /** Closes the folder's tabs and forgets its saved session. */
   resetSession: () => {},
   /** Opens a folder's session ('' : the files opened without a folder): its folder in Explorer and its tabs. */

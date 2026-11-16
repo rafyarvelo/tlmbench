@@ -3491,6 +3491,13 @@ async fn reveal_path(path: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
 }
 
+/// Explorer's file menu › Open with its default app: the OS opens the file with the app it uses for that type (the app
+/// asks the OS to open a document, as Help opens the manual; it runs no program of its own).
+#[tauri::command]
+async fn open_with_system(path: String) -> Result<(), String> {
+    tauri_plugin_opener::open_path(path, None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Settings → Cache → Open folder: the OS file manager shows the cache folder (reveal only; the app runs no program).
 #[tauri::command]
 async fn cache_reveal(files: State<'_, Files>) -> Result<(), String> {
@@ -3699,6 +3706,7 @@ macro_rules! commands {
             watch_folder,
             needs_descriptor,
             descriptor_list,
+            open_with_system,
             descriptor_preview,
             descriptor_find_frames,
             descriptor_save,
