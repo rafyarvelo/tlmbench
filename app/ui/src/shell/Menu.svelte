@@ -151,7 +151,7 @@
             if (!keep) onclose();
             run();
           }}
-          >{#if it.icon}{@html it.icon}{/if}<span class="nm">{it.label}{#if it.note}<small>{it.note}</small>{/if}</span>{#if it.meta}<span
+          >{#if it.icon}{@html it.icon}{/if}<span class="nm">{it.label}{#if it.note}{" "}<small class="mnote">{it.note}</small>{/if}</span>{#if it.meta}<span
               class="meta">{it.meta}</span
             >{/if}{#if it.kbd}<kbd>{it.kbd}</kbd>{/if}{#if it.checked}<span class="ck">{@html ICON.check}</span>{/if}</button
         >
@@ -180,5 +180,10 @@
   }
   .mi kbd {
     margin-left: 0;
+  }
+  /* a note after an item's name, a space apart (sheet: Refresh's note ran into it) */
+  .mnote {
+    color: var(--fg-muted);
+    font-size: 11px;
   }
 </style>

@@ -17,6 +17,7 @@ run('watch', async ({ p, check, fake, until }) => {
   await fake((d) => (window.__tlmFake.files[`${d}/quiet.tlm`] = {}), DIR);
   await p.click('#exFolder');
   check('the folder menu has Refresh', await until(() => !!document.querySelector('.exmenu [data-ex="refresh"]')));
+  check('its note is a space apart and muted (sheet, Nov 16)', await p.evaluate(() => { const i = document.querySelector('.exmenu [data-ex="refresh"] .nm'); const n = i?.querySelector('small'); return /^Refresh New files/.test(i?.textContent ?? '') && n && getComputedStyle(n).fontSize === '11px'; }));
   await p.click('.exmenu [data-ex="refresh"]');
   check('Refresh lists the folder again (a share that sent nothing)', await until(() => document.querySelectorAll('#explorer .row.file').length === 3), await files());
 }, { files: { '/rec/a.tlm': {} }, launch: null });
