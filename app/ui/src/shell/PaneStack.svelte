@@ -239,6 +239,8 @@
   /** Panes whose header can't show every chip: how many are folded into "+N", and the open list. */
   let folded = $state<Record<number, number>>({});
   let chanList = $state<null | { i: number; anchor: HTMLElement }>(null);
+  /** A channel dragged out of the +N list: the list fades and lets the drag through to the panes under it. */
+  let listDrag = $state(false);
   /** Hides the chips that don't fit the header, from the last, and counts them. */
   function fitChips(node: HTMLElement, i: number) {
     const fit = () => {
@@ -589,9 +591,23 @@
 {/if}
 
 {#if chanList && stack.panes[chanList.i]}
-  <Menu class="chanlist" label="Channels in pane {(chanList?.i ?? 0) + 1}" anchor={chanList?.anchor} onclose={() => (chanList = null)}>
+  <Menu class="chanlist{listDrag ? ' listdrag' : ''}" label="Channels in pane {(chanList?.i ?? 0) + 1}" anchor={chanList?.anchor} onclose={() => (chanList = null)}>
     {#each chanList ? (stack.panes[chanList.i]?.channels ?? []) : [] as ch (ch)}
-      <div class="mi" role="menuitem" tabindex="-1" style="--c: {chCss(ch)}"><span class="sw8" style="background: var(--c)"></span><span class="nm">{chName(ch)}</span>{#if chUnit(ch)}<span class="hint">{chUnit(ch)}</span>{/if}<span class="hint num">{stack.values[ch] ?? stack.resting[ch] ?? ''}</span></div>
+      <!-- each drags as its chip does (the prototype's +N list): to another pane, an edge or a gap; the copy key copies -->
+      <div
+        class="mi"
+        role="menuitem"
+        tabindex="-1"
+        style="--c: {chCss(ch)}"
+        data-listch={ch}
+        draggable={viewLocked() ? undefined : 'true'}
+        data-tip={viewLocked() ? undefined : `Drag to another pane to move it; hold ${COPY_KEY} to copy`}
+        ondragstart={(e) => {
+          e.dataTransfer?.setData('application/x-tlm-chip', JSON.stringify({ ch, from: chanList?.i ?? 0 }));
+          e.dataTransfer?.setData('text/plain', ui.channels[ch]?.name ?? String(ch));
+          listDrag = true;
+        }}
+        ondragend={() => ((listDrag = false), (chanList = null))}><span class="sw8" style="background: var(--c)"></span><span class="nm">{chName(ch)}</span>{#if chUnit(ch)}<span class="hint">{chUnit(ch)}</span>{/if}<span class="hint num">{stack.values[ch] ?? stack.resting[ch] ?? ''}</span></div>
     {/each}
   </Menu>
 {/if}
@@ -601,6 +617,14 @@
 {/if}
 
 <style>
+  /* while one of its channels is dragged the +N list fades and lets the drag reach the panes under it */
+  :global(.chanlist.listdrag) {
+    opacity: 0.2;
+    pointer-events: none;
+  }
+  :global(.chanlist .mi[draggable='true']) {
+    cursor: grab;
+  }
   .chkdot {
     display: inline-block;
     width: 6px;
@@ -1060,3 +1084,4 @@
     color: var(--fg-muted);
   }
 </style>
+

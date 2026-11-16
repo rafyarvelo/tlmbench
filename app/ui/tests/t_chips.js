@@ -58,6 +58,31 @@ run('chips', async ({ p, check, wait, until, text, visible }) => {
   check('a header that cannot fit them says "+N"', await until(() => !!document.querySelector('#stack [data-pane="0"] [data-more-chips]')), await text('#stack [data-pane="0"] .phead'));
   await p.click('#stack [data-pane="0"] [data-more-chips]');
   check('and lists every channel', (await p.$$('.chanlist .mi')).length === 5, await text('.chanlist'));
+  // its channels drag as chips do (owner's V2 note, Nov 16: the prototype's +N list lets them be dragged)
+  const before = await p.evaluate(() => window.__tlmApp.panes());
+  const moved = await p.evaluate(() => {
+    const items = document.querySelectorAll('.chanlist .mi');
+    const src = items[items.length - 1];
+    const ch = Number(src.dataset.listch);
+    const dt = new DataTransfer();
+    src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    return new Promise((res) =>
+      setTimeout(() => {
+        const faded = document.querySelector('.chanlist')?.classList.contains('listdrag');
+        const pane = document.querySelector('#stack section.pane[data-pane="1"]');
+        const r = pane.getBoundingClientRect();
+        const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height * 0.6);
+        const ev = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.x + r.width / 2, clientY: r.y + r.height * 0.6 };
+        at.dispatchEvent(new DragEvent('dragover', ev));
+        at.dispatchEvent(new DragEvent('drop', ev));
+        src.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+        res({ ch, faded });
+      }, 80),
+    );
+  });
+  const after = await p.evaluate(() => window.__tlmApp.panes());
+  check('a channel of the +N list drags to another pane (the list fades while it does)', moved.faded && after[1].includes(moved.ch) && !after[0].includes(moved.ch) && before[0].includes(moved.ch), [moved, before, after]);
+  check('and the list closes when the drag ends', await until(() => !document.querySelector('.chanlist')));
   await p.keyboard.press('Escape');
   await p.setViewportSize({ width: 1440, height: 900 });
   await wait(500);
