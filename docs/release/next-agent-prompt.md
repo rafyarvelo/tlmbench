@@ -49,9 +49,7 @@ full list; these are the notes that aren't in the ledger rows.
    dialog's choice of how a file opens) and **D-ingest-12** (CSV text columns as labelled channels, ≤256 values, decided Nov 16).
    D-ui-58 (Open with its default app) is built (Owner pass).
 4. **R3.3 (the rest)** as the ledger lists, plus **D-ui-59** (a code widget made from the app without the JSON; owner sheet G3).
-5. **R3.4**, then the pre-freeze whole-app apple-design audit (both themes, the viewer, browser-only). **D-ui-52** (a sidebar
-   panel's first move to the right drew wrong, sheet C2) is not reproduced: the owner is asked for a screenshot on the sheet. After
-   R3.4 the UI is frozen.
+5. **R3.4**, then the pre-freeze whole-app apple-design audit (both themes, the viewer, browser-only). After R3.4 the UI is frozen.
 6. **Each step closes with** the ledger rows moved with evidence, `python3 ci/ledger_check.py` and its counts line, the status
    table, the tests README, `docs/follow-ups.md` where behaviour differs from the design, and the owner sheet.
 

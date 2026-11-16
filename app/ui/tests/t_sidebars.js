@@ -55,6 +55,17 @@ run('sidebars', async ({ p, check, visible, plotAt, settingsLS, until, wait }) =
   // drag a title: Explorer above Cursors
   await p.dragAndDrop('#measure [data-panel="explorer"] .phd', '#measure section[data-panel="cur"] .phd', { targetPosition: { x: 20, y: 2 } });
   check('dragging a title reorders the panels', (await order()).right.join() === 'explorer,cur,stats', await order());
+  // sharing the right sidebar with Measure's panels, Explorer keeps its height and draws inside it (sheet C2, the owner's
+  // screenshot Nov 16: it was squeezed to nothing and drew over Visible range)
+  const boxes = () => p.evaluate(() => ['explorer', 'cur', 'stats'].map((id) => { const r = document.querySelector(`#measure [data-panel="${id}"]`).getBoundingClientRect(); return { id, top: r.top, bottom: r.bottom, h: r.height }; }));
+  // a short window, as the owner's: the panels don't all fit
+  const vp = p.viewportSize();
+  await p.setViewportSize({ width: vp.width, height: 520 });
+  await p.waitForTimeout(200);
+  const bx = await boxes();
+  check('in a shared sidebar Explorer keeps its height, above the next panel, not over it', bx[0].h >= 200 && bx[0].bottom <= bx[1].top + 1 && bx[1].bottom <= bx[2].top + 1, bx);
+  check('and its content stays inside it', await p.evaluate(() => getComputedStyle(document.querySelector('#measure [data-panel="explorer"]')).overflow === 'hidden'));
+  await p.setViewportSize(vp);
   // and Stats to the left sidebar
   await p.dragAndDrop('#measure section[data-panel="stats"] .phd', '#side', { targetPosition: { x: 100, y: 400 } });
   check('...or moves one to the other sidebar, shown there', (await order()).left.includes('stats') && (await order()).right.join() === 'explorer,cur' && (await settingsLS()).leftPanel === 'measure' && (await visible('#side #mpStats')), await order());

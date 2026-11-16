@@ -301,11 +301,15 @@
   .strips {
     margin: -8px -12px 8px;
   }
+  /* Explorer fills its sidebar; sharing one with other panels (Measure's, on the right) it keeps a usable height and draws
+     inside it, its tree scrolling, and the sidebar scrolls when they don't all fit (sheet C2: squeezed to nothing, it drew
+     over the next panel) */
   .exwrap {
     display: flex;
-    flex: 1;
+    flex: 1 1 auto;
     flex-direction: column;
-    min-height: 0;
+    min-height: 240px;
+    overflow: hidden;
   }
   .side[hidden] {
     display: none;

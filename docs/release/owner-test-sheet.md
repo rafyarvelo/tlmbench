@@ -268,8 +268,8 @@ Notes:
 ### C2. Drag sidebar panels, tabs, and pane numbers to reorder (L: X-win-03)
 You wrote (Nov 16): panels switch sides, but there's a rendering issue when the second panel first goes from left to right;
 tabs don't reorder. Changed: a tab dropped on a neighbour lands on the side of it you let go on (a drag onto the tab to its
-right did nothing). The panel's rendering issue isn't reproduced yet (D-ui-52): what did you see (a gap, an overlap, a panel
-drawn twice)? A screenshot helps.
+right did nothing). The panel overlap from your screenshot is fixed too (D-ui-52): Explorer in the right sidebar of a short
+window was squeezed to nothing and drew over Visible range; it keeps its height now and the sidebar scrolls. Re-test both.
 Result:
 Notes:
 
