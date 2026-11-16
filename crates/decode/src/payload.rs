@@ -299,6 +299,7 @@ fn write_fields<R: Recording + RecordBytes>(
                 category: None,
                 file,
                 dtype: f.dtype,
+                labels: Vec::new(),
             })
             .collect(),
         skipped_columns: Vec::new(),
@@ -306,6 +307,7 @@ fn write_fields<R: Recording + RecordBytes>(
         t_last,
         rate: None,
         backwards: Default::default(),
+        notes: Vec::new(),
     })
 }
 

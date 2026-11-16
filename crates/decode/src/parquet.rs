@@ -138,7 +138,7 @@ fn build(source: &Source, tmp: &Path) -> Result<Manifest> {
             .zip(names)
             .map(|(&(i, r), file)| {
                 let (name, unit) = name_and_unit(schema.field(i));
-                ManifestChannel { name, unit, category: None, file, dtype: r.dtype() }
+                ManifestChannel { name, unit, category: None, file, dtype: r.dtype(), labels: Vec::new() }
             })
             .collect(),
         skipped_columns: skipped,
@@ -146,6 +146,7 @@ fn build(source: &Source, tmp: &Path) -> Result<Manifest> {
         t_last,
         rate: None,
         backwards,
+        notes: Vec::new(),
     })
 }
 

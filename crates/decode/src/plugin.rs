@@ -205,6 +205,7 @@ pub(crate) fn build_from(
                 category: None,
                 file,
                 dtype: c.dtype,
+                labels: Vec::new(),
             })
             .collect(),
         skipped_columns: Vec::new(),
@@ -212,5 +213,6 @@ pub(crate) fn build_from(
         t_last,
         rate: None,
         backwards,
+        notes: Vec::new(),
     })
 }

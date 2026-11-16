@@ -94,8 +94,8 @@
   const T0 = 1767225600000000000n; // 2026-01-01T00:00:00Z
   /** A recording: `rate` Hz for `samples` samples; channel k is a few sines, with NaNs where `gaps` says. It starts
    *  on 2026-01-01, or at 0 when `relative`; `time: 'index'` is a file with no time (a sample a second, as the core). */
-  function recording(path, { channels = ['accel_x', 'accel_y', 'roll', 'pitch', 'motor_rpm', 'motor_rpm_target'], units, samples = 200000, rate = 1000, built = true, relative = false, time = 'rate' } = {}) {
-    const chans = channels.map((name, k) => ({ name, unit: units?.[k] ?? (name.includes('rpm') ? 'rpm' : name.startsWith('accel') ? 'g' : 'deg'), dtype: 'f32' }));
+  function recording(path, { channels = ['accel_x', 'accel_y', 'roll', 'pitch', 'motor_rpm', 'motor_rpm_target'], units, samples = 200000, rate = 1000, built = true, relative = false, time = 'rate', labels } = {}) {
+    const chans = channels.map((name, k) => ({ name, unit: units?.[k] ?? (name.includes('rpm') ? 'rpm' : name.startsWith('accel') ? 'g' : 'deg'), dtype: 'f32', ...(labels?.[name] ? { labels: labels[name] } : {}) }));
     const index = time === 'index';
     return { path, chans, samples, rate: index ? 1 : rate, built, done: built ? samples : 0, progress: null, t0: index || relative ? 0n : T0, index };
   }
@@ -361,7 +361,7 @@
     saved: [],
     csv(path, names, o = {}) {
       const time = o.time === undefined ? 0 : o.time;
-      const columns = names.map((n, i) => ({ source: n, name: n, unit: o.units?.[n] ?? null, kind: i === time ? 'time' : (o.text ?? []).includes(n) ? 'text' : 'number' }));
+      const columns = names.map((n, i) => ({ source: n, name: n, unit: o.units?.[n] ?? null, kind: i === time ? 'time' : (o.text ?? []).includes(n) ? 'text' : 'number', texts: (o.text ?? []).includes(n) ? (o.texts?.[n] ?? 4) : undefined }));
       fake.csvs[path] = { header_key: [...names].sort().join('\u0000'), delimiter: o.delimiter ?? ',', columns, time, time_unit: time == null ? null : (o.unit ?? 's'), preview: [], rows: o.rows ?? 1000, rows_exact: true, rate_hz: time == null ? null : (o.rate ?? 10) };
     },
     /** Binary files for the descriptor form, by path: `fake.bin(path)` is a logger's 24-byte frames (sync A55A, a

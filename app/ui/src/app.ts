@@ -80,6 +80,8 @@ interface ChannelInfo {
   dtype: string;
   /** A group from an import profile. */
   category?: string | null;
+  /** A text channel's texts: value k shows as labels[k] (a CSV text column, D-ingest-12). */
+  labels?: string[];
 }
 
 export interface RecordingInfo {
@@ -172,7 +174,7 @@ type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; 
 type Member = { id: number; path: string; /** What the sidebar calls it when not its file name (a live source's name). */ name?: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint] };
 
 /** Explorer's rows for a file's channels: the recording's, then its derived ones (marked ƒ). */
-const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, missing: f.missing.find((m) => m.channel === i)?.count, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
+const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, labels: c.labels, missing: f.missing.find((m) => m.channel === i)?.count, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
 
 const state = {
   file: null as null | OpenFile,
@@ -798,7 +800,10 @@ function draw(): void {
         coarse ||= t.coarse;
         ts.push(t);
       }
-      ranges[key] = { ...axisRange(ax, ts), log: ax.log, dec: ax.dec, label: ax.label };
+      // an axis whose channels are one text channel shows its texts (D-ingest-12)
+      const onAxis = chans.filter((ch) => keyOf.get(ch) === key);
+      const texts = onAxis.length === 1 ? ui.channels[onAxis[0]]?.labels : undefined;
+      ranges[key] = { ...axisRange(ax, ts), log: ax.log, dec: ax.dec, label: ax.label, labels: texts?.length ? texts : undefined };
     }
     paneY[i] = ranges;
     if (state.file)
@@ -5594,6 +5599,10 @@ export const gateApi = {
   /** What a drop or the Explorer's Open does: files the user chose. */
   openPaths: (paths: string[]) => openWithImport(paths),
   view: () => ({ t0: String(state.t0), t1: String(state.t1), back: state.history.length }),
+  /** A value as readouts show it, and pane `i`'s left axis's texts (a text channel, D-ingest-12). */
+  fmt: (ch: number, v: number) => fmtCh(null, ch, v),
+  axisLabels: (i: number) => paneY[i]?.u0?.labels ?? null,
+  setValueMap: (name: string, m: Record<string, string>) => setSetting('valueMaps', { ...settings.valueMaps, [name]: m }),
   cursors: () => ({ A: state.A == null ? null : String(state.A), B: state.B == null ? null : String(state.B) }),
   hoverT: () => (state.hoverT == null ? null : String(state.hoverT)),
   /** Moves the pointer's time as a chart would (tests of what follows it: widgets). */

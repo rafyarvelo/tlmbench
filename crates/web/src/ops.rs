@@ -210,6 +210,10 @@ fn open_export(st: &mut State, a: &Value) -> Result<Reply, String> {
             unit: c["unit"].as_str().map(str::to_owned),
             dtype: dtype(c["dtype"].as_str().unwrap_or("f64")),
             category: c["category"].as_str().map(str::to_owned),
+            labels: c["labels"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|l| l.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default(),
         })
         .collect();
     let d = Ds::new(
@@ -854,7 +858,7 @@ mod tests {
             N,
             TimeSource::Rate { hz: 1000.0 },
             Tm::Rate(RateTimes::from_rate(0, 1000.0, N)),
-            vec![ChannelInfo { name: "x".into(), unit: None, dtype: "f64", category: None }],
+            vec![ChannelInfo { name: "x".into(), unit: None, dtype: "f64", category: None, labels: Vec::new() }],
         );
         let vals: Vec<f64> = (0..N).map(value).collect();
         let Tm::Rate(t) = &d.tm else { unreachable!() };

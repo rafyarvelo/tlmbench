@@ -31,7 +31,8 @@ use crate::descriptor::DType;
 use crate::error::{Result, format_err, io_err};
 use crate::profile::{ImportProfile, RateChoice};
 
-pub(crate) const MANIFEST_VERSION: u32 = 1;
+/// 2: CSV text columns open as labelled channels (D-ingest-12).
+pub(crate) const MANIFEST_VERSION: u32 = 2;
 
 /// The cache root: `override`, else `$TLMBENCH_CACHE`, else the OS cache dir's `tlmbench` folder (the desktop app
 /// and the CLI share it).
@@ -148,6 +149,9 @@ pub(crate) struct Manifest {
     /// Where the file's time went backwards (see [`Backwards`]).
     #[serde(default, skip_serializing_if = "Backwards::is_empty")]
     pub(crate) backwards: Backwards,
+    /// Why columns were left out, for those that say (a text column with too many different texts).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) notes: Vec<String>,
 }
 
 pub(crate) use crate::backwards::{Backwards, clamp_backwards};
@@ -167,6 +171,9 @@ pub(crate) struct ManifestChannel {
     pub(crate) file: String,
     #[serde(default = "f64_type")]
     pub(crate) dtype: DType,
+    /// A text column's texts: value `k` shows as `labels[k]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) labels: Vec<String>,
 }
 
 fn f64_type() -> DType {
@@ -374,6 +381,11 @@ fn write_columns(
     let mut t_out = if has_time { Some(create("t.i64")?) } else { None };
     let numeric: Vec<_> = schema.numeric_columns().map(|(_, c)| c.clone()).collect();
     let mut outs = (0..numeric.len()).map(|k| create(&format!("c{k}.f64"))).collect::<Result<Vec<_>>>()?;
+    // text columns: codes into each column's labels, in file order (D-ingest-12)
+    let texts: Vec<_> = schema.text_columns().map(|(_, c)| c.clone()).collect();
+    let mut text_outs = (0..texts.len()).map(|k| create(&format!("x{k}.f64"))).collect::<Result<Vec<_>>>()?;
+    let labels = std::sync::Mutex::new(vec![csv::Labels::default(); texts.len()]);
+    let labels_ref = &labels;
 
     // Batches parse in parallel while a writer thread writes the previous batch in order.
     let batch = rayon::current_num_threads() * 2;
@@ -394,11 +406,18 @@ fn write_columns(
                     for (w, col) in outs.iter_mut().zip(&p.columns) {
                         w.write_all(bytemuck::cast_slice(col)).map_err(io_err(dir))?;
                     }
+                    let mut labels = labels_ref.lock().unwrap();
+                    for ((w, l), t) in text_outs.iter_mut().zip(labels.iter_mut()).zip(&p.texts) {
+                        let codes = l.absorb(t);
+                        if !l.over {
+                            w.write_all(bytemuck::cast_slice(&codes)).map_err(io_err(dir))?;
+                        }
+                    }
                     rows += p.rows;
                     skipped += p.skipped;
                 }
             }
-            for mut w in t_out.into_iter().chain(outs) {
+            for mut w in t_out.into_iter().chain(outs).chain(text_outs) {
                 w.flush().map_err(io_err(dir))?;
             }
             Ok((rows, skipped, t_first, t_last, backwards))
@@ -435,33 +454,62 @@ fn write_columns(
         TimeColumn::Numeric { index, .. } | TimeColumn::Iso { index } => Some(schema.columns[index].name.clone()),
         TimeColumn::Index => None,
     };
+    // the channels in the file's column order: numbers, and the text columns with at most MAX_LABELS texts
+    let labels = labels.into_inner().unwrap();
+    let (mut channels, mut skipped_columns, mut notes) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut n, mut x) = (0, 0);
+    for c in &schema.columns {
+        match c.kind {
+            csv::Kind::Number => {
+                channels.push(ManifestChannel {
+                    name: c.name.clone(),
+                    unit: c.unit.clone(),
+                    category: c.category.clone(),
+                    file: format!("c{n}.f64"),
+                    dtype: DType::F64,
+                    labels: Vec::new(),
+                });
+                n += 1;
+            }
+            csv::Kind::Text => {
+                let l = &labels[x];
+                if l.over {
+                    let _ = fs::remove_file(dir.join(format!("x{x}.f64")));
+                    skipped_columns.push(c.name.clone());
+                    notes.push(format!(
+                        "Column \"{}\" left out: more than {} different texts",
+                        c.name,
+                        csv::MAX_LABELS
+                    ));
+                } else {
+                    channels.push(ManifestChannel {
+                        name: c.name.clone(),
+                        unit: c.unit.clone(),
+                        category: c.category.clone(),
+                        file: format!("x{x}.f64"),
+                        dtype: DType::F64,
+                        labels: l.labels.clone(),
+                    });
+                }
+                x += 1;
+            }
+            csv::Kind::Skip => skipped_columns.push(c.name.clone()),
+            csv::Kind::Time => {}
+        }
+    }
     Ok(Some(Manifest {
         version: MANIFEST_VERSION,
         source_size: source.len,
         rows,
         skipped_rows: skipped,
         time,
-        channels: numeric
-            .into_iter()
-            .enumerate()
-            .map(|(k, c)| ManifestChannel {
-                name: c.name,
-                unit: c.unit,
-                category: c.category,
-                file: format!("c{k}.f64"),
-                dtype: DType::F64,
-            })
-            .collect(),
-        skipped_columns: schema
-            .columns
-            .iter()
-            .filter(|c| matches!(c.kind, csv::Kind::Text | csv::Kind::Skip))
-            .map(|c| c.name.clone())
-            .collect(),
+        channels,
+        skipped_columns,
         t_first,
         t_last,
         rate: schema.index_rate.map(|hz| ManifestRate { t0: 0, hz }),
         backwards,
+        notes,
     }))
 }
 
@@ -504,10 +552,11 @@ pub(crate) fn load(path: &Path, dir: &Path, m: Manifest, format: &str) -> Result
                 unit: c.unit.clone(),
                 dtype: c.dtype.name(),
                 category: c.category.clone(),
+                labels: c.labels.clone(),
             })
             .collect(),
         skipped: m.skipped_columns,
-        notes: m.backwards.note().into_iter().collect(),
+        notes: m.backwards.note().into_iter().chain(m.notes).collect(),
     };
     Ok(CachedRecording {
         info,
@@ -589,7 +638,9 @@ mod tests {
 
         let r = open_csv(&src, &root).unwrap();
         assert_eq!(r.info().samples, 20_000);
-        assert_eq!(r.info().skipped, ["label"]);
+        // a text column with one text opens as a labelled channel (D-ingest-12)
+        assert!(r.info().skipped.is_empty());
+        assert_eq!(r.info().channels[1].labels, ["x"]);
         assert_eq!(r.info().t_last, Some(1_999_900_000));
         let tr = r.trace(0, Viewport { t0: 0, t1: 2_000_000_000, width_px: 100, raw_max: 0 });
         assert_eq!(tr.kind, tlmbench_core::TraceKind::M4);
@@ -646,6 +697,36 @@ mod tests {
         assert!(open_csv(&ok, &tmp.path().join("cache")).unwrap().info().notes.is_empty());
     }
 
+    #[test]
+    fn text_columns_open_as_labelled_channels_up_to_256_texts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("modes.csv");
+        let mut text = String::from("t,mode,v,id\n");
+        for i in 0..1000 {
+            let mode = ["Idle", "Mission", "", "Return"][(i / 100) % 4];
+            text.push_str(&format!("{i},{mode},{i},id{i}\n"));
+        }
+        fs::write(&src, text).unwrap();
+        let r = open_csv(&src, &tmp.path().join("cache")).unwrap();
+        let ch = &r.info().channels;
+        // in the file's column order; the codes follow the order the file first has each text
+        assert_eq!(ch.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["mode", "v"]);
+        assert_eq!(ch[0].labels, ["Idle", "Mission", "Return"]);
+        let v = r.read(0, 0, 1000).to_f64(1.0, 0.0);
+        assert_eq!((v[0], v[150], v[350]), (0.0, 1.0, 2.0));
+        assert!(v[250].is_nan(), "an empty cell is missing");
+        // 1000 different ids: left out, and the note says why
+        assert_eq!(r.info().skipped, ["id"]);
+        assert!(
+            r.info().notes.iter().any(|n| n.contains("\"id\" left out: more than 256 different texts")),
+            "{:?}",
+            r.info().notes
+        );
+        // the same from the cache
+        let again = open_csv(&src, &tmp.path().join("cache")).unwrap();
+        assert_eq!(again.info().channels[0].labels, ch[0].labels);
+    }
+
     fn sample_csv(dir: &Path) -> PathBuf {
         let src = dir.join("p.csv");
         fs::write(&src, "time_ms,Speed [m/s],gps,note\n0,1,10,a\n100,2,20,b\n200,3,30,c\n400,5,50,d\n").unwrap();
@@ -659,7 +740,7 @@ mod tests {
         let src = sample_csv(tmp.path());
         let root = tmp.path().join("cache");
         let plain = open_csv(&src, &root).unwrap();
-        assert_eq!(plain.info().channels.len(), 2); // time_ms is the time column
+        assert_eq!(plain.info().channels.len(), 3); // time_ms is the time column; note is a text channel
         let p = ImportProfile {
             columns: vec![
                 ColumnChoice {
@@ -675,12 +756,12 @@ mod tests {
         };
         let r = open_csv_with(&src, &root, Some(&p)).unwrap();
         let ch = &r.info().channels;
-        assert_eq!(ch.len(), 1);
+        assert_eq!(ch.len(), 2); // v, and note as a text channel
         assert_eq!(
             (ch[0].name.as_str(), ch[0].unit.as_deref(), ch[0].category.as_deref()),
             ("v", Some("km/h"), Some("nav"))
         );
-        assert_eq!(r.info().skipped, ["gps", "note"]);
+        assert_eq!(r.info().skipped, ["gps"]);
         // its own entry; the plain one is untouched
         assert_eq!(fs::read_dir(root.join("csv")).unwrap().count(), 2);
         assert_eq!(fingerprint_with(&src, Some(&p)).unwrap(), fingerprint_with(&src, Some(&p.clone())).unwrap());
@@ -716,7 +797,7 @@ mod tests {
         let a = with(RateChoice::Assume { hz: 10.0 });
         assert_eq!(a.info().time, TimeSource::Rate { hz: 10.0 });
         assert_eq!(a.info().t_last, Some(300_000_000));
-        assert_eq!(a.info().channels.len(), 3); // time_ms, Speed, gps (note is text)
+        assert_eq!(a.info().channels.len(), 4); // time_ms, Speed, gps and note (a text channel)
         // sample numbers
         let s = with(RateChoice::Samples);
         assert_eq!(s.info().time, TimeSource::Index);
@@ -804,6 +885,7 @@ pub fn open_derived(
                         category: c.category.clone(),
                         file: format!("c{k}.f64"),
                         dtype: DType::F64,
+                        labels: Vec::new(),
                     })
                     .collect(),
                 skipped_columns: Vec::new(),
@@ -814,6 +896,7 @@ pub fn open_derived(
                     _ => None,
                 },
                 backwards: Default::default(),
+                notes: Vec::new(),
             })
         })?,
     };

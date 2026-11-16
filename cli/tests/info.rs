@@ -29,7 +29,11 @@ fn csv_fixtures_as_json() {
     assert_eq!(v[0]["time"]["name"], "Date");
     assert_eq!(v[0]["duration_ns"], 728i64 * 86_400 * 1_000_000_000);
     assert_eq!(v[1]["channels"][0]["unit"], "m/s");
-    assert_eq!(v[1]["skipped"], serde_json::json!(["Note, quoted", "Flight Mode"]));
+    // its text columns open as labelled channels (D-ingest-12)
+    assert_eq!(v[1]["skipped"], serde_json::json!([]));
+    let mode =
+        v[1]["channels"].as_array().unwrap().iter().find(|c| c["name"] == "Flight Mode").expect("a text channel");
+    assert!(!mode["labels"].as_array().unwrap().is_empty(), "{mode}");
     assert_eq!(v[2]["time"]["kind"], "index");
 }
 

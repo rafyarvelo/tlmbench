@@ -182,6 +182,8 @@ export interface YAxis {
   log?: boolean;
   dec?: number;
   label?: string;
+  /** A text channel's texts: a tick at each code, showing its text (D-ingest-12). */
+  labels?: string[];
 }
 
 export interface AxesView {
@@ -195,6 +197,15 @@ export interface AxesView {
 /** A value axis's ticks: positions in the axis's units (log10 for a log axis) and their labels. */
 function yTicks(ax: YAxis, h: number): [number, string][] {
   if (!(Number.isFinite(ax.min) && Number.isFinite(ax.max) && ax.max > ax.min)) return [];
+  if (ax.labels?.length && !ax.log) {
+    // a tick per text, every k-th when there are more than fit
+    const lo = Math.max(0, Math.ceil(ax.min));
+    const hi = Math.min(ax.labels.length - 1, Math.floor(ax.max));
+    const k = Math.max(1, Math.ceil((hi - lo + 1) / Math.max(2, h / 18)));
+    const out: [number, string][] = [];
+    for (let v = lo; v <= hi; v += k) out.push([v, ax.labels[v]]);
+    return out;
+  }
   const label = (v: number, step: number) => (ax.dec != null ? v.toFixed(ax.dec) : numberLabel(v, step));
   if (ax.log && ax.max - ax.min >= 1) {
     // whole decades, every k-th when there are many

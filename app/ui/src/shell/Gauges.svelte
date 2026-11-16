@@ -11,7 +11,7 @@
   import { readoutTime } from '../axes';
   import { settings } from '../settings.svelte';
   import { cfg } from '../share.svelte';
-  import { setWidget, stack, type WidgetCfg } from '../stack.svelte';
+  import { setWidget, stack, valueMap, type WidgetCfg } from '../stack.svelte';
   import { ui } from '../ui.svelte';
   import { decodeXy } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -24,7 +24,7 @@
 
   const pane = $derived(stack.panes[i]);
   const customs = $derived(new Map([...cfg.widgets, ...settings.customWidgets].map((w) => [w.id, w])));
-  const gchan = (ch: number): GChan => ({ ch, name: ui.channels[ch]?.name ?? '', unit: ui.channels[ch]?.unit ?? '', labelled: Object.keys(settings.valueMaps[ui.channels[ch]?.name ?? ''] ?? {}).length });
+  const gchan = (ch: number): GChan => ({ ch, name: ui.channels[ch]?.name ?? '', unit: ui.channels[ch]?.unit ?? '', labelled: Object.keys(valueMap(ui.channels[ch]?.name ?? '') ?? {}).length });
   const chans = $derived((pane?.channels ?? []).map(gchan));
   const lay = $derived(layoutOf(chans, pane?.widgets));
   const cfgOf = (ch: number): WidgetCfg => pane?.widgets?.[ui.channels[ch]?.name ?? ''] ?? {};
@@ -172,7 +172,7 @@
       const cfg = cfgOf(ch);
       const lim = chLimits(ch);
       const [lo, hi] = rangeOf(ranges[ch] ?? null, lim, cfg);
-      m.set(ch, { name: chName(ch), unit: chUnit(ch), lim, lo, hi, zones: zonesFor(lim, lo, hi), dec: settings.chdisp[name]?.dec, css: chCss(ch), labels: settings.valueMaps[name], cfg });
+      m.set(ch, { name: chName(ch), unit: chUnit(ch), lim, lo, hi, zones: zonesFor(lim, lo, hi), dec: settings.chdisp[name]?.dec, css: chCss(ch), labels: valueMap(name), cfg });
     };
     for (const [ch, L] of lay) [ch, L.ref?.ch, ...(L.members ?? []).map((x) => x.ch)].forEach((c) => c != null && add(c));
     return m;

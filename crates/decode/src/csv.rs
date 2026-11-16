@@ -78,6 +78,79 @@ impl Schema {
     pub fn numeric_columns(&self) -> impl Iterator<Item = (usize, &Column)> {
         self.columns.iter().enumerate().filter(|(_, c)| c.kind == Kind::Number)
     }
+
+    /// The text columns: each opens as a labelled channel when it has at most [`MAX_LABELS`] different texts.
+    pub fn text_columns(&self) -> impl Iterator<Item = (usize, &Column)> {
+        self.columns.iter().enumerate().filter(|(_, c)| c.kind == Kind::Text)
+    }
+}
+
+/// The most different texts a text column may have and still open, as a labelled channel (D-ingest-12, owner Nov 16).
+pub const MAX_LABELS: usize = 256;
+
+/// A text column across the file: its texts in the order the file first has them (code `k` is `labels[k]`), filled
+/// chunk by chunk in file order so the codes don't depend on which chunk was parsed first.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Labels {
+    pub labels: Vec<String>,
+    /// It has more than [`MAX_LABELS`] different texts: it is left out.
+    pub over: bool,
+}
+
+impl Labels {
+    /// The codes of a chunk's cells (NaN for an empty one), adding its new texts.
+    pub fn absorb(&mut self, t: &Texts) -> Vec<f64> {
+        if t.over {
+            self.over = true;
+        }
+        let map: Vec<f64> = t
+            .dict
+            .iter()
+            .map(|d| match self.labels.iter().position(|l| l == d) {
+                Some(k) => k as f64,
+                None if self.labels.len() < MAX_LABELS => {
+                    self.labels.push(d.clone());
+                    (self.labels.len() - 1) as f64
+                }
+                None => {
+                    self.over = true;
+                    f64::NAN
+                }
+            })
+            .collect();
+        t.codes.iter().map(|&c| if c == u16::MAX { f64::NAN } else { map[c as usize] }).collect()
+    }
+}
+
+/// One chunk's cells of a text column: the texts in the order the chunk first met them, and each row's index into them
+/// (`u16::MAX` for an empty cell). A chunk that meets more than [`MAX_LABELS`] texts stops and says so.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Texts {
+    pub dict: Vec<String>,
+    pub codes: Vec<u16>,
+    pub over: bool,
+}
+
+impl Texts {
+    fn push(&mut self, cell: &[u8]) {
+        let s = trim(cell);
+        if s.is_empty() || self.over {
+            self.codes.push(u16::MAX);
+            return;
+        }
+        let s = String::from_utf8_lossy(s);
+        match self.dict.iter().position(|d| *d == s) {
+            Some(k) => self.codes.push(k as u16),
+            None if self.dict.len() < MAX_LABELS => {
+                self.codes.push(self.dict.len() as u16);
+                self.dict.push(s.into_owned());
+            }
+            None => {
+                self.over = true;
+                self.codes.push(u16::MAX);
+            }
+        }
+    }
 }
 
 /// Rows parsed from one chunk: the time of each row (None with index time) and each numeric column.
@@ -85,6 +158,8 @@ impl Schema {
 pub struct Rows {
     pub t: Vec<Timestamp>,
     pub columns: Vec<Vec<f64>>,
+    /// The text columns' cells, in [`Schema::text_columns`] order.
+    pub texts: Vec<Texts>,
     pub rows: usize,
     /// Rows left out because their time didn't parse.
     pub skipped: usize,
@@ -513,6 +588,7 @@ pub fn parse(bytes: &[u8], range: Range<usize>, schema: &Schema) -> Rows {
     let mut out = Rows {
         t: Vec::with_capacity(if schema.time == TimeColumn::Index { 0 } else { est }),
         columns: numeric.iter().map(|_| Vec::with_capacity(est)).collect(),
+        texts: schema.text_columns().map(|_| Texts::default()).collect(),
         rows: 0,
         skipped: 0,
         quotes: false,
@@ -550,6 +626,9 @@ fn parse_rows(mut rec: impl RowReader, schema: &Schema, numeric: &[usize], out: 
             let f = rec.field(i);
             col.push(parse_number(f).unwrap_or(f64::NAN));
         }
+        for (tx, (i, _)) in out.texts.iter_mut().zip(schema.text_columns()) {
+            tx.push(rec.field(i));
+        }
         out.rows += 1;
     }
 }
@@ -569,9 +648,32 @@ pub fn parse_all(bytes: &[u8]) -> Result<(Schema, Rows)> {
         if all.columns.is_empty() {
             all.columns = vec![Vec::new(); r.columns.len()];
         }
+        if all.texts.is_empty() {
+            all.texts = vec![Texts::default(); r.texts.len()];
+        }
         all.t.extend(r.t);
         for (a, b) in all.columns.iter_mut().zip(r.columns) {
             a.extend(b);
+        }
+        // the chunks' texts into one dictionary per column, in file order (as the cache's writer does)
+        for (a, b) in all.texts.iter_mut().zip(r.texts) {
+            a.over |= b.over;
+            let map: Vec<u16> = b
+                .dict
+                .iter()
+                .map(|d| match a.dict.iter().position(|x| x == d) {
+                    Some(k) => k as u16,
+                    None if a.dict.len() < MAX_LABELS => {
+                        a.dict.push(d.clone());
+                        (a.dict.len() - 1) as u16
+                    }
+                    None => {
+                        a.over = true;
+                        u16::MAX
+                    }
+                })
+                .collect();
+            a.codes.extend(b.codes.iter().map(|&c| if c == u16::MAX { u16::MAX } else { map[c as usize] }));
         }
         all.rows += r.rows;
         all.skipped += r.skipped;
@@ -761,6 +863,9 @@ pub struct InspectedColumn {
     pub unit: Option<String>,
     /// `number`, `text` or `time`.
     pub kind: &'static str,
+    /// A text column: the different texts in the rows read (more than [`MAX_LABELS`]: it will be left out).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub texts: Option<usize>,
 }
 
 /// Inspects the start of a CSV file (`head`: its first bytes, cut at a line end; `file_len`: the whole file's size).
@@ -770,11 +875,19 @@ pub fn inspect(head: &[u8], file_len: u64) -> Result<Inspection> {
     let mut preview = Vec::new();
     let mut rows = 0usize;
     let mut times: Vec<i64> = Vec::new();
+    let text_cols: Vec<usize> = schema.text_columns().map(|(i, _)| i).collect();
+    let mut seen: Vec<std::collections::HashSet<Vec<u8>>> = text_cols.iter().map(|_| Default::default()).collect();
     while rec.next() {
         if rec.is_blank() {
             continue;
         }
         rows += 1;
+        for (s, &i) in seen.iter_mut().zip(&text_cols) {
+            let cell = trim(rec.field(i));
+            if !cell.is_empty() && s.len() <= MAX_LABELS {
+                s.insert(cell.to_vec());
+            }
+        }
         if preview.len() < 8 {
             preview.push(
                 (0..schema.columns.len()).map(|i| String::from_utf8_lossy(rec.field(i)).trim().to_owned()).collect(),
@@ -818,7 +931,9 @@ pub fn inspect(head: &[u8], file_len: u64) -> Result<Inspection> {
         columns: schema
             .columns
             .iter()
-            .map(|c| InspectedColumn {
+            .enumerate()
+            .map(|(i, c)| InspectedColumn {
+                texts: text_cols.iter().position(|&k| k == i).map(|k| seen[k].len()),
                 source: c.source.clone(),
                 name: c.name.clone(),
                 unit: c.unit.clone(),

@@ -196,11 +196,13 @@ try {
   // a drop
   await p.evaluate(() => {
     const dt = new DataTransfer();
-    dt.items.add(new File(['t,v\n0,1\n1,2\n2,3\n'], 'dropped.csv', { type: 'text/csv' }));
+    dt.items.add(new File(['t,v,mode\n0,1,Idle\n1,2,Mission\n2,3,Idle\n'], 'dropped.csv', { type: 'text/csv' }));
     window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true, cancelable: true }));
     window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   });
   check('a file dropped on the page opens too', await until(() => [...document.querySelectorAll('#wsTabs .wstab')].some((t) => /dropped\.csv/.test(t.textContent ?? ''))), await p.$$eval('#wsTabs .wstab', (t) => t.map((x) => x.textContent)));
+  await p.evaluate(() => [...document.querySelectorAll('#wsTabs .wstab')].find((t) => /dropped\.csv/.test(t.textContent ?? ''))?.click());
+  check('its text column is a labelled channel in the page too (D-ingest-12)', await until(() => window.__tlmApp.fmt(1, 1) === 'Mission' && window.__tlmApp.fmt(1, 0) === 'Idle'), await p.evaluate(() => [window.__tlmApp.fmt(1, 0), window.__tlmApp.fmt(1, 1), document.querySelector('#wsTabs [aria-selected=true]')?.textContent, [...document.querySelectorAll('#explorer .row.chan')].map((r) => r.textContent.trim())]));
 
   // a .tlm: the decoder's own header and descriptor reader, in the page
   {

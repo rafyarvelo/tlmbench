@@ -41,17 +41,52 @@ pub fn import_csv(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
             (TimeSource::Column { name: schema.columns[index].name.clone() }, Tm::Col(t), backwards.note())
         }
     };
-    let channels = numeric
-        .iter()
-        .map(|c| ChannelInfo { name: c.name.clone(), unit: c.unit.clone(), dtype: "f64", category: c.category.clone() })
-        .collect();
-    let mut d = Ds::new(path, "CSV", None, n, time, tm, channels);
-    for (col, values) in d.cols.iter_mut().zip(rows.columns) {
-        col.raw = crate::data::Raw::whole(values);
+    // the channels in the file's column order: numbers, and text columns with at most MAX_LABELS texts (D-ingest-12)
+    let _ = &numeric;
+    let (mut channels, mut values, mut skipped, mut notes) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut nums, mut texts) = (rows.columns.into_iter(), rows.texts.into_iter());
+    for c in &schema.columns {
+        match c.kind {
+            Kind::Number => {
+                channels.push(ChannelInfo {
+                    name: c.name.clone(),
+                    unit: c.unit.clone(),
+                    dtype: "f64",
+                    category: c.category.clone(),
+                    labels: Vec::new(),
+                });
+                values.push(nums.next().unwrap_or_default());
+            }
+            Kind::Text => {
+                let t = texts.next().unwrap_or_default();
+                if t.over {
+                    skipped.push(c.name.clone());
+                    notes.push(format!(
+                        "Column \"{}\" left out: more than {} different texts",
+                        c.name,
+                        csv::MAX_LABELS
+                    ));
+                    continue;
+                }
+                channels.push(ChannelInfo {
+                    name: c.name.clone(),
+                    unit: c.unit.clone(),
+                    dtype: "f64",
+                    category: c.category.clone(),
+                    labels: t.dict,
+                });
+                values.push(t.codes.iter().map(|&k| if k == u16::MAX { f64::NAN } else { k as f64 }).collect());
+            }
+            Kind::Skip => skipped.push(c.name.clone()),
+            Kind::Time => {}
+        }
     }
-    d.info.skipped =
-        schema.columns.iter().filter(|c| matches!(c.kind, Kind::Text | Kind::Skip)).map(|c| c.name.clone()).collect();
-    d.info.notes = name.into_iter().collect();
+    let mut d = Ds::new(path, "CSV", None, n, time, tm, channels);
+    for (col, v) in d.cols.iter_mut().zip(values) {
+        col.raw = crate::data::Raw::whole(v);
+    }
+    d.info.skipped = skipped;
+    d.info.notes = name.into_iter().chain(notes).collect();
     d.refresh();
     for c in 0..d.cols.len() {
         d.build_pyramid(c);
@@ -306,7 +341,13 @@ fn import_records(
     let fields: Vec<_> = desc.channels().map(|(_, f)| f).collect();
     let channels = fields
         .iter()
-        .map(|f| ChannelInfo { name: f.name.clone(), unit: f.unit.clone(), dtype: f.dtype.name(), category: None })
+        .map(|f| ChannelInfo {
+            name: f.name.clone(),
+            unit: f.unit.clone(),
+            dtype: f.dtype.name(),
+            category: None,
+            labels: Vec::new(),
+        })
         .collect();
     let mut d = Ds::new(path, format, part, n, time, tm, channels);
     notes.extend(found.note_of("record", "record"));
@@ -343,7 +384,7 @@ pub fn dump(st: &crate::data::State, k: usize) -> Result<(Value, Vec<u8>), Strin
     let mut chans = Vec::new();
     for (c, col) in d.info.channels.iter().zip(&d.cols) {
         col.raw.slice(d.len).into_iter().flatten().for_each(|v| out.extend_from_slice(&v.to_le_bytes()));
-        chans.push(json!({ "name": c.name, "unit": c.unit, "category": c.category }));
+        chans.push(json!({ "name": c.name, "unit": c.unit, "category": c.category, "labels": c.labels }));
     }
     let meta = json!({
         "samples": d.len, "time": time, "channels": chans, "format": d.info.format, "part": d.info.part, "skipped": d.info.skipped, "notes": d.info.notes,
@@ -411,6 +452,10 @@ pub fn load(st: &mut crate::data::State, k: usize, path: &str, meta: &Value, bin
             unit: c["unit"].as_str().map(str::to_owned),
             dtype: "f64",
             category: c["category"].as_str().map(str::to_owned),
+            labels: c["labels"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|l| l.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default(),
         })
         .collect();
     let mut d = Ds::new(

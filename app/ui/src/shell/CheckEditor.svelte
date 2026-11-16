@@ -13,6 +13,7 @@
   import { setSetting, settings } from '../settings.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, ui } from '../ui.svelte';
+  import { valueMap } from '../stack.svelte';
 
   const ed = $derived(checks.editor);
   const layout = $derived(tabs.list.find((t) => t.key === tabs.active)?.ws ?? null);
@@ -35,12 +36,12 @@
   function edit(i: number, f: 'expect' | 'when', patch: Partial<Pick>) {
     const p = { ...pickOf(ed!.set.check[i][f]), ...patch };
     // a channel with value names offers is / is not instead of a number
-    if ((p.op === 'is' || p.op === 'isnt') && !p.v) p.v = Object.values(settings.valueMaps[p.ch] ?? {})[0] ?? '';
+    if ((p.op === 'is' || p.op === 'isnt') && !p.v) p.v = Object.values(valueMap(p.ch) ?? {})[0] ?? '';
     if ((p.op === 'warn' || p.op === 'alarm') && patch.op) p.agg = 'each';
     if (p.op === 'outside' && !p.v2) p.v2 = String(+p.v + 1);
     ed!.set.check[i][f] = buildPick(p);
   }
-  const labels = (ch: string) => Object.values(settings.valueMaps[ch] ?? {});
+  const labels = (ch: string) => Object.values(valueMap(ch) ?? {});
   const limitsText = (ch: string, kind: 'warn' | 'alarm') => {
     const l = limitsOf(ch);
     const [lo, hi] = kind === 'warn' ? [l.wl, l.wh] : [l.al, l.ah];

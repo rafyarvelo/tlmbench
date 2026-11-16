@@ -21,7 +21,7 @@ run(
       f.csv('/data/run_b.csv', names, { unit: 'ms', rate: 100, text: ['note'] });
       f.csv('/data/other.csv', ['t', 'x', 'y'], { unit: 's', rate: 1 });
       // one column renamed: three of four names in common with run_a
-      f.csv('/data/run_c.csv', ['time_ms', 'Speed', 'temp_in', 'temp_out_2', 'note'], { unit: 'ms', rate: 100, text: ['note'] });
+      f.csv('/data/run_c.csv', ['time_ms', 'Speed', 'temp_in', 'temp_out_2', 'note'], { unit: 'ms', rate: 100, text: ['note'], texts: { note: 900 } });
     }, NAMES);
 
     // a file that isn't a CSV opens without asking
@@ -39,6 +39,7 @@ run(
     const rows = await p.$$eval('#impCols .impcol:not(.head)', (r) => r.map((e) => e.dataset.h));
     check('the time column is not listed as a channel', rows.join() === 'Speed,temp_in,temp_out,note', rows);
     check('units and types as detected', (await p.inputValue('[data-h=Speed] .impun')) === 'm/s' && (await p.inputValue('[data-h=note] .imptype')) === 'text');
+    check('a text column with few texts opens as one, nothing said (D-ingest-12)', !(await p.$('[data-h=note] [data-toomany]')) && /opens as a channel that shows its texts/.test(await text('#importDlg')));
     check('the counts', /3 number · 1 text · 0 skipped/.test(await text('.impmain h4:nth-of-type(2)')), await text('.impmain h4:nth-of-type(2)'));
     check('Open is ready; every destination is offered, one tab for all files and the current tab too',
       (await p.isEnabled('#impGo')) && (await p.$$eval('#impWhere option', (o) => o.map((x) => x.disabled).join())) === 'false,false,false,false');
@@ -79,6 +80,7 @@ run(
     // a header that nearly matches: the profile is offered, never applied unasked
     await fake((d) => window.__tlmFake.drop([d]), D);
     check('a near header asks', await until(() => !!document.querySelector('#importDlg')));
+    check('a text column with more than 256 texts says it will be left out', /Left out: more than 256 different texts/.test(await text('[data-h=note]')), await text('[data-h=note]'));
     check('the similar profile is offered', /similar file/.test((await text('#impNear')) ?? ''), await text('#impNear'));
     check('its choices are not applied yet', (await p.inputValue('[data-h=Speed] .impnm')) === 'Speed' && !(await visible('#impApplied')));
     await p.click('[data-useprof]');

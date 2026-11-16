@@ -32,6 +32,9 @@ pub struct ChannelInfo {
     /// A group label from an import profile.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    /// A text channel's texts: value `k` shows as `labels[k]` (a CSV text column, D-ingest-12).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

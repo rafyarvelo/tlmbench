@@ -148,7 +148,16 @@ mod tests {
             n,
             TimeSource::Rate { hz: 1000.0 },
             crate::data::Tm::Rate(RateTimes::from_rate(0, 1000.0, n)),
-            names.iter().map(|n| ChannelInfo { name: (*n).into(), unit: None, dtype: "f64", category: None }).collect(),
+            names
+                .iter()
+                .map(|n| ChannelInfo {
+                    name: (*n).into(),
+                    unit: None,
+                    dtype: "f64",
+                    category: None,
+                    labels: Vec::new(),
+                })
+                .collect(),
         );
         for c in &mut d.cols {
             c.raw = crate::data::Raw::whole((0..n).map(|i| i as f64).collect());

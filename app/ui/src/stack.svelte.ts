@@ -101,10 +101,18 @@ export function learnDecimals(file: number, ch: number, lo: number, hi: number):
   decs[k] = Math.max(0, Math.min(6, 3 - Math.floor(Math.log10(m))));
 }
 
+/** A channel's value labels: the person's value map over the file's own texts (a CSV text column, D-ingest-12). */
+export function valueMap(name: string): Record<string, string> | undefined {
+  const own = ui.channels.find((c) => c.name === name)?.labels;
+  const mine = settings.valueMaps[name];
+  if (!own?.length) return mine;
+  return { ...Object.fromEntries(own.map((l, k) => [String(k), l])), ...mine };
+}
+
 /** A channel's value in its decimals (about six significant digits until they're known). */
 export function fmtCh(file: number | null, ch: number, v: number | null | undefined): string {
   const name = ui.channels[ch]?.name ?? '';
-  const label = v == null ? undefined : settings.valueMaps[name]?.[String(v)];
+  const label = v == null ? undefined : valueMap(name)?.[String(v)];
   if (label != null) return label;
   const d = settings.chdisp[name]?.dec ?? (file == null ? undefined : decs[`${file}:${ch}`]);
   if (d == null || v == null || !Number.isFinite(v)) return value(v);

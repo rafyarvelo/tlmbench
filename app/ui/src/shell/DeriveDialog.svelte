@@ -4,9 +4,9 @@
      applies: this file, or any file that has the channels. The core evaluates; nothing is written beside the data. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { settings } from '../settings.svelte';
   import { actions, ui } from '../ui.svelte';
   import { derive, FN_HELP, FUNCTION_NAMES, quoteName, recipes, TEMPLATES, TEMPLATES2 } from '../derive.svelte';
+  import { valueMap } from '../stack.svelte';
 
   // autocomplete: functions, the file's channels and the recipes, for the word at the cursor
   let ta = $state<HTMLTextAreaElement>();
@@ -21,7 +21,7 @@
       const ch = q[1].replace(/^"|"$/g, '');
       const typed = q[2].toLowerCase();
       from = c - q[2].length;
-      sugg = Object.values(settings.valueMaps[ch] ?? {}).filter((l) => l.toLowerCase().startsWith(typed) && l.toLowerCase() !== typed).map((l) => l + "'").slice(0, 8);
+      sugg = Object.values(valueMap(ch) ?? {}).filter((l) => l.toLowerCase().startsWith(typed) && l.toLowerCase() !== typed).map((l) => l + "'").slice(0, 8);
       pick = 0;
       return;
     }

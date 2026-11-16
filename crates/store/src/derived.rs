@@ -92,14 +92,13 @@ impl<'a> RecEnv<'a> {
     pub fn new(rec: &'a dyn Recording) -> Self {
         let info = rec.info();
         let idx = info.channels.iter().enumerate().map(|(i, c)| (c.name.as_str(), i)).collect();
-        Self {
-            rec,
-            idx,
-            t_first: info.t_first.unwrap_or(0),
-            labels: HashMap::new(),
-            limits: HashMap::new(),
-            foreign: HashMap::new(),
-        }
+        // a text channel's own labels: `mode == 'Mission'` (D-ingest-12)
+        let labels = info
+            .channels
+            .iter()
+            .flat_map(|c| c.labels.iter().enumerate().map(|(k, l)| ((c.name.clone(), l.clone()), k as f64)))
+            .collect();
+        Self { rec, idx, t_first: info.t_first.unwrap_or(0), labels, limits: HashMap::new(), foreign: HashMap::new() }
     }
 
     /// Channels of the tab's other files, to be named in expressions. Each is held at its last sample (or
@@ -130,8 +129,9 @@ impl<'a> RecEnv<'a> {
     }
 
     /// Value labels (`channel`, `text`) → stored number, for `state == 'flight'`.
+    /// Value labels by (channel, text): the person's value maps, over the file's own text labels.
     pub fn with_labels(mut self, labels: HashMap<(String, String), f64>) -> Self {
-        self.labels = labels;
+        self.labels.extend(labels);
         self
     }
 

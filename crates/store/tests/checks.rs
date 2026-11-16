@@ -393,3 +393,25 @@ fn redacting_a_channel_leaves_out_the_checks_that_read_it() {
     let (s3, r3, none) = redacted(&s, &r, &["nothing".to_owned()]);
     assert_eq!((none, s3.checks.len(), r3.outcomes.len()), (0, 4, 4));
 }
+
+#[test]
+fn a_csv_text_column_is_checked_by_its_texts() {
+    // D-ingest-12: `mode == 'Mission'` reads the file's own labels
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("flight.csv");
+    let mut text = String::from("t,mode,rpm\n");
+    for i in 0..600 {
+        let mode = if (200..400).contains(&i) { "Mission" } else { "Idle" };
+        let rpm = if i == 300 || i == 500 { 9000 } else { 5000 };
+        text.push_str(&format!("{},{mode},{rpm}\n", i as f64 / 10.0));
+    }
+    std::fs::write(&path, text).unwrap();
+    let store = tlmbench_store::Store::new(Some(&dir.path().join("cache")));
+    let opened = store.open(&path, None).unwrap();
+    let mut k = check("rpm in Mission", "rpm < 7500");
+    k.when = Some("mode == 'Mission'".into());
+    let o = store.check_one(&opened, &k, &[]);
+    // only the spike inside Mission counts
+    assert_eq!((o.verdict, o.count), (Verdict::Fail, 1), "{}", o.message);
+    assert!((o.scope_secs.unwrap() - 20.0).abs() < 0.2, "{:?}", o.scope_secs);
+}

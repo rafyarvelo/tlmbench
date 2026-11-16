@@ -434,7 +434,7 @@ pub fn export_with(
             file_bytes += rb + pb.len() as u64;
             let first_level = pyramid::MIN_LEVEL + c.dropped as u32;
             chans.push(serde_json::json!({
-                "index": c.index, "name": ch.name, "unit": ch.unit, "dtype": ch.dtype, "category": ch.category,
+                "index": c.index, "name": ch.name, "unit": ch.unit, "dtype": ch.dtype, "category": ch.category, "labels": ch.labels,
                 "raw": keep_raw, "raw_chunks": raw_chunks,
                 "pyramid": { "first_level": first_level, "levels": kept.iter().map(|l| l.len()).collect::<Vec<_>>() },
             }));

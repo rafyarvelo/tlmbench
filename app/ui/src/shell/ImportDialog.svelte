@@ -153,12 +153,13 @@
                 <option value="number">Number</option><option value="text">Text</option><option value="skip">Skip</option>
               </select>
               <input class="impcatin" bind:value={c.category} placeholder="by name" aria-label="Category of {c.source}" spellcheck="false" disabled={c.kind !== 'number'} />
+              {#if c.kind === 'text' && (c.texts ?? 0) > 256}<small class="imptoo" data-toomany>Left out: more than 256 different texts</small>{/if}
             </div>
           {:else}
             <div class="impempty">No columns match.</div>
           {/each}
         </div>
-        <p class="lvnote">Names are kept as in the file; type a name to rename a column. A unit in brackets after a space, like <code>[m/s]</code>, is the unit. Text columns are left out of the recording. Your choices are saved for every file with this header.</p>
+        <p class="lvnote">Names are kept as in the file; type a name to rename a column. A unit in brackets after a space, like <code>[m/s]</code>, is the unit. A text column opens as a channel that shows its texts, when it has 256 different texts or fewer. Your choices are saved for every file with this header.</p>
 
         <h4>Where the files go</h4>
         <div class="improw">
@@ -399,6 +400,12 @@
     overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
+  }
+  /* a text column with too many texts says it will be left out, under its row */
+  .imptoo {
+    grid-column: 2 / -1;
+    color: var(--warn);
+    font-size: 11px;
   }
   .impcol {
     display: grid;

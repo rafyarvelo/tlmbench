@@ -8,6 +8,8 @@ export interface InspectedColumn {
   name: string;
   unit: string | null;
   kind: 'number' | 'text' | 'time';
+  /** A text column: its different texts in the rows read (over 256: it is left out; D-ingest-12). */
+  texts?: number;
 }
 
 export interface Inspection {
@@ -51,6 +53,8 @@ export interface Col {
   unit: string;
   kind: Kind;
   category: string;
+  /** A text column's different texts in the rows read. */
+  texts?: number;
   /** What the core detected: the name, unit and kind the choices are measured against. */
   det: { name: string; unit: string; kind: Kind };
 }
@@ -123,7 +127,7 @@ export function makeJob(paths: string[], insp: Inspection, near: Found['near']):
   const t = insp.time == null ? null : insp.columns[insp.time].source;
   const cols = insp.columns.map((c) => {
     const kind = toKind(c.kind);
-    return { source: c.source, name: c.name, unit: c.unit ?? '', kind, category: '', det: { name: c.name, unit: c.unit ?? '', kind } };
+    return { source: c.source, name: c.name, unit: c.unit ?? '', kind, category: '', texts: c.texts, det: { name: c.name, unit: c.unit ?? '', kind } };
   });
   return {
     paths,

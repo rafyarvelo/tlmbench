@@ -46,7 +46,8 @@ fn a_profile_changes_what_opens() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["time"]["kind"], "rate");
     assert_eq!(v["channels"][1]["name"], "v");
-    assert_eq!(v["skipped"], serde_json::json!(["gps", "note"]));
+    // note, a text column, is a labelled channel now (D-ingest-12)
+    assert_eq!(v["skipped"], serde_json::json!(["gps"]));
     assert_eq!(v["duration_ns"], 60_000_000);
     // without it, the file opens as before
     let plain = run(cache.path(), &["info", "--json", file.to_str().unwrap()]);
