@@ -19,7 +19,7 @@ default:
 
 # Builds the plugin templates for wasm32-wasip2 and checks each keeps the app's copy of the WIT file
 plugin-template:
-    for d in template-decoder template-estimator test-hostile; do \
+    for d in template-decoder template-estimator template-payload test-hostile; do \
       diff -q crates/plugin/wit/tlmbench.wit plugins/$d/wit/tlmbench.wit; \
       (cd plugins/$d && cargo build --release --target wasm32-wasip2); \
     done

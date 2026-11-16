@@ -109,6 +109,9 @@ fn descriptor(path: &Path, info: &tlmbench_core::RecordingInfo) -> Descriptor {
         scale: 1.0,
         value_offset: 0.0,
         bits: None,
+        plugin: None,
+        size: 0,
+        params: None,
     };
     let mut fields = vec![field("time", DType::I64, 0, None)];
     for (i, c) in info.channels.iter().enumerate() {

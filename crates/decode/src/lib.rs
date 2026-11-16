@@ -24,6 +24,7 @@ mod packets_core;
 pub mod parquet;
 mod parquet_core;
 mod parquet_pages;
+pub mod payload;
 pub mod plugin;
 pub mod preview;
 pub mod profile;
@@ -104,10 +105,30 @@ pub fn open_all(path: &Path, opts: &OpenOptions) -> Result<Vec<Box<dyn Recording
             }
             return parts
                 .into_iter()
-                .map(|(d, q)| Ok(boxed(packets::PacketFile::open(path, d, q, &name, &root)?, opts)))
+                .map(|(d, q)| {
+                    // a type a payload plugin decodes goes into the cache, as a plugin file does
+                    if let Some(q) = q.as_ref().filter(|q| q.plugin.is_some()) {
+                        return Ok(boxed(payload::open_type(path, &d, q, &name, &root)?, opts));
+                    }
+                    let fields = d.has_plugin_fields().then(|| d.clone());
+                    let f = packets::PacketFile::open(path, d, q, &name, &root)?;
+                    match fields {
+                        Some(d) => {
+                            let extra = payload::decode_fields(&f, &d, &root)?;
+                            Ok(Box::new(payload::WithPluginFields::new(boxed(f, opts), extra)) as Box<dyn Recording>)
+                        }
+                        None => Ok(boxed(f, opts)),
+                    }
+                })
                 .collect();
         }
-        return Ok(vec![boxed(fixed::FixedWidth::open_with_descriptor(path, desc)?, opts)]);
+        let f = fixed::FixedWidth::open_with_descriptor(path, desc)?;
+        if d.has_plugin_fields() {
+            let root = cache::cache_root(opts.cache_dir.as_deref());
+            let extra = payload::decode_fields(&f, &d, &root)?;
+            return Ok(vec![Box::new(payload::WithPluginFields::new(boxed(f, opts), extra))]);
+        }
+        return Ok(vec![boxed(f, opts)]);
     }
     let head = bytes::read_head(path, 4096)?;
     if head.starts_with(reference::MAGIC) {

@@ -18,6 +18,9 @@ fn desc(compression: Compression, checksum: Checksum) -> Descriptor {
         scale: 1.0,
         value_offset: 0.0,
         bits: None,
+        plugin: None,
+        size: 0,
+        params: None,
     };
     let mut w = field("w", DType::I16, 24);
     w.scale = 0.5;

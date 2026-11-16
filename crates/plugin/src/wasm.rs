@@ -167,6 +167,8 @@ pub(crate) fn kind_of(c: &Component) -> Option<crate::Kind> {
         Some(crate::Kind::Decoder)
     } else if has("estimate") {
         Some(crate::Kind::Estimator)
+    } else if has("decode-packets") && has("decode-field") {
+        Some(crate::Kind::Payload)
     } else {
         None
     }

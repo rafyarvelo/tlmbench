@@ -428,6 +428,15 @@ impl PacketFile {
     }
 }
 
+impl crate::payload::RecordBytes for PacketFile {
+    fn stride(&self) -> usize {
+        PacketFile::stride(self)
+    }
+    fn record_bytes(&self, a: usize, b: usize) -> Vec<u8> {
+        self.read_records(a, b)
+    }
+}
+
 /// One field of every record, decoded through the packet cache.
 #[derive(Debug)]
 struct PacketField<'a, V> {

@@ -87,16 +87,34 @@ pub struct Descriptor {
 /// time = { source = "field", field = "t", unit = "us" }
 /// fields = [ { name = "t", type = "u64", offset = 8 }, { name = "lat", type = "f64", offset = 16 } ]
 /// ```
+///
+/// Or a payload plugin decodes the type's packets (each payload after checksum and decompression, with its header),
+/// and the type has no records or fields of its own (the plugin names its channels and gives their times):
+///
+/// ```toml
+/// [[packet_types]]
+/// id = 3
+/// name = "status"
+/// plugin = "status-words"      # the plugin's name (Settings › Plugins)
+/// params = { version = 2 }     # handed to the plugin as JSON
+/// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PacketType {
     pub id: i64,
     pub name: String,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub record_size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence: Option<String>,
+    #[serde(default, skip_serializing_if = "TimeSpec::is_index")]
     pub time: TimeSpec,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<Field>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<toml::Table>,
 }
 
 /// The packet field that says what kind a packet is.
@@ -118,6 +136,13 @@ pub struct Part {
     pub known: Vec<(i64, u64)>,
     /// The first type: it counts the packets no type claims.
     pub first: bool,
+    /// The payload plugin that decodes this type's packets, and its params as JSON.
+    pub plugin: Option<(String, String)>,
+}
+
+/// A descriptor's `params` table as the JSON a plugin gets (`{}` without one).
+pub fn params_json(params: Option<&toml::Table>) -> String {
+    params.map_or_else(|| "{}".into(), |t| serde_json::to_string(t).unwrap_or_else(|_| "{}".into()))
 }
 
 /// How records are framed in packets:
@@ -326,6 +351,21 @@ pub struct Field {
     /// least significant), as an unsigned number, or sign-extended from `width` bits when the type is signed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bits: Option<Bits>,
+    /// A payload plugin decodes this field: it gets the field's `size` bytes of many records at once and returns one
+    /// value of `type` per record (`plugin = "name"`, `size = 6`, and `params` handed to it as JSON).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<toml::Table>,
+}
+
+impl Field {
+    /// The bytes of a record the field reads: its type's size, or a plugin field's `size`.
+    pub fn width(&self) -> u64 {
+        if self.plugin.is_some() { self.size } else { self.dtype.size() }
+    }
 }
 
 /// A run of bits inside an integer field.
@@ -483,6 +523,27 @@ impl Descriptor {
             if !names.insert(t.name.as_str()) {
                 return bad(format!("packet type {:?} appears twice", t.name));
             }
+            if let Some(name) = &t.plugin {
+                if name.trim().is_empty() {
+                    return bad(format!("{:?}: plugin needs the plugin's name", t.name));
+                }
+                if self.packets.as_ref().is_none_or(|p| p.length.is_none()) {
+                    return bad(format!(
+                        "{:?}: a type a plugin decodes needs packets.length: its packets vary in size",
+                        t.name
+                    ));
+                }
+                if t.record_size != 0 || !t.fields.is_empty() || t.sequence.is_some() || !t.time.is_index() {
+                    return bad(format!(
+                        "{:?}: a type a plugin decodes has no record_size, time, sequence or fields: the plugin gives its channels",
+                        t.name
+                    ));
+                }
+                continue;
+            }
+            if t.params.is_some() {
+                return bad(format!("{:?}: params go with a plugin", t.name));
+            }
             validate_layout(
                 t.record_size,
                 header,
@@ -508,16 +569,27 @@ impl Descriptor {
                 d.packet_types.clear();
                 (d.record_size, d.time, d.sequence, d.fields) =
                     (t.record_size, t.time.clone(), t.sequence.clone(), t.fields.clone());
-                let part = Part { id: t.id, name: t.name.clone(), field, known: known.clone(), first: k == 0 };
+                let plugin = t.plugin.clone().map(|p| (p, params_json(t.params.as_ref())));
+                let part = Part { id: t.id, name: t.name.clone(), field, known: known.clone(), first: k == 0, plugin };
                 (d, Some(part))
             })
             .collect()
     }
 
-    /// The fields that are channels (all but the time field).
+    /// Whether a payload plugin decodes some of its fields.
+    pub fn has_plugin_fields(&self) -> bool {
+        self.fields.iter().any(|f| f.plugin.is_some())
+    }
+
+    /// The fields a payload plugin decodes (they are channels the decoders don't read themselves).
+    pub fn plugin_fields(&self) -> impl Iterator<Item = &Field> {
+        self.fields.iter().filter(|f| f.plugin.is_some())
+    }
+
+    /// The fields that are channels the decoders read themselves (all but the time field and plugin fields).
     pub fn channels(&self) -> impl Iterator<Item = (usize, &Field)> {
         let time = self.time.field();
-        self.fields.iter().enumerate().filter(move |(_, f)| Some(f.name.as_str()) != time)
+        self.fields.iter().enumerate().filter(move |(_, f)| Some(f.name.as_str()) != time && f.plugin.is_none())
     }
 }
 
@@ -547,12 +619,31 @@ fn validate_layout(
         if !names.insert(f.name.as_str()) {
             return bad(format!("field {:?} appears twice", f.name));
         }
-        if f.offset.checked_add(f.dtype.size()).is_none_or(|end| end > extent) {
+        if let Some(p) = &f.plugin {
+            if p.trim().is_empty() {
+                return bad(format!("field {:?}: plugin needs the plugin's name", f.name));
+            }
+            if f.size == 0 || f.size > 1 << 16 {
+                return bad(format!("field {:?}: a plugin field needs a size, 1 to 65536 bytes", f.name));
+            }
+            if f.bits.is_some() || f.scale != 1.0 || f.value_offset != 0.0 {
+                return bad(format!(
+                    "field {:?}: a plugin field has no bits, scale or value_offset (the plugin gives the value)",
+                    f.name
+                ));
+            }
+            if sequence == Some(f.name.as_str()) || time.field() == Some(f.name.as_str()) {
+                return bad(format!("field {:?}: a plugin field can't be the time or the sequence", f.name));
+            }
+        } else if f.size != 0 || f.params.is_some() {
+            return bad(format!("field {:?}: size and params go with a plugin", f.name));
+        }
+        if f.offset.checked_add(f.width()).is_none_or(|end| end > extent) {
             let within = if header > 0 { "packet header and record" } else { "record" };
             return bad(format!(
                 "field {:?} ({} at offset {}) runs past the {extent}-byte {within}",
                 f.name,
-                f.dtype.name(),
+                if f.plugin.is_some() { format!("{} bytes", f.size) } else { f.dtype.name().to_string() },
                 f.offset,
             ));
         }

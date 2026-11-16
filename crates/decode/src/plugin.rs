@@ -120,6 +120,18 @@ pub fn open_with(path: &Path, root: &Path, plugin: &dyn DecoderPlugin) -> Result
 fn build(path: &Path, source: &Source, plugin: &dyn DecoderPlugin, tmp: &Path) -> Result<Manifest> {
     let fail = |msg: String| format_err(path, format!("{}: {msg}", plugin.info().name));
     let mut session = plugin.open(path).map_err(fail)?;
+    build_from(path, source, &plugin.info().name, session.as_mut(), tmp)
+}
+
+/// Writes the rows `session` gives into a cache entry being built in `tmp` (`who` names the plugin in errors).
+pub(crate) fn build_from(
+    path: &Path,
+    source: &Source,
+    who: &str,
+    session: &mut dyn DecoderSession,
+    tmp: &Path,
+) -> Result<Manifest> {
+    let fail = |msg: String| format_err(path, format!("{who}: {msg}"));
     let schema = session.schema().clone();
     let size = |c: &PluginChannel| c.dtype.size() as usize;
     let mut seen = std::collections::HashSet::new();

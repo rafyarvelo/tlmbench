@@ -5,7 +5,7 @@ export interface PluginRow {
   file: string;
   path: string;
   tier: 'wasm' | 'native';
-  kind: 'decoder' | 'estimator' | null;
+  kind: 'decoder' | 'estimator' | 'payload' | null;
   name: string;
   version: string | null;
   description: string | null;

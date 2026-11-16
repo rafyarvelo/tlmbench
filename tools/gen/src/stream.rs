@@ -29,6 +29,9 @@ pub fn descriptor(channels: usize, rate: u64) -> Descriptor {
         scale: 1.0,
         value_offset: 0.0,
         bits: None,
+        plugin: None,
+        size: 0,
+        params: None,
     };
     let mut fields = vec![field("seq".into(), DType::U64, 0, None)];
     fields.extend((0..channels).map(|k| field(format!("signal_{k}"), DType::F32, 8 + 4 * k as u64, Some("V"))));

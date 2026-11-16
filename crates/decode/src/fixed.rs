@@ -241,6 +241,15 @@ impl<T: Times> TimesRef for T {
     }
 }
 
+impl crate::payload::RecordBytes for FixedWidth {
+    fn stride(&self) -> usize {
+        self.desc.record_size as usize
+    }
+    fn record_bytes(&self, a: usize, b: usize) -> Vec<u8> {
+        self.read_records(a, b.min(self.records), Vec::new())
+    }
+}
+
 impl Channels for FixedWidth {
     fn describe(&self) -> &RecordingInfo {
         &self.info
@@ -571,7 +580,18 @@ mod tests {
     use tlmbench_core::{Recording, TraceKind, Viewport};
 
     fn field(name: &str, dtype: DType, offset: u64) -> Field {
-        Field { name: name.into(), dtype, offset, unit: None, scale: 1.0, value_offset: 0.0, bits: None }
+        Field {
+            name: name.into(),
+            dtype,
+            offset,
+            unit: None,
+            scale: 1.0,
+            value_offset: 0.0,
+            bits: None,
+            plugin: None,
+            size: 0,
+            params: None,
+        }
     }
 
     fn file(desc: &Descriptor, records: impl IntoIterator<Item = Vec<u8>>) -> FixedWidth {

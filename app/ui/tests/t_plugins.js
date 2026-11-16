@@ -17,9 +17,10 @@ run(
   async ({ p, check, text, visible, fake, until, settingsLS }) => {
     const calls = (k) => fake((k) => window.__tlmFake[k], k);
     await p.click('[data-rail="settings"]');
-    check('Settings lists every plugin file', await until(() => document.querySelectorAll('[data-plugin]').length === 6), await p.$$eval('[data-plugin]', (r) => r.map((x) => x.dataset.plugin)));
+    check('Settings lists every plugin file', await until(() => document.querySelectorAll('[data-plugin]').length === 7), await p.$$eval('[data-plugin]', (r) => r.map((x) => x.dataset.plugin)));
     const line = (f) => p.$eval(`[data-plugin="${f}"]`, (e) => e.textContent.replace(/\s+/g, ' ').trim());
     check('a WASM decoder shows its name, version, kind and tier', /demo 0\.1\.0 · Decoder · WASM, sandboxed/.test(await line('my_decoder.wasm')), await line('my_decoder.wasm'));
+    check('a payload plugin says so (D-ingest-09)', /demo-payload 0\.1\.0 · Payload · WASM, sandboxed/.test(await line('my_payload.wasm')), await line('my_payload.wasm'));
     check('an alignment plugin says so, and its description', /peak.*Alignment · WASM, sandboxed.*Lines files up/.test(await line('my_estimator.wasm')), await line('my_estimator.wasm'));
     check('a native plugin is off and says it is not loaded', /Native, runs with your rights/.test(await line('libfast.dylib')) && /Off/.test(await line('libfast.dylib')) && !(await p.isChecked('[data-pluginon="libfast.dylib"]')), await line('libfast.dylib'));
     check('a plugin that will not load says why', /not a plugin component/.test(await text('[data-plugin="bad.wasm"] [data-plugwhy]')));
@@ -89,6 +90,7 @@ run(
       fake.pluginFiles = [
         { file: 'my_decoder.wasm', path: '/plugins/my_decoder.wasm', tier: 'wasm', kind: 'decoder', name: 'demo', version: '0.1.0', description: 'The template\'s made-up DEMO format', shared: false, status: { state: 'loaded' } },
         { file: 'my_estimator.wasm', path: '/plugins/my_estimator.wasm', tier: 'wasm', kind: 'estimator', name: 'peak', version: '0.1.0', description: 'Lines files up on the moment a channel peaks', shared: false, status: { state: 'loaded' } },
+        { file: 'my_payload.wasm', path: '/plugins/my_payload.wasm', tier: 'wasm', kind: 'payload', name: 'demo-payload', version: '0.1.0', description: 'Status packets and packed integers', shared: false, status: { state: 'loaded' } },
         { file: 'libfast.dylib', path: '/plugins/libfast.dylib', tier: 'native', kind: 'decoder', name: 'libfast', version: null, description: null, shared: false, status: { state: 'off' } },
         { file: 'bad.wasm', path: '/plugins/bad.wasm', tier: 'wasm', kind: null, name: 'bad', version: null, description: null, shared: false, status: { state: 'failed', why: '/plugins/bad.wasm: not a plugin component (unknown binary)' } },
         { file: 'shared.so', path: '/data/.tlmbench/plugins/shared.so', tier: 'native', kind: 'decoder', name: 'shared', version: null, description: null, shared: true, folder: '/data/.tlmbench/plugins', status: { state: 'failed', why: 'Native plugins load only from your own plugins folder' } },

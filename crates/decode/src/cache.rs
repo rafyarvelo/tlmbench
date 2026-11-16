@@ -188,6 +188,13 @@ pub struct CachedRecording {
     rate: Option<ManifestRate>,
 }
 
+impl CachedRecording {
+    /// What it says about itself (a payload plugin's packet type names its part).
+    pub(crate) fn info_mut(&mut self) -> &mut RecordingInfo {
+        &mut self.info
+    }
+}
+
 /// Opens a CSV through the cache under `root`, building the cache entry first if needed.
 pub fn open_csv(path: &Path, root: &Path) -> Result<CachedRecording> {
     open_csv_with(path, root, None)

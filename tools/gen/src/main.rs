@@ -199,6 +199,9 @@ fn write_tlm(path: &PathBuf, a: &Args, t0: i64) -> io::Result<()> {
                 scale: 1.0,
                 value_offset: 0.0,
                 bits: None,
+                plugin: None,
+                size: 0,
+                params: None,
             })
             .collect(),
     };
@@ -238,6 +241,9 @@ fn packet_descriptor(a: &Args, t0: i64, compression: Compression) -> Descriptor 
             scale: 1.0,
             value_offset: 0.0,
             bits: None,
+            plugin: None,
+            size: 0,
+            params: None,
         })
         .collect();
     fields.push(Field {
@@ -248,6 +254,9 @@ fn packet_descriptor(a: &Args, t0: i64, compression: Compression) -> Descriptor 
         scale: 1.0,
         value_offset: 0.0,
         bits: None,
+        plugin: None,
+        size: 0,
+        params: None,
     });
     Descriptor {
         sequence: None,

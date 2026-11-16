@@ -1,4 +1,4 @@
-//! TelemetryBench plugins: custom decoders and alignment estimators as WASM components on wasmtime (sandboxed), and
+//! TelemetryBench plugins: custom decoders, payload decoders and alignment estimators as WASM components on wasmtime (sandboxed), and
 //! native decoders (trusted code).
 //!
 //! [`install`] reads the plugins folders and hands what it loads to the decoders (`tlmbench_decode::plugin`) and to
@@ -11,6 +11,7 @@
 mod decoder;
 mod estimator;
 mod native;
+mod payload;
 mod wasm;
 
 use std::path::{Path, PathBuf};
@@ -19,9 +20,11 @@ use std::sync::Arc;
 pub use decoder::WasmDecoder;
 pub use estimator::WasmEstimator;
 pub use native::NativeDecoder;
+pub use payload::WasmPayload;
 pub use tlmbench_decode::plugin::Tier;
 pub use wasm::Limits;
 
+use tlmbench_decode::payload::PayloadPlugin;
 use tlmbench_decode::plugin::DecoderPlugin;
 use tlmbench_store::align::EstimatorPlugin;
 
@@ -31,6 +34,8 @@ use tlmbench_store::align::EstimatorPlugin;
 pub enum Kind {
     Decoder,
     Estimator,
+    /// Decodes the payloads of a packet type or a field a descriptor names it for.
+    Payload,
 }
 
 /// A WASM plugin file loaded on its own (the author's `tlmbench plugins --check`).
@@ -38,6 +43,7 @@ pub enum Kind {
 pub enum Loaded {
     Decoder(WasmDecoder),
     Estimator(WasmEstimator),
+    Payload(WasmPayload),
 }
 
 /// Loads one `.wasm` file, whichever world it implements.
@@ -45,7 +51,8 @@ pub fn load_wasm(path: &Path) -> Result<Loaded, String> {
     match wasm::kind_of(&wasm::load(path)?) {
         Some(Kind::Decoder) => WasmDecoder::load(path).map(Loaded::Decoder),
         Some(Kind::Estimator) => WasmEstimator::load(path).map(Loaded::Estimator),
-        None => Err(format!("{}: it implements neither a decoder nor an estimator", path.display())),
+        Some(Kind::Payload) => WasmPayload::load(path).map(Loaded::Payload),
+        None => Err(format!("{}: it implements no decoder, estimator or payload world", path.display())),
     }
 }
 
@@ -108,6 +115,7 @@ pub fn install(own: Option<&Path>, shared: &[PathBuf], trusted: &[String], nativ
     let mut found = Vec::new();
     let mut decoders: Vec<Arc<dyn DecoderPlugin>> = Vec::new();
     let mut estimators: Vec<Arc<dyn EstimatorPlugin>> = Vec::new();
+    let mut payloads: Vec<Arc<dyn PayloadPlugin>> = Vec::new();
     let dirs = own.iter().map(|d| (d.to_path_buf(), false)).chain(shared.iter().map(|d| (d.clone(), true)));
     for (dir, is_shared) in dirs {
         for path in files_in(&dir) {
@@ -132,7 +140,7 @@ pub fn install(own: Option<&Path>, shared: &[PathBuf], trusted: &[String], nativ
                 match wasm::load(&path).map(|c| (wasm::kind_of(&c), c)) {
                     Err(e) => f.status = Status::Failed(e),
                     Ok((None, _)) => {
-                        f.status = Status::Failed("it implements neither a decoder nor an estimator".into())
+                        f.status = Status::Failed("it implements no decoder, estimator or payload world".into())
                     }
                     Ok((Some(Kind::Decoder), _)) => match WasmDecoder::load(&path) {
                         Ok(d) => {
@@ -145,6 +153,13 @@ pub fn install(own: Option<&Path>, shared: &[PathBuf], trusted: &[String], nativ
                         Ok(e) => {
                             fill(&mut f, Kind::Estimator, e.info());
                             estimators.push(Arc::new(e));
+                        }
+                        Err(e) => f.status = Status::Failed(e),
+                    },
+                    Ok((Some(Kind::Payload), _)) => match WasmPayload::load(&path) {
+                        Ok(p) => {
+                            fill(&mut f, Kind::Payload, p.info());
+                            payloads.push(Arc::new(p));
                         }
                         Err(e) => f.status = Status::Failed(e),
                     },
@@ -173,6 +188,7 @@ pub fn install(own: Option<&Path>, shared: &[PathBuf], trusted: &[String], nativ
     }
     tlmbench_decode::plugin::set_plugins(decoders);
     tlmbench_store::align::set_estimators(estimators);
+    tlmbench_decode::payload::set_payload_plugins(payloads);
     Installed { found }
 }
 

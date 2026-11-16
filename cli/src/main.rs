@@ -523,6 +523,7 @@ fn check_plugin(plugin: &std::path::Path, file: Option<&std::path::Path>, common
     let (info, decoder) = match &loaded {
         Loaded::Decoder(d) => (tlmbench_decode::plugin::DecoderPlugin::info(d).clone(), Some(d)),
         Loaded::Estimator(e) => (e.info().clone(), None),
+        Loaded::Payload(p) => return check_payload(p, file, common),
     };
     println!(
         "{} {} ({}), {}",
@@ -568,6 +569,55 @@ fn check_plugin(plugin: &std::path::Path, file: Option<&std::path::Path>, common
     Ok(())
 }
 
+/// `--check` of a payload plugin: with a file and the `--descriptor` that names the plugin, what it decodes.
+fn check_payload(
+    p: &tlmbench_plugin::WasmPayload,
+    file: Option<&std::path::Path>,
+    common: &Common,
+) -> Result<(), Fail> {
+    use tlmbench_decode::payload::PayloadPlugin;
+    let info = p.info().clone();
+    println!("{} {} (payload), {}", info.name, info.version, info.path.display());
+    if let Some(d) = &info.description {
+        println!("  {d}");
+    }
+    let (Some(file), Some(desc)) = (file, common.descriptor.as_ref()) else {
+        println!(
+            "  Give a file and the --descriptor that names it (plugin = \"{}\") to see what it decodes.",
+            info.name
+        );
+        return Ok(());
+    };
+    // only this plugin, as the descriptor names it
+    let path = info.path.clone();
+    let one = tlmbench_plugin::WasmPayload::load(&path).map_err(|e| Fail(2, e))?;
+    tlmbench_decode::payload::set_payload_plugins(vec![std::sync::Arc::new(one)]);
+    let opts = tlmbench_decode::OpenOptions {
+        descriptor: Some(desc.clone()),
+        part: common.part.clone(),
+        cache_dir: common.cache.clone(),
+        ..Default::default()
+    };
+    let started = std::time::Instant::now();
+    let recs = tlmbench_decode::open_all(file, &opts).map_err(|e| Fail(2, e.to_string()))?;
+    println!("  decoded in {:.2} s (cached: a second run is instant)", started.elapsed().as_secs_f64());
+    for rec in &recs {
+        let i = rec.info();
+        println!("  {}: {} samples", i.part.as_deref().unwrap_or("records"), i.samples);
+        for c in &i.channels {
+            println!("    channel {:<20} {:<4} {}", c.name, c.dtype, c.unit.as_deref().unwrap_or(""));
+        }
+        match (i.t_first, i.t_last) {
+            (Some(a), Some(b)) => println!("    time {a} .. {b} ns"),
+            _ => println!("    no samples"),
+        }
+        for n in &i.notes {
+            println!("    note: {n}");
+        }
+    }
+    Ok(())
+}
+
 fn plugins(json: bool, common: &Common) -> Result<(), Fail> {
     let found = load_plugins(common);
     if json {
@@ -585,6 +635,7 @@ fn plugins(json: bool, common: &Common) -> Result<(), Fail> {
         let kind = match f.kind {
             Some(Kind::Decoder) => "decoder",
             Some(Kind::Estimator) => "alignment",
+            Some(Kind::Payload) => "payload",
             None => "?",
         };
         let tier = if f.tier == Tier::Wasm { "wasm" } else { "native" };

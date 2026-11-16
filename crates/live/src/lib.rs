@@ -752,6 +752,9 @@ mod tests_support {
             scale: 1.0,
             value_offset: 0.0,
             bits: None,
+            plugin: None,
+            size: 0,
+            params: None,
         };
         Descriptor {
             sequence: Some("seq".into()),

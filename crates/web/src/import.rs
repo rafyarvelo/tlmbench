@@ -204,6 +204,15 @@ pub fn import_described(
     }
     .ok_or_else(|| bad("the descriptor has no such packet type".into()))?;
     let (desc, part) = parts.swap_remove(at);
+    // payload plugins (D-ingest-09) decode in the app; the page doesn't run them yet
+    if let Some(n) = part
+        .as_ref()
+        .and_then(|q| q.plugin.as_ref())
+        .map(|p| &p.0)
+        .or(desc.plugin_fields().next().and_then(|f| f.plugin.as_ref()))
+    {
+        return Err(bad(format!("its descriptor names the payload plugin \"{n}\": open it in the app")));
+    }
     let part_name = part.as_ref().map(|p| p.name.clone());
     let start = (desc.header_size as usize).min(bytes.len());
     let Some(p) = desc.packets.clone() else {

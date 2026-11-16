@@ -119,7 +119,7 @@
     setSetting('nativePlugins', on ? [...new Set([...settings.nativePlugins, file])] : settings.nativePlugins.filter((f) => f !== file));
     void rescan();
   }
-  const kindText = (k: PluginRow['kind']) => (k === 'decoder' ? 'Decoder' : k === 'estimator' ? 'Alignment' : '');
+  const kindText = (k: PluginRow['kind']) => (k === 'decoder' ? 'Decoder' : k === 'estimator' ? 'Alignment' : k === 'payload' ? 'Payload' : '');
   const other = $derived(sideOf('settings') === 'left' ? 'right' : 'left');
 
   function editCat(i: number, patch: Partial<EventCategory>): void {

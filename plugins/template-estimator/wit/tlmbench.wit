@@ -1,4 +1,4 @@
-// The interface WASM plugins implement: one WIT package, two worlds. Plugins are components built for wasm32-wasip2
+// The interface WASM plugins implement: one WIT package, three worlds. Plugins are components built for wasm32-wasip2
 // (the template crates in plugins/ start from these). The host gives a plugin no files, network or clock: a decoder
 // reads the file only through `source`, an estimator only gets the series it asked for.
 package tlmbench:plugin@0.1.0;
@@ -87,4 +87,41 @@ world estimator {
     /// at most 1M samples of each, decimated.
     export needs: func(params: string) -> result<list<string>, string>;
     export estimate: func(reference: list<series>, target: list<series>, hint: list<knot>, params: string) -> result<estimate, string>;
+}
+
+/// Payloads: a descriptor names this plugin for one packet type or one field (`plugin = "name"`, its `about.name`). The
+/// host frames the packets, checks their checksums and decompresses them; the plugin turns the bytes into values. It
+/// gets no files, network or clock, only the bytes it is handed. `params` is the descriptor's `params` table for that
+/// type or field, as JSON (`{}` when there is none).
+world payload {
+    use types.{about, channel, dtype};
+
+    record schema {
+        channels: list<channel>,
+        /// Rows carry a time in nanoseconds; false numbers them.
+        timed: bool,
+    }
+
+    /// One packet of the type: its header as stored, and its payload after checksum and decompression.
+    record packet {
+        header: list<u8>,
+        payload: list<u8>,
+    }
+
+    record rows {
+        rows: u32,
+        /// `rows` times when the schema is timed, else empty. Never decreasing (time that does is flagged and held).
+        time: list<s64>,
+        /// One little-endian array per channel, `rows` values each.
+        columns: list<list<u8>>,
+    }
+
+    export describe: func() -> about;
+    /// The channels it makes of packet type `type-name`. Called once per file, before `decode-packets`.
+    export packet-schema: func(type-name: string, params: string) -> result<schema, string>;
+    /// The rows of some packets of that type, in file order (any number of rows per packet, none included).
+    export decode-packets: func(type-name: string, params: string, packets: list<packet>) -> result<rows, string>;
+    /// One value per record of field `field`: `data` is `count` runs of `size` bytes, each record's bytes of the field;
+    /// returns `count` little-endian values of `dtype`.
+    export decode-field: func(field: string, params: string, dtype: dtype, size: u32, count: u32, data: list<u8>) -> result<list<u8>, string>;
 }

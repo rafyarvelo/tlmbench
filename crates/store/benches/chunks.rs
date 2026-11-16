@@ -33,6 +33,9 @@ fn write(path: &std::path::Path, n: usize) {
             scale: 1.0,
             value_offset: 0.0,
             bits: None,
+            plugin: None,
+            size: 0,
+            params: None,
         })
         .collect();
     let desc = Descriptor {
