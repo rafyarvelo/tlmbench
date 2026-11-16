@@ -31,7 +31,7 @@ Every difference is in one class:
 | P12 | Explorer ⋯ (`explorer-menu`) | "Recipes and profiles…" | "Recipes…" (the profiles tab isn't built) | R3.2, S5.1-12 |
 
 Also Port, already ledger rows that R3.0 confirms (no screenshot shows them because the fake recording has no such data):
-dragging a channel to a pane's edge or between rows (D-ui-17, D-ui-18), event markers' tooltips (D-ui-11), Stop at several
+dragging a channel to a pane's edge or between rows (D-ui-17, D-ui-18; Nov 16 the scenes `drag-edge`, `drag-edge-right`, `drag-into`, `drag-gap`, `drag-pane-top` and `drag-pane-merge` hold a drag on both pages, and the app's outlines were matched: what is left is the panes' few pixels of size), event markers' tooltips (D-ui-11), Stop at several
 categories (S5.2-15), Play's lost transport test (D-ui-13, D-ui-14), folder runs over sub-folders with a trends tab.
 
 ## App is better (never ported back)

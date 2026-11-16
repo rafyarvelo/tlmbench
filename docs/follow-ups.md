@@ -49,6 +49,21 @@ removed Nov 15; git history keeps them.
   Parquet reader is a separate WASM module (about 1 MB gzipped) fetched only when a Parquet file opens. Several files,
   derived channels, events and checks in a tab are after v1 (`docs/post-v1.md`).
 
+## Decisions the owner made (Nov 16)
+
+- Ingestion (changes the CSV decision "a column with any non-numeric value … is text and left out"): a text column with
+  up to 256 distinct values opens as a labelled channel, each text a code, shown as its text on axes (a tick per label),
+  in readouts and in checks (`'Mission'`); a column with more is left out and the import dialog says why. Ledger D-ingest-12.
+- Decoder plugins, "a descriptor can name a plugin for one field or packet type": a third world, `payload`, in the same
+  WIT package. A `[[packet_types]]` entry with `plugin = "name"` hands the plugin each packet's payload after framing,
+  checksum and decompression, and gets rows for the channels the plugin declares; a field with `plugin = "name"` and a
+  `size` gets that field's bytes for many records at once and returns one value per record. Ledger D-ingest-09.
+- Browser-only mode runs WASM decoder plugins by translating the same `.wasm` component in the page (jco, fetched only
+  when a plugin is used); each plugin runs in a Worker of its own, reads the file only through `File.slice`, is ended at
+  the app's CPU limit, and has its memory capped at the app's limit. Ledger D-brow-09.
+- Open together names the tab after its files ("flight-1 + flight-2", "flight-1 + 2 more"). In browser-only mode the
+  Events panel leaves the rail. Export data… and Save image… close when done and say what they wrote, as Export to HTML… does.
+
 ## From the release review (Nov 11)
 
 - Export checksums are BLAKE3, and the viewer verifies each file (D-cli-08).
