@@ -343,6 +343,34 @@ pub fn dump(st: &crate::data::State, k: usize) -> Result<(Value, Vec<u8>), Strin
     Ok((meta, out))
 }
 
+/// A file a WASM decoder plugin decoded in the page (the plugin's Worker sends the columns as `load` reads them: the
+/// times when timed, then each channel as f64): time that goes backwards is flagged and held, as the app does for a
+/// plugin's file, then it loads as a dump does.
+pub fn import_columns(
+    st: &mut crate::data::State,
+    k: usize,
+    path: &str,
+    meta: &Value,
+    bin: &[u8],
+) -> Result<Reply, String> {
+    let n = meta["samples"].as_u64().ok_or("no samples")? as usize;
+    let mut meta = meta.clone();
+    let mut bin = bin.to_vec();
+    if meta["time"]["kind"].as_str() == Some("column") {
+        let head = bin.get(..n * 8).ok_or("the columns are short")?;
+        let mut t: Vec<i64> = head.chunks_exact(8).map(|b| i64::from_le_bytes(b.try_into().unwrap())).collect();
+        let mut found = Backwards::default();
+        clamp_backwards(&mut t, &mut None, 1, &mut found);
+        for (i, v) in t.iter().enumerate() {
+            bin[i * 8..i * 8 + 8].copy_from_slice(&v.to_le_bytes());
+        }
+        if let Some(note) = found.note() {
+            meta["notes"] = json!([note]);
+        }
+    }
+    load(st, k, path, &meta, &bin)
+}
+
 /// The inverse of [`dump`].
 pub fn load(st: &mut crate::data::State, k: usize, path: &str, meta: &Value, bin: &[u8]) -> Result<Reply, String> {
     let n = meta["samples"].as_u64().ok_or("no samples")? as usize;
@@ -597,6 +625,23 @@ unit = "V"
         let d = c["decoders"].as_array().unwrap();
         assert_eq!(d.len(), 1, "a descriptor that doesn't parse is left out");
         assert_eq!((d[0]["id"].as_str(), d[0]["descriptor"]["files"][0].as_str()), (Some("esc"), Some("*.esc")));
+    }
+
+    #[test]
+    fn a_plugins_columns_load_with_time_going_backwards_flagged() {
+        let t: [i64; 4] = [0, 2_000, 1_000, 3_000];
+        let v = [1.0f64, 2.0, 3.0, 4.0];
+        let mut bin: Vec<u8> = t.iter().flat_map(|x| x.to_le_bytes()).collect();
+        bin.extend(v.iter().flat_map(|x| x.to_le_bytes()));
+        let meta = json!({ "samples": 4, "time": { "kind": "column", "name": "time" }, "channels": [{ "name": "volts", "unit": "V" }], "format": "demo (plugin)" });
+        let mut st = State::default();
+        import_columns(&mut st, 0, "x.demo", &meta, &bin).unwrap();
+        let d = st.files[0].as_ref().unwrap();
+        let Tm::Col(times) = &d.tm else { panic!("a time column") };
+        assert_eq!(times, &[0, 2_000, 2_000, 3_000], "held, not reordered");
+        assert!(d.info.notes[0].starts_with("Time goes backwards in 1 row"), "{:?}", d.info.notes);
+        assert_eq!(d.info.format, "demo (plugin)");
+        assert_eq!(d.cols[0].raw.slice(4).unwrap(), v);
     }
 
     #[test]

@@ -86,6 +86,9 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
             Err(e) => crate::preview::Preview { problem: Some(e), ..Default::default() },
         }))),
         "descriptor_find_frames" => Ok(Reply::Json(json!(crate::descriptor::find_frames(bin)))),
+        "import_columns" => {
+            crate::import::import_columns(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, &a["meta"], bin)
+        }
         "config_of" => Ok(Reply::Json(crate::import::config_of(&a["files"])?)),
         "looks_binary" => Ok(Reply::Json(json!(crate::preview::looks_binary(bin)))),
         "dump" => {
