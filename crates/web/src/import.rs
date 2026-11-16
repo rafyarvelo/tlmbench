@@ -109,13 +109,21 @@ pub fn import_tlm(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
     let stride = desc.record_size as usize;
     let n = (bytes.len() - header_len) / stride;
     let records = &bytes[header_len..header_len + n * stride];
-    import_records(st, k, path, "tlmbench reference", &desc, records, stride, Vec::new())
+    import_records(st, k, path, "tlmbench reference", None, &desc, records, stride, Vec::new())
 }
 
-/// The packet types of a descriptor kept in the page (TOML), each a recording of its own: their names, or one empty
-/// name for a descriptor without `[[packet_types]]`. The page opens one file per type (`flight.bin · gps`).
-pub fn described_parts(toml: &str) -> Result<Vec<String>, String> {
-    let d = Descriptor::parse(toml).map_err(|e| e.to_string())?;
+/// A descriptor as the page keeps it: TOML text, or the descriptor form's JSON (as the app's commands take it).
+pub fn descriptor_of(v: &Value) -> Result<Descriptor, String> {
+    match v {
+        Value::String(t) => Descriptor::parse(t).map_err(|e| e.to_string()),
+        other => serde_json::from_value(other.clone()).map_err(|e| e.to_string()),
+    }
+}
+
+/// The packet types of a descriptor kept in the page, each a recording of its own: their names, or one empty name for a
+/// descriptor without `[[packet_types]]`. The page opens one file per type (`flight.bin · gps`), as the app does.
+pub fn described_parts(desc: &Value) -> Result<Vec<String>, String> {
+    let d = descriptor_of(desc)?;
     d.validate().map_err(|e| e.to_string())?;
     Ok(d.parts().into_iter().map(|(_, p)| p.map(|p| p.name).unwrap_or_default()).collect())
 }
@@ -128,21 +136,39 @@ pub fn import_described(
     k: usize,
     path: &str,
     bytes: &[u8],
-    toml: &str,
-    part: usize,
+    descriptor: &Value,
+    part: Option<&str>,
 ) -> Result<Reply, String> {
     use crate::packets_core::{frame, packet_records};
     let name = path.rsplit('/').next().unwrap_or(path);
     let bad = |msg: String| format!("{name}: {msg}");
-    let whole = Descriptor::parse(toml).map_err(|e| bad(e.to_string()))?;
+    let whole = descriptor_of(descriptor).map_err(bad)?;
     whole.validate().map_err(|e| bad(e.to_string()))?;
-    let (desc, part) =
-        whole.parts().into_iter().nth(part).ok_or_else(|| bad("the descriptor has no such packet type".into()))?;
+    let mut parts = whole.parts();
+    // a file with several packet types opens one type at a time, by name (as the app's `open` takes `part`)
+    let at = match part {
+        Some(p) => parts.iter().position(|(_, q)| q.as_ref().is_some_and(|q| q.name == p)),
+        None if parts.len() == 1 => Some(0),
+        None => return Err(bad(format!("it has {} packet types: open one at a time", parts.len()))),
+    }
+    .ok_or_else(|| bad("the descriptor has no such packet type".into()))?;
+    let (desc, part) = parts.swap_remove(at);
+    let part_name = part.as_ref().map(|p| p.name.clone());
     let start = (desc.header_size as usize).min(bytes.len());
     let Some(p) = desc.packets.clone() else {
         let stride = desc.record_size as usize;
         let n = (bytes.len() - start) / stride;
-        return import_records(st, k, path, "Descriptor", &desc, &bytes[start..start + n * stride], stride, Vec::new());
+        return import_records(
+            st,
+            k,
+            path,
+            "Descriptor",
+            None,
+            &desc,
+            &bytes[start..start + n * stride],
+            stride,
+            Vec::new(),
+        );
     };
     let big = desc.endian == Endian::Big;
     let sync = p.sync_bytes().map_err(|e| bad(e.to_string()))?;
@@ -160,7 +186,7 @@ pub fn import_described(
         .into_iter()
         .collect();
     let stride = (p.header_size + desc.record_size) as usize;
-    import_records(st, k, path, "Descriptor", &desc, &records, stride, notes)
+    import_records(st, k, path, "Descriptor", part_name, &desc, &records, stride, notes)
 }
 
 /// Whole records of `stride` bytes laid out by `desc` (a packet file's: the packet header then the record) into file
@@ -171,6 +197,7 @@ fn import_records(
     k: usize,
     path: &str,
     format: &str,
+    part: Option<String>,
     desc: &Descriptor,
     records: &[u8],
     stride: usize,
@@ -221,7 +248,7 @@ fn import_records(
         .iter()
         .map(|f| ChannelInfo { name: f.name.clone(), unit: f.unit.clone(), dtype: f.dtype.name(), category: None })
         .collect();
-    let mut d = Ds::new(path, format, None, n, time, tm, channels);
+    let mut d = Ds::new(path, format, part, n, time, tm, channels);
     notes.extend(found.note_of("record", "record"));
     d.info.notes = notes;
     for (col, f) in d.cols.iter_mut().zip(&fields) {
@@ -478,9 +505,9 @@ unit = "V"
         *broken.last_mut().unwrap() ^= 0xff;
         bytes.extend(broken);
         bytes.extend(packet(0, &ZST_1));
-        assert_eq!(described_parts(PACKETS_ZSTD).unwrap(), [""]);
+        assert_eq!(described_parts(&json!(PACKETS_ZSTD)).unwrap(), [""]);
         let mut st = State::default();
-        import_described(&mut st, 0, "local://run.bin", &bytes, PACKETS_ZSTD, 0).unwrap();
+        import_described(&mut st, 0, "local://run.bin", &bytes, &json!(PACKETS_ZSTD), None).unwrap();
         let d = st.files[0].as_ref().unwrap();
         assert_eq!(d.len, 4, "three records, then one");
         assert_eq!(d.info.format, "Descriptor");
@@ -522,14 +549,17 @@ fields = [ { name = "ax", type = "i16", offset = 6 } ]
         bytes.extend(unchecked(2, &[7, 0, 8, 0]));
         bytes.extend(unchecked(1, &[100, 0, 6, 0]));
         bytes.extend(unchecked(9, &[1, 2]));
-        assert_eq!(described_parts(types).unwrap(), ["gps", "imu"]);
+        assert_eq!(described_parts(&json!(types)).unwrap(), ["gps", "imu"]);
+        let types = &json!(types);
         let mut st = State::default();
-        import_described(&mut st, 0, "x.bin · gps", &bytes, types, 0).unwrap();
-        import_described(&mut st, 1, "x.bin · imu", &bytes, types, 1).unwrap();
+        import_described(&mut st, 0, "x.bin", &bytes, types, Some("gps")).unwrap();
+        import_described(&mut st, 1, "x.bin", &bytes, types, Some("imu")).unwrap();
         let (gps, imu) = (st.files[0].as_ref().unwrap(), st.files[1].as_ref().unwrap());
         assert_eq!(gps.cols[0].raw.slice(2).unwrap(), [5.0, 6.0]);
         assert_eq!(imu.cols[0].raw.slice(2).unwrap(), [7.0, 8.0]);
-        assert!(import_described(&mut st, 2, "x.bin", &bytes, types, 5).is_err());
+        assert_eq!(gps.info.part.as_deref(), Some("gps"));
+        assert!(import_described(&mut st, 2, "x.bin", &bytes, types, Some("nope")).is_err());
+        assert!(import_described(&mut st, 2, "x.bin", &bytes, types, None).err().unwrap().contains("2 packet types"));
 
         // fixed-width records after a header, with the descriptor kept in the page (no packets)
         let fixed = FIELD_TIME.replace("record_size = 8", "record_size = 8\nheader_size = 4");
@@ -538,7 +568,9 @@ fields = [ { name = "ax", type = "i16", offset = 6 } ]
             &tlm(&[(0, 1000, 1), (500, 2000, 0)], FIELD_TIME)
                 [crate::reference::read_header(&tlm(&[], FIELD_TIME)).unwrap().0..],
         );
-        import_described(&mut st, 3, "plain.bin", &raw, &fixed, 0).unwrap();
+        // the form's JSON works as well as TOML
+        let as_json = serde_json::to_value(Descriptor::parse(&fixed).unwrap()).unwrap();
+        import_described(&mut st, 3, "plain.bin", &raw, &as_json, None).unwrap();
         assert_eq!(st.files[3].as_ref().unwrap().cols[0].raw.slice(2).unwrap(), [2.0, 3.0]);
     }
 }

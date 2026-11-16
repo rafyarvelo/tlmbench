@@ -71,17 +71,22 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
         "import_tlm" => crate::import::import_tlm(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
         "import_csv" => crate::import::import_csv(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
         // a binary file laid out by a descriptor the page keeps: its packet types, then one file per type
-        "described_parts" => {
-            Ok(Reply::Json(serde_json::json!(crate::import::described_parts(&arg::<String>(a, "descriptor")?)?)))
-        }
+        "described_parts" => Ok(Reply::Json(json!(crate::import::described_parts(&a["descriptor"])?))),
         "import_described" => crate::import::import_described(
             st,
             arg::<usize>(a, "file")?,
             &arg::<String>(a, "path")?,
             bin,
-            &arg::<String>(a, "descriptor")?,
-            arg::<usize>(a, "part").unwrap_or(0),
+            &a["descriptor"],
+            a["part"].as_str(),
         ),
+        // the descriptor form over the first bytes of a file (`bin`), as the app's commands answer it
+        "descriptor_preview" => Ok(Reply::Json(json!(match crate::import::descriptor_of(&a["descriptor"]) {
+            Ok(d) => crate::preview::preview(bin, &d),
+            Err(e) => crate::preview::Preview { problem: Some(e), ..Default::default() },
+        }))),
+        "descriptor_find_frames" => Ok(Reply::Json(json!(crate::descriptor::find_frames(bin)))),
+        "looks_binary" => Ok(Reply::Json(json!(crate::preview::looks_binary(bin)))),
         "dump" => {
             let (meta, data) = crate::import::dump(st, arg::<usize>(a, "file")?)?;
             let json = serde_json::to_vec(&meta).map_err(|e| e.to_string())?;

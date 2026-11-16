@@ -27,14 +27,14 @@ use tlmbench_core::{
 use crate::backwards::Backwards;
 use crate::bytes::{self, Bytes};
 use crate::cache::Source;
-use crate::descriptor::{Bits, Compression, Counts, DType, Descriptor, Endian, Packets, Part, TimeSpec, counter_range};
+use crate::descriptor::{Bits, Compression, DType, Descriptor, Endian, Packets, Part, TimeSpec, counter_range};
 use crate::error::{Result, format_err, io_err};
 use crate::fixed::gather_tile;
 use crate::strided::{Ordering, Pod, clamp, decode, wrapped};
 
 // framing, checksums and decompression are in `packets_core.rs` (the browser-only page includes it as source)
 pub use crate::packets_core::{checksum, decompress};
-pub(crate) use crate::packets_core::{frame, head_packets, packet_records, packets_of, read_bits};
+pub(crate) use crate::packets_core::{frame, frame_packet, head_packets, packet_records, packets_of, read_bits};
 
 const INDEX_VERSION: u32 = 2;
 /// Decoded packets kept for reads outside decoded chunks.
@@ -126,25 +126,7 @@ pub fn encode_packet(p: &Packets, big: bool, header: &[u8], payload: &[u8]) -> R
             w.finish().map_err(io_err("<packet>"))?
         }
     };
-    let (hs, cks) = (p.header_size as usize, p.checksum.size() as usize);
-    let mut out = header[..hs].to_vec();
-    let sync = p.sync_bytes()?;
-    out[..sync.len()].copy_from_slice(&sync);
-    if let Some(l) = &p.length {
-        let len = stored.len() as i64 - l.adjust + if l.counts == Counts::Packet { (hs + cks) as i64 } else { 0 };
-        let (size, at) = (l.dtype.size() as usize, l.offset as usize);
-        for k in 0..size {
-            let shift = 8 * if big { size - 1 - k } else { k };
-            out[at + k] = (len >> shift) as u8;
-        }
-    }
-    out.extend_from_slice(&stored);
-    let c = checksum(p.checksum, &out);
-    for k in 0..cks {
-        let shift = 8 * if big { cks - 1 - k } else { k };
-        out.push((c >> shift) as u8);
-    }
-    Ok(out)
+    frame_packet(p, big, header, &stored)
 }
 
 impl PacketFile {

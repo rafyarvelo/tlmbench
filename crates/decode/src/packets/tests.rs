@@ -2,7 +2,7 @@ use tlmbench_core::chunks::Held;
 use tlmbench_core::{Recording, TraceKind, Viewport};
 
 use super::*;
-use crate::descriptor::Checksum;
+use crate::descriptor::{Checksum, Counts};
 use crate::descriptor::{Field, LengthField, TimeUnit};
 #[allow(unused_imports)]
 use crate::packets_core::*;

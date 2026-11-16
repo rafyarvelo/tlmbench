@@ -83,6 +83,31 @@ pub fn decompress(kind: Compression, stored: &[u8]) -> Option<Cow<'_, [u8]>> {
     }
 }
 
+/// One packet's bytes around a `stored` (already compressed) payload: `header` (`header_size` bytes, the caller's
+/// fields filled in) gets the sync word and the length, and the checksum follows. `packets::encode_packet` compresses
+/// first; the browser's tests frame plain payloads with it.
+pub(crate) fn frame_packet(p: &Packets, big: bool, header: &[u8], stored: &[u8]) -> Result<Vec<u8>> {
+    let (hs, cks) = (p.header_size as usize, p.checksum.size() as usize);
+    let mut out = header[..hs].to_vec();
+    let sync = p.sync_bytes()?;
+    out[..sync.len()].copy_from_slice(&sync);
+    if let Some(l) = &p.length {
+        let len = stored.len() as i64 - l.adjust + if l.counts == Counts::Packet { (hs + cks) as i64 } else { 0 };
+        let (size, at) = (l.dtype.size() as usize, l.offset as usize);
+        for k in 0..size {
+            let shift = 8 * if big { size - 1 - k } else { k };
+            out[at + k] = (len >> shift) as u8;
+        }
+    }
+    out.extend_from_slice(stored);
+    let c = checksum(p.checksum, &out);
+    for k in 0..cks {
+        let shift = 8 * if big { cks - 1 - k } else { k };
+        out.push((c >> shift) as u8);
+    }
+    Ok(out)
+}
+
 /// A packet found by the framing scan, before its payload is decompressed.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Framed {

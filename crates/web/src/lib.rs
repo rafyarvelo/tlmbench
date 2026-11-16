@@ -29,6 +29,25 @@ mod error;
 #[path = "../../decode/src/packets_core.rs"]
 #[allow(dead_code)]
 mod packets_core;
+// the descriptor form's preview, as the app shows it (it reads packets through `crate::packets`)
+#[path = "../../decode/src/preview.rs"]
+#[allow(dead_code)]
+mod preview;
+mod packets {
+    pub(crate) use crate::packets_core::head_packets;
+
+    /// The app's `encode_packet` for plain payloads (the page doesn't compress), for the preview's tests.
+    #[cfg(test)]
+    pub(crate) fn encode_packet(
+        p: &crate::descriptor::Packets,
+        big: bool,
+        header: &[u8],
+        payload: &[u8],
+    ) -> crate::Result<Vec<u8>> {
+        assert_eq!(p.compression, crate::descriptor::Compression::None, "the page's tests frame plain payloads");
+        crate::packets_core::frame_packet(p, big, header, payload)
+    }
+}
 #[path = "../../decode/src/profile.rs"]
 #[allow(dead_code)]
 mod profile;
@@ -40,7 +59,7 @@ mod reference;
 mod strided;
 
 #[allow(unused_imports)]
-pub(crate) use error::Result;
+pub(crate) use error::{Error, Result};
 
 use std::cell::RefCell;
 
