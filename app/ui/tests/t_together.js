@@ -28,6 +28,8 @@ run(
     await sel(A, B);
     await p.click('[data-fsel="together"]');
     check('Open together: one tab, two slots', await until(() => document.querySelectorAll('#explorer .row.slot').length === 2));
+    const tab = () => p.evaluate(() => { const t = document.querySelector('#wsTabs .wstab[aria-selected=true]'); return { name: t?.querySelector('.nm')?.textContent, tip: t?.dataset.tip }; });
+    check('the tab is named for both files, its tooltip lists each (owner, Nov 16)', await until(() => document.querySelector('#wsTabs .wstab[aria-selected=true] .nm')?.textContent === 'flight + gps') && (await tab()).tip === `${A}\n${B}`, await tab());
     check('the shared channel first, each file\'s copy in the one pane; then each file\'s own channels as starter charts', await until(() => window.__tlmApp.panes().length === 6) && JSON.stringify(await panes()) === '[[0,8],[1,2],[3,4],[5],[6],[7]]', await panes());
 
     // a table over both files' copies: the slower file holds its last sample, dimmed where unchanged (S4.2-09)
@@ -52,6 +54,7 @@ run(
     await sel(A, `${DIR}/bench.tlm`);
     await p.click('[data-fsel="together"]');
     await until(() => document.querySelectorAll('#explorer .row.slot').length >= 2);
+    check('three files: the first and how many more', await until(() => document.querySelector('#wsTabs .wstab[aria-selected=true] .nm')?.textContent === 'flight + 2 more'), await tab());
     check('Open together on a file that is open already leaves its panes alone', JSON.stringify((await panes()).slice(0, JSON.parse(before).length)) === before, await panes());
   },
   { files, launch: null },

@@ -3688,6 +3688,9 @@ const alignSaved = (a: AlignView, knots: [string, string][]) => ({ method: a.met
 /** A file's short name: its prefix when it has one (Channel prefix…), else its name without the extension. */
 const shortOf = (path: string) => settings.filePrefix[path] || nameOf(path).replace(/\.[^.]*$/, '');
 
+/** A tab of several files: the first two short names joined by +, or the first and how many more. */
+const groupTabName = (paths: string[]) => (paths.length === 2 ? `${shortOf(paths[0])} + ${shortOf(paths[1])}` : `${shortOf(paths[0])} + ${paths.length - 1} more`);
+
 /** The files of a tab: a plain file is one. */
 function membersOf(f: OpenFile): Member[] {
   return f.members ?? [{ id: f.id, path: f.info.path, info: f.info, first: 0, count: f.info.channels.length, knots: [], derived: f.derived, missing: f.missing, align: freshAlign(), own: [f.first, f.last] }];
@@ -3783,9 +3786,10 @@ async function groupApply(f: OpenFile, order: Member[], before?: { id: number; f
     const d = tabData.get(t.key);
     if (d?.file !== f) continue;
     if (t.key !== tabs.active) d.panes.forEach((p) => remapPane(p, to));
-    // the tab is named for its primary
+    // a tab is named for its files ("flight-1 + flight-2", "flight-1 + 2 more"; owner, Nov 16), its tooltip listing each
     t.path = f.info.path;
-    if (!t.compare) t.name = tabName(f.info.path, f.info.part);
+    if (!t.compare) t.name = order.length > 1 ? groupTabName(order.map((m) => m.path)) : tabName(f.info.path, f.info.part);
+    t.tip = order.length > 1 ? order.map((m) => m.path).join('\n') : undefined;
   }
   if (state.file === f) {
     stack.panes.forEach((p) => remapPane(p, to));

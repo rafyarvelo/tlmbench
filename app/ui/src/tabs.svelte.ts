@@ -18,6 +18,8 @@ export interface TabInfo {
   rate?: string;
   /** A Compare runs tab: named `a vs b`. */
   compare?: boolean;
+  /** The tooltip, when it isn't `path`: a tab of several files lists each. */
+  tip?: string;
   /** Its panes differ from the layout as saved. */
   dirty?: boolean;
 }

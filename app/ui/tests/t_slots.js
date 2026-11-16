@@ -95,7 +95,7 @@ run(
     check('Make primary regroups with the files swapped', (await until(() => window.__tlmFake.groupSets.length === 2)) && JSON.stringify((await calls('groupSets')).at(-1)) === '[2,1]', await calls('groupSets'));
     check('gps is slot 1 now', await until(() => document.querySelector('#explorer .row.slot[data-slot="1"] .nm')?.textContent === 'GPS'));
     check('the pane keeps its channel (lat is channel 0 now)', (await app('panes')).flat().includes(0), await app('panes'));
-    check('the tab is named for its primary', (await text('#wsTabs [aria-selected=true] .nm')) === 'gps.tlm');
+    check('the tab is named for its files, the primary first', /^(gps|GPS) \+ /.test(await text('#wsTabs [aria-selected=true] .nm')), await text('#wsTabs [aria-selected=true] .nm'));
 
     // close a file of the tab
     await p.hover('#explorer .row.slot[data-slot="2"]');

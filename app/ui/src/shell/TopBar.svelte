@@ -179,7 +179,8 @@
         tabindex="0"
         aria-selected={t.key === tabs.active}
         data-tab={t.key}
-        data-tip={t.path}
+        data-tip={t.tip ?? t.path}
+        data-path={t.path}
         draggable="true"
         onclick={() => actions.showTab(t.key)}
         onkeydown={(e) => {
