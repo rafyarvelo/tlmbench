@@ -201,3 +201,7 @@ removed Nov 15; git history keeps them.
   anyway, filling in as its packets come. Packets aren't read live from a tailed file or a replay.
 - Checks (D-check-02, Nov 16 night): the option that makes missing values fail is per check, `missing = "fail"` in a
   set's TOML and "Missing values fail" in the check editor; it applies inside the check's When only. Rules don't have it.
+- CSV text columns (D-ingest-12, built Nov 16 night): codes follow the order the file first has each text, an empty
+  cell is missing, and the channel keeps the column's place among the others. The labels travel with the recording
+  (cache, HTML exports, browser-only mode) and a value map the person types is applied over them. An axis gets a tick per
+  text only when the text channel is alone on it. This replaces the design's "text columns are left out" (D-ingest-03).
