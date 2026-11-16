@@ -12,7 +12,8 @@ TelemetryBench for Python: the same core as the app and the command line.
     rec = tlmbench.open("flight.bin")            # decodes once into the app's cache; reads the nearest .tlmbench/
     rec.channels                                  # names, units, types
     rec.read(["motor_rpm"], start="10 s", until="20 s")   # {"time_ns": ..., "motor_rpm": ...} as NumPy arrays
-    rec.to_arrow(["motor_rpm"])                   # a pyarrow Table (needs pyarrow)
+    rec.to_arrow(["motor_rpm"])                   # a pyarrow Table (needs pyarrow); the columns cross by the Arrow C stream
+    polars.DataFrame(rec.arrow_stream())          # anything that reads the Arrow PyCapsule interface takes it directly
     rec.view("motor_rpm", 0, 60, width=1200)      # what the app draws for a 1200 px wide chart
     rec.stats(["motor_rpm"], 0, 60)               # exact count, min, max, mean, std
     rec.check("Flight acceptance")                # a check set's results, as the CLI's JSON report holds them
@@ -47,6 +48,11 @@ An opened recording. Channels are given by name or index.
 Adds an event: a marker at `start`, or a range when `duration` isn't 0. Times are as for `read` (seconds from the
 first sample, "10 s" text or ISO 8601); `duration` is a length ("2 s", "250 ms" or seconds). Kept in the app's cache for
 this recording, so the app shows it too; nothing is written beside the data. Returns the event.
+
+### `Recording.arrow_stream(self, channels: 'Sequence[str | int] | None' = None, start: 'Any' = None, until: 'Any' = None) -> "'ArrowStream'"`
+
+The same data as an object with `__arrow_c_stream__` (the Arrow PyCapsule interface): pyarrow, polars and DuckDB
+take it directly, e.g. `polars.DataFrame(rec.arrow_stream(["rpm"]))`. It can be read once.
 
 ### `Recording.check(self, set: 'str') -> 'dict[str, Any]'`
 
@@ -100,7 +106,8 @@ Exact count, min, max (with their times), mean and standard deviation over `[sta
 
 ### `Recording.to_arrow(self, channels: 'Sequence[str | int] | None' = None, start: 'Any' = None, until: 'Any' = None)`
 
-`read` as a pyarrow Table (channels keep their unit in the field metadata).
+`read` as a pyarrow Table (channels keep their unit in the field metadata). The columns cross through the Arrow C
+stream interface, not through a Python copy.
 
 ### `Recording.values_at(self, t: 'Any', channels: 'Sequence[str | int] | None' = None) -> 'dict[str, float | None] | None'`
 

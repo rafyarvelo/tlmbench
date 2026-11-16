@@ -19,6 +19,9 @@ tlmbench-store = { path = "../crates/store" }
 tlmbench-expr = { path = "../crates/expr" }
 tlmbench-export = { path = "../crates/export" }
 serde_json = "1.0.154"
+# the Arrow C stream interface: a recording hands its columns to pyarrow, polars, DuckDB... without a copy through Python
+arrow-array = { version = "60.1.0", features = ["ffi"] }
+arrow-schema = "60.1.0"
 
 # Its own workspace and target folder, like the plugin crates: an extension module links only through maturin.
 [workspace]

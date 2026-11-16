@@ -174,3 +174,18 @@ def test_the_folders_configuration_reads_as_objects(csv: Path, tmp_path: Path):
     rec = tlmbench.open(data, cache=str(tmp_path / "cache"))
     d = rec.derive()
     assert [c.name for c in d.channels] == ["rpm", "temp", "half"]
+
+
+def test_arrow_crosses_by_the_c_stream_interface(rec: tlmbench.Recording):
+    pa = pytest.importorskip("pyarrow")
+    # the PyCapsule interface: pyarrow takes the recording itself, or a stream of some channels
+    whole = pa.table(rec)
+    assert whole.num_rows == 20000 and whole.column_names == ["time_ns", "rpm", "temp"]
+    sub = pa.table(rec.arrow_stream(["rpm"], start="1 s", until="2 s"))
+    assert sub.num_rows == 100 and sub.schema.field("rpm").metadata[b"unit"] == b"rpm"
+    assert sub.column("time_ns")[0].as_py() == 1_000_000_000
+    assert sub.column("rpm").to_pylist() == pytest.approx(rec.read(["rpm"], start="1 s", until="2 s")["rpm"].tolist())
+    # to_arrow is the same path
+    assert rec.to_arrow(["temp"], until=1).equals(pa.table(rec.arrow_stream(["temp"], until=1)))
+    with pytest.raises(IndexError):
+        rec.arrow_stream([9])

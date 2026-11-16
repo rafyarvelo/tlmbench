@@ -4,7 +4,8 @@
     rec = tlmbench.open("flight.bin")            # decodes once into the app's cache; reads the nearest .tlmbench/
     rec.channels                                  # names, units, types
     rec.read(["motor_rpm"], start="10 s", until="20 s")   # {"time_ns": ..., "motor_rpm": ...} as NumPy arrays
-    rec.to_arrow(["motor_rpm"])                   # a pyarrow Table (needs pyarrow)
+    rec.to_arrow(["motor_rpm"])                   # a pyarrow Table (needs pyarrow); the columns cross by the Arrow C stream
+    polars.DataFrame(rec.arrow_stream())          # anything that reads the Arrow PyCapsule interface takes it directly
     rec.view("motor_rpm", 0, 60, width=1200)      # what the app draws for a 1200 px wide chart
     rec.stats(["motor_rpm"], 0, 60)               # exact count, min, max, mean, std
     rec.check("Flight acceptance")                # a check set's results, as the CLI's JSON report holds them
@@ -30,8 +31,18 @@ import numpy as np
 
 from . import _core
 
-__all__ = ["open", "config", "Recording", "Channel", "Config", "ConfigObject", "__version__"]
+__all__ = ["open", "config", "Recording", "ArrowStream", "Channel", "Config", "ConfigObject", "__version__"]
 __version__ = _core.__version__
+
+
+class ArrowStream:
+    """A recording's data as an Arrow C stream (the PyCapsule interface). Read it once."""
+
+    def __init__(self, capsule: Any) -> None:
+        self._capsule = capsule
+
+    def __arrow_c_stream__(self, requested_schema: Any = None):
+        return self._capsule
 
 
 @dataclass(frozen=True)
@@ -114,15 +125,23 @@ class Recording:
         return out
 
     def to_arrow(self, channels: Sequence[str | int] | None = None, start: Any = None, until: Any = None):
-        """`read` as a pyarrow Table (channels keep their unit in the field metadata)."""
+        """`read` as a pyarrow Table (channels keep their unit in the field metadata). The columns cross through the Arrow C
+        stream interface, not through a Python copy."""
         import pyarrow as pa
 
-        data = self.read(channels, start, until)
-        fields = [pa.field("time_ns", pa.int64())]
-        for name in list(data)[1:]:
-            unit = self.channels[self._by_name[name]].unit
-            fields.append(pa.field(name, pa.float64(), metadata={"unit": unit} if unit else None))
-        return pa.table(list(data.values()), schema=pa.schema(fields))
+        return pa.table(self.arrow_stream(channels, start, until))
+
+    def arrow_stream(self, channels: Sequence[str | int] | None = None, start: Any = None, until: Any = None) -> "ArrowStream":
+        """The same data as an object with `__arrow_c_stream__` (the Arrow PyCapsule interface): pyarrow, polars and DuckDB
+        take it directly, e.g. `polars.DataFrame(rec.arrow_stream(["rpm"]))`. It can be read once."""
+        idx = self._chans(channels)
+        a = 0 if start is None else self._rec.lower_bound(self.ns(start))
+        b = self.samples if until is None else self._rec.lower_bound(self.ns(until))
+        return ArrowStream(self._rec.arrow_stream(idx, a, max(a, b)))
+
+    def __arrow_c_stream__(self, requested_schema: Any = None):
+        """Every channel as an Arrow C stream: `pyarrow.table(rec)` works."""
+        return self.arrow_stream().__arrow_c_stream__(requested_schema)
 
     def view(self, channel: str | int, t0: Any, t1: Any, width: int = 1000) -> tuple[np.ndarray, np.ndarray]:
         """What the app draws for `channel` over `[t0, t1)` in a chart `width` pixels wide: the extremes of each pixel

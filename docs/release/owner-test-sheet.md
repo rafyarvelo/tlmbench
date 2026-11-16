@@ -136,15 +136,15 @@ You wrote: the numbers stay in Explorer after closing a tab made with Open toget
 Changed: closing the last tab (the window empties) left the slot list behind; it is cleared now.
 Do: Open together on flight-1 and flight-2, close the tab; also Compare, then close; also with another tab open.
 Expect: no slot numbers or "primary" on any file row once its tab is gone.
-Result:
-Notes:
+Result: This is fixed, the slot numbers go away when closing the tab.
+Notes: An unrelated suggestion, When selecting "Open Together", the tab only gets the name of the first file which is unexpected. Instead, the tab should be named something that indicates all the files that were opened.
 
 ### T2. The tab menu: Rename… and Save layout / Revert
 Do: ⌄ on a file tab: Save layout and Revert are listed, greyed. Save as… "A", then Rename… to "B"; also double-click the
 name in the Layouts panel. Try a name already in use.
 Expect: the tab and the list follow the new name; a used name is refused in the field; Undo in the note puts it back.
-Result:
-Notes:
+Result: This works as expected.
+Notes: Nominal behavior.
 
 ### T3. Duplicate recipe… and Save as new
 Do: make a derived channel (±2σ or a delta); right-click it ▸ Duplicate recipe…; then Edit recipe…, change the

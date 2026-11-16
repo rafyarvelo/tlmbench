@@ -5,9 +5,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use arrow_array::ffi_stream::FFI_ArrowArrayStream;
+use arrow_array::{ArrayRef, Float64Array, Int64Array, RecordBatch, RecordBatchIterator};
+use arrow_schema::{DataType, Field, Schema};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyCapsule};
+use std::collections::HashMap;
 use tlmbench_core::Viewport;
 use tlmbench_store::{Opened, Precision, Store};
 
@@ -88,6 +92,41 @@ impl Rec {
             })
             .collect();
         Ok((bytes_i64(py, &times), cols))
+    }
+
+    /// Samples `start..end` of `channels` as an Arrow C stream (a `PyCapsule` named `arrow_array_stream`): `time_ns` as int64
+    /// and each channel as float64 with its unit in the field metadata. Read by anything that takes the Arrow PyCapsule
+    /// interface (pyarrow, polars, DuckDB, ...) without a copy through Python.
+    fn arrow_stream<'py>(
+        &self,
+        py: Python<'py>,
+        channels: Vec<usize>,
+        start: usize,
+        end: usize,
+    ) -> PyResult<Bound<'py, PyCapsule>> {
+        let rec = self.opened.recording();
+        let n = rec.info().samples;
+        let (start, end) = (start.min(n), end.min(n).max(start.min(n)));
+        if let Some(&c) = channels.iter().find(|&&c| c >= rec.info().channels.len()) {
+            return Err(PyValueError::new_err(format!("no channel {c}")));
+        }
+        let mut fields = vec![Field::new("time_ns", DataType::Int64, false)];
+        let mut arrays: Vec<ArrayRef> = vec![Arc::new(Int64Array::from(rec.read_times(start, end)))];
+        for &c in &channels {
+            let info = &rec.info().channels[c];
+            let mut meta = HashMap::new();
+            if let Some(u) = &info.unit {
+                meta.insert("unit".to_owned(), u.clone());
+            }
+            fields.push(Field::new(&info.name, DataType::Float64, true).with_metadata(meta));
+            let (scale, offset) = rec.scale_offset(c);
+            arrays.push(Arc::new(Float64Array::from(rec.read(c, start, end).to_f64(scale, offset))));
+        }
+        let schema = Arc::new(Schema::new(fields));
+        let batch = RecordBatch::try_new(schema.clone(), arrays).map_err(err)?;
+        let reader = RecordBatchIterator::new(vec![Ok(batch)], schema);
+        let stream = FFI_ArrowArrayStream::new(Box::new(reader));
+        PyCapsule::new_with_value_and_destructor(py, stream, c"arrow_array_stream", |s, _| drop(s))
     }
 
     /// Index of the first sample at or after `t` (ns).
