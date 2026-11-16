@@ -96,4 +96,24 @@ run('chips', async ({ p, check, wait, until, text, visible }) => {
   check('and letting go fits them again', await until(() => [...document.querySelectorAll('#stack [data-pane="0"] .chip')].every((c) => !c.hidden)), await hiddenNow());
   await wait(500);
   check('wide again: no "+N"', !(await visible('#stack [data-pane="0"] [data-more-chips]')));
+  // nothing in the stack moves during a chip's dragstart (Safari ends a drag whose source moves then: D-ui-63); the drop
+  // gaps come in the next task, and a drag that ended first leaves none
+  const gaps = await p.evaluate(async () => {
+    const c = document.querySelector('#stack [data-pane="0"] .chip');
+    const dt = new DataTransfer();
+    const y0 = c.getBoundingClientRect().top;
+    c.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    await Promise.resolve();
+    await Promise.resolve();
+    const during = [document.querySelectorAll('.dropgap').length, c.getBoundingClientRect().top === y0];
+    await new Promise((r) => setTimeout(r, 50));
+    const after = document.querySelectorAll('.dropgap').length;
+    c.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+    c.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    c.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+    await new Promise((r) => setTimeout(r, 50));
+    return { during, after, ended: document.querySelectorAll('.dropgap').length };
+  });
+  check('a chip doesn\'t move during its dragstart; the drop gaps come just after', gaps.during[0] === 0 && gaps.during[1] && gaps.after > 0, gaps);
+  check('and a drag that ends at once leaves no drop gaps', gaps.ended === 0, gaps);
 });

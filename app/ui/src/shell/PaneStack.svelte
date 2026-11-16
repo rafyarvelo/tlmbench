@@ -116,7 +116,17 @@
   /** A channel (or chip) is being dragged: "Drop here for a new pane" shows before every row. */
   let carrying = $state(false);
   let gapOver = $state<number | null>(null);
-  const dragStart = (e: DragEvent) => (carrying = isChans(e) || isChip(e));
+  /** Safari ends a drag whose source moves during `dragstart` (D-ui-63: the drop gaps pushed the chip down, so chips didn't
+   * drag there while Explorer rows did): what a drag shows in the stack comes in the next task, and not after it ended. */
+  let dragLive = false;
+  const afterDragStart = (f: () => void) => {
+    dragLive = true;
+    setTimeout(() => dragLive && f());
+  };
+  const dragStart = (e: DragEvent) => {
+    const on = isChans(e) || isChip(e);
+    afterDragStart(() => (carrying = on));
+  };
   function overGap(e: DragEvent, r: number) {
     if (dragging != null) {
       e.preventDefault();
@@ -414,7 +424,7 @@
                 </div>
 {/snippet}
 
-<svelte:document onpointerdown={outside} ondragstart={dragStart} ondragend={() => (carrying = false)} />
+<svelte:document onpointerdown={outside} ondragstart={dragStart} ondragend={() => ((dragLive = false), (carrying = false))} />
 <svelte:window onkeydowncapture={key} />
 
 <div id="stack" class="stack" class:nopanes={!stack.panes.length} class:chanover={chanOver === -1} ondragover={(e) => overChans(e, -1)} ondragleave={() => (chanOver = chanSide = null)} ondrop={(e) => dropChans(e, -1)} role="presentation" style="--ph: {rows().length <= 3 ? 150 : rows().length <= 5 ? 125 : 105}px">
@@ -442,7 +452,7 @@
                   draggable={lk ? undefined : 'true'}
                   data-tip={lk ? 'Unlock to move panes' : `Drag to move this pane; hold ${COPY_KEY} to copy it`}
                   ondragstart={(e) => {
-                    dragging = i;
+                    afterDragStart(() => (dragging = i));
                     e.dataTransfer?.setData('text/plain', `pane ${i + 1}`);
                   }}
                   ondragend={() => (dragging = dropAt = zoneAt = gapOver = null)}
