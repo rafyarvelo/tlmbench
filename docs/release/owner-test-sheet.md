@@ -129,7 +129,7 @@ Notes:
 ## T. R3.1 and R3.2 (Nov 15 build): what you haven't checked yet
 
 You confirmed (removed): the ⋯ menu, the time range, Explorer's quiet rows, Open with layout ▸, the start page, rates and
-filters; on Nov 16 T1 (slot numbers), T2 (Rename, Save layout), T3 (Duplicate recipe), D1 and D2, G1 and H1 to H4. Left:
+filters; on Nov 16 C2 (tabs and the panel overlap), T1 (slot numbers), T2 (Rename, Save layout), T3 (Duplicate recipe), D1 and D2, G1 and H1 to H4. Left:
 
 ### T4. The viewer's tab name
 Do: export flight-bad to HTML as One file with the layout "Altitude and battery"; open it.
@@ -264,14 +264,6 @@ Result:
 Notes:
 
 ## C. Dragging and windows
-
-### C2. Drag sidebar panels, tabs, and pane numbers to reorder (L: X-win-03)
-You wrote (Nov 16): panels switch sides, but there's a rendering issue when the second panel first goes from left to right;
-tabs don't reorder. Changed: a tab dropped on a neighbour lands on the side of it you let go on (a drag onto the tab to its
-right did nothing). The panel overlap from your screenshot is fixed too (D-ui-52): Explorer in the right sidebar of a short
-window was squeezed to nothing and drew over Visible range; it keeps its height now and the sidebar scrolls. Re-test both.
-Result:
-Notes:
 
 ### C3. Drag a tab out to a new window, then onto another window's tab strip (L: X-win-04)
 Expect: a window opens with that tab; dropping on the other strip joins it; quit and reopen puts windows back.
