@@ -73,7 +73,7 @@ Settings › Plugins show the path), the open folder's `.tlmbench/plugins/` (san
 | What | Where |
 | --- | --- |
 | Rust stable, components, wasm targets | `rust-toolchain.toml` |
-| Node, nightly, just, cargo-binstall, nextest, cargo-fuzz, tauri-cli, wasmtime, wasm-tools | `ci/versions.env` |
+| Node, nightly, just, cargo-binstall, nextest, cargo-fuzz, tauri-cli, cargo-generate, wasmtime, wasm-tools | `ci/versions.env` |
 | Playwright | `prototype/tests/package.json` (+ lock file); the app's UI tests use the same install |
 | Svelte, its Vite plugin, svelte-check, TypeScript, Vite, the Tauri JS API, TanStack Table (table-core) | `app/ui/package.json` (+ lock file) |
 | maturin, pytest, numpy, pyarrow | `requirements-dev.txt` |

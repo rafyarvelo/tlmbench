@@ -25,7 +25,8 @@ cargo_tools() {
       BINSTALL_VERSION=$CARGO_BINSTALL_VERSION bash
   # native binaries only (an x86_64 cargo-fuzz under Rosetta builds fuzz targets for x86_64); builds from source if none
   cargo binstall --no-confirm --locked --targets "$(rustc -vV | sed -n 's/^host: //p')" \
-    "just@$JUST_VERSION" "cargo-nextest@$NEXTEST_VERSION" "cargo-fuzz@$CARGO_FUZZ_VERSION" "tauri-cli@$TAURI_CLI_VERSION"
+    "just@$JUST_VERSION" "cargo-nextest@$NEXTEST_VERSION" "cargo-fuzz@$CARGO_FUZZ_VERSION" "tauri-cli@$TAURI_CLI_VERSION" \
+    "cargo-generate@$CARGO_GENERATE_VERSION"
 }
 
 # wasmtime and wasm-tools from their GitHub releases (no Rust target triples in the asset names, so not via binstall)

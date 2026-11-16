@@ -1,3 +1,7 @@
-# A plugin template for `cargo generate` (see ../README.md). The crate builds as it is; the new crate gets your name.
+# A plugin template for `cargo generate` (see ../README.md). Cargo.toml builds the template as it is; a new plugin's
+# Cargo.toml is Cargo.toml.tmpl, with your crate's name (name.rhai swaps it in).
 [template]
 ignore = ["target"]
+
+[hooks]
+post = ["name.rhai"]
