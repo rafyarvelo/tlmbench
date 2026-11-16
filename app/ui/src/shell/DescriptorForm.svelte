@@ -5,7 +5,7 @@
      first: it is the one write beside the data); Open saves it and opens the file through it. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { actions } from '../ui.svelte';
+  import { actions, ui } from '../ui.svelte';
   import { settings } from '../settings.svelte';
   import { bitsText, CHECKS, COMPRESSIONS, type DField, type DType, dsc, hexLen, INT_TYPES, nameOf, parseBits, SIZES, swatch, TIME_UNITS, TYPES } from '../descriptors.svelte';
 
@@ -238,7 +238,8 @@
       </div>
     {/if}
     <footer>
-      <button class="tbtn" id="dscShare" disabled={!!problem || !folderOk} data-tip={folderOk ? `Write it to ${file} so everyone with the folder decodes these files` : 'Share writes into the folder Explorer shows, and this file isn’t in it'} onclick={() => (dsc.confirmShare = true)}>Share…</button>
+      <!-- a browser tab never writes to the folder: no Share there -->
+      {#if !ui.browserOnly}<button class="tbtn" id="dscShare" disabled={!!problem || !folderOk} data-tip={folderOk ? `Write it to ${file} so everyone with the folder decodes these files` : 'Share writes into the folder Explorer shows, and this file isn’t in it'} onclick={() => (dsc.confirmShare = true)}>Share…</button>{/if}
       <span class="spacer"></span>
       <button class="tbtn" onclick={actions.dscClose}>Cancel</button>
       <button class="tbtn" id="dscSave" disabled={!!problem || dsc.busy} onclick={actions.dscSave}>Save</button>

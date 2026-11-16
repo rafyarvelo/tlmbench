@@ -286,7 +286,7 @@ pub fn dump(st: &crate::data::State, k: usize) -> Result<(Value, Vec<u8>), Strin
         chans.push(json!({ "name": c.name, "unit": c.unit, "category": c.category }));
     }
     let meta = json!({
-        "samples": d.len, "time": time, "channels": chans, "format": d.info.format, "skipped": d.info.skipped, "notes": d.info.notes,
+        "samples": d.len, "time": time, "channels": chans, "format": d.info.format, "part": d.info.part, "skipped": d.info.skipped, "notes": d.info.notes,
         "index": matches!(d.info.time, TimeSource::Index),
     });
     Ok((meta, out))
@@ -325,7 +325,15 @@ pub fn load(st: &mut crate::data::State, k: usize, path: &str, meta: &Value, bin
             category: c["category"].as_str().map(str::to_owned),
         })
         .collect();
-    let mut d = Ds::new(path, meta["format"].as_str().unwrap_or("CSV"), None, n, time, tm, channels);
+    let mut d = Ds::new(
+        path,
+        meta["format"].as_str().unwrap_or("CSV"),
+        meta["part"].as_str().map(str::to_owned),
+        n,
+        time,
+        tm,
+        channels,
+    );
     for col in d.cols.iter_mut() {
         col.raw = crate::data::Raw::whole(
             take(n)?.chunks_exact(8).map(|b| f64::from_le_bytes(b.try_into().unwrap())).collect(),
@@ -518,6 +526,33 @@ unit = "V"
     }
 
     #[test]
+    fn lz4_and_gzip_payloads_read_in_the_page() {
+        use std::io::Write;
+        let records: Vec<u8> = [(0u16, 10i16), (10, 20), (20, 30)]
+            .iter()
+            .flat_map(|(t, v)| [t.to_le_bytes(), v.to_le_bytes()].concat())
+            .collect();
+        let lz4 = {
+            let mut w = lz4_flex::frame::FrameEncoder::new(Vec::new());
+            w.write_all(&records).unwrap();
+            w.finish().unwrap()
+        };
+        let gz = {
+            let mut w = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            w.write_all(&records).unwrap();
+            w.finish().unwrap()
+        };
+        for (kind, payload) in [("lz4", lz4), ("gzip", gz)] {
+            let toml = PACKETS_ZSTD.replace("compression = \"zstd\"", &format!("compression = \"{kind}\""));
+            let mut st = State::default();
+            import_described(&mut st, 0, "x.bin", &packet(0, &payload), &json!(toml), None).unwrap();
+            let d = st.files[0].as_ref().unwrap();
+            assert_eq!(d.cols[0].raw.slice(3).unwrap(), [10.0, 20.0, 30.0], "{kind}");
+            assert!(d.info.notes.is_empty(), "{kind}: {:?}", d.info.notes);
+        }
+    }
+
+    #[test]
     fn packet_types_open_one_at_a_time_and_fixed_width_needs_only_a_descriptor() {
         let types = r#"
 schema = 1
@@ -558,6 +593,13 @@ fields = [ { name = "ax", type = "i16", offset = 6 } ]
         assert_eq!(gps.cols[0].raw.slice(2).unwrap(), [5.0, 6.0]);
         assert_eq!(imu.cols[0].raw.slice(2).unwrap(), [7.0, 8.0]);
         assert_eq!(gps.info.part.as_deref(), Some("gps"));
+        let (meta, bin) = dump(&st, 1).unwrap();
+        load(&mut st, 4, "x.bin", &meta, &bin).unwrap();
+        assert_eq!(
+            st.files[4].as_ref().unwrap().info.part.as_deref(),
+            Some("imu"),
+            "a type kept in the page keeps its name"
+        );
         assert!(import_described(&mut st, 2, "x.bin", &bytes, types, Some("nope")).is_err());
         assert!(import_described(&mut st, 2, "x.bin", &bytes, types, None).err().unwrap().contains("2 packet types"));
 

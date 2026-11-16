@@ -3,9 +3,10 @@
 // in the browser's private file storage (OPFS) so opening the same file again skips the parse. Nothing is written beside the
 // data, and nothing leaves the machine. (Design: Export to HTML › browser-only mode.)
 //
-// What it reads and does is smaller than the app's: CSV, Parquet and .tlm files, charts, tables, values and Measure, and a
-// folder listed read-only where the browser can open one (browser-folder.ts). Descriptors, packets and WASM plugins are still
-// to come (release plan R2.2); live sources and native plugins need the app; several
+// What it reads and does is smaller than the app's: CSV, Parquet and .tlm files, binary files a descriptor describes (fixed-width
+// records or packets, the descriptors kept in this browser and found by their file name patterns; the descriptor form opens on a
+// binary file none names), charts, tables, values and Measure, and a folder listed read-only where the browser can open one
+// (browser-folder.ts). WASM plugins are still to come (release plan R2.2); live sources and native plugins need the app; several
 // files, derived channels, events and checks in a tab are after v1 (docs/post-v1.md).
 
 import { folderFile, listFolder, pickFolder } from './browser-folder';
@@ -35,6 +36,12 @@ async function keyOf(f: File): Promise<string> {
   const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array([...head.slice(0, 1 << 16), ...tail.slice(-(1 << 16))]).buffer));
   const hex = [...h.slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('');
   return `${f.name.replace(/[^\w.-]+/g, '_')}-${f.size}-${hex}`;
+}
+
+/** A short hex digest of a text. */
+async function digest(text: string): Promise<string> {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+  return [...h].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function readCache(key: string): Promise<Uint8Array | null> {
@@ -67,7 +74,7 @@ async function writeCache(key: string, bytes: Uint8Array<ArrayBuffer>): Promise<
 }
 
 /** Parses a file in a Worker: what the core keeps of it (its dump), or null where there is no Worker. A parse error throws. */
-async function parseInWorker(file: File, path: string, wasm: string, parquetWasm: string): Promise<ArrayBuffer | null> {
+async function parseInWorker(file: File, path: string, wasm: string, parquetWasm: string, described?: { descriptor: unknown; part: string | null }): Promise<ArrayBuffer | null> {
   if (typeof Worker === 'undefined') return null;
   let w: Worker;
   try {
@@ -85,7 +92,7 @@ async function parseInWorker(file: File, path: string, wasm: string, parquetWasm
       w.terminate();
       done(null);
     };
-    w.postMessage({ wasm, parquetWasm, file, path });
+    w.postMessage({ wasm, parquetWasm, file, path, described });
   });
 }
 
@@ -95,7 +102,7 @@ function pick(files: Map<string, File>, multiple: boolean): Promise<string[] | n
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = multiple;
-    input.accept = '.csv,.tsv,.txt,.tlm,.parquet,text/csv';
+    // any file: a binary one opens through a descriptor (or the form makes one)
     input.onchange = () => done(register(files, [...(input.files ?? [])]));
     input.oncancel = () => done(null);
     input.click();
@@ -108,6 +115,59 @@ function register(files: Map<string, File>, list: File[]): string[] {
     files.set(path, f);
     return path;
   });
+}
+
+const DESCRIPTORS = 'tlmbench.descriptors';
+/** The formats the page reads with no descriptor. */
+const OWN_FORMAT = /\.(csv|tsv|txt|tlm|parquet)$/i;
+
+/** A descriptor kept in this browser (the app keeps them in its cache's decoders/): its id and the form's JSON. */
+interface Kept {
+  id: string;
+  descriptor: { name?: string; files?: string[] } & Record<string, unknown>;
+}
+
+function keptDescriptors(): Kept[] {
+  try {
+    return JSON.parse(localStorage.getItem(DESCRIPTORS) ?? '[]') as Kept[];
+  } catch {
+    return [];
+  }
+}
+
+/** A descriptor's `files` pattern against a file name (`*` is any text), as the decoder matches them. */
+export function nameMatches(pattern: string, name: string): boolean {
+  const [first, ...rest] = pattern.split('*');
+  if (!name.startsWith(first)) return false;
+  let tail = name.slice(first.length);
+  if (!rest.length) return tail === '';
+  const last = rest.pop()!;
+  for (const m of rest) {
+    const i = tail.indexOf(m);
+    if (i < 0) return false;
+    tail = tail.slice(i + m.length);
+  }
+  return tail.length >= last.length && tail.endsWith(last);
+}
+
+const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
+const keptAsKnown = (k: Kept, path: string) => ({ id: k.id, path: `browser://decoders/${k.id}.toml`, shared: false, descriptor: k.descriptor, claims: (k.descriptor.files ?? []).some((g) => nameMatches(g, fileName(path))) });
+/** The descriptor that names this file, if one does. */
+const claimOf = (path: string) => keptDescriptors().find((k) => (k.descriptor.files ?? []).some((g) => nameMatches(g, fileName(path)))) ?? null;
+
+/** Save in the descriptor form: kept in this browser under an id from its name (`replace`: the one being edited). */
+function saveDescriptor(descriptor: Kept['descriptor'], replace: string | null): ReturnType<typeof keptAsKnown> {
+  const list = keptDescriptors();
+  const base = (descriptor.name ?? 'descriptor').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'descriptor';
+  let id = replace ?? base;
+  for (let n = 2; !replace && list.some((k) => k.id === id); n++) id = `${base}-${n}`;
+  const next = [...list.filter((k) => k.id !== id), { id, descriptor }];
+  try {
+    localStorage.setItem(DESCRIPTORS, JSON.stringify(next));
+  } catch {
+    throw new Error('This browser keeps no storage for this page (a private window?): the descriptor lasts until the tab closes.');
+  }
+  return keptAsKnown({ id, descriptor }, '');
 }
 
 const MANIFEST = 'tlmbench.local';
@@ -142,7 +202,8 @@ async function forgetLocalFiles(): Promise<void> {
     for (const [path, key] of Object.entries(manifest())) {
       try {
         await dir?.getFileHandle(`${key}.bin`);
-        held.add(path);
+        // a packet type is kept as `path\u0000type`: it holds its file
+        held.add(path.split('\u0000')[0]);
       } catch {
         /* gone */
       }
@@ -167,11 +228,20 @@ export async function installBrowserOnly(): Promise<void> {
   let callbacks = new Map<number, Handler>();
 
   /** Opens a file from the page: from the private storage when it was read before, else parsed (and then kept). */
-  async function openLocal(path: string, progress: Handler | null) {
+  /** The file's first bytes, for the descriptor form and for telling binary from text. */
+  async function headOf(path: string, n = 64 << 10): Promise<Uint8Array> {
     const f = files.get(path) ?? (await folderFile(path));
+    if (!f) throw new Error(`${fileName(path)} isn't open in this tab: choose it again.`);
+    return new Uint8Array(await f.slice(0, n).arrayBuffer());
+  }
+
+  async function openLocal(path: string, progress: Handler | null, part: string | null = null) {
+    const f = files.get(path) ?? (await folderFile(path));
+    // a file with several packet types is kept once per type
+    const slot = part ? `${path}\u0000${part}` : path;
     if (!f) {
       // opened in an earlier visit: its columns are still in this browser's storage
-      const saved = manifest()[path];
+      const saved = manifest()[slot];
       const kept = saved ? await readCache(saved) : null;
       if (kept) {
         const k = nextId++;
@@ -182,11 +252,19 @@ export async function installBrowserOnly(): Promise<void> {
       }
       throw new Error(`${path.slice(LOCAL_PREFIX.length)} isn't open in this tab: choose it again, or drop it on the page.`);
     }
-    if (!/\.(csv|tsv|txt|tlm|parquet)$/i.test(f.name)) throw new Error('Browser-only mode reads CSV, Parquet and .tlm files; the app reads more (packets, descriptors).');
+    // anything else is read through the descriptor that names it (the app then asks for its packet types, or the form)
+    const claim = OWN_FORMAT.test(f.name) ? null : claimOf(path);
+    if (!OWN_FORMAT.test(f.name) && !claim) throw new Error(`No descriptor names ${f.name}: browser-only mode reads CSV, Parquet and .tlm files, and binary files a descriptor describes.`);
+    if (claim && part == null) {
+      const parts = core('described_parts', { descriptor: claim.descriptor }) as string[];
+      if (parts.length > 1) throw new Error(`${f.name} has ${parts.length} packet types: each opens in a tab of its own.`);
+    }
+    const described = claim ? { descriptor: claim.descriptor, part } : undefined;
     const k = nextId++;
     ids.set(path, k);
-    const key = await keyOf(f);
-    remember(path, key);
+    // a described file's entry also depends on the descriptor and the packet type
+    const key = (await keyOf(f)) + (claim ? `-${(await digest(JSON.stringify(claim.descriptor))).slice(0, 12)}${part ? `-${part.replace(/[^\w.-]+/g, '_')}` : ''}` : '');
+    remember(slot, key);
     const note = (done: number, total: number) => progress?.({ message: { done, total, builtUntil: null, error: null }, index: 0 });
     const cached = await readCache(key);
     if (cached) {
@@ -201,13 +279,17 @@ export async function installBrowserOnly(): Promise<void> {
     note(0, f.size);
     // the parse runs in a Worker, so the tab keeps drawing and answering while a big file is read; where there is no Worker it
     // runs here, on the page's thread
-    const dump = await parseInWorker(f, path, new URL('tlmbench_web.wasm', base).href, new URL('tlmbench_parquet.wasm', base).href);
+    const dump = await parseInWorker(f, path, new URL('tlmbench_web.wasm', base).href, new URL('tlmbench_parquet.wasm', base).href, described);
     let r: unknown;
     if (dump) r = core('load', { file: k, path }, new Uint8Array(dump));
     else {
       await new Promise((res) => setTimeout(res, 0));
       const bytes = new Uint8Array(await f.arrayBuffer());
-      r = isParquet(bytes) ? core('load', { file: k, path }, new Uint8Array(await parquetDump(new URL('tlmbench_parquet.wasm', base).href, bytes, path))) : core('import_file', { file: k, path }, bytes);
+      r = described
+        ? core('import_described', { file: k, path, descriptor: described.descriptor, part: described.part }, bytes)
+        : isParquet(bytes)
+          ? core('load', { file: k, path }, new Uint8Array(await parquetDump(new URL('tlmbench_parquet.wasm', base).href, bytes, path)))
+          : core('import_file', { file: k, path }, bytes);
     }
     (window as unknown as { __tlmCache?: string; __tlmParse?: string }).__tlmCache = 'miss';
     (window as unknown as { __tlmParse?: string }).__tlmParse = dump ? 'worker' : 'page';
@@ -235,7 +317,25 @@ export async function installBrowserOnly(): Promise<void> {
     open: (a) => {
       const ch = a.progress as { id?: number } | string | undefined;
       const id = typeof ch === 'string' ? Number(ch.replace('__CHANNEL__:', '')) : ch?.id;
-      return openLocal(String(a.path), id != null ? (callbacks.get(id) ?? null) : null);
+      return openLocal(String(a.path), id != null ? (callbacks.get(id) ?? null) : null, typeof a.part === 'string' ? a.part : null);
+    },
+    // descriptors: kept in this browser, found by their file name patterns; the form's preview runs in the core
+    packet_parts: (a) => {
+      const k = claimOf(String(a.path));
+      return k ? core('described_parts', { descriptor: k.descriptor }) : [];
+    },
+    needs_descriptor: async (a) => {
+      const path = String(a.path);
+      if (OWN_FORMAT.test(path) || claimOf(path)) return false;
+      const head = await headOf(path, 4096).catch(() => new Uint8Array());
+      return head.length > 0 && (core('looks_binary', {}, head) as boolean);
+    },
+    descriptor_list: (a) => keptDescriptors().map((k) => keptAsKnown(k, String(a.path))),
+    descriptor_save: (a) => saveDescriptor(a.descriptor as Kept['descriptor'], (a.replace as string | null) ?? null),
+    descriptor_preview: async (a) => core('descriptor_preview', { descriptor: a.descriptor }, await headOf(String(a.path))),
+    descriptor_find_frames: async (a) => core('descriptor_find_frames', {}, await headOf(String(a.path))),
+    descriptor_share: () => {
+      throw new Error('Sharing needs the app: a browser tab never writes to the folder.');
     },
     close: (a) => core('close', { file: a.file }),
     view: (a) => core('view', a),

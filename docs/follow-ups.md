@@ -61,6 +61,9 @@ removed Nov 15; git history keeps them.
 - Browser-only mode runs WASM decoder plugins by translating the same `.wasm` component in the page (jco, fetched only
   when a plugin is used); each plugin runs in a Worker of its own, reads the file only through `File.slice`, is ended at
   the app's CPU limit, and has its memory capped at the app's limit. Ledger D-brow-09.
+- Browser-only mode reads binary files through descriptors kept in the page's own storage (localStorage), found by their
+  file name patterns; a binary file none names opens the descriptor form, which has no Share there. A file with several
+  packet types opens a tab per type (several files in one browser tab are after v1). Ledger D-brow-08.
 - Open together names the tab after its files ("flight-1 + flight-2", "flight-1 + 2 more"). In browser-only mode the
   Events panel leaves the rail. Export data… and Save image… close when done and say what they wrote, as Export to HTML… does.
 

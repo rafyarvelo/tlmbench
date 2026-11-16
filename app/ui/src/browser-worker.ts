@@ -9,14 +9,20 @@ interface Job {
   parquetWasm: string;
   file: File;
   path: string;
+  /** A binary file read through a descriptor the page keeps, and the packet type to read (or none). */
+  described?: { descriptor: unknown; part: string | null };
 }
 
 self.onmessage = async (e: MessageEvent<Job>) => {
   try {
-    const { wasm, parquetWasm, file, path } = e.data;
+    const { wasm, parquetWasm, file, path, described } = e.data;
     const bytes = new Uint8Array(await file.arrayBuffer());
     let dump: ArrayBuffer;
-    if (isParquet(bytes)) dump = await parquetDump(parquetWasm, bytes, path);
+    if (described) {
+      const core = await loadCore(wasm);
+      core('import_described', { file: 0, path, descriptor: described.descriptor, part: described.part }, bytes);
+      dump = core('dump', { file: 0 }) as ArrayBuffer;
+    } else if (isParquet(bytes)) dump = await parquetDump(parquetWasm, bytes, path);
     else {
       const core = await loadCore(wasm);
       core('import_file', { file: 0, path }, bytes);

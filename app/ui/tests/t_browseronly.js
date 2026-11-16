@@ -238,13 +238,13 @@ try {
     check('the Parquet module was fetched when one was opened', fetched.includes('tlmbench_parquet.wasm'), fetched);
   }
 
-  // a file the page can't read says so
+  // a file the page can't read says so (a binary one opens the descriptor form instead: t_browserdesc)
   await p.evaluate(() => {
     const dt = new DataTransfer();
-    dt.items.add(new File([new Uint8Array(64)], 'flight.bin'));
+    dt.items.add(new File(['a log, not data\n'], 'notes.log'));
     window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   });
-  check('a binary file it can’t read says what browser-only mode reads', await until(() => /Browser-only mode reads CSV, Parquet and \.tlm files/.test(document.body.textContent ?? '')));
+  check('a text file it can’t read says what browser-only mode reads', await until(() => /browser-only mode reads CSV, Parquet and \.tlm files, and binary files a descriptor describes/.test(document.body.textContent ?? '')), await p.evaluate(() => document.querySelector('#wsNote')?.textContent));
   // the viewer's rule (sheet R12) holds here too: what a tab can't do is left out, not a button that does nothing
   check('no Live in the rail (a tab has no live sources)', !(await p.$('[data-rail="live"]')));
   await p.click('[data-rail="settings"]');
