@@ -328,13 +328,13 @@ Notes:
 ### H1. Settings that stick
 Do: Change theme, a chart option, quit, reopen.
 Expect: everything configurable is remembered.
-Result:
-Notes:
+Result: Works as expected.
+Notes: Behavior is nominal
 
 ### H2. Dark and light
 Expect: both readable, no clipped or invisible controls.
-Result:
-Notes:
+Result: Both are visible and nominal
+Notes: As expected.
 
 ### H3. Tooltips
 Expect: short, helpful, they stop appearing after three uses.
@@ -370,12 +370,12 @@ alignment) and D-ui-46 (Open together draws every file's starters).)
 Copy this block once per thing. Don't worry about being tidy.
 
 ```
-What I did:
-What I expected:
-What happened instead:
-Where (screen, tab, setting):
-How often (always / sometimes / once):
-Severity (blocker / annoying / cosmetic):
+What I did: Clicked "⌄" on an open folder
+What I expected: a space between "Refresh" and "New files show by themselves"
+What happened instead: There was no space
+Where (screen, tab, setting): on the dialog for the folder
+How often (always / sometimes / once): always
+Severity (blocker / annoying / cosmetic): cosmetic
 ```
 
 ## Anything you want built or changed (new ideas)
@@ -383,7 +383,19 @@ Severity (blocker / annoying / cosmetic):
 New ideas go on a list for after the release unless you say they matter for v1 (`docs/post-v1.md`).
 
 ```
-Idea:
+Idea: The import dialog for a file should have a selector for how the file should open. It should mirror the "Files opened for the first time" setting so that it has the correct default, but it should allow users to quickly adjust per files as desired.
+Why it matters: It's too much much to change this per file right now.
+Needed for v1? (yes / no): yes
+```
+
+```
+Idea: There needs to be better support for text fields, The prototype supports enumerations and plotting text fields that automatically enumerates labels
+Why it matters: It's required for fields that place state transitions and enumerations as text
+Needed for v1? (yes / no): yes
+```
+
+```
+Idea: 
 Why it matters:
 Needed for v1? (yes / no):
 ```
