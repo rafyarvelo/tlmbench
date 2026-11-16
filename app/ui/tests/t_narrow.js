@@ -19,7 +19,7 @@ run('narrow', async ({ p, check, fake, until, wait, text }) => {
   await wait(400);
   check('narrow: those icons leave the bar', !(await exists('#b-fit')) && !(await exists('#b-back')) && !(await exists('#b-play')) && !(await exists('#b-lock')) && (await exists('#b-more')));
   await p.click('#b-more');
-  check('and ⋯ has them', /Back/.test(await text('.moremenu')) && /Fit/.test(await text('.moremenu')) && /Play back/.test(await text('.moremenu')) && /Lock the time view/.test(await text('.moremenu')), await text('.moremenu'));
+  check('and ⋯ has them', /Back/.test(await text('.moremenu')) && /Fit/.test(await text('.moremenu')) && /Play back/.test(await text('.moremenu')) && /Lock the view/.test(await text('.moremenu')), await text('.moremenu'));
   await p.click('.moremenu [data-more="play"]');
   check('Play back works from ⋯', await until(() => document.body.innerText.includes('Loop A–B') || document.body.innerText.includes('Following')));
   await p.keyboard.press('Escape');

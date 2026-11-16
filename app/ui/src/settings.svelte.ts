@@ -277,7 +277,7 @@ export const DEFAULTS: Settings = {
   dblFit: true,
   locked: false,
   lockCursors: true,
-  lockLayout: false,
+  lockLayout: true,
   lockSortFilter: true,
   tableClickSort: false,
   wheelZoom: true,

@@ -4,6 +4,7 @@ import type { FileTime } from './axes';
 import type { Check, CheckSet, Outcome } from './checks.svelte';
 import type { TlmEvent } from './events.svelte';
 import type { Workspace } from './workspaces';
+import { setSetting, settings } from './settings.svelte';
 
 /** A listed folder or recording (the app's `list_folder`). */
 export interface FolderEntry {
@@ -59,7 +60,7 @@ export interface SlotRow {
 export const ui = $state({
   /** An HTML export's viewer: it opens only what its export holds and edits nothing. */
   viewer: !!(globalThis as { __tlmViewer?: boolean }).__tlmViewer,
-  /** A viewer opens locked: the arrangement of its panes can't change until the person unlocks it (not kept anywhere). */
+  /** A viewer's lock (`isLocked`): it opens locked, its time view and panes held until the person unlocks it (not kept anywhere). */
   locked: true,
   /** Browser-only mode: files from the page, no folders or live sources (the app has those). */
   browserOnly: !!(globalThis as { __tlmBrowserOnly?: unknown }).__tlmBrowserOnly,
@@ -296,5 +297,12 @@ export const actions = {
   axisRange: (_i: number, _key: 'u0' | 'u1'): [number, number] | null => null,
 };
 
-/** Whether the layout can't be changed now: a viewer that is still locked. */
-export const viewLocked = (): boolean => ui.viewer && ui.locked;
+/** The one lock (owner, Nov 16, D-ui-62): it holds the time view and, unless the setting says not to, the layout. The app
+ * keeps it in settings; a viewer opens locked and doesn't keep an unlock across reloads. */
+export const isLocked = (): boolean => (ui.viewer ? ui.locked : settings.locked);
+export function setLocked(on: boolean): void {
+  if (ui.viewer) ui.locked = on;
+  else setSetting('locked', on);
+}
+/** Whether the layout can't be changed now (a viewer's lock always holds its layout). */
+export const viewLocked = (): boolean => (ui.viewer ? ui.locked : settings.locked && settings.lockLayout);

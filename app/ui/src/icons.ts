@@ -20,6 +20,8 @@ export const ICON = {
   fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
   check: s('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 'fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"'),
   lock: s('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>'),
+  /** The lock with its shackle open, as the prototype draws an unlocked view. */
+  unlock: s('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 017.75-1.4"/>'),
   vchart: s('<path d="M4 4v16h16"/><path d="M7 15l3.5-5 3 3 4.5-6"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   vtable: s('<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 4.5v15"/>'),
   vboth: s('<path d="M4 3.5v8h16"/><path d="M7 9l3-3 3 2 4-4"/><rect x="3.5" y="14" width="17" height="6.5" rx="1"/><path d="M3.5 17.25h17"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),

@@ -294,7 +294,7 @@
 <div class="explorer" id="explorer">
   <div class="phd" role="presentation" draggable="true" ondragstart={(e) => startPanelDrag(e, 'explorer')} ondragend={endPanelDrag}>
     <button class="phtog" id="exToggle" aria-expanded={!closed} aria-label="Explorer panel" data-tip="Collapse or expand this panel" onclick={() => setPanelOpen('explorer', closed)}><span class="chv" class:shut={closed}>{@html ICON.chev}</span>Explorer</button><span class="spacer"></span>
-    <button class="ibtn exall" id="exAddShown" aria-label={addShownTip} disabled={!ui.file || !shownChans.length || viewLocked()} data-tip={viewLocked() ? 'Click Edit layout to change panes' : addShownTip} onclick={() => addChannels(shownChans)}>{@html ICON.add}</button>
+    <button class="ibtn exall" id="exAddShown" aria-label={addShownTip} disabled={!ui.file || !shownChans.length || viewLocked()} data-tip={viewLocked() ? 'Unlock to change panes' : addShownTip} onclick={() => addChannels(shownChans)}>{@html ICON.add}</button>
     <button class="ibtn exall" id="exCats" aria-label="Show categories" aria-pressed={settings.exCategories} data-tip={settings.exCategories ? 'Showing categories. Click for a flat list' : 'Showing a flat list. Click to group channels into categories'} onclick={() => setSetting('exCategories', !settings.exCategories)}>{@html ICON.cats}</button>
     {#if !ui.browserOnly}<button class="ibtn exall" id="exDerive" aria-label="New derived channel" disabled={!ui.file || ui.viewer} data-tip={ui.viewer ? 'Derived channels are made in the app' : "New derived channel: compute one from this file's channels"} onclick={() => actions.deriveOpen(picked.length ? picked : sel?.startsWith('ch:') ? [+sel.slice(3)] : [])}>ƒ</button>{/if}
     <span class="exsep" aria-hidden="true"></span>
@@ -549,7 +549,7 @@
     ondragstart={(e) => dragChan(e, ch)}
     onkeydown={(e) => key(e, { kind: 'chan', ch })}
   >
-    <button class="box" role="checkbox" aria-checked={inSel(ch)} disabled={viewLocked()} data-tip={viewLocked() ? 'Click Edit layout to change panes' : undefined} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
+    <button class="box" role="checkbox" aria-checked={inSel(ch)} disabled={viewLocked()} data-tip={viewLocked() ? 'Unlock to change panes' : undefined} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
     {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{ui.slots.length > 1 ? chBase(ch) : chName(ch)}</span>{#if failing.has(c.name)}<span class="chkdot" class:warn={failing.get(c.name) === 'warn'} data-chkdot data-tip="Used by a failing check" aria-label="used by a failing check"></span>{/if}{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.missing && !settings.quietUI}<span class="miss" data-miss={c.missing} data-tip="{c.missing.toLocaleString()} samples are missing in this file" aria-label="{c.missing} missing">⌀ {c.missing.toLocaleString()}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
   </div>
 {/snippet}

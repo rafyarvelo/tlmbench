@@ -8,7 +8,7 @@
   import { moveTab, tabs } from '../tabs.svelte';
   import { TIME_FORMATS } from '../axes';
   import { addPaneBelow, allMode, clearChannels, clearPanes, setAllModes, stack } from '../stack.svelte';
-  import { actions, ui, viewLocked } from '../ui.svelte';
+  import { actions, isLocked, setLocked, ui, viewLocked } from '../ui.svelte';
   import { cfg } from '../share.svelte';
   import CheckBadge from './CheckBadge.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -96,7 +96,11 @@
   /** The desktop app has a menu bar; a browser page and an export's viewer have not. */
   const desktop = !ui.browserOnly && !__VIEWER__;
   const lk = $derived(viewLocked());
-  const LOCKED = 'Click Edit layout to change panes';
+  const LOCKED = 'Unlock to change panes';
+  const provenance = () => (ui.viewerInfo ? [ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ') : '');
+  const lockTip = () =>
+    (isLocked() ? 'Locked. Click to unlock (L)' : `Lock the view so zoom, pan and fit can't change it${settings.lockLayout || ui.viewer ? ', and panes stay put' : ''} (L)`) +
+    (ui.viewer && provenance() ? `. ${provenance()}` : '');
   const moreItems = (): MenuItem[] => [
     ...(ui.viewer ? [] : [{ label: 'Open recording…', kbd: '⌘O', run: actions.open }]),
     ...(narrow
@@ -111,7 +115,7 @@
     ...(narrow
       ? [
           ...(ui.browserOnly ? [] : [{ label: 'Event markers', kbd: 'E', checked: settings.eventsOn, run: () => setSetting('eventsOn', !settings.eventsOn) } as MenuItem]),
-          { label: 'Lock the time view', kbd: 'L', checked: settings.locked, run: () => setSetting('locked', !settings.locked) },
+          { label: 'Lock the view', kbd: 'L', checked: isLocked(), run: () => setLocked(!isLocked()) },
           { label: 'Clear cursors', kbd: 'Esc', disabled: !ui.anyCursor, run: actions.clearCursors },
         ]
       : []),
@@ -271,13 +275,15 @@
   {#if !narrow}<span class="vsep" aria-hidden="true"></span>{/if}
   {#if !narrow}
     {#if !ui.browserOnly}<button class="tb" id="b-events" aria-pressed={settings.eventsOn} aria-label="Event markers" data-tip="Show or hide event markers on the charts and the overview (E)" onclick={() => setSetting('eventsOn', !settings.eventsOn)}>{@html ICON.events}</button>{/if}
-    <!-- the viewer has one lock, its layout's (owner, Nov 16): no time-view lock there -->
-    {#if !ui.viewer}<button class="tb" id="b-lock" aria-pressed={settings.locked} aria-label="Lock" data-tip="Lock the time view so zoom, pan and fit gestures can't change it (L)" onclick={() => setSetting('locked', !settings.locked)}>{@html ICON.lock}</button>{/if}
+  {/if}
+  {#if !narrow || isLocked()}
+    <!-- one lock, in the app and in exports (owner, Nov 16, D-ui-62); a narrow bar keeps it while it's on, so the way out shows -->
+    <button class="tb" id="b-lock" aria-pressed={isLocked()} aria-label={isLocked() ? 'Unlock' : 'Lock'} data-tip={lockTip()} onclick={() => setLocked(!isLocked())}>{@html isLocked() ? ICON.lock : ICON.unlock}</button>
   {/if}
   {#if barW >= 1200}
     <div class="seg allmodes" role="group" aria-label="All panes view">
       {#each ALL as [m, label, icon, tip] (m)}
-        <button class="tb" data-allmode={m} aria-pressed={allMode() === m} disabled={(settings.locked && settings.lockLayout) || lk} aria-label={label} data-tip={lk ? LOCKED : tip} onclick={() => setAllModes(m)}>{@html icon}</button>
+        <button class="tb" data-allmode={m} aria-pressed={allMode() === m} disabled={lk} aria-label={label} data-tip={lk ? LOCKED : tip} onclick={() => setAllModes(m)}>{@html icon}</button>
       {/each}
     </div>
   {/if}
@@ -288,11 +294,9 @@
     </div>
   {/if}
   {#if ui.viewer}
-    <!-- an export says whether its arrangement is locked, and where it came from (owner decision 6, R12) -->
+    <!-- where an export came from (owner decision 6, R12) -->
     <span class="viewinfo" id="viewerInfo">
-      <!-- the layout's one control (owner, Nov 16): an icon as the bar's others, pressed while you edit -->
-      <button class="tb" id="b-vlock" aria-pressed={!ui.locked} aria-label={ui.locked ? 'Edit layout' : 'Done editing the layout'} data-tip={(ui.locked ? 'Edit layout: move, add and close panes and channels. ' : 'Done: your changes last until you reload. ') + (ui.viewerInfo ? [ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ') : '')} onclick={() => (ui.locked = !ui.locked)}>{@html ICON.edit}</button>
-      {#if ui.viewerInfo}<span class="vprov">{[ui.viewerInfo.files.join(', '), ui.viewerInfo.created ? new Date(ui.viewerInfo.created).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '', ui.viewerInfo.version ? `TelemetryBench ${ui.viewerInfo.version}` : ''].filter(Boolean).join(' · ')}</span>{/if}
+      {#if ui.viewerInfo}<span class="vprov">{provenance()}</span>{/if}
     </span>
   {/if}
   {#if !__VIEWER__}

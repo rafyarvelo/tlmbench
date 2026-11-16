@@ -70,7 +70,7 @@ import type { CustomWidget } from './widgets';
 import { cfg, choices, defaultPick, type Problem, rowKey, share as shareDlg, type ShareRow } from './share.svelte';
 import { pluginsState, readPlugins } from './plugins.svelte';
 import { tabs, type TabInfo } from './tabs.svelte';
-import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, ui, viewLocked } from './ui.svelte';
+import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, isLocked, setLocked, ui, viewLocked } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 import { slotsUsed, fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
 
@@ -475,8 +475,8 @@ async function requestResting(): Promise<void> {
 
 /** True (with a note and Unlock) when the view is locked: gestures call this before changing it. */
 function locked(): boolean {
-  if (!settings.locked) return false;
-  note('The view is locked.', () => setSetting('locked', false), 'Unlock');
+  if (!isLocked()) return false;
+  note('The view is locked.', () => setLocked(false), 'Unlock');
   return true;
 }
 
@@ -678,8 +678,9 @@ function drawPlayhead(ctx: CanvasRenderingContext2D, r: Rect, tk: Record<string,
 
 /** Glides to a view over about 0.3 s on its centre and log(span), so a 2× and a 200× zoom look even. */
 let glide = 0;
-function glideTo(t0: bigint, t1: bigint): void {
-  if (locked()) return;
+/** Glides the view to `t0`..`t1`; refused while locked unless `force` (a link opening the page, not a gesture). */
+function glideTo(t0: bigint, t1: bigint, force = false): void {
+  if (!force && locked()) return;
   state.history.push([state.t0, state.t1]);
   state.future = [];
   const id = ++glide;
@@ -2193,7 +2194,7 @@ async function saveWindow(session?: Session): Promise<void> {
 function followLinkedWindows(): void {
   void getCurrentWindow().listen<{ from: string; view: { t0: string; t1: string; cursors: { A: string | null; B: string | null } | null } }>('view-linked', (e) => {
     const { from, view } = e.payload;
-    if (from === WINDOW || !settings.linkView || settings.locked || !state.file) return;
+    if (from === WINDOW || !settings.linkView || isLocked() || !state.file) return;
     linkApplying = true;
     try {
       setView(BigInt(view.t0), BigInt(view.t1));
@@ -3495,15 +3496,15 @@ function checkOpenCell(path: string, group: string): void {
 }
 
 /** Frames violation `n` (a span of ns) of a check with some context either side. */
-function checkShow(start: string, end: string): void {
+function checkShow(start: string, end: string, force = false): void {
   const a = BigInt(start);
   const b = BigInt(end);
   if (b > a) {
     const pad = (b - a) / 2n + 1n;
-    glideTo(a - pad, b + pad);
+    glideTo(a - pad, b + pad, force);
   } else {
     const half = (state.t1 - state.t0) / 2n;
-    glideTo(a - half, a + half);
+    glideTo(a - half, a + half, force);
   }
 }
 
@@ -4580,7 +4581,7 @@ function nearCursor(r: Rect, x: number): 'A' | 'B' | null {
 }
 
 function placeCursor(which: 'A' | 'B', t: bigint): void {
-  if (settings.locked && !settings.lockCursors) return void locked();
+  if (isLocked() && !settings.lockCursors) return void locked();
   state[which] = t;
   linkSend();
   scheduleDraw();
@@ -4899,8 +4900,8 @@ function filesItems(ch: number, pane: number | null): MenuItem[] {
   if (!twins.length) return [];
   const lk = viewLocked();
   return [
-    ...twins.map((t): MenuItem => ({ label: `From file ${t.sl.slot} · ${t.sl.name}`, data: { cm: `from${t.sl.slot}` }, disabled: lk, tip: lk ? 'Click Edit layout to change panes' : 'Read this channel from that file instead', run: () => swapChannel(pane, ch, t.to) })),
-    { label: 'Add from every file', data: { cm: 'every' }, disabled: lk, tip: lk ? 'Click Edit layout to change panes' : "Put every file's version of this channel in the pane", run: () => addChannelsTo(pane, twins.map((t) => t.to)) },
+    ...twins.map((t): MenuItem => ({ label: `From file ${t.sl.slot} · ${t.sl.name}`, data: { cm: `from${t.sl.slot}` }, disabled: lk, tip: lk ? 'Unlock to change panes' : 'Read this channel from that file instead', run: () => swapChannel(pane, ch, t.to) })),
+    { label: 'Add from every file', data: { cm: 'every' }, disabled: lk, tip: lk ? 'Unlock to change panes' : "Put every file's version of this channel in the pane", run: () => addChannelsTo(pane, twins.map((t) => t.to)) },
     { sep: true },
   ];
 }
@@ -5067,7 +5068,7 @@ const RUN: Record<string, () => void> = {
   zoomIn: () => zoomBy(0.7),
   zoomOut: () => zoomBy(1 / 0.7),
   events: () => setSetting('eventsOn', !settings.eventsOn),
-  lock: () => setSetting('locked', !settings.locked),
+  lock: () => setLocked(!isLocked()),
   overviewTop: () => setSetting('overviewTop', !settings.overviewTop),
   theme: toggleTheme,
   settings: () => setSetting('leftPanel', 'settings'),
@@ -5102,7 +5103,7 @@ const ENABLED: Record<string, () => boolean> = {
 };
 const CHECKED: Record<string, () => boolean> = {
   events: () => settings.eventsOn,
-  lock: () => settings.locked,
+  lock: () => isLocked(),
   overviewTop: () => settings.overviewTop,
   perf: () => settings.showPerf,
 };
@@ -5169,8 +5170,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && ui.focus) return toggleFocus(false);
   if (!(e.target as HTMLElement).closest('input, select, textarea')) {
     if (k === 't') return toggleTheme();
-    // the viewer has no time-view lock (owner, Nov 16)
-    if (k === 'l') return ui.viewer ? undefined : setSetting('locked', !settings.locked);
+    if (k === 'l') return setLocked(!isLocked());
   }
   if ((e.altKey && e.key === 'ArrowLeft') || (e.key === 'Backspace' && !(e.target as HTMLElement).closest('input, textarea, select'))) return back();
   if (e.altKey && e.key === 'ArrowRight') return forward();
@@ -5660,8 +5660,9 @@ if ((window as unknown as { __tlmViewer?: boolean }).__tlmViewer) {
     const plain = tabs.list.findIndex((t) => t.key === first?.key);
     if (plain >= 0 && tabs.list.some((t) => t.ws)) tabs.list.splice(plain, 1);
   }
-  // a link from a check report: `#show=<start>,<end>` (ns) frames that span, a violation with context either side
+  // a link from a check report: `#show=<start>,<end>` (ns) frames that span, a violation with context either side (a locked
+  // export too: the link is the sender's choice of view, not a gesture)
   const show = /^#show=(-?\d+),(-?\d+)$/.exec(location.hash);
-  if (show && state.file) checkShow(show[1], show[2]);
+  if (show && state.file) checkShow(show[1], show[2], true);
   ui.start = false;
 }

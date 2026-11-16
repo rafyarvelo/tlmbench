@@ -69,7 +69,7 @@ try {
     await p.goto(url, { waitUntil: 'domcontentloaded' });
     await p.waitForSelector('#stack [data-pane]', { timeout: 10000 });
     await until(() => window.__tlmViewerLoaded === true);
-    if (unlocked) await p.click('#b-vlock');
+    if (unlocked) await p.click('#b-lock');
   };
   const panes = () => p.evaluate(() => JSON.stringify(window.__tlmApp.panes()));
   const box = async (sel) => {
@@ -91,28 +91,41 @@ try {
 
   // ---- the state it opens in, and the pill
   await load();
-  const pill = () => p.$eval('#b-vlock', (e) => ({ text: e.getAttribute('aria-label'), pressed: e.getAttribute('aria-pressed'), tip: e.getAttribute('data-tip') }));
+  const pill = () => p.$eval('#b-lock', (e) => ({ text: e.getAttribute('aria-label'), pressed: e.getAttribute('aria-pressed'), tip: e.getAttribute('data-tip') }));
   let s0 = await pill();
-  check('the viewer opens locked: Edit layout, not pressed; no time-view lock there (owner, Nov 16)', s0.text === 'Edit layout' && s0.pressed === 'false' && !(await p.$('#b-lock')), s0);
-  check('the pill’s tip keeps the export’s file, date and version', /bench\.csv/.test(s0.tip) && /\d{4}/.test(s0.tip) && /TelemetryBench \d/.test(s0.tip), s0.tip);
+  check('the viewer opens locked: the one Lock is pressed and says Unlock; no Edit layout (owner, Nov 16, D-ui-62)', s0.text === 'Unlock' && s0.pressed === 'true' && !(await p.$('#b-vlock')), s0);
+  check('the lock’s tip keeps the export’s file, date and version', /bench\.csv/.test(s0.tip) && /\d{4}/.test(s0.tip) && /TelemetryBench \d/.test(s0.tip), s0.tip);
   const before = await panes();
   check('three panes as exported', before === '[[0,1],[2],[3]]', before);
+  // the same lock holds the time view (D-ui-62): a wheel over a chart doesn't zoom, and says so with Unlock
+  const view = () => p.evaluate(() => JSON.stringify(window.__tlmApp.view()));
+  const view0 = await view();
+  const pc = await box('#stack [data-pane="0"] .plot');
+  await p.mouse.move(pc.x, pc.y);
+  await p.mouse.wheel(0, -400);
+  await p.waitForTimeout(300);
+  const note = await p.textContent('#wsNote').catch(() => '');
+  check('locked: the wheel does not zoom, and the note offers Unlock', (await view()) === view0 && /locked/.test(note) && /Unlock/.test(note), [view0, await view(), note]);
 
   // ---- locked: nothing moves
   await drag('#stack [data-pane="0"] .chip >> nth=0', '#stack [data-pane="2"]');
   check('locked: a chip does not drag to another pane', (await panes()) === before, await panes());
   await drag('#explorer .row.chan >> nth=2', '#stack [data-pane="1"] .plot');
   check('locked: an Explorer row does not drag into a pane', (await panes()) === before, await panes());
-  check('locked: pane actions are disabled and say why', await p.evaluate(() => ['[data-pdup]', '[data-pclose]', '[data-psplit]', '[data-pmenu]', '[data-chip-x]', '[data-vmenu]', '#addPane', '#addPaneKinds'].every((q) => [...document.querySelectorAll(q)].every((b) => b.disabled && /Edit layout/.test(b.getAttribute('data-tip') ?? '')))));
+  check('locked: pane actions are disabled and say why', await p.evaluate(() => ['[data-pdup]', '[data-pclose]', '[data-psplit]', '[data-pmenu]', '[data-chip-x]', '[data-vmenu]', '#addPane', '#addPaneKinds'].every((q) => [...document.querySelectorAll(q)].every((b) => b.disabled && /Unlock/.test(b.getAttribute('data-tip') ?? '')))));
   await p.keyboard.press('Meta+d');
   await p.keyboard.press('Control+d');
   await p.waitForTimeout(150);
   check('locked: the duplicate shortcut does nothing to the panes', (await panes()) === before, await panes());
 
   // ---- unlock: the same moves work
-  await p.click('#b-vlock');
+  await p.keyboard.press('l');
   s0 = await pill();
-  check('Edit layout: the button is pressed and says Done', s0.text === 'Done editing the layout' && s0.pressed === 'true' && /bench\.csv/.test(s0.tip), s0);
+  check('L unlocks: the button is not pressed and says Lock', s0.text === 'Lock' && s0.pressed === 'false' && /bench\.csv/.test(s0.tip), s0);
+  await p.mouse.move(pc.x, pc.y);
+  await p.mouse.wheel(0, -400);
+  await p.waitForTimeout(300);
+  check('unlocked: the wheel zooms', (await view()) !== view0, await view());
   await drag('#stack [data-pane="0"] .chip >> nth=0', '#stack [data-pane="2"]');
   check('unlocked: a chip moves to another pane', (await panes()) === '[[1],[2],[3,0]]', await panes());
   await drag('#explorer .row.chan >> nth=1', '#stack [data-pane="1"] .plot');
@@ -152,14 +165,14 @@ try {
   check('unlocked: a pane’s height grip resizes it', h0 !== h1, [h0, h1]);
 
   // ---- Lock again
-  await p.click('#b-vlock');
+  await p.click('#b-lock');
   const locked = await panes();
   await drag('#stack [data-pane="0"] .chip >> nth=0', '#stack [data-pane="1"]');
-  check('Lock puts it back: nothing drags again', (await pill()).text === 'Edit layout' && (await panes()) === locked, await panes());
+  check('Lock puts it back: nothing drags again', (await pill()).text === 'Unlock' && (await panes()) === locked, await panes());
 
   // ---- a reload is the exported view again (nothing was written into the export or kept)
   await load();
-  check('a reload is the exported arrangement, locked', (await panes()) === before && (await pill()).text === 'Edit layout', await panes());
+  check('a reload is the exported arrangement, locked', (await panes()) === before && (await pill()).text === 'Unlock', await panes());
 
   // ---- the sweep: every visible control acts, or is disabled with a tip that says why
   const controls = () =>
@@ -247,7 +260,7 @@ try {
       if (!info) continue;
       if (info.disabled) {
         // a menu item that can't act is greyed; the reason shows when it is a locked one or a viewer-only one
-        if (state === 'locked' && /^\d+::(New pane|Remove every|Every pane as|Close pane|Close others|Duplicate|Split)/.test(it) && !/Edit layout/.test(info.tip)) bad_.push(`${state}: ${label} › "${it}" is disabled and doesn't say why`);
+        if (state === 'locked' && /^\d+::(New pane|Remove every|Every pane as|Close pane|Close others|Duplicate|Split)/.test(it) && !/Unlock/.test(info.tip)) bad_.push(`${state}: ${label} › "${it}" is disabled and doesn't say why`);
         continue;
       }
       errs.length = 0;

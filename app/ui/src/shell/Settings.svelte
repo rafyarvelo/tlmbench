@@ -26,8 +26,8 @@
   const ROWS: Row[] = [
     { key: 'mode', section: 'Mouse', basic: true, label: 'Mouse mode', hint: 'What dragging across a chart does. Shift-drag or middle-drag always pans.', options: [['box', 'Box zoom'], ['pan', 'Pan'], ['cursor', 'Cursors']] },
     { key: 'zoomSpeed', section: 'Mouse', label: 'Zoom speed', hint: 'How far one wheel notch or trackpad swipe zooms.', options: [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']] },
-    { key: 'locked', section: 'Mouse', label: 'Lock the time view', hint: "Zoom, pan and fit gestures can't change the view. Also on the top bar (L)." },
-    { key: 'lockLayout', section: 'Mouse', label: 'Also lock the layout', hint: 'A locked view also refuses closing, moving and adding panes.' },
+    { key: 'locked', section: 'Mouse', label: 'Lock the view', hint: "Zoom, pan and fit gestures can't change the time view. Also on the top bar (L)." },
+    { key: 'lockLayout', section: 'Mouse', label: 'Also lock the layout', hint: 'Panes and their channels stay put: no moving, adding, closing or resizing.' },
     { key: 'lockSortFilter', section: 'Mouse', label: 'Table sort and filter still work while locked', hint: 'Off: each table keeps its current sort and filters.' },
     { key: 'wheelZoom', section: 'Mouse', label: 'Scroll wheel zooms the charts', hint: 'Off: the wheel pans, and Ctrl + wheel zooms.' },
     { key: 'lockCursors', section: 'Mouse', label: 'Cursors still work while locked' },

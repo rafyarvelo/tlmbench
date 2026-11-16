@@ -31,14 +31,13 @@ run('leftovers', async ({ p, check, wait, text, until, visible, settingsLS, pane
   await wait(500);
   check('Backspace goes back', (await range()) !== r1);
 
-  // lock the layout
-  await p.click('#b-settings');
-  await p.click('#setPanel [data-set="lockLayout"]');
-  await p.click('[data-rail="explorer"]');
+  // the lock holds the layout too (on by default, D-ui-62)
   await p.keyboard.press('l');
   const n = await paneCount();
-  await p.click('#addPane');
-  check('a locked layout refuses a new pane, says so', (await paneCount()) === n && /layout is locked/.test(await text('#wsNote')), await text('#wsNote'));
+  check('a locked layout greys Add pane and says to unlock', await p.evaluate(() => { const b = document.getElementById('addPane'); return b.disabled && /Unlock/.test(b.getAttribute('data-tip') ?? ''); }));
+  await p.keyboard.press('f');
+  await wait(150);
+  check('and Fit is refused, saying so', (await paneCount()) === n && /locked/.test(await text('#wsNote')), await text('#wsNote'));
   await p.click('#wsNote button:has-text("Unlock")');
   await p.click('#addPane');
   check('Unlock lets it through', (await paneCount()) === n + 1);

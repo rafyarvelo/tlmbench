@@ -4,7 +4,7 @@
 
 import { PAD, value } from './axes';
 import { setSetting, settings } from './settings.svelte';
-import { ui, viewLocked } from './ui.svelte';
+import { isLocked, setLocked, ui, viewLocked } from './ui.svelte';
 
 /** How a pane shows its channels: the chart (the default, left out of saved layouts), a table of the samples in
  * view, the chart with its table below, or value tiles. */
@@ -190,7 +190,7 @@ export function normalize(): void {
 }
 
 /** Whether a locked view stops tables sorting and filtering. */
-export const sortLocked = () => settings.locked && !settings.lockSortFilter;
+export const sortLocked = () => isLocked() && !settings.lockSortFilter;
 
 /** A pane placed into a row takes the row's height, so panes side by side stay level (the others' height wins). */
 function levelRow(p: Pane): void {
@@ -203,11 +203,7 @@ function levelRow(p: Pane): void {
 
 function edit(f: () => void, viewOnly = false): void {
   if (!viewOnly && viewLocked()) {
-    note('This view is locked. Unlock it to rearrange.', () => (ui.locked = false), 'Unlock');
-    return;
-  }
-  if (!viewOnly && settings.locked && settings.lockLayout) {
-    note('The layout is locked.', () => setSetting('locked', false), 'Unlock');
+    note('The layout is locked.', () => setLocked(false), 'Unlock');
     return;
   }
   remember();

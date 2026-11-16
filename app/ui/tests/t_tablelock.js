@@ -15,9 +15,8 @@ run('tablelock', async ({ p, check, until, settingsLS, text }) => {
   await p.click('#b-settings');
   await p.click('#setPanel [data-sv="all"]');
   await p.click('[data-set="locked"]');
-  await p.click('[data-set="lockLayout"]');
   const s = await settingsLS();
-  check('locked, with the layout locked too', s.locked === true && s.lockLayout === true, s);
+  check('locked, with the layout locked too (on by default, D-ui-62)', s.locked === true && s.lockLayout === true, s);
   check('sort and filter still work is on by default', s.lockSortFilter === undefined || s.lockSortFilter === true);
   await p.click('#b-settings');
 

@@ -44,6 +44,8 @@ run('controls', async ({ p, check, text, visible, plotAt, settingsLS, until, wai
   await p.mouse.click(c.x, c.y);
   await wait(300);
   check('cursors still work while locked', await p.evaluate(() => !document.getElementById('b-clear').disabled));
+  check('the same lock holds the layout (D-ui-62): Add pane is disabled and says Unlock', await p.evaluate(() => { const b = document.getElementById('addPane'); return b.disabled && /Unlock/.test(b.getAttribute('data-tip') ?? ''); }));
+  check('and a pane can\'t be closed', await p.evaluate(() => [...document.querySelectorAll('[data-pclose]')].every((b) => b.disabled)));
   await p.click('#wsNote button:has-text("Unlock")');
   check('Unlock in the note unlocks', (await p.getAttribute('#b-lock', 'aria-pressed')) === 'false');
   await p.click('#b-lock');
