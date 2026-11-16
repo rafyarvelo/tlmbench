@@ -59,6 +59,8 @@ Expect: locked nothing moves and the greyed controls say why; unlocked it behave
 You decided (Nov 15): an unlocked arrangement is not kept when you reload; a reload is the exported view.
 Result:
 Notes:
+(Agent, Nov 16: your decision changed this: the Locked pill is now the pencil "Edit layout" button, and the time-view lock is
+gone from the viewer. Re-test it with V7.)
 
 ---
 
@@ -129,17 +131,21 @@ Notes:
 ## T. R3.1 and R3.2 (Nov 15 build): what you haven't checked yet
 
 You confirmed (removed): the ⋯ menu, the time range, Explorer's quiet rows, Open with layout ▸, the start page, rates and
-filters; on Nov 16 C2 (tabs and the panel overlap), T1 (slot numbers), T2 (Rename, Save layout), T3 (Duplicate recipe), D1 and D2, G1 and H1 to H4. Left:
+filters; on Nov 16 C2 (tabs and the panel overlap), C3 (windows), F10 (exports), V3 (Open with its default app, the menu note), V1's tab and V2's outlines, T1 (slot numbers), T2 (Rename, Save layout), T3 (Duplicate recipe), D1 and D2, G1 and H1 to H4. Left:
 
-### T4. The viewer's tab name
-Do: export flight-bad to HTML as One file with the layout "Altitude and battery"; open it.
-Expect: the tab name reads from its start, cut with an ellipsis at the end.
+### T4. The viewer's tab name, when it's long
+Do: open `flights/flight-bad.csv`, choose the layout "Altitude and battery" (tab menu ⌄ › Open layout, or the Layouts panel),
+then Export ▸ Export to HTML…, Save as One file. Open the `.html` it wrote. Look at the tab at the top left of the viewer.
+Expect: the tab's name starts at its beginning ("Altitude and batt…"), cut with … at the end if it doesn't fit; before the fix
+it was cut at the start ("…titude and battery").
 Result:
 Notes:
 
-### T5. The start page, narrow
-Do: make the window as narrow as it goes, with a file open (the logo opens it) and with none.
-Expect: the cards and columns stack, nothing clipped; Layouts rows are greyed with no file open and say why on hover.
+### T5. The start page in a narrow window
+Do: with a file open, click the logo at the top of the left rail (the start page opens over the file). Drag the window's right
+edge left until it won't go narrower. Then press Escape, Close all files, open the start page again, and look again.
+Expect: the cards and the two lists stack in one column, no text is cut off or overlapping; with no file open the Layouts rows
+are greyed and their tooltip says to open a recording first.
 Result:
 Notes:
 
@@ -196,24 +202,25 @@ Notes:
 Rebuild first (`just viewer`, then `cargo tauri build --no-bundle` in `app/src-tauri`) and, for V4 to V6, `just browser-site` and
 serve it (`python3 -m http.server --directory app/browser/dist`).
 
-### V1. Open together names the tab after both files (your T1 note; decided Nov 16)
-Do: Open together on flight-1 and flight-2; then on three files. Hover the tab.
-Expect: "flight-1 + flight-2", then "flight-1 + 2 more"; the tooltip lists every file.
+### V1. Open together: Explorer's row (your V1 note, Nov 16)
+You wrote: the tab is right, but the Explorer row holding both files still says flight-1. Changed: that row reads
+"flight-1 + flight-2 · 2 files" (the file's own name is its tooltip). Re-test: Open together on two files, look at Explorer.
 Result:
 Notes:
 
-### V2. Drop outlines as the prototype's (D-ui-18)
-Do: drag a channel over a pane's left and right edges, its middle, and between panes; drag a pane by its number over another
-pane's top, bottom, edges and middle, with and without Option.
-Expect: the pane under the drag has an accent ring and a labelled box ("Place on the left", "Move to a new row above", "Merge into
-this pane", "Copy …" with Option); gaps between rows say "Move the pane here" while a pane is dragged, and there's one after the
-last row.
+### V2. A pane's +N list (your V2 note, Nov 16)
+You wrote: outlines work, but the channels in a pane's "+N" list can't be dragged as in the prototype. Changed: they drag as
+chips do; the list fades while one is dragged and closes after. Re-test: narrow the window until a pane says "+N", open it,
+drag a channel to another pane.
 Result:
 Notes:
 
-### V3. Open with its default app; the folder menu's spacing
-Do: right-click a CSV in Explorer › Open with its default app. Open the folder's ⌄ menu.
-Expect: the CSV opens in your usual app for CSV; Refresh's note sits a space apart, muted.
+### V7. Exports of a tab of several files, and the viewer's one lock (your T4 notes, Nov 16)
+Changed: an export of "flight-1 + flight-2" is named so (the One file, the folder "flight-1 + flight-2-export", the viewer's
+tab). The viewer has one lock now, as you chose: the pencil "Edit layout" button in place of the Locked pill, and no time-view
+lock. Its chips should drag in Safari after Edit layout (the likely cause is fixed; it couldn't be tried in Safari here).
+Do: Open together on flight-1 and flight-2, Export to HTML as One file and as a Folder, open the One file in Safari, Edit
+layout, drag a chip to another pane.
 Result:
 Notes:
 
@@ -263,16 +270,6 @@ Expect: same fonts, sizes, spacing; nothing clipped. (L: X-win-06)
 Result:
 Notes:
 
-## C. Dragging and windows
-
-### C3. Drag a tab out to a new window, then onto another window's tab strip (L: X-win-04)
-Expect: a window opens with that tab; dropping on the other strip joins it; quit and reopen puts windows back.
-You wrote (Nov 16): the second window can't be closed; after ⌘Q it doesn't come back. Fixed: every close was held for the page,
-which never finished it, and each try forgot the window. Re-test: close the second window with its red button and with ⌘W; then
-drag a tab out again, ⌘Q, and start the app: both windows come back.
-Result:
-Notes:
-
 ## F. Export (what R2.1 added): the most important section
 
 ### F4. Light mode and the raw-window fields
@@ -311,15 +308,6 @@ Notes:
 ### F9. Redaction
 Do: `target/release/tlmbench export html <file> --all-channels --redact battery_v --checks "Flight limits" --out ~/Desktop/r`
 Expect: no `battery_v` data in the folder; the check "Battery above 12 V" is gone from the summary; open it through a web server and confirm.
-Result:
-Notes:
-
-### F10. Other exports
-Do: Export data… (CSV, Parquet) and Save the view as an image… (PNG, SVG).
-Expect: each opens a native save dialog starting in a sensible folder; the files open correctly elsewhere. (L: X-win-02)
-You wrote (Nov 16): CSV, Parquet and .tlm exports failed with "evaluating 'e.split'"; PNG worked but the dialog stayed open.
-Fixed: the file was written, then the success message failed (a field name the core and the page spelled differently). Both
-dialogs now close when done and say what they wrote, with Show in Finder. Re-test: each format, and an image.
 Result:
 Notes:
 
@@ -370,7 +358,7 @@ Where (screen, tab, setting): on the dialog for the folder
 How often (always / sometimes / once): always
 Severity (blocker / annoying / cosmetic): cosmetic
 ```
-(Agent, Nov 16: fixed, ledger D-ui-55; every menu item's note is a space apart now. Re-test in V3.)
+(Agent, Nov 16: fixed, ledger D-ui-55; you confirmed it in V3.)
 
 ## Anything you want built or changed (new ideas)
 
@@ -395,7 +383,7 @@ Idea: The file explorer context menu should have an "Open with System Editor" ac
 Why it matters: To verify the raw data in a file when testing the app
 Needed for v1? (yes / no): yes
 ```
-(Agent, Nov 16: built, ledger D-ui-58: Explorer's file menu › Open with its default app. Try it in V3.)
+(Agent, Nov 16: built, ledger D-ui-58: Explorer's file menu › Open with its default app; you confirmed it in V3.)
 
 ```
 Idea: 

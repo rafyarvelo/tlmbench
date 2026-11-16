@@ -69,6 +69,8 @@ removed Nov 15; git history keeps them.
 - Browser-only mode's WASM plugins: added in Settings › Plugins (kept in this browser), or the open folder's
   `.tlmbench/plugins/` once trusted; each runs in a Worker of its own with the app's limits (1 GiB, 30 s a call) and
   clocks at zero. Native plugins are listed as needing the app. Ledger D-brow-09.
+- The exported viewer has one lock, its layout's (owner, Nov 16): an Edit layout icon button where R12 had the Locked
+  pill, and no time-view lock. Exports of a tab of several files are named for the tab. Ledger D-ui-61, D-ui-62.
 - Open together names the tab after its files ("flight-1 + flight-2", "flight-1 + 2 more"). In browser-only mode the
   Events panel leaves the rail. Export data… and Save image… close when done and say what they wrote, as Export to HTML… does.
 
