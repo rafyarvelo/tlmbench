@@ -40,6 +40,8 @@ pub struct Live {
     current: RwLock<Arc<Opened>>,
     grow: Mutex<Grow>,
     trigger: Mutex<Option<Trigger>>,
+    /// A lock held while it lives: a folder whose lock is free was left by a process that ended (D-store-11).
+    _held: fs::File,
 }
 
 /// What a refresh continues from.
@@ -66,6 +68,7 @@ impl Store {
             fs::remove_dir_all(&dir).map_err(Error::io(&dir))?;
         }
         fs::create_dir_all(&dir).map_err(Error::io(&dir))?;
+        let held = crate::hold_dir(&dir)?;
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let first = self.live_snapshot(path, &key, id, None)?;
         let channels = first.recording().info().channels.len();
@@ -95,6 +98,7 @@ impl Store {
             current: RwLock::new(Arc::new(first)),
             grow: Mutex::new(grow),
             trigger: Mutex::new(None),
+            _held: held,
         };
         live.refresh()?;
         Ok(live)

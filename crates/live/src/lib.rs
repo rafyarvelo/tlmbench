@@ -791,6 +791,9 @@ pub struct Session {
     dir: PathBuf,
     started: String,
     sources: Vec<SourceEntry>,
+    /// A lock on `.held` while the session is open: the app's cache sweep leaves a session that isn't kept alone until
+    /// then, and removes one a process that ended left behind (D-store-11).
+    _held: Option<File>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -816,7 +819,9 @@ impl Session {
                 Err(e) => return Err(e),
             }
         }
-        let s = Session { dir, started, sources: Vec::new() };
+        let held = File::options().create(true).truncate(false).write(true).open(dir.join(".held"))?;
+        let _ = held.try_lock();
+        let s = Session { dir, started, sources: Vec::new(), _held: Some(held) };
         s.save()?;
         Ok(s)
     }

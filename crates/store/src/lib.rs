@@ -282,7 +282,9 @@ impl Store {
         let versions = fs::read_dir(self.root.join("pyr")).into_iter().flatten().flatten().map(|e| e.path());
         let columns = COLUMN_CACHES.iter().map(|&k| (k, self.root.join(k)));
         let packets = std::iter::once(("packets", self.root.join("packets")));
-        let dirs = columns.chain(packets).chain(versions.map(|d| ("pyramid", d)));
+        // plugin decodes and live folders: no fingerprint; a live one is in use while its process holds its lock
+        let more = ["plugin", "payload", "live", "live-sessions"].map(|k| (k, self.root.join(k)));
+        let dirs = columns.chain(packets).chain(more).chain(versions.map(|d| ("pyramid", d)));
         for (kind, dir) in dirs {
             let Ok(rd) = fs::read_dir(&dir) else { continue };
             for e in rd.flatten() {
@@ -295,7 +297,7 @@ impl Store {
                 let fingerprint = match kind {
                     "pyramid" => pyr::fingerprint_of(&path),
                     // a packet index is read into memory on open: removing it never disturbs a reader
-                    "packets" => None,
+                    "packets" | "plugin" | "payload" | "live" | "live-sessions" => None,
                     _ => Some(name.clone()),
                 };
                 out.push(Entry {
@@ -323,9 +325,7 @@ impl Store {
             total > self.limits.cap || sys::free_disk(&self.root).is_some_and(|f| f < self.limits.min_free)
         };
         while over(total) {
-            let Some(pos) =
-                entries.iter().rposition(|e| e.fingerprint.as_deref().is_none_or(|f| !in_use(&self.root, f)))
-            else {
+            let Some(pos) = entries.iter().rposition(|e| !self.busy(e)) else {
                 break;
             };
             let e = entries.remove(pos);
@@ -338,11 +338,36 @@ impl Store {
     }
 
     #[cfg(feature = "native")]
+    /// Whether an entry is in use: its source's file by any process, or a live folder whose process still runs.
+    fn busy(&self, e: &Entry) -> bool {
+        match e.kind {
+            "live" | "live-sessions" => held(&e.path),
+            _ => e.fingerprint.as_deref().is_some_and(|f| in_use(&self.root, f)),
+        }
+    }
+
+    #[cfg(feature = "native")]
+    /// Removes the live folders that processes which have ended left behind (a crash, a kill): the app calls this as
+    /// it starts. Returns what was removed.
+    pub fn sweep_orphans(&self) -> Vec<PathBuf> {
+        let mut removed = Vec::new();
+        for kind in ["live", "live-sessions"] {
+            for e in fs::read_dir(self.root.join(kind)).into_iter().flatten().flatten() {
+                let path = e.path();
+                if path.is_dir() && !held(&path) && fs::remove_dir_all(&path).is_ok() {
+                    removed.push(path);
+                }
+            }
+        }
+        removed
+    }
+
+    #[cfg(feature = "native")]
     /// Removes every entry not in use; returns what was removed.
     pub fn clear(&self) -> Result<Vec<PathBuf>> {
         let mut removed = Vec::new();
         for e in self.entries()? {
-            if e.fingerprint.as_deref().is_none_or(|f| !in_use(&self.root, f)) && fs::remove_dir_all(&e.path).is_ok() {
+            if !self.busy(&e) && fs::remove_dir_all(&e.path).is_ok() {
                 removed.push(e.path);
             }
         }
@@ -358,7 +383,8 @@ const COLUMN_CACHES: [&str; 3] = ["csv", "parquet", "derived"];
 /// One cache entry.
 #[derive(Clone, Debug, Serialize)]
 pub struct Entry {
-    /// "csv" or "parquet" (the column cache of that format), "packets" (a packet index) or "pyramid".
+    /// "csv", "parquet" or "derived" (a column cache), "packets" (a packet index), "plugin" or "payload" (what a plugin
+    /// decoded), "live" (a live source's growing pyramid), "live-sessions" (a session not kept) or "pyramid".
     pub kind: &'static str,
     pub path: PathBuf,
     pub bytes: u64,
@@ -952,6 +978,28 @@ fn hold(root: &Path, fp: &str) -> Result<File> {
 fn in_use(root: &Path, fp: &str) -> bool {
     let path = root.join("use").join(fp);
     match File::options().write(true).open(&path) {
+        Ok(f) => f.try_lock().is_err(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(feature = "native")]
+/// The name of the lock file a live folder's process holds while it runs.
+pub const HELD: &str = ".held";
+
+#[cfg(feature = "native")]
+/// Takes the lock that marks folder `dir` in use for as long as the returned file is kept.
+pub(crate) fn hold_dir(dir: &Path) -> Result<File> {
+    let path = dir.join(HELD);
+    let f = File::options().create(true).truncate(false).write(true).open(&path).map_err(Error::io(&path))?;
+    f.try_lock().map_err(|e| Error::io(&path)(std::io::Error::other(e.to_string())))?;
+    Ok(f)
+}
+
+#[cfg(feature = "native")]
+/// Whether a live folder's lock is held (its process still runs). A folder without one is not.
+fn held(dir: &Path) -> bool {
+    match File::options().write(true).open(dir.join(HELD)) {
         Ok(f) => f.try_lock().is_err(),
         Err(_) => false,
     }

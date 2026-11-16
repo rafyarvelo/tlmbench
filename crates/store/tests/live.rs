@@ -154,3 +154,38 @@ fn a_growing_fixed_rate_file_answers_like_the_whole_file() {
 fn a_growing_file_with_a_time_column_answers_like_the_whole_file() {
     follow(true);
 }
+
+#[test]
+fn live_folders_count_in_the_cache_and_a_dead_process_leaves_none_behind() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("cache");
+    let path = dir.path().join("live.tlm");
+    let mut f = fs::File::create(&path).unwrap();
+    reference::write_header(&mut f, &descriptor(false)).unwrap();
+    drop(f);
+    append(&path, false, 0, 1000);
+    let store = Store::new(Some(&cache));
+    let live = store.open_live(&path).unwrap();
+    // what a killed app leaves: a live folder and a session nobody holds, and a payload plugin's decode
+    for (kind, name) in [("live", "live-dead-1"), ("live-sessions", "session-dead"), ("payload", "0123")] {
+        let d = cache.join(kind).join(name);
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("data"), vec![0u8; 4096]).unwrap();
+    }
+    let kinds = |s: &Store| {
+        let mut k: Vec<&str> = s.entries().unwrap().iter().map(|e| e.kind).collect();
+        k.sort();
+        k
+    };
+    // D-store-11: every folder the app writes is counted
+    assert_eq!(kinds(&store), ["live", "live", "live-sessions", "payload"]);
+    let swept = store.sweep_orphans();
+    assert_eq!(swept.len(), 2, "{swept:?}");
+    assert!(cache.join("live").read_dir().unwrap().count() == 1, "the running one stays");
+    assert!(live.refresh().is_ok());
+    // Clear cache empties what isn't in use, and leaves the live one that is
+    store.clear().unwrap();
+    assert_eq!(kinds(&store), ["live"]);
+    drop(live);
+    assert!(kinds(&store).is_empty());
+}

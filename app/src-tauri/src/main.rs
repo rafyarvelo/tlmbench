@@ -3787,8 +3787,12 @@ macro_rules! commands {
 }
 
 fn new_files() -> Files {
+    let store = Store::new(None);
+    // live folders that an app which crashed or was killed left in the cache (D-store-11); a running one holds its lock
+    let sweep = store.clone();
+    std::thread::spawn(move || drop(sweep.sweep_orphans()));
     Files {
-        store: Store::new(None),
+        store,
         next: AtomicU32::new(0),
         holds: Holds::default(),
         handoffs: Mutex::default(),
