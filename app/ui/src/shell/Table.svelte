@@ -43,12 +43,16 @@
   // ---------- columns ----------
 
   type Col = { id: string; label: string; unit: string | null; ch: number | null };
+  /** The events marked on this pane, which the Event column and the row tints read. */
+  const shownEvents = $derived(marked(paneEvents(i)));
   const cols = $derived<Col[]>([
     { id: 'n', label: 'Sample', unit: null, ch: null },
     { id: 't', label: 'Time', unit: null, ch: null },
     ...channels.map((ch) => ({ id: `c${ch}`, label: chName(ch), unit: chUnit(ch) || null, ch })),
+    // the events at each row, by name: display only (no sort, filter or menu), there while events are marked
+    ...(shownEvents.length ? [{ id: 'e', label: 'Event', unit: null, ch: null } as Col] : []),
   ]);
-  const defaultSize = (c: Col) => (c.ch == null ? (c.id === 'n' ? 96 : 132) : Math.min(240, Math.max(118, (c.label + (c.unit ?? '')).length * 7 + 44)));
+  const defaultSize = (c: Col) => (c.id === 'e' ? 180 : c.ch == null ? (c.id === 'n' ? 96 : 132) : Math.min(240, Math.max(118, (c.label + (c.unit ?? '')).length * 7 + 44)));
 
   /** Widths while a resize runs; otherwise the pane's saved ones. */
   let local = $state<ColumnSizingState | null>(null);
@@ -286,7 +290,6 @@
   });
 
   /** The event (if any) a row at time `t` is inside, and its tag: ▸ on a range's first row, ◂ on its last, ● on an instant's. */
-  const shownEvents = $derived(marked(paneEvents(i)));
   function eventAtRow(t: bigint): { e: TlmEvent; tag: string } | null {
     const half = BigInt(Math.max(1, Math.round(step / 2)));
     const st = BigInt(Math.max(1, Math.round(step)));
@@ -300,6 +303,19 @@
     }
     return null;
   }
+
+  /** Whether event `e` names channel `ch` (by its name in the file; an event with no channels concerns none in particular). */
+  const concerns = (e: TlmEvent, ch: number): boolean => !!e.channels?.length && e.channels.includes(ui.channels[ch]?.name ?? '');
+
+  /** A channel of another file than the one the rows are counted by: it holds its last sample between its own, and a cell
+   *  that repeats the one above is dimmed (S4.2-09). */
+  const rowsFile = $derived(channels.length ? ui.slots.find((s) => channels[0] >= s.first && channels[0] < s.first + s.count)?.slot : undefined);
+  const heldCol = (ch: number | null): boolean => {
+    if (ch == null || ui.slots.length < 2 || rowsFile == null) return false;
+    const s = ui.slots.find((x) => ch >= x.first && ch < x.first + x.count);
+    return !!s && s.slot !== rowsFile;
+  };
+  const anyHeld = $derived(channels.some((ch) => heldCol(ch)));
 
   async function read(): Promise<void> {
     const f = ui.view.file;
@@ -475,7 +491,7 @@
 
   /** The cell's text. */
   function cellText(x: { n: number; t: bigint; v: number[] }, col: Col, c: number): string {
-    return col.id === 'n' ? x.n.toLocaleString() : col.id === 't' ? (settings.timeFormat + settings.timeDecimals, timeLabel(x.t, step)) : fmtCh(ui.view.file, col.ch ?? 0, x.v[c - 2]);
+    return col.id === 'e' ? (eventAtRow(x.t)?.e.name ?? '') : col.id === 'n' ? x.n.toLocaleString() : col.id === 't' ? (settings.timeFormat + settings.timeDecimals, timeLabel(x.t, step)) : fmtCh(ui.view.file, col.ch ?? 0, x.v[c - 2]);
   }
   /** Each column's left edge, for scrolling to it and for what is in the horizontal view. */
   const edges = $derived.by(() => {
@@ -538,6 +554,7 @@
   let anchor = $state<number | null>(null);
   /** A click on a header: sorts, or selects (Ctrl/⌘ toggles, Shift picks a range from the last pick). */
   function headClick(e: MouseEvent, col: Col) {
+    if (col.id === 'e') return;
     const ch = col.ch;
     const select = ch != null && (!settings.tableClickSort || e.ctrlKey || e.metaKey || (e.shiftKey && anchor != null && chosen.length > 0));
     if (!select) {
@@ -572,7 +589,7 @@
   const headItems = (col: Col): MenuItem[] => {
     const k = sortOf(col.id);
     const out: MenuItem[] = [];
-    if (col.id !== 'n') {
+    if (col.id !== 'n' && col.id !== 'e') {
       out.push({ label: 'Sort ascending', checked: k >= 0 && !sort[k].desc, run: () => setTable(i, { sort: [{ col: col.id, desc: false }] }), data: { hm: 'asc' } });
       out.push({ label: 'Sort descending', checked: k >= 0 && sort[k].desc, run: () => setTable(i, { sort: [{ col: col.id, desc: true }] }), data: { hm: 'desc' } });
       if (k >= 0) out.push({ label: 'Clear sort', run: () => setTable(i, { sort: sort.filter((x) => x.col !== col.id) }), data: { hm: 'clear' } });
@@ -622,7 +639,7 @@
 <div class="ptable" data-table={i} bind:this={box} style={alone ? (h != null ? `flex: none; height: ${h}px` : '') : h != null ? `flex: 0 1 ${h}px; min-height: 90px` : ''}>
   <div class="tbar">
     <span class="tstat" role="status" data-tstat
-      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${rateWords(1e9 / step)})`}{/if}</span
+      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${rateWords(1e9 / step)})`}{/if}{#if anyHeld && !running} · other files' values are held between their samples, dimmed when unchanged{/if}</span
     >
     {#if ui.view.A != null || ui.view.B != null}
       <span class="tcur" data-tcur data-tip="Cursors: in Cursors mode click a row to set A, then B. In any mode, right-click a row, or press A or B with the pointer over it."
@@ -690,7 +707,7 @@
             <span
               class="tth"
               class:num={col.ch != null}
-              class:sortable={col.id !== 'n'}
+              class:sortable={col.id !== 'n' && col.id !== 'e'}
               class:pin={col.id === 'n' || col.id === 't'}
               class:sel={col.ch != null && chosen.includes(col.ch)}
               class:flash={flash === col.id}
@@ -715,8 +732,8 @@
                 <span class="tlab">{col.label}{#if col.unit}&nbsp;<span class="tunit">{col.unit}</span>{/if}</span>
                 {#if k >= 0}<span class="tsort" data-sort={sort[k].desc ? 'desc' : 'asc'}>{sort[k].desc ? '▼' : '▲'}{#if sort.length > 1}<sub>{k + 1}</sub>{/if}</span>{/if}
               </span>
-              <button class="tmore" class:on={pop?.kind === 'head' && pop.col?.id === col.id} aria-label="Column menu for {col.label}" aria-haspopup="menu" data-colmenu={col.id} data-tip="Sort, autofit, select or hide this column" onclick={(e) => popAt('head', e, col)}>▾</button>
-              {#if col.id !== 'n'}
+              {#if col.id !== 'e'}<button class="tmore" class:on={pop?.kind === 'head' && pop.col?.id === col.id} aria-label="Column menu for {col.label}" aria-haspopup="menu" data-colmenu={col.id} data-tip="Sort, autofit, select or hide this column" onclick={(e) => popAt('head', e, col)}>▾</button>{/if}
+              {#if col.id !== 'n' && col.id !== 'e'}
                 <input
                   class="tfin"
                   class:bad={errors[col.id]}
@@ -784,6 +801,8 @@
                   class:sel={col.ch != null && chosen.includes(col.ch)}
                   class:flash={flash === col.id}
                   class:gapcell={v != null && Number.isNaN(v)}
+                  class:evch={!!ev && col.ch != null && concerns(ev.e, col.ch)}
+                  class:held={c >= 2 && heldCol(col.ch) && x != null && r > 0 && v != null && row(r - 1)?.v[c - 2] === v}
                   style="width: {h.getSize()}px{c < 2 ? `; left: ${leftOf(col.id)}px` : ''}"
                   role="gridcell">{x == null ? '' : cellText(x, col, c)}{#if ev?.tag && col.id === 't'}<em class="evtag" data-evtag data-tip="{ev.e.name} · {catName(ev.e.category)}{ev.tag === '◂' ? ' (end)' : ''}">{ev.tag}</em>{/if}</span
                 >
@@ -1257,6 +1276,12 @@
   }
   .trw.inev > span {
     background: color-mix(in srgb, var(--ev) 10%, var(--plot-bg));
+  }
+  .trw.inev > span.evch {
+    background: color-mix(in srgb, var(--ev) 24%, var(--plot-bg));
+  }
+  .trw > span.held {
+    opacity: 0.45;
   }
   .trw.inev > span:first-child {
     box-shadow: inset 3px 0 0 var(--ev);

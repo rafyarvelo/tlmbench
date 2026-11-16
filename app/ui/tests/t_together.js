@@ -30,6 +30,15 @@ run(
     check('Open together: one tab, two slots', await until(() => document.querySelectorAll('#explorer .row.slot').length === 2));
     check('the shared channel first, each file\'s copy in the one pane; then each file\'s own channels as starter charts', await until(() => window.__tlmApp.panes().length === 6) && JSON.stringify(await panes()) === '[[0,8],[1,2],[3,4],[5],[6],[7]]', await panes());
 
+    // a table over both files' copies: the slower file holds its last sample, dimmed where unchanged (S4.2-09)
+    await p.click('#stack [data-pane="0"] [data-vmenu]');
+    await p.click('.menu [data-vm="table"]');
+    check('the other file\'s cells that repeat the one above are dimmed', await until(() => document.querySelectorAll('#stack .trw > span.held').length > 0), await p.$$eval('#stack .tth', (h) => h.map((x) => x.dataset.col)));
+    check('the first file\'s cells are not', !(await p.$('#stack .trw > span.held:nth-child(3)')));
+    check('and the status line says how they show', /held between their samples, dimmed when unchanged/.test(await text('#stack [data-tstat]')), await text('#stack [data-tstat]'));
+    await p.click('#stack [data-pane="0"] [data-vmenu]');
+    await p.click('.menu [data-vm="chart"]');
+
     // files with nothing in common: each file's starter charts
     await p.click(`#explorer .row.file[data-path="${DIR}/bench.tlm"]`);
     await p.click(`#explorer .row.file[data-path="${B}"]`, { modifiers: ['ControlOrMeta'] });

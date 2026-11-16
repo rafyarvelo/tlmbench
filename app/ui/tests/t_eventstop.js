@@ -73,10 +73,16 @@ run(
     await p.click('.menu [data-vm="table"]');
     check('table rows inside events are tinted', await until(() => document.querySelectorAll('#stack .trw.inev').length > 0));
     check('with tags: ▸ on the first row, ◂ on the last, ● on an instant', await until(() => { const t = [...document.querySelectorAll('#stack [data-evtag]')].map((e) => e.textContent).join(''); return t.includes('▸') && t.includes('◂') && t.includes('●'); }), await p.$$eval('#stack [data-evtag]', (e) => e.map((x) => x.textContent)));
+    // the Event column names the event at each row (S5.2-13): last, display only
+    check('an Event column comes last and names the event on its rows', await until(() => [...document.querySelectorAll('#stack .tth')].at(-1)?.dataset.col === 'e') && await p.evaluate(() => [...document.querySelectorAll('#stack .trw.inev')].some((r) => /Early|Climb|Spike/.test(r.lastElementChild?.textContent ?? ''))), await p.$$eval('#stack .tth', (h) => h.map((x) => x.dataset.col)));
+    check('and has no sort, filter or column menu', !(await p.$('#stack .tth[data-col="e"] [data-filter]')) && !(await p.$('#stack .tth[data-col="e"] [data-colmenu]')));
     await p.keyboard.press('e');
     check('E hides them', await until(() => document.querySelectorAll('#stack .trw.inev').length === 0));
     await p.keyboard.press('e');
     check('and shows them', await until(() => document.querySelectorAll('#stack .trw.inev').length > 0));
+    await p.keyboard.press('e');
+    check('with events hidden the Event column goes too', await until(() => !document.querySelector('#stack .tth[data-col="e"]')));
+    await p.keyboard.press('e');
   },
   { files: { '/data/flight.tlm': {} }, launch: '/data/flight.tlm' },
 );

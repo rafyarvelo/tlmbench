@@ -25,10 +25,9 @@ done is `docs/release/ledger.md`.** If this prompt and those disagree, they win,
    suits Sonnet, and **stop and report at the first design question or at the first step that needs Opus**; never decide
    a design question yourself. **Built Nov 15 by the previous Sonnet agent** (ledger rows and tests named there; pushed or not:
    see the status table): R2.2's folders and hidden controls, time going backwards in every format (S5.10-06), and R3.3's
-   UI-only rows D-ui-43, -46, -47, -48, -49, -11, -13, -14, S5.2-15. What is left for Sonnet:
-   1. **R3.3's table rows:** the Event column and the stronger tint on the channels an event concerns (S5.2-13), slower
-      channels held and dimmed where unchanged and the status line saying so (S4.2-09). `app/ui/src/shell/Table.svelte` is
-      1,300 lines: read `t_eventstop`, `t_slots` and the prototype's table (`prototype/plotter.html`, `proto:t_events`) first.
+   UI-only rows D-ui-43, -46, -47, -48, -49, -11, -13, -14, S4.2-09, S5.2-15 (and most of S5.2-13). What is left for Sonnet:
+   1. **R3.3's table rows, the rest:** a click on an event tag in the table reveals the event in the Events panel (S5.2-13's
+      last gap). The Event column and the dimming are built.
    2. **Drag outlines and edge drops** (D-ui-17, D-ui-18): add a parity scene holding a drag in progress
       (`app/ui/tests/parity/scenes.js`) and match the prototype's outline styles; the owner checks it in R5.
    3. **R2.4 Python:** wheels for each platform (`maturin build`, abi3, manylinux 2_28, macOS universal2 or two wheels,

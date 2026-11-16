@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 257 · **Partial** 42 · **Missing** 16 · **Diverged** 4 · **Unverified** 24 · **Owner pass** 17 (360 rows).
+Counts: **Done** 258 · **Partial** 41 · **Missing** 16 · **Diverged** 4 · **Unverified** 24 · **Owner pass** 17 (360 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -49,7 +49,7 @@ where each step stands, and nothing else records either.
 | S4.2-06 | roadmap 4.2 | Clear sort and filters, Columns list, Autofit, header ▾ menu. | Done | `t_tablequery`, `t_tablecols` | |
 | S4.2-07 | roadmap 4.2 | Pinned columns, column selection, copy as CSV. | Done | `t_tablecols`, `t_tablerows` | Copy stops at 100,000 rows (owner, Nov 8) |
 | S4.2-08 | roadmap 4.2 | Row hover and right-click, the cursor line, the status line, keyboard. | Done | `t_tablerows` | |
-| S4.2-09 | roadmap 4.2 | Slower channels held and dimmed. | Partial | `t_slots` (another file's columns are held), `app/ui/src/shell/Table.svelte` (no dimming) | Dimming where unchanged and gap flags are not built; the status line doesn't say how slower channels show. R3.3 |
+| S4.2-09 | roadmap 4.2 | Slower channels held and dimmed. | Done | `t_together` (Nov 15), `t_slots` | Another file's columns hold their last sample between its own, dimmed where a cell repeats the one above; the status line says so. The fake core now holds them as the core does |
 | S4.2-10 | roadmap 4.2 | The rows on screen as a band on the charts. | Done | `t_tablequery` | |
 | S4.2-11 | roadmap 4.2 | The lock's "table sort and filter still work" setting. | Done | `t_tablelock` | |
 | S4.2-12 | roadmap 4.2 | Gaps in lines: break at a gap (default) or connect across it, connected stretches dashed. | Done | `t_gaps`, `tlmbench-core::m4::connecting_gaps_drops_the_nans_and_marks_the_joins` | |
@@ -111,7 +111,7 @@ where each step stands, and nothing else records either.
 | S5.2-10 | roadmap 5.2 | Markers and ranges from the cursors; the Events panel (filters, chips, grouping, inline edit). | Done | `t_events` | |
 | S5.2-11 | roadmap 5.2 | Event categories in Settings. | Done | `t_eventmarks`, `t_rules` (Nov 14: colour and Charts in the editor too) | Owner sheet E2 (Nov 14): the Rules and checks editor showed a category's colour as a dot only; it now edits the colour and Charts there, as Settings and the prototype's editor do |
 | S5.2-12 | roadmap 5.2 | Markers on charts, ticks on the overview. | Done | `t_eventmarks` | The hover tooltip is D-ui-11 |
-| S5.2-13 | roadmap 5.2 | The table's Event column and tinted rows. | Partial | `t_eventstop` (tint, stripe and ▸ ◂ ● tags in the Time cell) | No Event column, no stronger tint on the channels an event concerns, a tag click doesn't reveal the event. R3.3 |
+| S5.2-13 | roadmap 5.2 | The table's Event column and tinted rows. | Partial | `t_eventstop` (tint, stripe and ▸ ◂ ● tags, the Event column, Nov 15) | Built Nov 15: a display-only Event column (last, while events are marked) naming the event at each row, and a stronger tint on the cells of the channels an event names. Left: a tag click doesn't reveal the event in the Events panel. R3.3 |
 | S5.2-14 | roadmap 5.2 | The top bar's E toggle and each pane's. | Done | `t_eventmarks` | |
 | S5.2-15 | roadmap 5.2 | Stop at in the transport (any event, or chosen categories). | Done | `t_eventstop` (Nov 15) | Stop at is a menu: Nothing, Any event, or any number of ticked categories; the button names them |
 | S5.2-16 | roadmap 5.2, Done when | The prototype's events and limits tests are ported and their harness scenes match. | Partial | `t_events`, `t_eventmarks`, `t_limits`, `app/ui/tests/parity/scenes.js` (no scene for the Events panel or the channel editor) | "Charts follow these filters" per tab is not built. Add the scenes: R3.3 |

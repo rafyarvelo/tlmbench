@@ -978,8 +978,16 @@
       v.setBigUint64(16, BigInt(b - a), true);
       v.setUint32(24, n, true);
       for (let k = 0; k < n; k++) v.setBigInt64(32 + 8 * k, timeAt(r, start + k), true);
+      const o = fake.open.get(file);
       chans.forEach((ch, c) => {
-        for (let k = 0; k < n; k++) v.setFloat64(32 + 8 * n * (c + 1) + 8 * k, valueAt(r, ch, start + k), true);
+        // another file of a tab holds its last sample between its own, as the core's table does: this file's rows are counted by file 1
+        const route = o.group ? groupRoute(o, ch) : null;
+        const own = route && route.m !== o.group.members[0] ? route : null;
+        for (let k = 0; k < n; k++) {
+          const i = start + k;
+          const j = own ? Math.min(own.r.samples - 1, Math.floor((i * own.r.rate) / r.rate)) : i;
+          v.setFloat64(32 + 8 * n * (c + 1) + 8 * k, own ? valueAt(own.r, own.local, j) : valueAt(r, ch, i), true);
+        }
       });
       return buf;
     },
