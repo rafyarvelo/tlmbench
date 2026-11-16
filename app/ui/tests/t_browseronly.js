@@ -139,7 +139,7 @@ try {
   // the start page shows over the restored tabs at launch
   if (await p.$('#startPage.overlay')) await p.click('#startPage.overlay [aria-label="Close the start page"]');
   await until(() => !document.querySelector('#startPage.overlay'));
-  check('the rail has no Layouts and no Rules & checks (Explorer, Events, Measure and Settings stay)', (await none('[data-rail="layouts"]')) && (await none('[data-rail="checks"]')) && (await none('[data-rail="live"]')) && !!(await p.$('[data-rail="explorer"]')) && !!(await p.$('[data-rail="events"]')) && !!(await p.$('[data-rail="measure"]')) && !!(await p.$('[data-rail="settings"]')), await p.$$eval('[data-rail]', (e) => e.map((x) => x.dataset.rail)));
+  check('the rail has no Layouts, Rules & checks or Events (Explorer, Measure and Settings stay; owner, Nov 16)', (await none('[data-rail="layouts"]')) && (await none('[data-rail="checks"]')) && (await none('[data-rail="live"]')) && (await none('[data-rail="events"]')) && !!(await p.$('[data-rail="explorer"]')) && !!(await p.$('[data-rail="measure"]')) && !!(await p.$('[data-rail="settings"]')), await p.$$eval('[data-rail]', (e) => e.map((x) => x.dataset.rail)));
   check('Explorer has no Derive button', await none('#exDerive'));
   await p.click('#explorer .tree .row.chan');
   check('a channel selected offers Add, Chart, Table and Remove, but not Derive', !!(await p.$('#selBar [data-sel="add"]')) && (await none('#selBar [data-sel="derive"]')));
@@ -154,10 +154,8 @@ try {
   await p.click('#exMore');
   check('Explorer\'s ⋯ has no Recipes…', !(await p.$$eval('.exmenu .mi', (e) => e.map((x) => x.textContent ?? ''))).some((t) => /Recipes/.test(t)));
   await p.keyboard.press('Escape');
-  await p.click('[data-rail="events"]');
-  check('the Events panel has no Marker, Range or Rules', await until(() => !!document.querySelector('[data-panel="events"]:not([hidden])')) && (await none('#evMarker, #evRange, #evRules')));
-  check('and says events come after v1', /come after v1/.test(await p.$eval('[data-panel="events"]', (e) => e.textContent ?? '')));
-  await p.click('[data-rail="explorer"]');
+  await p.evaluate(() => window.__tlmSettings.set('leftPanel', 'events'));
+  check('a saved Events panel opens as Explorer', await until(() => !document.querySelector('[data-panel="events"]:not([hidden])') && !!document.querySelector('[data-panel="explorer"]:not([hidden]), #explorer')), await p.evaluate(() => window.__tlmSettings?.get?.('leftPanel')));
   check('the bar has no + for layouts and no Event markers button', (await none('#wsTabNew')) && (await none('#b-events')));
   await p.click('#wsTabs .wstab .tm');
   const tm = await p.$$eval('.tabmenu .mi', (e) => e.map((x) => x.textContent ?? ''));

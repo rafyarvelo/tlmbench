@@ -102,7 +102,7 @@
 
   // a browser tab has no Layouts or Rules & checks: a sidebar left on one (saved by an earlier page) shows Explorer
   $effect(() => {
-    if (ui.browserOnly && (settings.leftPanel === 'checks' || settings.leftPanel === 'layouts')) setSetting('leftPanel', 'explorer');
+    if (ui.browserOnly && (settings.leftPanel === 'checks' || settings.leftPanel === 'layouts' || settings.leftPanel === 'events')) setSetting('leftPanel', 'explorer');
   });
 
   // Ctrl+B: the left sidebar; Ctrl+Alt+B: Measure
