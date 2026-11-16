@@ -26,7 +26,7 @@ In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/fligh
 
 ```
 Date:
-App: release build from commit (agent fills in): the R3.1/R3.2 build of Nov 15, 2026 (`git log -1` when built), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
+App: release build from commit (agent fills in): the Nov 16, 2026 build (`git log -1` when built), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
@@ -129,29 +129,7 @@ Notes:
 ## T. R3.1 and R3.2 (Nov 15 build): what you haven't checked yet
 
 You confirmed (removed): the ⋯ menu, the time range, Explorer's quiet rows, Open with layout ▸, the start page, rates and
-filters. Left:
-
-### T1. Slot numbers after closing a tab (fixed Nov 15, rebuilt)
-You wrote: the numbers stay in Explorer after closing a tab made with Open together or Compare.
-Changed: closing the last tab (the window empties) left the slot list behind; it is cleared now.
-Do: Open together on flight-1 and flight-2, close the tab; also Compare, then close; also with another tab open.
-Expect: no slot numbers or "primary" on any file row once its tab is gone.
-Result: This is fixed, the slot numbers go away when closing the tab.
-Notes: An unrelated suggestion, When selecting "Open Together", the tab only gets the name of the first file which is unexpected. Instead, the tab should be named something that indicates all the files that were opened.
-
-### T2. The tab menu: Rename… and Save layout / Revert
-Do: ⌄ on a file tab: Save layout and Revert are listed, greyed. Save as… "A", then Rename… to "B"; also double-click the
-name in the Layouts panel. Try a name already in use.
-Expect: the tab and the list follow the new name; a used name is refused in the field; Undo in the note puts it back.
-Result: This works as expected.
-Notes: Nominal behavior.
-
-### T3. Duplicate recipe… and Save as new
-Do: make a derived channel (±2σ or a delta); right-click it ▸ Duplicate recipe…; then Edit recipe…, change the
-expression, Save as new.
-Expect: the first opens the Derive dialog filled in and named "… copy"; the second adds a recipe and leaves the first as it was.
-Result: This works as expected.
-Notes: Nominal behavior.
+filters; on Nov 16 T1 (slot numbers), T2 (Rename, Save layout), T3 (Duplicate recipe), D1 and D2, G1 and H1 to H4. Left:
 
 ### T4. The viewer's tab name
 Do: export flight-bad to HTML as One file with the layout "Altitude and battery"; open it.
@@ -213,6 +191,57 @@ Notes:
 
 ---
 
+## V. The Nov 16 build (your sheet's findings and decisions)
+
+Rebuild first (`just viewer`, then `cargo tauri build --no-bundle` in `app/src-tauri`) and, for V4 to V6, `just browser-site` and
+serve it (`python3 -m http.server --directory app/browser/dist`).
+
+### V1. Open together names the tab after both files (your T1 note; decided Nov 16)
+Do: Open together on flight-1 and flight-2; then on three files. Hover the tab.
+Expect: "flight-1 + flight-2", then "flight-1 + 2 more"; the tooltip lists every file.
+Result:
+Notes:
+
+### V2. Drop outlines as the prototype's (D-ui-18)
+Do: drag a channel over a pane's left and right edges, its middle, and between panes; drag a pane by its number over another
+pane's top, bottom, edges and middle, with and without Option.
+Expect: the pane under the drag has an accent ring and a labelled box ("Place on the left", "Move to a new row above", "Merge into
+this pane", "Copy …" with Option); gaps between rows say "Move the pane here" while a pane is dragged, and there's one after the
+last row.
+Result:
+Notes:
+
+### V3. Open with its default app; the folder menu's spacing
+Do: right-click a CSV in Explorer › Open with its default app. Open the folder's ⌄ menu.
+Expect: the CSV opens in your usual app for CSV; Refresh's note sits a space apart, muted.
+Result:
+Notes:
+
+### V4. Browser-only mode: binary files and descriptors (D-brow-08)
+Do: in the browser page, open a binary file nothing describes (a `.bin`): the descriptor form opens; Open it. Open a second file
+the pattern names. Reload.
+Expect: the form previews the records; no Share (a tab never writes to the folder); the second file opens with no form; after a
+reload the files are back.
+Result:
+Notes:
+
+### V5. Browser-only mode: WASM plugins (D-brow-09; your decision Nov 16)
+Do: `just plugin-template`, then Settings › Plugins › Add plugin…, choose `plugins/template-decoder/target/wasm32-wasip2/release/my_decoder.wasm`.
+Open a `.demo` file (the template's format; `python3` can write one: magic `DEMO`, a u32 count, records of u64 µs, f32, i16).
+Expect: the plugin is listed as WASM, sandboxed; the file opens; a `.dylib` is refused as needing the app. The first use fetches
+about 5 MB once (jco).
+Result:
+Notes:
+
+### V6. Browser-only mode: the folder's .tlmbench/ (D-brow-10)
+Do: in Chrome, Open folder… on `~/tlmbench-testdata/flights`.
+Expect: its categories and widgets are there; a descriptor or plugin it shares names its files; nothing is written to the folder.
+The Events panel isn't on the rail (your U2 answer).
+Result:
+Notes:
+
+---
+
 ## B. Reading a chart
 
 ### B4. A file that is still building
@@ -237,27 +266,20 @@ Notes:
 ## C. Dragging and windows
 
 ### C2. Drag sidebar panels, tabs, and pane numbers to reorder (L: X-win-03)
-Result: Dragging sidebar panels correctly allows them to switch sides, but there is a rendering issue when dropping the second pane initially to the right from the left. Dragging tabs does not reorder them
-Notes: 
+You wrote (Nov 16): panels switch sides, but there's a rendering issue when the second panel first goes from left to right;
+tabs don't reorder. Changed: a tab dropped on a neighbour lands on the side of it you let go on (a drag onto the tab to its
+right did nothing). The panel's rendering issue isn't reproduced yet (D-ui-52): what did you see (a gap, an overlap, a panel
+drawn twice)? A screenshot helps.
+Result:
+Notes:
 
 ### C3. Drag a tab out to a new window, then onto another window's tab strip (L: X-win-04)
 Expect: a window opens with that tab; dropping on the other strip joins it; quit and reopen puts windows back.
-Result: The initial dragging out to a new window works, but the 2nd window can't be closed?
-Notes: Doing Cmd Q on a mac correctly closes all windows, but doesn't open up with the window
-
-## D. Several files in one tab
-
-### D1. Add a second file to the tab
-Do: With flight-1 open, add flight-2 to the tab (import dialog "This tab", or the tab menu).
-Expect: channels from both, the second named `…·2` or by file name; the time axis spans both; alignment shown.
-Result: Works as expected.
-Notes: Nominal
-
-### D2. Align
-Do: Change the alignment (start, clock, nudge). 
-Expect: the second file moves; nothing is rebuilt or slow; undo works.
-Result: Works as expected.
-Notes: Nominal
+You wrote (Nov 16): the second window can't be closed; after ⌘Q it doesn't come back. Fixed: every close was held for the page,
+which never finished it, and each try forgot the window. Re-test: close the second window with its red button and with ⌘W; then
+drag a tab out again, ⌘Q, and start the app: both windows come back.
+Result:
+Notes:
 
 ## F. Export (what R2.1 added): the most important section
 
@@ -303,16 +325,13 @@ Notes:
 ### F10. Other exports
 Do: Export data… (CSV, Parquet) and Save the view as an image… (PNG, SVG).
 Expect: each opens a native save dialog starting in a sensible folder; the files open correctly elsewhere. (L: X-win-02)
-Result: This did not work when trying to export a CSV as a CSV. This also failed the same way for .parquet and .tlm. Export to PNG works but it's awkward because the export dialog doesn't close after export.
-Notes: Error text: "Couldn't export: TypeError: undefined is not an object (evaluating 'e.split')"
+You wrote (Nov 16): CSV, Parquet and .tlm exports failed with "evaluating 'e.split'"; PNG worked but the dialog stayed open.
+Fixed: the file was written, then the success message failed (a field name the core and the page spelled differently). Both
+dialogs now close when done and say what they wrote, with Show in Finder. Re-test: each format, and an image.
+Result:
+Notes:
 
 ## G. Live and plugins (skip what you don't use)
-
-### G1. A growing file
-Do: Live › a growing `.tlm` or CSV; append rows from a terminal.
-Expect: the chart follows; Stop ends the recording; the file opens afterwards. (L: X-win-08)
-Result: This works.
-Notes: Is the refresh rate throttle or something? Speeding up file writes didn't seem to speed up the plots
 
 ### G2. TCP or UDP source with a trigger
 Result:
@@ -320,31 +339,13 @@ Notes:
 
 ### G3. A code widget in the app
 Expect: asks once per folder before running shared code; then runs. (L: X-win-07)
+You wrote (Nov 16): not obvious how to do this. It is a JSON list in Settings › widgets today; making a code widget from the
+app without the JSON is ledger D-ui-59 (not built yet). To try it now: open `~/tlmbench-testdata/flights` (its `.tlmbench/` shares
+a code widget), add a Gauges pane, and pick the shared code widget there.
 Result:
-Notes: I don't know how to do this, it's not obvious in the app
+Notes:
 
 ## H. Settings and look
-
-### H1. Settings that stick
-Do: Change theme, a chart option, quit, reopen.
-Expect: everything configurable is remembered.
-Result: Works as expected.
-Notes: Behavior is nominal
-
-### H2. Dark and light
-Expect: both readable, no clipped or invisible controls.
-Result: Both are visible and nominal
-Notes: As expected.
-
-### H3. Tooltips
-Expect: short, helpful, they stop appearing after three uses.
-Result: Works as expected.
-Notes: Changing the tooltip mode is also nominal
-
-### H4. Calm UI
-Expect: controls appear on selection or hover, not all at once; frequent actions are one click.
-Result: Works as expected.
-Notes: Looks good.
 
 ### H5. Memory and speed
 Do: Open the 100M-sample file (B4). Watch the status bar memory number and the feel of zoom.
@@ -377,6 +378,7 @@ Where (screen, tab, setting): on the dialog for the folder
 How often (always / sometimes / once): always
 Severity (blocker / annoying / cosmetic): cosmetic
 ```
+(Agent, Nov 16: fixed, ledger D-ui-55; every menu item's note is a space apart now. Re-test in V3.)
 
 ## Anything you want built or changed (new ideas)
 
@@ -387,18 +389,21 @@ Idea: The import dialog for a file should have a selector for how the file shoul
 Why it matters: It's too much much to change this per file right now.
 Needed for v1? (yes / no): yes
 ```
+(Agent, Nov 16: v1 as you said, ledger D-ui-57, not built yet.)
 
 ```
 Idea: There needs to be better support for text fields, The prototype supports enumerations and plotting text fields that automatically enumerates labels
 Why it matters: It's required for fields that place state transitions and enumerations as text
 Needed for v1? (yes / no): yes
 ```
+(Agent, Nov 16: v1, ledger D-ingest-12, decided Nov 16: a text column with up to 256 distinct values becomes a labelled channel. Not built yet.)
 
 ```
 Idea: The file explorer context menu should have an "Open with System Editor" action to use the OS file opener for a file type
 Why it matters: To verify the raw data in a file when testing the app
 Needed for v1? (yes / no): yes
 ```
+(Agent, Nov 16: built, ledger D-ui-58: Explorer's file menu › Open with its default app. Try it in V3.)
 
 ```
 Idea: 
