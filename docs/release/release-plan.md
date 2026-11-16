@@ -25,7 +25,7 @@ with the commit and the run. Docs-only commits are not pushed on their own; they
 tests (owner, Nov 15), since a run takes about 1.5 hours and a push cancels the one in progress. An agent never pushes without the owner's go-ahead (CLAUDE.md), so "built, not pushed" is a
 state of its own in the table, not "done".
 
-## Status (Nov 15, 2026)
+## Status (Nov 16, 2026)
 
 | Step | State |
 | --- | --- |
@@ -34,7 +34,7 @@ state of its own in the table, not "done".
 | R2.1 Exports | Built Nov 11 (ledger rows naming R2.1; `docs/exports.md`, `docs/viewer-store.md`); CI with the Nov 15 push |
 | R2.1a The owner's first pass | Built Nov 14 and 15: the owner's 11 fixes, all nine decisions (owner-decisions memory, `follow-ups.md`), the sheet's R3 (Reset app), R12 (the viewer Locked, with Unlock) and B4 (`TLMBENCH_SLOW_BUILD`), the first UI audit. **The owner's re-test is open**: R12, B4, S1 to S4 and the older untested items on the sheet |
 | R3.0 Classification audit (new, moved up) | **Done Nov 15** (`parity-classes.md`: 11 Port rows, 16 App is better, the rest Noise; apple-design audit in `ui-audits.md`; ledger D-ui-36 to D-ui-41, D-live-11). The owner approved every "App is better" row Nov 15 (ledger A-05 to A-11). The owner decided P3 (trim the ⋯ menu) and P10 (a fixed-width time range) as recommended, Nov 15 |
-| R2.2 Browser-only mode | **The Sonnet part built Nov 15, not pushed:** read-only folders (D-brow-10, `.tlmbench/` reading left) and everything after v1 hidden (D-brow-05, `t_browseronly`, `t_browserfolder`). **Opus left:** descriptors and packets (D-brow-08), WASM decoder plugins (D-brow-09), reading the folder's `.tlmbench/` (needs a store reader over a file listing), then the end-of-R2.2 UI audit |
+| R2.2 Browser-only mode | **Built Nov 16, CI pending:** descriptors and packets (D-brow-08; `packets_core.rs`, a streaming zstd shim), WASM decoder plugins in the page by jco (D-brow-09, owner's decision Nov 16), the folder's `.tlmbench/` (D-brow-10; `config_core.rs`), Events off the rail (D-ui-56); S5.10-04 Done. End-of-R2.2 UI audit in `ui-audits.md` (Nov 16). Pushed with the first Nov 16 batch: the Sonnet part and D-brow-08's Rust (`f262664`); the rest waits for that run |
 | R2.3 Decoders | **Partly built Nov 15, not pushed:** time going backwards is flagged and held in fixed-width, packet and plugin files and the browser's `.tlm` reader (S5.10-06 Done). **Opus left (design calls):** D-ingest-09 (a descriptor naming a plugin for a field), D-ingest-10 (hot reload, template), D-ingest-11 (live packets and plugins), S5.1-06 (causal filters live) · R2.4 Python and R2.5 Core's Partial rows: not started |
 | R3.1 Menus and shell | **Built and owner-tested Nov 15, not pushed** (D-ui-37, -39, -40, -41, -44, S4.4-04 Done). The owner confirmed the ⋯ menu and the time range; the tab menu, rename and the viewer's tab are on the sheet's T2 and T4. Audit in `ui-audits.md`, Opus pass owed |
 | R3.2 Explorer, start page, dialogs | **Built and mostly owner-tested Nov 15, not pushed, with parts waiting on R2.5.** Done D-ui-36, -38, -42, -45, D-derive-02; the owner confirmed the start page, quiet rows, Open with layout ▸, rates and filters; two files in a tab was clearer and its leftover numbers are fixed (sheet T1). Partial D-ui-01 (connections can't be renamed), D-ui-10 (chips and grips, R3.4). Left for core work: the import dialog's sections and Derived list (S5.1-10, D-share-01), Connect's reconnect (D-live-11), the profile's starter layout, the profiles tab (S5.1-12, R3.3) |
