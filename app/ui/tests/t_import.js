@@ -183,7 +183,7 @@ run(
     await p.selectOption('#impWhere', 'shared');
     check('the dialog says how they are shown', /same timeline/.test(await text('#importDlg footer')), await text('#importDlg footer'));
     await p.click('#impGo');
-    check('they open in one tab as two slots', (await until(() => window.__tlmFake.groupSets.length === 1 && window.__tlmFake.groupSets[0].length === 2)) && (await tabs()).includes('h1.csv') && !(await tabs()).includes('h2.csv'), await tabs());
+    check('they open in one tab as two slots, named for both', (await until(() => window.__tlmFake.groupSets.length === 1 && window.__tlmFake.groupSets[0].length === 2)) && (await tabs()).includes('h1 + h2') && !(await tabs()).includes('h2.csv'), await tabs());
 
     // a file that isn't a CSV has no import settings
     await p.click('#explorer .row.file[data-path$="flight.tlm"]', { button: 'right' });
