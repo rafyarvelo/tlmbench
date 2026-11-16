@@ -48,7 +48,7 @@ run(
     );
     await p.click('#exFolder');
     await until(() => document.querySelectorAll('#explorer .row.file').length === 2);
-    check('the folder is read for shared configuration when it opens', (await calls('use')).some((c) => c.folder === DIR));
+    check('the folder is read for shared configuration when it opens', await until((d) => window.__tlmFake.cfgCalls.some((x) => x.cmd === 'use' && x.folder === d), DIR));
     await p.dblclick(`#explorer .row.file[data-path="${A}"]`);
     await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'flight.tlm');
 
