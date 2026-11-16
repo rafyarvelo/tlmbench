@@ -72,7 +72,9 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   check('the Sources panel has a card for the source', (await p.$$('#lvSources [data-card]')).length === 1 && (await text('#lvSrcBtn')) === '1 source');
   check('Sources shows the stream health', /1,000 records\/s|99\d records\/s/.test(await text('#lvRate')) && (await text('#lvDrop')) === '0' && (await text('#lvFile')) === 'source-1.tlm', await text('#lvSources'));
   await p.click('#lvStop');
-  check('Stop ends the recording', await until(() => document.getElementById('lvBadge')?.textContent === 'STOPPED') && !(await visible('#lvStop')));
+  // the badge changes as Stop returns; the card's Stop goes with the next poll of the cards (CI, Nov 16: checking the button
+  // the moment the badge changed raced that poll on a busy runner), so both are waited for together
+  check('Stop ends the recording', await until(() => document.getElementById('lvBadge')?.textContent === 'STOPPED' && !document.getElementById('lvStop')), await p.evaluate(() => [document.getElementById('lvBadge')?.textContent, !!document.getElementById('lvStop')]));
 
   // another tab hides the strip; coming back, it is there
   await fake(() => window.__tlmFake.drop(['/data/flight.tlm']));
