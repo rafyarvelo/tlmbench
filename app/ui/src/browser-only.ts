@@ -6,10 +6,12 @@
 // What it reads and does is smaller than the app's: CSV, Parquet and .tlm files, binary files a descriptor describes (fixed-width
 // records or packets, the descriptors kept in this browser and found by their file name patterns; the descriptor form opens on a
 // binary file none names), charts, tables, values and Measure, and a folder listed read-only where the browser can open one
-// (browser-folder.ts). WASM plugins are still to come (release plan R2.2); live sources and native plugins need the app; several
+// (browser-folder.ts), and WASM decoder plugins in a sandbox of their own (browser-plugins.ts); live sources and native plugins
+// need the app; several
 // files, derived channels, events and checks in a tab are after v1 (docs/post-v1.md).
 
-import { folderFile, listFolder, pickFolder, readConfig } from './browser-folder';
+import { folderFile, listFolder, pickFolder, readConfig, readPluginsDir } from './browser-folder';
+import * as plugins from './browser-plugins';
 import { isParquet, parquetDump } from './parquet-wasm';
 import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
 
@@ -176,6 +178,27 @@ function saveDescriptor(descriptor: Kept['descriptor'], replace: string | null):
   return keptAsKnown({ id, descriptor }, '');
 }
 
+/** The plugins folders you trust (Settings › Plugins keeps them in the settings the app saves). */
+function trustedFolders(): string[] {
+  try {
+    return (JSON.parse(localStorage.getItem('tlmbench.settings') ?? '{}') as { trustedPluginFolders?: string[] }).trustedPluginFolders ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Add plugin…: a .wasm chosen with the picker (a native library is refused: it needs the app). */
+function pickPlugin(): Promise<File | null> {
+  return new Promise((done) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.wasm,.dylib,.so,.dll';
+    input.onchange = () => done(input.files?.[0] ?? null);
+    input.oncancel = () => done(null);
+    input.click();
+  });
+}
+
 const MANIFEST = 'tlmbench.local';
 
 /** The files this browser has read, by their `local://` path: the name of the entry that holds each one's columns. A reload
@@ -239,6 +262,9 @@ export async function installBrowserOnly(): Promise<void> {
     const files = folder.startsWith('local-folder://') ? await readConfig(folder).catch(() => null) : null;
     const c = files ? (core('config_of', { files }) as { from: unknown; decoders: Kept[] }) : null;
     sharedDescriptors = c?.decoders ?? [];
+    // and its plugins/ (they run once you trust the folder, as in the app)
+    const found = files ? await readPluginsDir(folder) : { wasm: [], native: [] };
+    await plugins.setShared(folder, found.wasm, found.native);
     return c;
   }
 
@@ -266,9 +292,11 @@ export async function installBrowserOnly(): Promise<void> {
       }
       throw new Error(`${path.slice(LOCAL_PREFIX.length)} isn't open in this tab: choose it again, or drop it on the page.`);
     }
-    // anything else is read through the descriptor that names it (the app then asks for its packet types, or the form)
+    // anything else is read through the descriptor that names it (the app then asks for its packet types, or the form), or a
+    // plugin: the app asks a descriptor first, then the plugins (their patterns, then their sniff), then its own formats
     const claim = OWN_FORMAT.test(f.name) ? null : claimOf(path);
-    if (!OWN_FORMAT.test(f.name) && !claim) throw new Error(`No descriptor names ${f.name}: browser-only mode reads CSV, Parquet and .tlm files, and binary files a descriptor describes.`);
+    const plugin = claim || /\.tlm$/i.test(f.name) ? null : await plugins.claim(f, trustedFolders());
+    if (!OWN_FORMAT.test(f.name) && !claim && !plugin) throw new Error(`No descriptor or plugin reads ${f.name}: browser-only mode reads CSV, Parquet and .tlm files, binary files a descriptor describes, and files a WASM plugin decodes.`);
     if (claim && part == null) {
       const parts = core('described_parts', { descriptor: claim.descriptor }) as string[];
       if (parts.length > 1) throw new Error(`${f.name} has ${parts.length} packet types: each opens in a tab of its own.`);
@@ -277,7 +305,10 @@ export async function installBrowserOnly(): Promise<void> {
     const k = nextId++;
     ids.set(path, k);
     // a described file's entry also depends on the descriptor and the packet type
-    const key = (await keyOf(f)) + (claim ? `-${(await digest(JSON.stringify(claim.descriptor))).slice(0, 12)}${part ? `-${part.replace(/[^\w.-]+/g, '_')}` : ''}` : '');
+    const key =
+      (await keyOf(f)) +
+      (claim ? `-${(await digest(JSON.stringify(claim.descriptor))).slice(0, 12)}${part ? `-${part.replace(/[^\w.-]+/g, '_')}` : ''}` : '') +
+      (plugin ? `-p${plugin.id.slice(0, 12)}` : '');
     remember(slot, key);
     const note = (done: number, total: number) => progress?.({ message: { done, total, builtUntil: null, error: null }, index: 0 });
     const cached = await readCache(key);
@@ -291,6 +322,21 @@ export async function installBrowserOnly(): Promise<void> {
       }
     }
     note(0, f.size);
+    if (plugin) {
+      // decoded in the plugin's own Worker, then loaded by the page's core
+      const { meta, bin } = await plugins.decode(plugin, f);
+      const r = core('import_columns', { file: k, path, meta }, new Uint8Array(bin));
+      (window as unknown as { __tlmCache?: string; __tlmParse?: string }).__tlmCache = 'miss';
+      (window as unknown as { __tlmParse?: string }).__tlmParse = 'plugin';
+      setTimeout(() => {
+        try {
+          void writeCache(key, new Uint8Array(core('dump', { file: k }) as ArrayBuffer));
+        } catch {
+          /* nothing kept */
+        }
+      }, 50);
+      return r;
+    }
     // the parse runs in a Worker, so the tab keeps drawing and answering while a big file is read; where there is no Worker it
     // runs here, on the page's thread
     const dump = await parseInWorker(f, path, new URL('tlmbench_web.wasm', base).href, new URL('tlmbench_parquet.wasm', base).href, described);
@@ -348,6 +394,17 @@ export async function installBrowserOnly(): Promise<void> {
     descriptor_save: (a) => saveDescriptor(a.descriptor as Kept['descriptor'], (a.replace as string | null) ?? null),
     descriptor_preview: async (a) => core('descriptor_preview', { descriptor: a.descriptor }, await headOf(String(a.path))),
     descriptor_find_frames: async (a) => core('descriptor_find_frames', {}, await headOf(String(a.path))),
+    // plugins: yours (kept in this browser) and the folder's (once you trust it); native ones need the app
+    plugins_list: () => plugins.rows(trustedFolders()),
+    plugins_scan: (a) => plugins.rows(Array.isArray(a.trusted) ? (a.trusted as string[]) : trustedFolders()),
+    plugin_add: async () => {
+      const f = await pickPlugin();
+      return f ? plugins.addPlugin(f) : null;
+    },
+    plugin_remove: async (a) => {
+      await plugins.removePlugin(String(a.file));
+      return plugins.rows(trustedFolders());
+    },
     descriptor_share: () => {
       throw new Error('Sharing needs the app: a browser tab never writes to the folder.');
     },
@@ -360,7 +417,7 @@ export async function installBrowserOnly(): Promise<void> {
     list_folder: async (a) => {
       // the folder's own descriptors first, so the files they name list as openable (the app reads them with the listing)
       await readShared(String(a.path).split('/').slice(0, 3).join('/'));
-      return listFolder(String(a.path), { claims: (n) => allDescriptors().some((k) => names(k, n)), binary: (head) => core('looks_binary', {}, head) as boolean });
+      return listFolder(String(a.path), { claims: (n) => allDescriptors().some((k) => names(k, n)) || plugins.namesFile(n, trustedFolders()), binary: (head) => core('looks_binary', {}, head) as boolean });
     },
     watch_folder: () => null,
     // the folder's .tlmbench/, read through its handle (D-brow-10): categories, widgets and icons as the app takes them, and

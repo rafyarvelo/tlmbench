@@ -159,3 +159,22 @@ export async function readConfig(path: string): Promise<Record<string, string> |
   await walk(dir, '', 0);
   return out;
 }
+
+/** The folder's `.tlmbench/plugins/`: its WASM plugins' bytes, and the names of native ones (which need the app). */
+export async function readPluginsDir(path: string): Promise<{ wasm: { file: string; bytes: ArrayBuffer }[]; native: string[] }> {
+  const out = { wasm: [] as { file: string; bytes: ArrayBuffer }[], native: [] as string[] };
+  const name = path.slice(FOLDER_PREFIX.length).split('/')[0];
+  try {
+    const dir = (await (await (await rootOf(name)).getDirectoryHandle('.tlmbench')).getDirectoryHandle('plugins')) as DirHandle;
+    for await (const e of dir.values()) {
+      if (e.kind !== 'file') continue;
+      if (/\.wasm$/i.test(e.name)) out.wasm.push({ file: e.name, bytes: await (await (e as FileSystemFileHandle).getFile()).arrayBuffer() });
+      else if (/\.(dylib|so|dll)$/i.test(e.name)) out.native.push(e.name);
+    }
+  } catch {
+    /* no plugins folder */
+  }
+  out.wasm.sort((a, b) => a.file.localeCompare(b.file));
+  out.native.sort();
+  return out;
+}

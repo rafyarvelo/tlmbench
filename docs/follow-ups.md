@@ -66,6 +66,9 @@ removed Nov 15; git history keeps them.
   packet types opens a tab per type (several files in one browser tab are after v1). Ledger D-brow-08.
 - Browser-only mode reads the folder's `.tlmbench/` through its directory handle: categories, widgets, icons and
   `decoders/` only (the rest of it is for what a tab leaves out until after v1). Ledger D-brow-10.
+- Browser-only mode's WASM plugins: added in Settings › Plugins (kept in this browser), or the open folder's
+  `.tlmbench/plugins/` once trusted; each runs in a Worker of its own with the app's limits (1 GiB, 30 s a call) and
+  clocks at zero. Native plugins are listed as needing the app. Ledger D-brow-09.
 - Open together names the tab after its files ("flight-1 + flight-2", "flight-1 + 2 more"). In browser-only mode the
   Events panel leaves the rail. Export data… and Save image… close when done and say what they wrote, as Export to HTML… does.
 

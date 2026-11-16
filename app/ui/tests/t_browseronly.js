@@ -244,11 +244,12 @@ try {
     dt.items.add(new File(['a log, not data\n'], 'notes.log'));
     window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   });
-  check('a text file it can’t read says what browser-only mode reads', await until(() => /browser-only mode reads CSV, Parquet and \.tlm files, and binary files a descriptor describes/.test(document.body.textContent ?? '')), await p.evaluate(() => document.querySelector('#wsNote')?.textContent));
+  check('a text file it can’t read says what browser-only mode reads', await until(() => /browser-only mode reads CSV, Parquet and \.tlm files, binary files a descriptor describes, and files a WASM plugin decodes/.test(document.body.textContent ?? '')), await p.evaluate(() => document.querySelector('#wsNote')?.textContent));
   // the viewer's rule (sheet R12) holds here too: what a tab can't do is left out, not a button that does nothing
   check('no Live in the rail (a tab has no live sources)', !(await p.$('[data-rail="live"]')));
   await p.click('[data-rail="settings"]');
-  check('Settings leaves out what needs the app: browser access, plugins, live recording, shared configuration', await p.evaluate(() => !document.querySelector('#browserSet, #pluginSet, #liveSet, #sharedSet')));
+  check('Settings leaves out what needs the app: browser access, live recording, shared configuration', await p.evaluate(() => !document.querySelector('#browserSet, #liveSet, #sharedSet')));
+  check('and its Plugins take WASM plugins only, added to this browser (no plugins folder to open; t_browserplugin)', await p.evaluate(() => !!document.querySelector('#pluginSet #pluginsAdd') && !document.querySelector('#pluginsOpen')));
   check('and keeps the cache, which a tab has', await p.evaluate(() => !!document.querySelector('#settings .cache, .cache')));
   check('no page errors', errs.length === 0, errs);
 } catch (e) {

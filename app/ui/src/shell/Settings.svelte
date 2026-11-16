@@ -93,6 +93,22 @@
     if (!closed) void readPlugins();
   });
   const rescan = () => scanPlugins(settings.nativePlugins, settings.trustedPluginFolders);
+  /** Browser-only mode: Add plugin… keeps a .wasm in this browser; Remove takes it away (the app's are files in its folder). */
+  let pluginNote = $state('');
+  async function addPlugin(): Promise<void> {
+    pluginNote = '';
+    try {
+      const name = await invoke<string | null>('plugin_add');
+      if (name) pluginNote = `Added ${name}.`;
+    } catch (e) {
+      pluginNote = String(e).replace(/^Error: /, '');
+    }
+    await rescan();
+  }
+  async function removePlugin(file: string): Promise<void> {
+    await invoke('plugin_remove', { file }).catch(() => {});
+    await rescan();
+  }
   /** The open folder's shared plugins and whether you trust them. */
   const sharedFolders = $derived([...new Set(pluginsState.list.filter((p) => p.shared && p.folder).map((p) => p.folder!))].map((f) => ({ folder: f, trusted: settings.trustedPluginFolders.includes(f), count: pluginsState.list.filter((p) => p.folder === f && p.path.endsWith('.wasm')).length })));
   function trustFolder(folder: string, on: boolean): void {
@@ -236,7 +252,6 @@
     {#if browserUrl}<div class="urow"><span id="browserUrl" class="muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{browserUrl}</span><button class="tbtn" id="browserCopy" onclick={() => void navigator.clipboard?.writeText(browserUrl!)}>Copy</button></div>{/if}
   </section>
   {/if}
-  {#if !ui.browserOnly}
   <section id="pluginSet">
     <h3>Plugins</h3>
     {#each sharedFolders as s (s.folder)}
@@ -248,13 +263,18 @@
           <small class="muted">{[p.version, kindText(p.kind), p.tier === 'wasm' ? 'WASM, sandboxed' : 'Native, runs with your rights', p.shared ? 'from this folder' : ''].filter(Boolean).join(' · ')}</small><br />
           {#if p.status.state === 'failed'}<small data-plugwhy style="color: var(--danger)">{p.status.why}</small>{:else if p.description}<small class="muted">{p.description}</small>{:else if p.status.state === 'untrusted'}<small class="muted" data-plugwhy>Not loaded until you trust this folder's plugins.</small>{:else if p.status.state === 'off'}<small class="muted" data-plugwhy>Off: it isn't loaded until you turn it on.</small>{/if}</span>
         {#if p.tier === 'native' && !p.shared}<label class="catchart"><input type="checkbox" data-pluginon={p.file} checked={settings.nativePlugins.includes(p.file)} onchange={(e) => nativeOn(p.file, e.currentTarget.checked)} />On</label>{/if}
+        {#if ui.browserOnly && !p.shared}<button class="tbtn" data-plugremove={p.file} onclick={() => void removePlugin(p.file)}>Remove</button>{/if}
       </div>
     {:else}
-      <div class="urow"><span class="muted" id="pluginNone">No plugins yet. Decoders for other formats and alignment methods go in your plugins folder.</span></div>
+      <div class="urow"><span class="muted" id="pluginNone">{ui.browserOnly ? 'No plugins yet. Add a WASM decoder plugin to read a format this page doesn’t.' : 'No plugins yet. Decoders for other formats and alignment methods go in your plugins folder.'}</span></div>
     {/each}
-    <div class="urow"><span class="muted">WASM plugins can't reach your files or network. Native ones can, so they stay off until you turn them on.</span><span class="uctl"><button class="tbtn" id="pluginsOpen" onclick={() => invoke('plugins_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="pluginsRescan" data-tip="Read the plugins folders again" onclick={() => void rescan()}>Rescan</button></span></div>
+    {#if ui.browserOnly}
+      <!-- a tab keeps plugins itself and runs WASM ones only: native plugins need the app -->
+      <div class="urow"><span class="muted">WASM plugins run in this tab's sandbox, with no access to your files or network. Native plugins need the app.{#if pluginNote}<br /><small id="pluginNote">{pluginNote}</small>{/if}</span><span class="uctl"><button class="tbtn" id="pluginsAdd" onclick={() => void addPlugin()}>Add plugin…</button></span></div>
+    {:else}
+      <div class="urow"><span class="muted">WASM plugins can't reach your files or network. Native ones can, so they stay off until you turn them on.</span><span class="uctl"><button class="tbtn" id="pluginsOpen" onclick={() => invoke('plugins_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="pluginsRescan" data-tip="Read the plugins folders again" onclick={() => void rescan()}>Rescan</button></span></div>
+    {/if}
   </section>
-  {/if}
   {#if customised.length}
     <section id="chSet"><h3>Channels</h3>
       {#each customised as n (n)}

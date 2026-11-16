@@ -3,7 +3,7 @@
 // handle; where the browser has no picker the start page says so once and offers Open recording…. The test gives the page a
 // real directory handle (the browser's private storage) in place of the native picker, which headless Chromium can't drive.
 // Needs the built page (just viewer); without it the test says so and passes.
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import http from 'node:http';
 import { createRequire } from 'node:module';
 import { extname, join } from 'node:path';
@@ -37,6 +37,15 @@ const server = http.createServer((q, s) => {
 await new Promise((res) => server.listen(0, '127.0.0.1', res));
 const url = `http://127.0.0.1:${server.address().port}/index.html`;
 
+const PLUGIN = join(ROOT, 'plugins/template-decoder/target/wasm32-wasip2/release/my_decoder.wasm');
+// the template's DEMO format: the magic, a u32 count, then records of u64 µs, f32 volts, i16 status
+const DEMO_FILE = (() => {
+  const b = Buffer.alloc(8 + 14 * 50);
+  b.write('DEMO', 0);
+  b.writeUInt32LE(50, 4);
+  for (let i = 0; i < 50; i++) (b.writeBigUInt64LE(BigInt(i * 1000), 8 + 14 * i), b.writeFloatLE(i, 16 + 14 * i));
+  return b;
+})();
 const rows = ['time,Speed [m/s],temp'];
 for (let i = 0; i < 500; i++) rows.push(`${i / 10},${Math.sin(i / 40)},${20 + i / 300}`);
 const CSV = rows.join('\n') + '\n';
@@ -83,12 +92,20 @@ try {
         const bin = (n, salt) => Uint8Array.from({ length: n }, (_, i) => (i === 0 ? 0 : (i * 37 + salt) & 255));
         await put(dir, 'bench.esc', bin(800, 3));
         await put(dir, 'blob.bin', bin(400, 9));
+        // its plugins (D-brow-09): the template decoder (when built) and a native library, which needs the app
+        if (window.__plugin) {
+          const pd = await hid.getDirectoryHandle('plugins', { create: true });
+          await put(pd, 'my_decoder.wasm', new Uint8Array(window.__plugin));
+          await put(pd, 'fast.dylib', 'native');
+          await put(dir, 'bench.demo', new Uint8Array(window.__demo));
+        }
         await dir.getDirectoryHandle('empty', { create: true });
         return dir;
       };
     });
     await p.goto(url, { waitUntil: 'domcontentloaded' });
     await p.evaluate((c) => (window.__csv = c), CSV);
+    if (existsSync(PLUGIN)) await p.evaluate(([w, d]) => ((window.__plugin = w), (window.__demo = d)), [[...readFileSync(PLUGIN)], [...DEMO_FILE]]);
     check('the page offers Open folder… where the browser has the picker', await until(() => !!document.querySelector('#startPage [data-start="folder"]')));
     check('and still no live source', !(await p.$('#startPage [data-start="live"]')));
     await p.click('#startPage [data-start="folder"]');
@@ -105,7 +122,7 @@ try {
       const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('runs');
       const names = [];
       for await (const [n] of dir.entries()) names.push(n);
-      return names.sort().join() === '.tlmbench,bench.esc,blob.bin,day 1,empty,notes.md,readme.pdf';
+      return names.sort().join() === (window.__plugin ? '.tlmbench,bench.demo,bench.esc,blob.bin,day 1,empty,notes.md,readme.pdf' : '.tlmbench,bench.esc,blob.bin,day 1,empty,notes.md,readme.pdf');
     }));
     check('the folder menu has no Share… and no Recipes… (a tab writes nothing, recipes come after v1)', await (async () => {
       await p.click('#exFolder');
@@ -125,6 +142,21 @@ try {
     check('the descriptor form lists the folder\'s descriptor as shared', await until(() => [...document.querySelectorAll('#dscPick option')].some((o) => /ESC.*\(shared\)/.test(o.textContent))), await p.$$eval('#dscPick option', (o) => o.map((x) => x.textContent)).catch(() => null));
     await p.keyboard.press('Escape');
     check('the descriptor stays in the folder: nothing kept in this browser for it', await p.evaluate(() => !localStorage.getItem('tlmbench.descriptors')));
+
+    // the folder's plugins: waiting for your OK, a native one needing the app; trusted, a file one names opens through it
+    if (existsSync(PLUGIN)) {
+      await p.click('[data-rail="settings"]');
+      check('the folder\'s plugin waits for your OK', await until(() => /waiting for your OK/.test(document.querySelector('#pluginSet')?.textContent ?? '') && !!document.querySelector('#pluginSet [data-plugtrust]'), null, 60000), await p.$eval('#pluginSet', (e) => e.textContent).catch(() => null));
+      check('its native plugin is listed as needing the app', /Native plugins need the app/.test(await p.$eval('#pluginSet [data-plugin="fast.dylib"]', (e) => e.textContent).catch(() => '')));
+      await p.click('#pluginSet [data-plugtrust]');
+      check('trusted, it loads', await until(() => /trusted/.test(document.querySelector('#pluginSet')?.textContent ?? '') && /demo/.test(document.querySelector('#pluginSet [data-plugin="my_decoder.wasm"]')?.textContent ?? '')));
+      await p.click('[data-rail="explorer"]');
+      await p.click('#exFolder');
+      await p.click('.exmenu [data-ex="refresh"]');
+      check('a file its pattern names lists as openable', await until(() => !!document.querySelector('#explorer .row.file[data-path="local://runs/bench.demo"]')));
+      await p.dblclick('#explorer .row.file[data-path="local://runs/bench.demo"]');
+      check('and opens through the folder\'s plugin', await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].some((x) => x.textContent === 'bench.demo'), null, 60000) && (await p.evaluate(() => window.__tlmParse)) === 'plugin', await p.evaluate(() => [window.__tlmParse, document.querySelector('#wsNote')?.textContent]));
+    } else console.log('  (skipped the folder\'s plugins: just plugin-template builds the template)');
     check('no page errors', errs.length === 0, errs);
     await ctx.close();
   }
