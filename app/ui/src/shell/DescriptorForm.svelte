@@ -115,7 +115,7 @@
       <button class="dclose" aria-label="Close" onclick={actions.dscClose}>{@html ICON.close}</button>
     </header>
     <div class="impbody"><div class="impmain">
-      <p class="lvnote">{name} isn't a format tlmbench reads on its own. Describe its byte layout once: the descriptor decodes every file it names, and the logger's live stream.</p>
+      <p class="lvnote">{name} isn't a format tlmbench reads on its own. Describe its byte layout once: the descriptor decodes every file it names{ui.browserOnly ? '' : ", and the logger's live stream"}.</p>
       <div class="improw">
         <label class="lvf"><span>Descriptor</span>
           <select class="sel" id="dscPick" value={dsc.pick} onchange={(e) => actions.dscPick(e.currentTarget.value)}>

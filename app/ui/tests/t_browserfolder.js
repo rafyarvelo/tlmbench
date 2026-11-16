@@ -147,7 +147,13 @@ try {
     if (existsSync(PLUGIN)) {
       await p.click('[data-rail="settings"]');
       check('the folder\'s plugin waits for your OK', await until(() => /waiting for your OK/.test(document.querySelector('#pluginSet')?.textContent ?? '') && !!document.querySelector('#pluginSet [data-plugtrust]'), null, 60000), await p.$eval('#pluginSet', (e) => e.textContent).catch(() => null));
-      check('its native plugin is listed as needing the app', /Native plugins need the app/.test(await p.$eval('#pluginSet [data-plugin="fast.dylib"]', (e) => e.textContent).catch(() => '')));
+      check('its native plugin is listed as needing the app, muted (a fact, not an error)', await p.$eval('#pluginSet [data-plugin="fast.dylib"] [data-plugwhy]', (e) => /Needs the app/.test(e.textContent) && e.classList.contains('muted')).catch(() => false));
+      // before trust: listed (not "no descriptor"), and opening it says what to do
+      await p.click('[data-rail="explorer"]');
+      check('a file the folder\'s plugin names lists with no "no descriptor"', await until(() => !!document.querySelector('#explorer .row.file[data-path="local://runs/bench.demo"]')) && !/no descriptor/.test(await p.$eval('#explorer .row.file[data-path="local://runs/bench.demo"]', (e) => e.textContent)));
+      await p.dblclick('#explorer .row.file[data-path="local://runs/bench.demo"]');
+      check('opened before trust, it says to trust the folder\'s plugins', await until(() => /plugin demo, which waits for your OK/.test(document.querySelector('#wsNote')?.textContent ?? ''), null, 30000), await p.evaluate(() => document.querySelector('#wsNote')?.textContent));
+      await p.click('[data-rail="settings"]');
       await p.click('#pluginSet [data-plugtrust]');
       check('trusted, it loads', await until(() => /trusted/.test(document.querySelector('#pluginSet')?.textContent ?? '') && /demo/.test(document.querySelector('#pluginSet [data-plugin="my_decoder.wasm"]')?.textContent ?? '')));
       await p.click('[data-rail="explorer"]');

@@ -172,3 +172,39 @@ the event tooltip; Stop at. From the code, the tests and the existing screenshot
 4. **Finding, left:** Duplicate for file N, From file N and Add from every file are menu items (one per file), not the submenu the
    owner's wording has (Menu doesn't nest). Fine up to a few files; with many files the menu gets long.
 5. **Owner pass (real window):** U1 to U5 on the sheet.
+
+## Nov 16, 2026: end of R2.2, browser-only mode (Opus; light and dark, 1280 × 800, Chromium)
+
+Scope: every screen browser-only mode has, after descriptors and packets (D-brow-08), WASM plugins (D-brow-09) and the
+folder's `.tlmbench/` (D-brow-10): the start page, a folder in Explorer, the import dialog, a CSV open, the descriptor form on a
+binary file, Settings › Plugins (the folder's plugin waiting, then trusted), and a file opened through a plugin. Screenshots
+taken with a scratch Playwright script over `app/browser/dist`; the apple-design skill's headings (feedback, restraint,
+honesty of copy, spatial consistency, materials) and CLAUDE.md's tokens.
+
+### Fixed in this pass
+
+1. **Wayfinding (ranked first):** a file the folder's plugin names showed "no descriptor" until the folder was trusted, which
+   sends the person to the wrong fix. It now lists as openable, and opening it says the folder's plugin waits for their OK in
+   Settings › Plugins (`t_browserfolder`).
+2. **Feedback kinds:** a native plugin in the folder read in error red, with "runs with your rights", which isn't true in a tab.
+   It is a status, not an error: muted, "Native", "Needs the app: a browser tab runs WASM plugins only" (`t_browserfolder`).
+3. **Restraint:** the start page's right column (Live sources, Layouts) was half there in a tab: Layouts showed with nothing a
+   tab can do with it. The column is left out in a tab; the subtitle no longer offers a live source and says the file stays in
+   this browser.
+4. **Copy:** Explorer's empty text said "Choose a CSV file" though the page now reads Parquet, `.tlm`, described binaries and
+   plugin formats: "Choose a file". The descriptor form promised "the logger's live stream" in a tab, which has no live
+   sources: left out there. Settings' Layout section said "app cache": "this browser".
+
+### Checked, no change
+
+- The descriptor form, the folder listing and the plugin rows use the app's own components, tokens and spacing in both themes;
+  nothing clipped at 1280 × 800.
+- The trust block in Settings › Plugins wraps to many lines in the sidebar's width (dark-6). It is the app's own wording and
+  layout; the same in the app's sidebar. Left as it is.
+- Opening a large plugin file shows the existing progress under the top bar; a plugin that runs too long ends with a note that
+  says so (`t_browserplugin`).
+
+### For the owner
+
+- Firefox and Safari: plugins need Workers with `FileReaderSync` and module Workers (both there today); folders need
+  `showDirectoryPicker` (Chromium only, as before). Real browsers: R5.

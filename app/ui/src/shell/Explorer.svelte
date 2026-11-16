@@ -376,7 +376,7 @@
     {:else if ui.file}
       {@render file(ui.path, ui.file, 0)}
     {:else}
-      {#if ui.browserOnly}<p class="exnone">No recording open. <button class="linkbtn" onclick={actions.open}>Choose a CSV file</button>, or drop one on the page.</p>
+      {#if ui.browserOnly}<p class="exnone">No recording open. <button class="linkbtn" onclick={actions.open}>Choose a file</button>, or drop one on the page.</p>
       {:else}<p class="exnone">No recording open. <button class="linkbtn" onclick={actions.openFolder}>Open a folder</button> or a <button class="linkbtn" onclick={actions.open}>recording</button>, or drop a CSV or .tlm file on the window.</p>{/if}
     {/if}
   </div>

@@ -296,6 +296,8 @@ export async function installBrowserOnly(): Promise<void> {
     // plugin: the app asks a descriptor first, then the plugins (their patterns, then their sniff), then its own formats
     const claim = OWN_FORMAT.test(f.name) ? null : claimOf(path);
     const plugin = claim || /\.tlm$/i.test(f.name) ? null : await plugins.claim(f, trustedFolders());
+    const waiting = !OWN_FORMAT.test(f.name) && !claim && !plugin ? plugins.folderPluginNaming(f.name) : null;
+    if (waiting) throw new Error(`${f.name} opens with this folder's plugin ${waiting}, which waits for your OK: trust the folder's plugins in Settings › Plugins.`);
     if (!OWN_FORMAT.test(f.name) && !claim && !plugin) throw new Error(`No descriptor or plugin reads ${f.name}: browser-only mode reads CSV, Parquet and .tlm files, binary files a descriptor describes, and files a WASM plugin decodes.`);
     if (claim && part == null) {
       const parts = core('described_parts', { descriptor: claim.descriptor }) as string[];
@@ -386,7 +388,8 @@ export async function installBrowserOnly(): Promise<void> {
     },
     needs_descriptor: async (a) => {
       const path = String(a.path);
-      if (OWN_FORMAT.test(path) || claimOf(path)) return false;
+      // a file a descriptor or the folder's plugin names isn't asked about (that plugin may wait for trust: it says so)
+      if (OWN_FORMAT.test(path) || claimOf(path) || plugins.folderPluginNaming(fileName(path))) return false;
       const head = await headOf(path, 4096).catch(() => new Uint8Array());
       return head.length > 0 && (core('looks_binary', {}, head) as boolean);
     },
@@ -417,7 +420,7 @@ export async function installBrowserOnly(): Promise<void> {
     list_folder: async (a) => {
       // the folder's own descriptors first, so the files they name list as openable (the app reads them with the listing)
       await readShared(String(a.path).split('/').slice(0, 3).join('/'));
-      return listFolder(String(a.path), { claims: (n) => allDescriptors().some((k) => names(k, n)) || plugins.namesFile(n, trustedFolders()), binary: (head) => core('looks_binary', {}, head) as boolean });
+      return listFolder(String(a.path), { claims: (n) => allDescriptors().some((k) => names(k, n)) || plugins.namesFile(n, trustedFolders()) || !!plugins.folderPluginNaming(n), binary: (head) => core('looks_binary', {}, head) as boolean });
     },
     watch_folder: () => null,
     // the folder's .tlmbench/, read through its handle (D-brow-10): categories, widgets and icons as the app takes them, and

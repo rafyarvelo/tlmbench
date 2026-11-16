@@ -170,6 +170,9 @@ function matches(pattern: string, name: string): boolean {
 export const namesFile = (name: string, trusted: string[]): boolean =>
   own().some((p) => named(p, name)) || (!!shared.folder && trusted.includes(`${shared.folder}/.tlmbench/plugins`) && sharedKnown.some((a) => a.files.some((g) => matches(g, name))));
 
+/** The open folder's plugin whose patterns name a file, trusted or not (opening one that waits for trust says so). */
+export const folderPluginNaming = (name: string): string | null => sharedKnown.find((a) => a.files.some((g) => matches(g, name)))?.name ?? null;
+
 /** The first plugin that claims a file, as the app asks them: its patterns, then its own sniff of the first bytes. */
 export async function claim(f: File, trusted: string[]): Promise<WasmPlugin | null> {
   const list = await runnable(trusted);

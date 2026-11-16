@@ -45,7 +45,7 @@
     <header>
       <div class="hero">
         <h1>TelemetryBench</h1>
-        <p class="muted">Open a recording or connect a live source. Nothing is written next to your data.</p>
+        <p class="muted">{ui.browserOnly ? 'Open a recording. It stays in this browser: nothing is uploaded or written next to your data.' : 'Open a recording or connect a live source. Nothing is written next to your data.'}</p>
       </div>
       {#if overlay}<button class="ibtn" aria-label="Close the start page" data-tip="Close (Esc)" onclick={() => (ui.start = false)}>{@html ICON.close}</button>{/if}
     </header>
@@ -84,6 +84,8 @@
           <p class="muted none">None yet.</p>
         {/each}
       </section>
+      <!-- a browser tab has no live sources or layouts (after v1): the column is left out -->
+      {#if !ui.browserOnly}
       <section>
         {#if !ui.browserOnly}
           <h2>Live sources<span class="spacer"></span><button class="linkbtn" data-start="newconn" onclick={go(() => liveActions.openConnect(false))}>New connection…</button></h2>
@@ -105,6 +107,7 @@
           <p class="muted none">No layouts yet. Save one from a tab's menu.</p>
         {/each}
       </section>
+      {/if}
     </div>
     <footer>
       <label class="switch"
