@@ -178,7 +178,7 @@ export const SCENES = [
     name: 'connect',
     about: 'The Connect dialog (Live in the rail): kinds on the left, the form on the right, over a scrim.',
     proto: async (p) => { await p.click('#railLive'); await p.click('#liveDlg [data-kind=tcp]'); },
-    app: click('[data-rail=live]'),
+    app: async (p) => { await p.click('[data-rail=live]'); await p.click('#liveDlg [data-kind=tcp]'); },
     pairs: [
       ['dialog', '#liveDlg', '#liveDlg'],
       ['heading', '#liveDlg > header', '#liveDlg > header'],
