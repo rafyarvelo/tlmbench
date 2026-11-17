@@ -1323,6 +1323,7 @@ dependencies = [
  "memmap2",
  "parquet",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "thiserror",

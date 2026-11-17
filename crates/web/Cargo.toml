@@ -20,6 +20,7 @@ blake3 = "1.8.7"
 csv-core = "0.1.13"
 lexical-core = "1.0.6"
 memchr = "2.8.3"
+regex = "1"
 bytemuck = "1.25.2"
 toml = "1.1.8"
 # packet payloads (packets_core.rs): pure Rust only, since the WASM build has no C compiler. zstd is the shim (below).
