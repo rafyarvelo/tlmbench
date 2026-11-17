@@ -342,6 +342,14 @@ only when you point at a file; a table's resize grip shows only when you hover i
 Result:
 Notes:
 
+### W4. Reconnect (D-live-11)
+Do: connect a TCP source (a logger, or `nc -l 9000 < frames.bin` with a descriptor) with Reconnect on; stop and start
+the sender. Try "Save recordings to" with another folder.
+Expect: the strip says RECONNECTING while the sender is down and LIVE again when it is back, recording into the same file;
+Stop works while reconnecting; the session folder lands where you chose.
+Result:
+Notes:
+
 ---
 
 ## Other things I noticed

@@ -210,6 +210,9 @@ enum Command {
         /// The ring buffer's size in MB (default: about 10 s of the descriptor's rate)
         #[arg(long)]
         ring_mb: Option<usize>,
+        /// TCP and serial: connect again whenever the link drops, until stopped (frames sent meanwhile are lost)
+        #[arg(long)]
+        reconnect: bool,
         /// The result as one JSON object
         #[arg(long)]
         json: bool,
@@ -454,8 +457,8 @@ fn main() -> ExitCode {
         Command::Check(a) => check::run(a),
         Command::Validate { dir } => validate(dir),
         Command::Config { action, common } => config(action, &common),
-        Command::Record { endpoint, descriptor, out, seconds, idle_end, ring_mb, json } => {
-            record(endpoint, descriptor.as_deref(), out, seconds, idle_end, ring_mb, json)
+        Command::Record { endpoint, descriptor, out, seconds, idle_end, ring_mb, reconnect, json } => {
+            record(endpoint, descriptor.as_deref(), out, seconds, idle_end, ring_mb, reconnect, json)
         }
     };
     match result {
@@ -1277,6 +1280,7 @@ fn group(n: usize) -> String {
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record(
     endpoint: tlmbench_live::Endpoint,
     descriptor: Option<&std::path::Path>,
@@ -1284,6 +1288,7 @@ fn record(
     seconds: Option<f64>,
     idle_end: Option<f64>,
     ring_mb: Option<usize>,
+    reconnect: bool,
     json: bool,
 ) -> Result<(), Fail> {
     use std::time::{Duration, Instant};
@@ -1302,6 +1307,7 @@ fn record(
     let opts = tlmbench_live::Options {
         ring_bytes: ring_mb.map(|mb| mb << 20),
         idle_end: idle_end.map(Duration::from_secs_f64),
+        reconnect,
         ..Default::default()
     };
     // one source, or one per packet type of a packet stream (one connection)

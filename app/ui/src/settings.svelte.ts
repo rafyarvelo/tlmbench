@@ -71,6 +71,10 @@ export interface ConnectForm {
   speed: number;
   startAt: number;
   loop: boolean;
+  /** TCP and serial: connect again when the link drops (D-live-11). */
+  reconnect?: boolean;
+  /** Where its recordings go (empty: Settings' Record live sessions to). */
+  recordTo?: string;
 }
 export interface SavedConnection extends ConnectForm {
   id: string;

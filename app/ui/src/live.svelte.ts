@@ -22,6 +22,9 @@ export interface Health {
   error: string | null;
   paused: boolean;
   seconds: number;
+  /** TCP and serial with Reconnect: the link dropped and the source is connecting again; how many times it has. */
+  reconnecting?: boolean;
+  reconnects?: number;
 }
 
 /** Where a trigger stands (tlmbench_store::trigger::Status). */
@@ -64,10 +67,11 @@ export const LIVE_WINDOWS = [10, 30, 60, 300];
 export const LIVE_SPEEDS = [0.5, 1, 2, 5, 10, 50];
 
 /** The state a source is in, for its badge and card. */
-export function stateOf(h: Health | null, stopped: boolean): 'streaming' | 'paused' | 'stopped' | 'ended' {
+export function stateOf(h: Health | null, stopped: boolean): 'streaming' | 'paused' | 'stopped' | 'ended' | 'reconnecting' {
   if (!h) return 'streaming';
   if (stopped) return 'stopped';
   if (h.ended) return 'ended';
+  if (h.reconnecting) return 'reconnecting';
   return h.paused ? 'paused' : 'streaming';
 }
 
@@ -113,6 +117,10 @@ export interface ConnectArgs {
   descriptor: string;
   name: string;
   record: boolean;
+  /** TCP and serial: connect again when the link drops. */
+  reconnect?: boolean;
+  /** Where the recording goes; empty: Settings' folder. */
+  recordTo?: string;
 }
 
 /** What the strip and the dialog do: app.ts fills these in. */

@@ -11,7 +11,7 @@
   const winLabel = (s: number) => (s >= 60 ? `${s / 60} min` : `${s} s`);
   const h = $derived(live.health);
   const st = $derived(stateOf(h, live.stopped));
-  const BADGE = { streaming: 'LIVE', paused: 'PAUSED', stopped: 'STOPPED', ended: 'ENDED' } as const;
+  const BADGE = { streaming: 'LIVE', paused: 'PAUSED', stopped: 'STOPPED', ended: 'ENDED', reconnecting: 'RECONNECTING' } as const;
   const rate = (c: { health: { records_written: number; seconds: number } }) => (c.health.seconds > 0 ? c.health.records_written / c.health.seconds : 0);
   const n = (v: number) => v.toLocaleString();
   const lost = $derived((h?.records_dropped ?? 0) + (h?.sequence_missing ?? 0));
@@ -20,7 +20,9 @@
       ? live.replay
         ? 'Paused: a replay stops in time, so the charts hold still and resume where they left off'
         : 'Paused: the device keeps sending, so time runs on and the pause leaves a gap'
-      : '',
+      : st === 'reconnecting'
+        ? `The link dropped: connecting again until it answers or you stop it${h?.reconnects ? ` (reconnected ${h.reconnects} ${h.reconnects === 1 ? 'time' : 'times'} so far)` : ''}. Frames sent meanwhile are lost.`
+        : '',
   );
   const front = $derived(tabs.active);
 
@@ -56,7 +58,7 @@
   const trigText = $derived(!T || (!T.armed && !T.count) ? 'Trigger…' : T.pending ? 'Triggered…' : T.armed ? `Armed${T.count ? ` · ${T.count}×` : ''}` : `Triggered · ${T.count}×`);
   const trigOn = $derived(!!T && (T.armed || T.count > 0));
   const cardState = (c: SourceCard) => stateOf(c.health, c.stopped);
-  const cardWord = { streaming: 'Streaming', paused: 'Paused', stopped: 'Stopped', ended: 'Ended' } as const;
+  const cardWord = { streaming: 'Streaming', paused: 'Paused', stopped: 'Stopped', ended: 'Ended', reconnecting: 'Reconnecting…' } as const;
 </script>
 
 <svelte:window
@@ -65,7 +67,7 @@
 />
 
 <div class="lvstrip" id="liveStrip" role="toolbar" aria-label="Live">
-  <span class="lvbadge" id="lvBadge" class:paused={st === 'paused'} class:ended={st === 'ended' || st === 'stopped'} data-state={st} data-tip={badgeTip}>{BADGE[st]}</span>
+  <span class="lvbadge" id="lvBadge" class:paused={st === 'paused' || st === 'reconnecting'} class:ended={st === 'ended' || st === 'stopped'} data-state={st} data-tip={badgeTip}>{BADGE[st]}</span>
   {#if live.name}<span class="lvname" id="lvSession" data-tip={live.session}>{live.name}</span>{/if}
   <span class="lvrec num" id="lvRec" data-tip="Recorded so far">REC {duration(live.recorded * 1e9)}</span>
   {#if lost > 0}<span class="lvwarn" id="lvWarn" data-tip={`${n(h?.records_dropped ?? 0)} records dropped (the buffer was full), ${n(h?.sequence_missing ?? 0)} missing by sequence number`}>Dropping samples · {n(lost)} lost</span>{/if}
@@ -121,7 +123,7 @@
         <div class="lvch">
           <b class="lvcn">{c.name}</b><span class="lvcs" data-state={cs}>{cardWord[cs]}</span><span class="spacer"></span>
           {#if cs === 'streaming' || cs === 'paused'}<button class="lw" data-spause={c.key} onclick={() => liveActions.pause(c.key, c.file)}>{cs === 'paused' ? 'Resume' : 'Pause'}</button>{/if}
-          {#if cs === 'streaming' || cs === 'paused'}<button class="lw" data-sstop={c.key} id={mine ? 'lvStop' : undefined} onclick={() => liveActions.stop(c.key, c.file)}>Stop</button>{/if}
+          {#if cs === 'streaming' || cs === 'paused' || cs === 'reconnecting'}<button class="lw" data-sstop={c.key} id={mine ? 'lvStop' : undefined} onclick={() => liveActions.stop(c.key, c.file)}>Stop</button>{/if}
           <button class="lw" data-sremove={c.key} onclick={() => liveActions.remove(c.key, c.file)}>Remove</button>
         </div>
         <div class="kv">
@@ -370,7 +372,8 @@
   .lvcs[data-state='streaming'] {
     color: var(--danger);
   }
-  .lvcs[data-state='paused'] {
+  .lvcs[data-state='paused'],
+  .lvcs[data-state='reconnecting'] {
     color: var(--warn);
   }
 </style>

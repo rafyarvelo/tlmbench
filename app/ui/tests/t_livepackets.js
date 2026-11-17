@@ -8,7 +8,8 @@ run('livepackets', async ({ p, check, text, fake, until }) => {
   await fake((e) => (window.__tlmFake.sources[e] = { channels: ['count', 'half'], rate: 100, already: 5, types: ['imu', 'status'] }), TCP);
   await p.click('[data-rail="live"]');
   await p.click('#liveDlg [data-kind="tcp"]');
-  await p.fill('#lvAddr', '127.0.0.1:9100');
+  await p.fill('#lvHost', '127.0.0.1');
+  await p.fill('#lvPortNo', '9100');
   await p.fill('#lvDesc', '/data/rover.toml');
   await p.click('#lvConnect');
   const tabs = () => p.$$eval('#wsTabs [role="tab"]', (t) => t.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));

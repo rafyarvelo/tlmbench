@@ -1466,6 +1466,9 @@ struct LiveArgs {
     dir: Option<String>,
     /// Another live file whose session this source joins, as its next source.
     add_to: Option<u32>,
+    /// TCP and serial: connect again when the link drops (D-live-11).
+    #[serde(default)]
+    reconnect: bool,
 }
 
 /// Connects a live source (`tcp://`, `udp://`, `serial://`, `file://` or `replay://`; sockets need the frames'
@@ -1529,8 +1532,8 @@ async fn live_connect<R: tauri::Runtime>(
         let (sources, first, session) = {
             let mut session = recording.lock().unwrap();
             let first = session.sources();
-            let sources =
-                session.add_sources(endpoint.clone(), desc.as_ref(), &Default::default()).map_err(|e| e.to_string())?;
+            let opts = tlmbench_live::Options { reconnect: args.reconnect, ..Default::default() };
+            let sources = session.add_sources(endpoint.clone(), desc.as_ref(), &opts).map_err(|e| e.to_string())?;
             (sources, first, session.dir().to_owned())
         };
         // the recording opens once it holds a sample; the other packet types get a moment more to send theirs

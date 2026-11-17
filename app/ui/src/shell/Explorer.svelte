@@ -79,7 +79,7 @@
   const failing = $derived(ui.path ? failingChannels(ui.path) : new Map());
   const inTab = (path: string) => tabs.list.some((t) => t.path === path) || ui.slots.some((s) => s.path === path);
   /** A live source's state word (Streaming, Paused, Stopped, Ended), by its id in the core. */
-  const WORD = { streaming: 'Streaming', paused: 'Paused', stopped: 'Stopped', ended: 'Ended' } as const;
+  const WORD = { streaming: 'Streaming', paused: 'Paused', stopped: 'Stopped', ended: 'Ended', reconnecting: 'Reconnecting' } as const;
   const stateById = (id: number) => {
     const c = live.cards.find((x) => x.file === id);
     return c ? stateOf(c.health, c.stopped) : null;

@@ -1121,7 +1121,7 @@
       Object.defineProperty(r, 'samples', { get: n });
       Object.defineProperty(r, 'done', { get: n });
       const id = nextFile++;
-      const health = () => ({ endpoint, bytes_in: n() * 24, records_in: n(), records_dropped: fake.liveDropped ?? 0, records_written: n(), sequence_missing: 0, sequence_repeated: 0, malformed_bytes: 0, rows_skipped: 0, rows_back_in_time: 0, files: [`/rec/session-1/source-${addTo != null ? 2 : 1}.tlm`], ring_bytes: 1 << 26, ring_high_water_bytes: 4096, ended: stopped != null, error: null, paused, seconds: (clock() - t0) / 1000 });
+      const health = () => ({ endpoint, bytes_in: n() * 24, records_in: n(), records_dropped: fake.liveDropped ?? 0, records_written: n(), sequence_missing: 0, sequence_repeated: 0, malformed_bytes: 0, rows_skipped: 0, rows_back_in_time: 0, files: [`/rec/session-1/source-${addTo != null ? 2 : 1}.tlm`], ring_bytes: 1 << 26, ring_high_water_bytes: 4096, ended: stopped != null, error: null, paused, seconds: (clock() - t0) / 1000, ...(fake.reconnecting?.[endpoint] ? { reconnecting: true, reconnects: fake.reconnecting[endpoint] } : {}) });
       const live = {
         health,
         name: name || endpoint,

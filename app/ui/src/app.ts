@@ -1841,7 +1841,7 @@ async function openLive(a: ConnectArgs, save: boolean, form: ConnectForm): Promi
     const target = live.addTo != null ? fileOf(live.addTo) : null;
     const addTo = target ? liveId(target) : null;
     const o = await invoke<Opened & { name?: string; siblings?: (Opened & { name: string })[] }>('live_connect', {
-      args: { endpoint: a.endpoint, descriptor: a.descriptor || null, name: a.name || null, record: a.record, dir: settings.recordTo || null, addTo },
+      args: { endpoint: a.endpoint, descriptor: a.descriptor || null, name: a.name || null, record: a.record, dir: a.recordTo || settings.recordTo || null, addTo, reconnect: !!a.reconnect },
     });
     if (!o.range) throw new Error('no samples yet');
     // a packet stream's other packet types, from the same connection: a live tab each (owner, Nov 16; D-ingest-11)

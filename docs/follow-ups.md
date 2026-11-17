@@ -284,3 +284,8 @@ removed Nov 15; git history keeps them.
   - Live checks (S5.3-06): incremental. A live check's filters run forward (causal), as live derived channels' do, so a
     filtered check on a live source can differ from the same check on the saved file by the filter's lag. A summary
     check (one number) on a live source still reads the whole recording at each run.
+  - Reconnect (D-live-11): a TCP or serial source with Reconnect (on by default in the Connect dialog; `record
+    --reconnect`) connects again after its link drops, every half second until it answers or is stopped, and records
+    on into the same file; frames sent meanwhile are lost and a frame cut by the drop counts as malformed. A rate-timed
+    descriptor's times run on from the record count, so the gap doesn't show in time; a time field shows it. UDP has no
+    link: it listens until stopped. The Connect dialog's "Save recordings to" is per connection, starting from Settings.

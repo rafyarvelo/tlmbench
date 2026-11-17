@@ -24,7 +24,8 @@ run(
 
     await p.click('[data-rail="live"]');
     await p.click('#liveDlg [data-kind="tcp"]');
-    await p.fill('#lvAddr', '127.0.0.1:9000');
+    await p.fill('#lvHost', '127.0.0.1');
+  await p.fill('#lvPortNo', '9000');
     await p.fill('#lvDesc', '/data/frames.toml');
     await p.click('#lvConnect');
     await until(() => !!document.getElementById('liveStrip'));

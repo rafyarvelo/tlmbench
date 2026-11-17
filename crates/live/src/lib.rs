@@ -125,11 +125,15 @@ pub struct Options {
     /// A UDP source ends after this long without a datagram, once one has arrived, and a file source after this
     /// long without growing (None: only when stopped).
     pub idle_end: Option<Duration>,
+    /// TCP and serial: when the link drops (the sender closes it, a cable is pulled), connect again until it answers
+    /// or the source is stopped, and go on recording into the same file (D-live-11). Frames sent meanwhile are lost;
+    /// a partial frame at the drop is counted as malformed.
+    pub reconnect: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { ring_bytes: None, connect_timeout: Duration::from_secs(10), idle_end: None }
+        Options { ring_bytes: None, connect_timeout: Duration::from_secs(10), idle_end: None, reconnect: false }
     }
 }
 
@@ -162,6 +166,9 @@ pub struct Health {
     pub error: Option<String>,
     pub paused: bool,
     pub seconds: f64,
+    /// The link dropped and the source is connecting again (with [`Options::reconnect`]); how many times it has.
+    pub reconnecting: bool,
+    pub reconnects: u64,
 }
 
 #[derive(Debug, Default)]
@@ -179,6 +186,8 @@ struct Counters {
     ended: AtomicBool,
     /// Reading is paused (a replay's clock stops; a device's frames are let go by).
     paused: AtomicBool,
+    reconnecting: AtomicBool,
+    reconnects: AtomicU64,
     error: Mutex<Option<String>>,
 }
 
@@ -259,11 +268,11 @@ impl Source {
                 let rs = first.as_ref().map_or(1, |d| d.record_size as usize);
                 let mut ring = Ring { producer, rs, cap: ring_bytes, pushed: 0, counters: &counters, parts: &parts };
                 if let Err(e) = match &endpoint {
-                    Endpoint::Tcp(a) => ingest_tcp(a, &mut ring, &stop, &opts),
+                    Endpoint::Tcp(a) => ingest_tcp(a, &mut ring, &stop, &opts, &counters),
                     Endpoint::Udp(a) => ingest_udp(a, &mut ring, &stop, &opts),
                     Endpoint::File(p) => tail::follow(p, &mut ring, &stop, &opts),
                     Endpoint::Replay(r) => replay::run(r, &mut ring, &stop),
-                    Endpoint::Serial { port, baud } => ingest_serial(port, *baud, &mut ring, &stop),
+                    Endpoint::Serial { port, baud } => ingest_serial(port, *baud, &mut ring, &stop, &opts, &counters),
                 } {
                     counters.fail(e);
                 }
@@ -357,11 +366,22 @@ impl Source {
                     })
                     .collect();
                 let mut feed = |b: &[u8]| demux.feed(b, &mut rings);
+                let held: Vec<&Counters> = all.iter().map(|c| &**c).collect();
                 let r = match &endpoint {
-                    Endpoint::Tcp(a) => connect_tcp(a, &stop, &opts).and_then(|mut s| pump(&mut s, &stop, &mut feed)),
-                    Endpoint::Serial { port, baud } => {
-                        open_serial(port, *baud).and_then(|mut s| pump(&mut *s, &stop, &mut feed))
-                    }
+                    Endpoint::Tcp(a) => linked(
+                        |first| if first { connect_tcp(a, &stop, &opts) } else { connect_tcp_until(a, &stop, None) },
+                        |s| pump(s, &stop, &mut feed),
+                        &stop,
+                        &opts,
+                        &held,
+                    ),
+                    Endpoint::Serial { port, baud } => linked(
+                        |_| open_serial(port, *baud),
+                        |s| pump(&mut **s, &stop, &mut feed),
+                        &stop,
+                        &opts,
+                        &held,
+                    ),
                     Endpoint::Udp(a) => pump_udp(a, &stop, &opts, &mut feed),
                     Endpoint::File(_) | Endpoint::Replay(_) => Ok(()),
                 };
@@ -413,6 +433,8 @@ impl Source {
             error: c.error.lock().unwrap().clone(),
             paused: c.paused.load(Ordering::Relaxed),
             seconds: self.started.elapsed().as_secs_f64(),
+            reconnecting: c.reconnecting.load(Ordering::Acquire),
+            reconnects: get(&c.reconnects),
         }
     }
 
@@ -517,18 +539,67 @@ fn resolve(addr: &str) -> io::Result<std::net::SocketAddr> {
     addr.to_socket_addrs()?.next().ok_or_else(|| io::Error::new(ErrorKind::NotFound, format!("{addr}: no address")))
 }
 
-fn ingest_tcp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options) -> io::Result<()> {
-    let mut stream = connect_tcp(addr, stop, opts)?;
-    read_stream(&mut stream, ring, stop)
+fn ingest_tcp(addr: &str, ring: &mut Ring, stop: &AtomicBool, opts: &Options, counters: &Counters) -> io::Result<()> {
+    linked(
+        |first| if first { connect_tcp(addr, stop, opts) } else { connect_tcp_until(addr, stop, None) },
+        |s| read_stream(s, ring, stop),
+        stop,
+        opts,
+        &[counters],
+    )
+}
+
+/// How long a source that lost its link waits between tries to connect again.
+const RETRY: Duration = Duration::from_millis(500);
+
+/// Runs a link (`open` makes it, true the first time; `read` reads it until it ends) and, with
+/// [`Options::reconnect`], makes it again whenever it drops, until the source is stopped. The first connection's
+/// failure is the source's error, as without reconnecting; later tries go on quietly, `reconnecting` set meanwhile.
+fn linked<S>(
+    mut open: impl FnMut(bool) -> io::Result<S>,
+    mut read: impl FnMut(&mut S) -> io::Result<()>,
+    stop: &AtomicBool,
+    opts: &Options,
+    counters: &[&Counters],
+) -> io::Result<()> {
+    let mut link = open(true)?;
+    loop {
+        let r = read(&mut link);
+        if stop.load(Ordering::Acquire) || !opts.reconnect {
+            return r;
+        }
+        drop(link);
+        counters.iter().for_each(|c| c.reconnecting.store(true, Ordering::Release));
+        link = loop {
+            if stop.load(Ordering::Acquire) {
+                counters.iter().for_each(|c| c.reconnecting.store(false, Ordering::Release));
+                return Ok(());
+            }
+            match open(false) {
+                Ok(l) => break l,
+                Err(_) => thread::sleep(RETRY),
+            }
+        };
+        for c in counters {
+            c.reconnects.fetch_add(1, Ordering::Relaxed);
+            c.reconnecting.store(false, Ordering::Release);
+        }
+    }
 }
 
 fn connect_tcp(addr: &str, stop: &AtomicBool, opts: &Options) -> io::Result<TcpStream> {
+    connect_tcp_until(addr, stop, Some(Instant::now() + opts.connect_timeout))
+}
+
+/// Connects to `addr`, trying again until `deadline` (None: one try) or the source stops.
+fn connect_tcp_until(addr: &str, stop: &AtomicBool, deadline: Option<Instant>) -> io::Result<TcpStream> {
     let to = resolve(addr)?;
-    let deadline = Instant::now() + opts.connect_timeout;
     let stream = loop {
         match TcpStream::connect_timeout(&to, POLL) {
             Ok(s) => break s,
-            Err(_) if Instant::now() < deadline && !stop.load(Ordering::Acquire) => thread::sleep(POLL),
+            Err(_) if deadline.is_some_and(|d| Instant::now() < d) && !stop.load(Ordering::Acquire) => {
+                thread::sleep(POLL)
+            }
             Err(e) => return Err(io::Error::new(e.kind(), format!("couldn't connect to {addr}: {e}"))),
         }
     };
@@ -587,9 +658,15 @@ fn read_stream(stream: &mut dyn Read, ring: &mut Ring, stop: &AtomicBool) -> io:
 /// A serial port's baud rate when the endpoint names none.
 pub const DEFAULT_BAUD: u32 = 115_200;
 
-fn ingest_serial(port: &str, baud: u32, ring: &mut Ring, stop: &AtomicBool) -> io::Result<()> {
-    let mut serial = open_serial(port, baud)?;
-    read_stream(&mut *serial, ring, stop)
+fn ingest_serial(
+    port: &str,
+    baud: u32,
+    ring: &mut Ring,
+    stop: &AtomicBool,
+    opts: &Options,
+    counters: &Counters,
+) -> io::Result<()> {
+    linked(|_| open_serial(port, baud), |s| read_stream(&mut **s, ring, stop), stop, opts, &[counters])
 }
 
 fn open_serial(port: &str, baud: u32) -> io::Result<Box<dyn serialport::SerialPort>> {
@@ -977,6 +1054,57 @@ mod tests {
             serde_json::from_slice(&std::fs::read(session.dir().join("session.json")).unwrap()).unwrap();
         assert_eq!(json["sources"][0]["files"][0], "source-1.tlm");
         assert!(session.dir().file_name().unwrap().to_str().unwrap().starts_with("session-20"));
+    }
+
+    /// Reconnect (D-live-11): the sender drops the link twice, once mid-record; the source connects again each time,
+    /// records into the same file and goes on; once nothing listens it says it is reconnecting, and it ends only when
+    /// stopped. Without the option the first drop ends it.
+    #[test]
+    fn a_dropped_link_reconnects_until_stopped() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let sender = thread::spawn(move || {
+            // three connections: 0..1000, then 1000..2000 with a third of a record at the end, then 2000..3000; the
+            // listener goes with the thread, so the last drop finds nobody to connect to
+            for (k, range) in [0..1000u32, 1000..2000, 2000..3000].into_iter().enumerate() {
+                let (mut s, _) = listener.accept().unwrap();
+                s.write_all(&records(range)).unwrap();
+                if k == 1 {
+                    s.write_all(&[1, 2, 3]).unwrap();
+                }
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = Session::create(dir.path()).unwrap();
+        let opts = Options { reconnect: true, ..Options::default() };
+        let src = session.add_source(Endpoint::Tcp(addr.to_string()), Some(&desc()), &opts).unwrap();
+        let until = |f: &dyn Fn(&Health) -> bool| {
+            let t = Instant::now();
+            while !f(&src.health()) {
+                assert!(t.elapsed() < Duration::from_secs(10), "{:?}", src.health());
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        until(&|h| h.records_written == 3000 && h.reconnects == 2);
+        sender.join().unwrap();
+        until(&|h| h.reconnecting);
+        assert!(!src.health().ended, "a dropped link with Reconnect doesn't end the source");
+        let h = src.stop();
+        assert_eq!((h.records_written, h.reconnects, h.malformed_bytes), (3000, 2, 3), "{h:?}");
+        assert!(h.ended && !h.reconnecting && h.error.is_none() && h.files.len() == 1, "{h:?}");
+        assert_eq!(body(&h.files[0]), records(0..3000));
+
+        // without Reconnect the first drop ends it
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let sender = thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            s.write_all(&records(0..10)).unwrap();
+        });
+        let src = session.add_source(Endpoint::Tcp(addr.to_string()), Some(&desc()), &Options::default()).unwrap();
+        let h = src.wait();
+        sender.join().unwrap();
+        assert_eq!((h.records_written, h.reconnects, h.ended), (10, 0, true));
     }
 
     #[test]

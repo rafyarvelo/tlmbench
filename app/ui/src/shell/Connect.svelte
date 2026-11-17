@@ -6,6 +6,7 @@
   import type { Preview } from '../live.svelte';
   import { live, liveActions, LIVE_SPEEDS } from '../live.svelte';
   import { ICON } from '../icons';
+  import { open as openDialog } from '@tauri-apps/plugin-dialog';
   import { type ConnectForm, settings } from '../settings.svelte';
   import { actions } from '../ui.svelte';
 
@@ -40,6 +41,8 @@
     speed: 2,
     startAt: 0,
     loop: true,
+    reconnect: true,
+    recordTo: '',
     ...settings.liveForm,
     ...live.preset,
   };
@@ -56,6 +59,8 @@
   let speed = $state(start.speed);
   let startAt = $state(start.startAt);
   let loop = $state(start.loop);
+  let reconnect = $state(start.reconnect ?? true);
+  let recordTo = $state(start.recordTo || settings.recordTo || '');
   let save = $state(false);
   const fromSaved = !!live.preset?.id;
   /** Where it opens: a new live tab, or as another source of a session (the tab's key). */
@@ -112,8 +117,16 @@
     else if (which === 'recording') recording = p;
     else descriptor = p;
   }
+  // host:port, split at the last colon (an IPv6 host is in brackets: [::1]:9000)
+  const hostOf = (a: string) => (a.includes(':') ? a.slice(0, a.lastIndexOf(':')) : a);
+  const portOf = (a: string) => (a.includes(':') ? a.slice(a.lastIndexOf(':') + 1) : '');
+  const joinAddr = (h: string, p: string) => `${h.trim()}:${p.trim()}`;
+  async function chooseDir() {
+    const p = await openDialog({ directory: true, title: 'Save recordings to' });
+    if (typeof p === 'string' && p) recordTo = p;
+  }
   function form(): ConnectForm {
-    return { kind, name: shownName, record, port, baud, address, path, descriptor, recording, speed, startAt, loop };
+    return { kind, name: shownName, record, port, baud, address, path, descriptor, recording, speed, startAt, loop, reconnect, recordTo: recordTo === settings.recordTo ? '' : recordTo };
   }
   function key(e: KeyboardEvent) {
     if (e.key === 'Escape') {
@@ -153,9 +166,15 @@
         <label class="lvf"><span>Baud rate</span><select class="sel" id="lvBaud" bind:value={baud}>
             {#each ['9600', '19200', '38400', '57600', '115200', '230400', '460800', '921600', '2000000'] as b (b)}<option value={b}>{b}</option>{/each}
           </select></label>
+        <label class="lvchk"><input type="checkbox" id="lvReconnect" bind:checked={reconnect} />Reconnect automatically if the link drops</label>
         {@render desc()}
       {:else}
-        <label class="lvf"><span>{kind === 'tcp' ? 'Connect to' : 'Listen on'}</span><input class="sel" id="lvAddr" bind:value={address} placeholder="host:port" spellcheck="false" autocomplete="off" /></label>
+        <!-- as the prototype's: the host and the port side by side (kept together as host:port) -->
+        <div class="lvrow">
+          <label class="lvf"><span>{kind === 'tcp' ? 'Host' : 'Listen on'}</span><input class="sel" id="lvHost" value={hostOf(address)} placeholder={kind === 'tcp' ? '192.168.1.40' : '0.0.0.0'} spellcheck="false" autocomplete="off" oninput={(e) => (address = joinAddr(e.currentTarget.value, portOf(address)))} /></label>
+          <label class="lvf lvport"><span>Port</span><input class="sel" id="lvPortNo" value={portOf(address)} inputmode="numeric" placeholder="9000" spellcheck="false" autocomplete="off" oninput={(e) => (address = joinAddr(hostOf(address), e.currentTarget.value))} /></label>
+        </div>
+        {#if kind === 'tcp'}<label class="lvchk"><input type="checkbox" id="lvReconnect" bind:checked={reconnect} />Reconnect automatically if the link drops</label>{/if}
         {@render desc()}
       {/if}
       {#if preview}
@@ -177,7 +196,7 @@
           </select><small>Sources in one session share its recording folder and clock.</small></label>
       {/if}
       {#if !adding}<label class="lvchk"><input type="checkbox" id="lvRecord" bind:checked={record} />Record while streaming</label>
-        {#if record}<small class="muted lvwhere">Saved to {settings.recordTo || 'the Recordings folder'}. Change it in Settings.</small>{:else}<small class="muted lvwhere">Not kept: the recording goes when the source closes.</small>{/if}{/if}
+        {#if record}<label class="lvf"><span>Save recordings to</span><div class="lvpick"><input class="sel" id="lvRecordTo" bind:value={recordTo} placeholder="the Recordings folder" spellcheck="false" autocomplete="off" /><button class="tbtn" onclick={chooseDir}>Choose…</button></div><small>Default from Settings › Record live sessions to. Each session is a folder there.</small></label>{:else}<small class="muted lvwhere">Not kept: the recording goes when the source closes.</small>{/if}{/if}
       {#if !fromSaved}<label class="lvchk"><input type="checkbox" id="lvSave" bind:checked={save} />Save this connection on the start page</label>{/if}
       {#if live.error}<p class="lverr" id="lvErr">{live.error}</p>{/if}
     </div>
@@ -190,7 +209,7 @@
       class="tbtn primary"
       id="lvConnect"
       disabled={!ready || live.connecting}
-      onclick={() => ((live.addTo = target), liveActions.connect({ endpoint, descriptor: needsDescriptor ? descriptor : '', name: shownName, record: adding ? true : record }, save, form()))}
+      onclick={() => ((live.addTo = target), liveActions.connect({ endpoint, descriptor: needsDescriptor ? descriptor : '', name: shownName, record: adding ? true : record, reconnect: (kind === 'tcp' || kind === 'serial') && reconnect, recordTo: adding ? '' : recordTo.trim() }, save, form()))}
       >{live.connecting ? 'Connecting…' : adding ? 'Add source' : 'Connect'}</button
     >
   </footer>

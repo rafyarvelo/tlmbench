@@ -23,11 +23,13 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   await p.click('#lvConnect');
   check('a serial port, with its baud rate', await until(() => /serial:\/\/\/dev\/tty\.usbserial-1\?baud=921600/.test(document.getElementById('lvErr')?.textContent ?? '')), await text('#lvErr'));
   await p.click('#liveDlg [data-kind="tcp"]');
-  await p.fill('#lvAddr', '127.0.0.1:9999');
+  await p.fill('#lvHost', '127.0.0.1');
+  await p.fill('#lvPortNo', '9999');
   await p.fill('#lvDesc', '/data/frames.toml');
   await p.click('#lvConnect');
   check('a refused connection says so', await until(() => /connection refused/.test(document.getElementById('lvErr')?.textContent ?? '')), await text('#lvErr'));
-  await p.fill('#lvAddr', '127.0.0.1:9000');
+  await p.fill('#lvHost', '127.0.0.1');
+  await p.fill('#lvPortNo', '9000');
   // S5.5-02: nothing reads the stream until asked; Preview a frame reads it for a second and shows the latest frame
   check('the preview names the channels and does not read the stream by itself', await until(() => /Decodes as/.test(document.getElementById('lvPreview')?.textContent ?? '')) && !(await p.$('#lvValues')) && (await fake(() => window.__tlmFake.previewReads)) === 0);
   await p.click('#lvRead');
