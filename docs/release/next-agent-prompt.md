@@ -6,8 +6,8 @@ This prompt is only a hand-off. **Where each step stands is the status table in 
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
 Written for **Opus** (after the Sonnet run of Nov 17, which built the well-specified rows of R2.5, R3.2 and R3.3; see the
-status table, the commit "Import profiles carry check sets…" and `docs/follow-ups.md`). The Sonnet run's work is built
-and tested locally but **not pushed**: if the owner has not pushed it, that comes first (below).
+status table, the commit "Import profiles carry check sets…" and `docs/follow-ups.md`). The Sonnet run's work and the work from
+the owner's Nov 17 decisions were pushed on Nov 17 (the status table says with which CI run).
 
 ## First
 
@@ -28,42 +28,17 @@ live checks), D-ingest-09's last part (payload plugins in browser-only mode), D-
 reconnect first), S5.4-06 (canvas traces: owner decision first), D-gauge-04 (after R6's measurement), D-ui-10 and everything
 else in R3.4 (the quiet-interface pass, the whole-app apple-design audit).
 
-**Rows the Sonnet run stopped on a question. The owner accepted every recommendation below on Nov 17 (memory
-`owner-decisions-nov17.md`): build them as written, don't ask again.** The same answer settles the three choices the Sonnet
-run made (regular-expression prefix pattern, `panes` saved in the profile, folder-run report in settings):
+**Built Nov 17 from the owner's decisions** (memory `owner-decisions-nov17.md`): D-gauge-06, D-ui-12, S5.4-10, D-ui-09,
+S5.5-02, and with them D-cli-06, D-cli-09 and S5.6-10. They need a real-window pass: the owner sheet has no entries yet for
+the pinned strip and Settings › Icons, the Events box in the import dialog and the descriptor form, "Inputs and settings…",
+dragging a channel onto a category, "Preview a frame" on a real UDP, TCP or serial source.
 
-- **D-gauge-06** (icons for categories, widget menus and toolbar buttons). Question: where does the "toolbar" with a
-  person's recipe and layout buttons live? The app has no user toolbar. Recommendation: a "Pinned" strip in the top bar,
-  shown only when something is pinned (Layouts rows and the Recipes manager get "Pin to toolbar"); the pin shows its icon,
-  the name in its tip; icons come from a small Icons list in Settings (an SVG using `currentColor`, shared to
-  `.tlmbench/icons/`). Trade-off: the top bar is the calmest part of the UI, so keep pins few (at most 8).
-- **D-ui-12** (events from the file, with the channels they concern; the Events panel's file chips). Question: what in a
-  file makes an event? Recommendation: a column or descriptor field marked "Events" (in the import dialog and the
-  descriptor) makes an event per change, name = the new value or label, channels = that column's; format metadata (Parquet
-  key/value, HDF5 attributes) after v1. The panel's "group by file" and file chips follow.
-- **S5.4-10** (code widgets: inputs by role, parameters in `widget.toml`; X-win-07's frame scheme). Question: where does a
-  person bind a role (`pitch`, `roll`, `series`) to a channel, and how does a parameter get its value? Recommendation: the
-  widget menu gets an "Inputs…" section listing the manifest's roles, each a channel picker (default: the widget's own
-  channel); parameters are small typed fields from the manifest (number, text, choice) saved per widget in the layout; a
-  series is the last 64 samples at the reading time, sent with the value in the one postMessage per frame.
-- **D-ui-09** (Explorer drops between rows and onto a category; categories multi-select; categories from the descriptor).
-  Question: what do those two drops do? Reading A: onto a category row moves the dragged channels into it (the per-file
-  `catOverride`); between rows reorders channels inside a pane's list. Reading B: between rows is a new pane between two
-  panes. Also the descriptor has no `category` on a field (`Field` literals in about 20 places). Recommendation: A for the
-  category drop; the existing pane-edge and gap drops stay; add `category` to descriptor fields with the import profile's key.
-- **S5.5-02** (the Connect dialog previews decoded frames). Question: may the preview read a live stream? A file or replay
-  source is safe. UDP must bind the port for about a second, TCP and serial open the device. Recommendation: yes, only on
-  an explicit "Preview" click, a 1 s read, never on opening the dialog, saying "reads for a second"; shows the first decoded
-  frame's values and the rate seen.
-
-**Rows the Sonnet run did not start** (well specified, Sonnet or Opus): S4.1-19, S4.1-21, S4.3-12, S4.2-19 (the parity
-scenes: run `just app-parity`, read `docs/release/parity-classes.md` first, never port back an "App is better" row), S5.2-16's
-Events panel and channel editor scenes, S5.6-10 (port the multi-file tests: the Time channel from `gps_tow`; the prefix rule
-is covered by `t_profileextras`), D-cli-09 (viewer tests driving Play, cursors and Measure: needs `just viewer` and the release CLI).
-
-**Rows left Partial after the Sonnet run, to finish:** S5.3-15 (the design wants the folder report as a separate Report
-tab; the dialog tab keeps the report with the set), D-cli-06 (an end-to-end test that an HTML export's windows follow a
-set's `detail`: write it in `cli/tests`), S5.2-16 (saving the per-tab event filters with the layout and the session).
+**Rows still open and well specified:**
+- S4.1-19, S4.2-19 (parity classification: run `just app-parity`, read `docs/release/parity-classes.md` first, never port back
+  an "App is better" row), S5.2-16's Events panel and channel editor scenes.
+- S5.3-15: the design wants the folder report as a separate Report tab (saved with the set, reopened, re-run); today it is
+  a dialog tab with the report kept in settings.
+- S5.2-16: the per-tab event filters are kept with the session; the design also keeps them with a saved layout.
 
 ## What is decided, and what you must not decide
 

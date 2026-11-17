@@ -3260,7 +3260,7 @@ async fn export_html<R: tauri::Runtime>(
             };
             let evs: Vec<(i64, i64)> =
                 extra["events"][0]["events"].as_array().into_iter().flatten().filter_map(pair).collect();
-            let sets: Vec<(Option<&str>, Vec<(i64, i64)>)> = extra["checks"]
+            let sets: Vec<html::SetSpans<'_>> = extra["checks"]
                 .as_array()
                 .into_iter()
                 .flatten()

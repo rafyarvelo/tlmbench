@@ -299,7 +299,7 @@ pub fn run(a: Args) -> Result<(), Fail> {
             // set's own `detail` is the default for its violations when --detail isn't given
             let evs_spans: Vec<(i64, i64)> =
                 evs.iter().filter_map(|e| Some((e.start.parse().ok()?, e.duration.parse().ok()?))).collect();
-            let sets_spans: Vec<(Option<&str>, Vec<(i64, i64)>)> = checks_out
+            let sets_spans: Vec<html::SetSpans<'_>> = checks_out
                 .iter()
                 .filter(|c| c["file"] == k)
                 .map(|c| {

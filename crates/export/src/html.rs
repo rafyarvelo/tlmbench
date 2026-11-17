@@ -120,6 +120,9 @@ impl Window {
     }
 }
 
+/// One check set's marked violations (start, duration) with the set's own `detail`, if it has one.
+pub type SetSpans<'a> = (Option<&'a str>, Vec<(i64, i64)>);
+
 /// The raw windows Light keeps: around each of `events` (start, duration) by `default`, and around each set's marked
 /// violations by the set's own `detail` (in `--detail`'s words) unless the export was told its windows (`explicit`).
 /// A set whose detail is `0` keeps none around its violations.
@@ -127,7 +130,7 @@ pub fn window_spans(
     default: Window,
     explicit: bool,
     events: &[(i64, i64)],
-    sets: &[(Option<&str>, Vec<(i64, i64)>)],
+    sets: &[SetSpans<'_>],
 ) -> std::result::Result<Vec<(Timestamp, Timestamp)>, String> {
     let mut out: Vec<(Timestamp, Timestamp)> = events.iter().map(|&(s, d)| default.around(s, d)).collect();
     for (detail, marked) in sets {
