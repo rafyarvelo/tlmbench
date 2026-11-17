@@ -28,7 +28,9 @@ live checks), D-ingest-09's last part (payload plugins in browser-only mode), D-
 reconnect first), S5.4-06 (canvas traces: owner decision first), D-gauge-04 (after R6's measurement), D-ui-10 and everything
 else in R3.4 (the quiet-interface pass, the whole-app apple-design audit).
 
-**Rows the Sonnet run stopped on a question.** Ask the owner (recommendation and trade-off each), then build:
+**Rows the Sonnet run stopped on a question. The owner accepted every recommendation below on Nov 17 (memory
+`owner-decisions-nov17.md`): build them as written, don't ask again.** The same answer settles the three choices the Sonnet
+run made (regular-expression prefix pattern, `panes` saved in the profile, folder-run report in settings):
 
 - **D-gauge-06** (icons for categories, widget menus and toolbar buttons). Question: where does the "toolbar" with a
   person's recipe and layout buttons live? The app has no user toolbar. Recommendation: a "Pinned" strip in the top bar,
