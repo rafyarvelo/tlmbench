@@ -315,6 +315,62 @@ Expect: memory stays reasonable, zoom stays smooth.
 Result:
 Notes:
 
+## X. Built Nov 17 (the Sonnet run and your Nov 17 decisions): nothing here has been seen in a real window
+
+### X1. Icons and the pinned strip (D-gauge-06)
+Do: Settings › Icons: add an SVG. Pin a layout (Layouts panel, right-click › Pin to toolbar) and a recipe (Recipes manager).
+Expect: a "Pinned" strip in the top bar only once something is pinned; one click opens the layout or adds the recipe to the
+file in front; the icon follows the theme (light and dark).
+Result:
+Notes:
+
+### X2. Events from the file (D-ui-12)
+Do: open a CSV with a text column (a mode or state); in the import dialog tick its Events box. In the descriptor form, the
+same box on a field.
+Expect: an event at each change of that column, named by the new value, read-only, in the Events panel (group by file).
+Result:
+Notes:
+
+### X3. A code widget's inputs and settings (S5.4-10, D-ui-59)
+Do: Gauges pane › a code widget › its menu › "Inputs and settings…". Settings › widgets › New code widget.
+Expect: a channel picker per role and the widget's parameters; the widget redraws with them; New code widget adds a working
+example.
+Result:
+Notes:
+
+### X4. Explorer: channels onto a category, several categories (D-ui-09)
+Do: drag channels onto a category row; Cmd/Ctrl-click and Shift-click category rows, then Enter.
+Expect: the channels move into that category (Undo puts them back); Enter plots the picked categories' channels.
+Result:
+Notes:
+
+### X5. Connect: Preview a frame on a real source (S5.5-02)
+Do: Connect › UDP, TCP or serial with a descriptor › Preview a frame.
+Expect: it reads for one second only when clicked, then shows the latest frame's values and the frames a second.
+Result:
+Notes:
+
+### X6. Import dialog: "Also for files with this header", and the Recipes manager's Import profiles tab (S5.1-10, S5.1-12)
+Do: import a CSV; open "Also for files with this header" (check sets, recipes, starter layout, prefix rule). Then Recipes
+and profiles… › Import profiles.
+Expect: what you pick applies to the next file with the same header; the profiles tab lists it with rename, recipe chips,
+layout and delete.
+Result:
+Notes:
+
+### X7. Checks: a failing live check, the folded line, Save as rule (D-check-03, D-check-04, S5.3-14)
+Do: a live source with a check that starts failing; a set with a group no check can run on; a table filter › Save as rule.
+Expect: the tab's badge flashes once when the check starts failing; "N checks can't run here" is one folded line; Save as
+rule opens the rule with the filter as its expression.
+Result:
+Notes:
+
+### X8. Renaming a saved connection (D-ui-01)
+Do: start page › a saved connection › the pencil; then open it and change a field › Save changes.
+Expect: the new name sticks; Save changes keeps the edit without connecting.
+Result:
+Notes:
+
 ## W. Built Nov 17 (the Opus run)
 
 ### W1. A packet file's types in one tab (S4.3-08)
