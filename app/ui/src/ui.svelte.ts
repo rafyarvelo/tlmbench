@@ -183,6 +183,12 @@ export const actions = {
   importAll: (_paths: string[]) => {},
   importGo: () => {},
   importCancel: () => {},
+  /** The Recipes manager's Import profiles tab: change one (name, recipes, layout, panes, prefix), use the tab in front as its layout, forget one. */
+  profileChange: (_header: string[], _patch: Record<string, unknown>) => {},
+  profileLayoutFromTab: (_header: string[]) => {},
+  profileForget: (_header: string[]) => {},
+  /** Loads the check sets and recipes the import dialog offers to attach to a profile. */
+  importExtras: async (): Promise<void> => {},
   /** Export data… and Save the view as an image…: open the dialogs, write the files. */
   /** Derive…: a new channel from these channels (none, one, or two), editing a derived channel's recipe, removing it. */
   deriveOpen: (_chs: number[]) => {},
@@ -206,6 +212,10 @@ export const actions = {
   checkDelete: (_name: string) => {},
   checkPreview: async (_c: Check): Promise<Outcome | null> => null,
   checkShow: (_start: string, _end: string) => {},
+  /** A table's filters as a new rule in Event rules (Save as rule). */
+  filterRule: (_pane: number) => {},
+  /** Brings back the report kept for a set's last folder run. */
+  checkFolderLoad: (_set: string) => {},
   checkEditor: (_name: string | null, _focus?: number, _rule?: boolean) => {},
   checkRun: () => {},
   /** The folder run: run a set on Explorer's folder, write its results as CSV, open a grid cell's file at its first violation in the group. */

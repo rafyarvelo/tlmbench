@@ -3,7 +3,7 @@
      in .tlmbench/widgets/. -->
 <script lang="ts">
   import { ICON } from '../icons';
-  import { closeWidgetEditor, parseWidgets, saveWidgets, widgetDlg } from '../customwidgets.svelte';
+  import { addWidgetExample, closeWidgetEditor, parseWidgets, saveWidgets, widgetDlg } from '../customwidgets.svelte';
   import { fillTemplate, sanitizeSvg } from '../widgets';
 
   const parsed = $derived(parseWidgets(widgetDlg.text));
@@ -27,6 +27,10 @@
         A widget is an SVG with bindings: <code>{'{{value}}'}</code> <code>{'{{unit}}'}</code> <code>{'{{label}}'}</code> <code>{'{{pct}}'}</code> (0–100) <code>{'{{angle}}'}</code> (from <code>angle</code>) <code>{'{{color}}'}</code> (follows limits) <code>{'{{level}}'}</code>
         <code>{'{{min}}'}</code> <code>{'{{max}}'}</code> <code>{'{{name}}'}</code>. Scripts, event handlers and outside links are removed. For more, give <code>code</code> instead of <code>svg</code>: it runs in a sandbox with no files or network.
       </p>
+      <div class="wnew"><span class="muted">Add one:</span>
+        <button class="tbtn" data-wnew="svg" data-tip="A widget drawn as an SVG with the value bound in, filled in with a working example" onclick={() => addWidgetExample('svg')}>New SVG widget</button>
+        <button class="tbtn" data-wnew="code" data-tip="A widget that runs code in a sandbox, filled in with a working example" onclick={() => addWidgetExample('code')}>New code widget</button>
+      </div>
       <textarea class="sel txt" rows="14" spellcheck="false" data-wtxt bind:value={widgetDlg.text}></textarea>
       <p class="stat {parsed.error ? 'bad' : 'ok'}" data-werr role="status">{parsed.error || `${parsed.list?.length} widget${parsed.list?.length === 1 ? '' : 's'} · preview at 62% of the range`}</p>
       <div class="wprev" data-wprev>
@@ -53,6 +57,12 @@
     min-height: 0;
     padding: 10px 14px;
     overflow-y: auto;
+  }
+  .wnew {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
   }
   .wbody p {
     margin: 0;

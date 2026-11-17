@@ -5371,6 +5371,7 @@ dependencies = [
  "parquet",
  "proptest",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

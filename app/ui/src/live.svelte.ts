@@ -133,6 +133,8 @@ export const liveActions = {
   /** Arms a trigger, or stops it (null); returns why it couldn't. */
   trigger: async (_spec: TriggerForm | null): Promise<string | null> => null,
   preview: async (_endpoint: string, _descriptor: string): Promise<{ detail: string; channels: [string, string | null][] } | string> => '',
+  /** Keeps the changes made to a saved connection in the Connect dialog, without connecting (D-ui-01). */
+  saveConnection: (_id: string, _form: ConnectForm) => {},
   /** Opens the Connect dialog: for a session in front, "+ Add source" (its source joins it). */
   openConnect: (add: boolean, preset?: Partial<ConnectForm> & { id?: string }) => {
     live.addTo = add ? tabs.active : null;

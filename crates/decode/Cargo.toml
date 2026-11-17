@@ -15,6 +15,7 @@ csv-core.workspace = true
 dirs.workspace = true
 lexical-core.workspace = true
 memchr.workspace = true
+regex.workspace = true
 memmap2.workspace = true
 rayon.workspace = true
 serde.workspace = true

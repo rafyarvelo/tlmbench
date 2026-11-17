@@ -356,6 +356,8 @@
     /** CSV files the import dialog sees, by path: `fake.csv(path, names, opts)`; the profiles saved by header, what
      * each open was given, and every profile_save. */
     csvs: {},
+    sharedRenames: [],
+    renamesApplied: [],
     profiles: {},
     openedWith: [],
     saved: [],
@@ -631,9 +633,9 @@
       const ch = progress && { id: progress.id ?? Number(String(progress).replace(/\D/g, '')), next: 0 };
       fake.open.set(id, { r, progress: ch });
       r.base = r.chans.slice();
-      const { derived, skipped } = applyRecipes(r, recipes ?? [], exclude ?? []);
+      const { derived, skipped } = applyRecipes(r, [...(recipes ?? []), ...(profile?.recipes ?? []).filter((n) => !(recipes ?? []).includes(n) && !(exclude ?? []).includes(n))], exclude ?? []);
       const info = { path, ...(part ? { part } : {}), format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
-      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped, missing: missingOf(r, adjust) };
+      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped, missing: missingOf(r, adjust), ...(profile ? { profile } : {}) };
     },
     // derived channels: the library (`recipes`), the recipes each open or apply was given, and what a check or spectrum was asked
     /** The events you added, by file path (the core keeps them per recording in the app cache). */
@@ -1197,6 +1199,14 @@
     config_scan({ folder, own }) {
       fake.cfgCalls.push({ cmd: 'scan', folder, own });
       return { rows: fake.cfgRows, problems: fake.cfgProblems, writable: fake.cfgWritable, git: fake.cfgGit };
+    },
+    // shared events filed under a recording's old name (D-cfg-04): what to offer, and what was applied
+    shared_renames: () => fake.sharedRenames.map((r) => ({ ...r })),
+    shared_renames_apply({ folder, recordings }) {
+      fake.renamesApplied.push({ folder, recordings });
+      const n = fake.sharedRenames.length;
+      fake.sharedRenames = [];
+      return n;
     },
     config_mirror({ own }) {
       fake.cfgCalls.push({ cmd: 'mirror', own });

@@ -85,11 +85,16 @@ export const derive = $state({
   category: 'Derived',
   decimals: 3,
   /** Where it applies: this file, any file with these channels, or (editing) where it applies now. */
-  scope: 'file' as 'file' | 'auto' | 'keep',
+  scope: 'file' as 'file' | 'auto' | 'keep' | 'profile',
   /** The check of the expression against the open file: what to say, whether it can be saved, and a preview's numbers. */
   status: { ok: false, text: '', pending: false },
   error: '',
 });
 
 /** The Recipes manager: the library's list, and the text panel for Export… and Import…. */
-export const manager = $state({ open: false, panel: '' as '' | 'export' | 'import', text: '', error: '' });
+/** An import profile the cache holds, by its header (S5.1-12: the manager's second tab). */
+export interface SavedProfile {
+  header: string[];
+  profile: import('./imports.svelte').Profile;
+}
+export const manager = $state({ open: false, tab: 'recipes' as 'recipes' | 'profiles', panel: '' as '' | 'export' | 'import', text: '', error: '', profiles: [] as SavedProfile[] });

@@ -5,10 +5,25 @@
 <script lang="ts">
   import { ICON } from '../icons';
   import { actions } from '../ui.svelte';
+  import { tabs } from '../tabs.svelte';
   import { settings } from '../settings.svelte';
-  import { applyProfile, rateWords, imp, type Job, type Kind, problem, rateFactor, RATE_UNITS, type RateMode, TIME_UNITS, type Where } from '../imports.svelte';
+  import { checks } from '../checks.svelte';
+  import { recipes } from '../derive.svelte';
+  import { applyProfile, prefixFor, rateWords, imp, type Job, type Kind, problem, rateFactor, RATE_UNITS, type RateMode, TIME_UNITS, type Where } from '../imports.svelte';
 
   const job = $derived<Job>(imp.jobs[imp.sel]);
+  $effect(() => {
+    if (imp.open) void actions.importExtras();
+  });
+  /** Files of this job that are open in a tab already: importing again opens them again with these settings. */
+  const again = $derived(job ? job.paths.filter((p) => tabs.list.some((t) => t.path === p && !t.ws)) : []);
+  const toggle = (list: string[], name: string, on: boolean) => (on ? [...new Set([...list, name])] : list.filter((n) => n !== name));
+  const rule = $derived(job?.prefix ?? { type: 'file_name' as const });
+  const setRule = (t: string) => {
+    const keep = rule.type === 'pattern' ? rule.pattern : rule.type === 'custom' ? rule.text : '';
+    job.prefix = t === 'pattern' ? { type: 'pattern', pattern: keep } : t === 'custom' ? { type: 'custom', text: keep } : t === 'separator' ? { type: 'separator' } : null;
+  };
+  const sample = $derived(job ? prefixFor(job.prefix, job.paths[0]) : '');
   const many = $derived(imp.jobs.length > 1 || job.paths.length > 1);
   const nFiles = $derived(imp.jobs.reduce((a, j) => a + j.paths.length, 0));
   const nameOf = (p: string) => p.split(/[\\/]/).pop() ?? p;
@@ -90,6 +105,9 @@
           {#if job.paths.length > 1}<b>Applies to {job.paths.length} files with this header.</b>{/if}
           {job.insp.rows.toLocaleString('en-US')}{job.insp.rows_exact ? '' : '+'} rows · {job.cols.length} columns · {delim(job.insp.delimiter)}-separated
         </p>
+        {#if again.length}
+          <div class="impprof" id="impAgain">Already open: {again.map(nameOf).join(', ')}. Importing again opens {again.length > 1 ? 'them' : 'it'} again with these settings.</div>
+        {/if}
         {#if job.applied}
           <div class="impprof" id="impApplied">Using settings from {job.applied}.</div>
         {:else if job.near}
@@ -163,6 +181,44 @@
         </div>
         <p class="lvnote">Names are kept as in the file; type a name to rename a column. A unit in brackets after a space, like <code>[m/s]</code>, is the unit. A text column opens as a channel that shows its texts, when it has 256 different texts or fewer. Your choices are saved for every file with this header.</p>
 
+        <details class="impmore" id="impMore" open={!!(job.checkSets.length || job.recipes.length || job.layout || job.prefix)}>
+          <summary>Also for files with this header <small>checks, derived channels, layout, channel prefix</small></summary>
+          <div class="impx">
+            <div class="impxs" id="impChecks">
+              <b>Rules and checks that run on them</b>
+              {#each checks.sets as s (s.name)}
+                <label class="radio"><input type="checkbox" data-iset={s.name} checked={job.checkSets.includes(s.name)} onchange={(e) => (job.checkSets = toggle(job.checkSets, s.name, e.currentTarget.checked))} /><span>{s.name}</span></label>
+              {:else}<span class="muted">No rule or check sets yet.</span>{/each}
+            </div>
+            <div class="impxs" id="impDerived">
+              <b>Derived channels they get</b>
+              {#each recipes.list as r (r.name)}
+                <label class="radio"><input type="checkbox" data-irecipe={r.name} checked={job.recipes.includes(r.name)} onchange={(e) => (job.recipes = toggle(job.recipes, r.name, e.currentTarget.checked))} /><span>{r.name} <small>{r.expr}</small></span></label>
+              {:else}<span class="muted">No recipes yet. Make one with Derive….</span>{/each}
+            </div>
+            <label class="lvf"><span>They open with the layout</span>
+              <select class="sel" id="impLayout" bind:value={job.layout}>
+                <option value="">Settings' choice</option>
+                {#each settings.workspaces as w (w.name)}<option value={w.name}>{w.name}</option>{/each}
+              </select></label>
+            <div class="improw">
+              <label class="lvf"><span>Channel prefix in a tab with several files</span>
+                <select class="sel" id="impPrefix" value={rule.type} onchange={(e) => setRule(e.currentTarget.value)}>
+                  <option value="file_name">The file name</option>
+                  <option value="separator">The file name up to the first _ - . or space</option>
+                  <option value="pattern">Part of the name by pattern</option>
+                  <option value="custom">Custom text</option>
+                </select></label>
+              {#if rule.type === 'pattern'}
+                <label class="lvf"><span>Pattern (a regular expression; its first group)</span><input class="sel" id="impPrefixText" value={rule.pattern} oninput={(e) => (job.prefix = { type: 'pattern', pattern: e.currentTarget.value })} spellcheck="false" /></label>
+              {:else if rule.type === 'custom'}
+                <label class="lvf"><span>Text</span><input class="sel" id="impPrefixText" value={rule.text} oninput={(e) => (job.prefix = { type: 'custom', text: e.currentTarget.value })} spellcheck="false" /></label>
+              {/if}
+            </div>
+            <p class="lvnote">{nameOf(job.paths[0])} would be <code id="impPrefixSample">{sample}</code>. A file can take its own prefix (right-click → Channel prefix…).</p>
+          </div>
+        </details>
+
         <h4>Where the files go</h4>
         <div class="improw">
           <label class="lvf"><span>{nFiles > 1 ? `${nFiles} files` : 'This file'}</span>
@@ -170,8 +226,8 @@
               {#each WHERE as [v, t, ok] (v)}<option value={v} disabled={!ok}>{t}{ok ? '' : ' (needs several files in a tab)'}</option>{/each}
             </select></label>
           <label class="lvf"><span>Opens as</span>
-            <select class="sel" id="impStarter" bind:value={imp.starter}>
-              <option value="default">Settings' choice ({STARTER_NAMES[settings.fileOpenNew]})</option>
+            <select class="sel" id="impStarter" bind:value={job.panes}>
+              <option value="">Settings' choice ({STARTER_NAMES[settings.fileOpenNew]})</option>
               {#each Object.entries(STARTER_NAMES) as [v, t] (v)}<option value={v}>{t}</option>{/each}
             </select></label>
         </div>
@@ -187,6 +243,34 @@
 {/if}
 
 <style>
+  .impmore {
+    margin: 10px 0 2px;
+  }
+  .impmore summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .impmore summary small {
+    margin-left: 6px;
+    color: var(--fg-muted);
+    font-weight: 400;
+  }
+  .impx {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 0 0;
+  }
+  .impxs {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+  }
+  .impxs small {
+    margin-left: 4px;
+    color: var(--fg-muted);
+  }
   .livedlg {
     display: flex;
     flex-direction: column;

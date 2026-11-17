@@ -7,11 +7,24 @@
   let { path, open = true }: { path: string; open?: boolean } = $props();
   const s = $derived(open || path ? summary(path) : null);
   const text = $derived(s ? (s.failed ? `✗ ${s.failed}` : s.warned ? `! ${s.warned}` : `✓ ${s.passed}`) : '');
+  /** A check that starts failing while the badge is up (a live file's checks run again and again) flashes it (D-check-04). */
+  let flash = $state(false);
+  let before: number | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const failed = s?.failed ?? null;
+    if (before != null && failed != null && failed > before) {
+      flash = true;
+      clearTimeout(timer);
+      timer = setTimeout(() => (flash = false), 1600);
+    }
+    before = failed;
+  });
   const tip = $derived(s ? (s.groups.length ? `Failed or warned: ${s.groups.join(', ')}` : 'Every check passed') : '');
 </script>
 
 {#if s}
-  <button class="cbadge" class:bad={s.failed > 0} class:warn={!s.failed && s.warned > 0} data-cn={text} data-chkfile={path} data-tip={tip} aria-label="Checks: {text}" onclick={(e) => (e.stopPropagation(), setSetting('leftPanel', 'checks'))}>{text}</button>
+  <button class="cbadge" class:bad={s.failed > 0} class:warn={!s.failed && s.warned > 0} class:flash data-flash={flash || undefined} data-cn={text} data-chkfile={path} data-tip={tip} aria-label="Checks: {text}" onclick={(e) => (e.stopPropagation(), setSetting('leftPanel', 'checks'))}>{text}</button>
 {/if}
 
 <style>
@@ -27,6 +40,21 @@
   }
   .cbadge.bad {
     background: color-mix(in srgb, var(--danger) 28%, transparent);
+  }
+  .cbadge.flash {
+    animation: cflash 0.4s ease-in-out 4;
+  }
+  @keyframes cflash {
+    50% {
+      background: var(--danger);
+      color: #fff;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cbadge.flash {
+      animation: none;
+      outline: 2px solid var(--danger);
+    }
   }
   .cbadge.warn {
     background: color-mix(in srgb, var(--warn) 28%, transparent);

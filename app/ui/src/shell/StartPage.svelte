@@ -10,6 +10,15 @@
   import { duration } from '../axes';
 
   let { overlay = false }: { overlay?: boolean } = $props();
+  /** The saved connection being renamed, and the name typed so far (D-ui-01). */
+  let renaming = $state<string | null>(null);
+  let renameTo = $state('');
+  function rename(id: string, to: string) {
+    const name = to.trim();
+    if (name) setSetting('savedConnections', settings.savedConnections.map((c) => (c.id === id ? { ...c, name } : c)));
+    renaming = null;
+  }
+  const focusSel = (el: HTMLInputElement) => (el.focus(), el.select());
   const name = (p: string) => p.split(/[\\/]/).pop() ?? p;
   const dir = (p: string) => p.slice(0, Math.max(0, p.length - name(p).length - 1));
   /** The folders' sessions with files open, the last used first. */
@@ -91,7 +100,12 @@
           <h2>Live sources<span class="spacer"></span><button class="linkbtn" data-start="newconn" onclick={go(() => liveActions.openConnect(false))}>New connection…</button></h2>
           {#each settings.savedConnections as c (c.id)}
             <div class="rec conn" data-conn={c.id}>
-              <button class="connopen" data-tip="Open the Connect dialog with this connection" onclick={go(() => liveActions.openConnect(false, c))}>{@html ICON.live}<span class="nm">{c.name}</span><span class="dir muted">{kindName(c.kind)}</span></button>
+              {#if renaming === c.id}
+                <input class="sel connname" data-connname use:focusSel bind:value={renameTo} aria-label="Name of this connection" onkeydown={(e) => (e.key === 'Enter' ? rename(c.id, renameTo) : e.key === 'Escape' ? (renaming = null) : null)} onblur={() => rename(c.id, renameTo)} />
+              {:else}
+                <button class="connopen" data-tip="Open the Connect dialog with this connection" onclick={go(() => liveActions.openConnect(false, c))}>{@html ICON.live}<span class="nm">{c.name}</span><span class="dir muted">{kindName(c.kind)}</span></button>
+                <button class="ibtn connx" data-connren aria-label="Rename {c.name}" data-tip="Rename" onclick={() => ((renaming = c.id), (renameTo = c.name))}>{@html ICON.edit}</button>
+              {/if}
               <button class="ibtn connx" aria-label="Remove {c.name}" data-tip="Remove from the start page" onclick={() => setSetting('savedConnections', settings.savedConnections.filter((x) => x.id !== c.id))}>{@html ICON.close}</button>
             </div>
           {:else}
@@ -327,6 +341,11 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
+  }
+  .connname {
+    flex: 1;
+    min-height: 28px;
+    margin: 2px 4px;
   }
   .connx {
     margin-right: 4px;

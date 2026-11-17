@@ -205,3 +205,37 @@ removed Nov 15; git history keeps them.
   cell is missing, and the channel keeps the column's place among the others. The labels travel with the recording
   (cache, HTML exports, browser-only mode) and a value map the person types is applied over them. An axis gets a tick per
   text only when the text channel is alone on it. This replaces the design's "text columns are left out" (D-ingest-03).
+- Import dialog and profiles (Nov 17, R2.5): the dialog has an "Opens as" choice (D-ui-57): Settings' "Files opened for
+  the first time" unless you pick another starter for this import only; it is not saved. An import profile now also
+  carries check sets, recipes, a starter layout and a channel prefix rule (D-check-01, S5.1-10, D-derive-01, D-share-01;
+  `ImportProfile` in `crates/decode/src/profile.rs`, in a "Also for files with this header" section). None of them
+  changes how a file decodes or its cache key. A recipe a profile picks applies at open as if attached to each file (a
+  file can still turn it off). The prefix rule's "by pattern" is a regular expression: the first group is the prefix,
+  else the whole match, else the whole name; it is a reading of "part of the name by pattern" the design leaves open.
+  A file's own prefix (Channel prefix…) still wins. A starter layout comes after a file's remembered layout and before
+  Settings' choice.
+- Code widgets (D-gauge-03, Nov 17): Settings › Run code widgets (on by default). Off, a code widget stays a value card
+  and never asks. This is the "organisation setting" as far as the app goes: a setting in `settings.json`; nothing in
+  the app locks it.
+- Save as rule (S5.3-14, Nov 17): the table's filter strip has it; the rule's expression is the filter's tests joined
+  with `&&` and `||`; blank and not-blank tests have no rule form and are left out.
+- R2.5 and R3 rows built Nov 17 (Sonnet run), notes owed to the design doc:
+  - Import profile (S5.1-12): it has an optional `name` (the Recipes manager's second tab, "Import profiles": rename,
+    recipe chips, a starter layout, "Use the tab in front", delete) and `panes` (how its files open, the dialog's "Opens
+    as": a starter; the design's "which panes the file opens with"). Neither changes how a file decodes.
+  - Recipes in a shared layout (D-cfg-07): Share embeds the recipes a layout's panes plot (`recipes` in the layout
+    JSON). Opening such a layout when you lack some says so and offers "Add recipes" (names you have are left alone).
+  - Renamed or moved recordings (D-cfg-04): a shared events file matched by identity under another name is offered an
+    update in one click (the note's "Update the folder" rewrites only the `recording` name; nothing else in the folder).
+    Layouts name their files by path and are not rewritten.
+  - Saved connections (D-ui-01): renamed on the start page (the pencil), edited in the Connect dialog (Save changes).
+  - Checks (D-check-03, -04): a group in which no check can run is one folded line, "N checks can't run here"; a check
+    that starts failing on a live file flashes the tab's badge (1.6 s; a static outline for reduced motion).
+  - Folder run (S5.3-15): goes into sub-folders; the report of a set's last run is kept in settings (`folderReports`,
+    this computer) and comes back when the dialog opens for that set and folder. It is a dialog tab, not the design's
+    separate tab; "re-run in the app" is the Run button.
+  - Events panel (S5.2-16): "Charts follow these filters" and the category chips are per tab (kept while the app runs;
+    not yet saved with the tab's layout or the session).
+  - Widget text (S5.4-05): changes at most ten times a second; the last value always lands.
+  - Widget editor (D-ui-59): New SVG widget and New code widget add a working example to the list.
+  - "Already open" warning (S4.3-11): the import dialog says when a file in it is open in a tab and will open again.

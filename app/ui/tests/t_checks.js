@@ -28,6 +28,19 @@ const RULES = {
   ],
 };
 
+// a set with a group no check of which can run on the file (D-check-03)
+const PARTIAL = {
+  schema: 1,
+  name: 'Weather station',
+  runs_on_any_file: true,
+  info_groups: [],
+  check: [
+    { name: 'Satellites above 6', kind: 'check', group: 'GPS', expect: 'gps_sats > 6', severity: 'fail', grace: 0, settle: 0, enabled: true },
+    { name: 'Pressure above 900', kind: 'check', group: 'Weather', expect: 'pressure > 900', severity: 'fail', grace: 0, settle: 0, enabled: true },
+    { name: 'Wind below 20', kind: 'check', group: 'Weather', expect: 'wind < 20', severity: 'fail', grace: 0, settle: 0, enabled: true },
+  ],
+};
+
 run(
   'checks',
   async ({ p, check, text, until, fake, wait, settingsLS }) => {
@@ -36,6 +49,12 @@ run(
     const view = () => p.evaluate(() => window.__tlmApp.view().t0);
     await rail('checks');
     check('the Rules & checks panel opens from the rail', await until(() => !!document.querySelector('#checksBody')));
+    // D-check-03: the group where nothing can run is one folded line, not a group
+    check('a group no check of which can run is folded into one line', await until(() => /2 checks can't run here/.test(document.querySelector('[data-cset="Weather station"]')?.textContent ?? '')), await text('[data-cset="Weather station"]'));
+    check('the group is not listed', !(await p.$('[data-cset="Weather station"] [data-cgrp="Weather"]')) && !!(await p.$('[data-cset="Weather station"] [data-cgrp="GPS"]')));
+    await p.click('[data-cfold="Weather station"]');
+    check('the line opens the group', await until(() => !!document.querySelector('[data-cset="Weather station"] [data-cgrp="Weather"]')));
+    await p.click('[data-cfold="Weather station"]');
     check('it is called Rules & checks', /rules & checks/i.test(await text('#checksPanel .phd')), await text('#checksPanel .phd'));
     check('the sets that run on the file are listed', await until(() => /Flight acceptance/.test(document.querySelector('#checksBody').innerText) && /Event rules/.test(document.querySelector('#checksBody').innerText)), await body());
     const asked = await fake(() => window.__tlmFake.checkRuns.at(-1));
@@ -142,10 +161,12 @@ run(
     await p.fill(`${nrow} [data-kf="group"]`, 'Power');
     check('a check offers Missing values fail, off at first (missing values are no data; D-check-02)', !(await p.isChecked(`${nrow} [data-kf="missing"]`)));
     await p.check(`${nrow} [data-kf="missing"]`);
+    await p.fill('#recDlg [data-sdetail]', '2x,10s,2min');
     await p.click('#recDlg [data-ssave]');
     check('Save keeps the set in the core', await until(() => window.__tlmFake.checkSetSaves.length === 1), await fake(() => window.__tlmFake.checkSetSaves.length));
     const saved = await fake(() => window.__tlmFake.checkSetSaves[0]);
     check('with the edits', saved.replacing === 'Flight acceptance' && saved.set.check.length === 5 && saved.set.check[1].expect === 'motor_rpm > 3' && saved.set.check[4].expect === 'battery_v >= 16' && saved.set.check[4].name === 'Sixteen volts' && saved.set.check[4].missing === 'fail' && saved.set.check[0].missing === undefined, saved.set.check.map((k) => k.expect));
+    check('the set\'s own Light detail is saved with it (D-cli-06)', saved.set.detail === '2x,10s,2min', saved.set.detail);
     check('and runs it again, showing the new check', await until(() => /Sixteen volts/.test(document.querySelector('#checksBody').innerText), null, 6000), await body());
 
     // the Checks pane view, on the pane that holds flight_mode and accel_x
@@ -176,9 +197,9 @@ run(
   },
   {
     files: { '/data/flight.tlm': { channels: ['motor_rpm', 'battery_v', 'flight_mode', 'accel_x', 'gps_sats'] } },
-    setupArg: [SET, RULES],
-    setup: (fake, [SET, RULES]) => {
-      fake.checkSets = [SET, RULES];
+    setupArg: [SET, RULES, PARTIAL],
+    setup: (fake, [SET, RULES, PARTIAL]) => {
+      fake.checkSets = [SET, RULES, PARTIAL];
       fake.checkOutcomes = {
         'RPM below 7500 in Mission': { verdict: 'fail', runs: [[3, 4.5], [10, 11]], worst: 7995 },
         'Battery above 21 V': { verdict: 'pass' },
@@ -186,6 +207,9 @@ run(
         'Air temperature under 30 °C': { verdict: 'fail', runs: [[20, 21]] },
         Shock: { verdict: 'mark', runs: [[5, 5], [6, 6.5], [7, 7]] },
         'ESC hot': { verdict: 'mark', runs: [[12, 14]] },
+        'Satellites above 6': { verdict: 'pass' },
+        'Pressure above 900': { verdict: 'cant', message: "There's no channel called pressure" },
+        'Wind below 20': { verdict: 'cant', message: "There's no channel called wind" },
       };
     },
   },

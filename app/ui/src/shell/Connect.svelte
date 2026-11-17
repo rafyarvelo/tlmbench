@@ -170,6 +170,7 @@
   <footer>
     <span class="muted">{adding ? 'Joins this session as another source' : record ? 'Opens in a new live tab, recorded' : 'Opens in a new live tab'}</span><span class="spacer"></span>
     <button class="tbtn" onclick={() => (live.connect = false)}>Cancel</button>
+    {#if fromSaved}<button class="tbtn" id="lvSaveChanges" data-tip="Keep these changes to the saved connection without connecting" onclick={() => liveActions.saveConnection(live.preset!.id!, form())}>Save changes</button>{/if}
     <button
       class="tbtn primary"
       id="lvConnect"

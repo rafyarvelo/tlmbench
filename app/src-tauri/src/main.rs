@@ -196,6 +196,10 @@ struct Opened {
     skipped: Vec<Skipped>,
     /// Channels with samples called missing (see `Adjust`): how many, and for how long.
     missing: Vec<Missing>,
+    /// The import profile the file was read with (given, else the saved one), for what it carries besides the decode:
+    /// check sets, recipes, a starter layout and the channel prefix rule.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    profile: Option<ImportProfile>,
 }
 
 /// How much of a channel is missing.
@@ -496,19 +500,25 @@ async fn open<R: tauri::Runtime>(
 ) -> Result<Opened, String> {
     let store = files.store.clone();
     let adjust = adjusts(adjust);
-    let attached = recipes.unwrap_or_default();
+    let mut attached = recipes.unwrap_or_default();
     let exclude = exclude.unwrap_or_default();
-    let (base, shown, derived, skipped) = spawn_blocking(move || -> Result<_, String> {
+    let (base, shown, derived, skipped, profile) = spawn_blocking(move || -> Result<_, String> {
         let profile = profile.or_else(|| saved_profile(store.root(), Path::new(&path)));
+        // the recipes a profile picks apply to its files, as if attached to each (a file can still turn one off)
+        for r in profile.iter().flat_map(|p| &p.recipes) {
+            if !attached.contains(r) && !exclude.contains(r) {
+                attached.push(r.clone());
+            }
+        }
         let base = store
             .clone()
-            .with_profile(profile)
+            .with_profile(profile.clone())
             .with_adjust(adjust)
             .open_part(Path::new(&path), None, part.as_deref())
             .map_err(|e| e.to_string())?;
         let base = Arc::new(base);
         let (shown, derived, skipped) = with_derived(&store, &base, &attached, &exclude, &[])?;
-        Ok((base, shown, derived, skipped))
+        Ok((base, shown, derived, skipped, profile))
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -523,7 +533,7 @@ async fn open<R: tauri::Runtime>(
         build_in_background(shown.clone(), progress);
     }
     let missing = missing_all(shown.recording());
-    Ok(Opened { id, info, range, status, derived, skipped, missing })
+    Ok(Opened { id, info, range, status, derived, skipped, missing, profile })
 }
 
 /// One file of a tab with several, as asked for.
@@ -729,7 +739,16 @@ async fn derive_apply(
             let o = l.opened();
             let info = o.recording().info().clone();
             let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
-            Ok(Opened { id: file, info, range, status: Status::Built, derived, skipped, missing: Vec::new() })
+            Ok(Opened {
+                id: file,
+                info,
+                range,
+                status: Status::Built,
+                derived,
+                skipped,
+                missing: Vec::new(),
+                profile: None,
+            })
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -751,7 +770,7 @@ async fn derive_apply(
         build_in_background(shown.clone(), progress);
     }
     let missing = missing_all(shown.recording());
-    Ok(Opened { id: file, info, range, status, derived, skipped, missing })
+    Ok(Opened { id: file, info, range, status, derived, skipped, missing, profile: None })
 }
 
 /// One value label: channel `channel`'s stored number `value` is called `text`.
@@ -820,7 +839,7 @@ async fn adjust_apply(
         build_in_background(shown.clone(), progress);
     }
     let missing = missing_all(shown.recording());
-    Ok(Opened { id: file, info, range, status, derived, skipped, missing })
+    Ok(Opened { id: file, info, range, status, derived, skipped, missing, profile: None })
 }
 
 /// Yours, then the events the folder's `.tlmbench/events/` shares for this recording that you don't have (read-only,
@@ -1508,7 +1527,16 @@ fn register_live<R: tauri::Runtime>(files: &Files, window: &tauri::Window<R>, en
     let o = entry.opened();
     let info = o.recording().info().clone();
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
-    Opened { id, info, range, status: Status::Built, derived: Vec::new(), skipped: Vec::new(), missing: Vec::new() }
+    Opened {
+        id,
+        info,
+        range,
+        status: Status::Built,
+        derived: Vec::new(),
+        skipped: Vec::new(),
+        missing: Vec::new(),
+        profile: None,
+    }
 }
 
 fn tlmbench_decode_descriptor(text: &str) -> Result<tlmbench_decode::descriptor::Descriptor, String> {
@@ -2513,6 +2541,36 @@ fn resolve_own(own: &mut tlmbench_store::config::Own, files: &Files) {
     }
 }
 
+/// The shared events files of the folder that name an open recording by an old name (it was renamed or moved): the
+/// UI offers to update them in one click. Only reads.
+#[tauri::command]
+async fn shared_renames(
+    folder: String,
+    mut recordings: Vec<tlmbench_store::config::Recording>,
+    files: State<'_, Files>,
+) -> Result<Vec<tlmbench_store::config::Renamed>, String> {
+    let mut own = tlmbench_store::config::Own { recordings: std::mem::take(&mut recordings), ..Default::default() };
+    resolve_own(&mut own, &files);
+    spawn_blocking(move || tlmbench_store::config::renamed_recordings(&tlm_dir(&folder), &own.recordings))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Writes the recordings' current names into the shared events files that hold an old one: a user's click, and the
+/// only thing it changes in the folder. Returns how many files it rewrote.
+#[tauri::command]
+async fn shared_renames_apply(
+    folder: String,
+    recordings: Vec<tlmbench_store::config::Recording>,
+    files: State<'_, Files>,
+) -> Result<usize, String> {
+    let mut own = tlmbench_store::config::Own { recordings, ..Default::default() };
+    resolve_own(&mut own, &files);
+    spawn_blocking(move || tlmbench_store::config::update_renamed(&tlm_dir(&folder), &own.recordings))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// What `config_use` tells the UI about the folder it was pointed at.
 #[derive(Serialize)]
 struct ConfigFolder {
@@ -3081,22 +3139,27 @@ async fn export_html<R: tauri::Runtime>(
         };
         let out = Path::new(&req.out);
         let window = html::Window::parse(req.detail.as_deref().unwrap_or("3x,30s,10min"))?;
-        // raw windows around every event and every violation the sets marked
-        let windows: Vec<(i64, i64)> = window
-            .map(|w| {
-                let evs = extra["events"][0]["events"].as_array().into_iter().flatten();
-                let marked = extra["checks"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .flat_map(|c| c["events"].as_array().into_iter().flatten());
-                evs.chain(marked)
-                    .filter_map(|e| {
-                        Some(w.around(e["start"].as_str()?.parse().ok()?, e["duration"].as_str()?.parse().ok()?))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        // raw windows around every event and every violation the sets marked; a set's own `detail` is the default for
+        // its violations when the export dialog sent none
+        let windows: Vec<(i64, i64)> = if let Some(w) = window {
+            let span = |win: &html::Window, e: &serde_json::Value| -> Option<(i64, i64)> {
+                Some(win.around(e["start"].as_str()?.parse().ok()?, e["duration"].as_str()?.parse().ok()?))
+            };
+            let mut out: Vec<(i64, i64)> =
+                extra["events"][0]["events"].as_array().into_iter().flatten().filter_map(|e| span(&w, e)).collect();
+            for c in extra["checks"].as_array().into_iter().flatten() {
+                let mine = match (&req.detail, c["set"]["detail"].as_str()) {
+                    (None, Some(d)) => html::Window::parse(d)?,
+                    _ => Some(w),
+                };
+                if let Some(mine) = mine {
+                    out.extend(c["events"].as_array().into_iter().flatten().filter_map(|e| span(&mine, e)));
+                }
+            }
+            out
+        } else {
+            Vec::new()
+        };
         let mut first = 0usize;
         let mut exported = Vec::new();
         for (m, map) in &members {
@@ -3716,6 +3779,8 @@ macro_rules! commands {
             packet_parts,
             import_inspect,
             profile_save,
+            shared_renames,
+            shared_renames_apply,
             usage,
             cache_info,
             cache_clear,

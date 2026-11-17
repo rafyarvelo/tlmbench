@@ -57,6 +57,26 @@ run(
     check('now with Save layout and Delete', (await menuItems()).includes('save') && (await menuItems()).includes('delete'), await menuItems());
     await p.keyboard.press('Escape');
 
+    // a shared layout that plots a recipe you lack offers to add it (D-cfg-07)
+    await fake((v) => (window.__tlmFake.views['/rec']['power.tlmview.json'] = v), { schema: 1, name: 'Power review', by: 'a.chen', files: [{ path: 'flights/a.tlm', slot: 1 }], panes: [{ channels: ['accel_x'] }, { channels: ['Power'] }], recipes: [{ name: 'Power', expr: 'accel_x * accel_y', unit: 'W', category: 'Derived', decimals: 1 }] });
+    await p.click('#wsTabNew');
+    await until(() => !!document.querySelector('.addmenu [data-shopen="power.tlmview.json"]'));
+    await p.click('.addmenu [data-shopen="power.tlmview.json"]');
+    check('opening it says which recipes you lack and offers to add them', await until(() => /plots a recipe you don't have: Power/.test(document.querySelector('#wsNote .txt')?.textContent ?? '')) && /Add recipe/.test(await p.$eval('#wsNote button.tbtn', (e) => e.textContent).catch(() => '')), await noteText());
+    await p.click('#wsNote button.tbtn');
+    check('Add recipe puts it in the library', await until(() => window.__tlmFake.recipes.some((r) => r.name === 'Power' && r.expr === 'accel_x * accel_y' && !r.automatic)), await fake(() => window.__tlmFake.recipes));
+    await p.click('#wsTabs .wstab[data-tip="/rec/flights/a.tlm"]');
+
+    // a recording that was renamed or moved: the shared events are filed under its old name, and one click updates them (D-cfg-04)
+    await fake(() => (window.__tlmFake.sharedRenames = [{ file: 'events/a.toml', from: 'old/a.tlm', to: 'flights/a.tlm' }]));
+    await p.click('#wsTabs .wstab[data-tip="/rec/flights/a.tlm"]');
+    await p.click('#wsTabs .wstab:not([aria-selected=true])');
+    await p.click('#wsTabs .wstab[data-tip="/rec/flights/a.tlm"]');
+    check('the folder\'s events under an old name are offered an update', await until(() => /filed under its old name, old\/a\.tlm/.test(document.querySelector('#wsNote .txt')?.textContent ?? '')) && /Update the folder/.test(await p.$eval('#wsNote button:not(.ibtn)', (e) => e.textContent).catch(() => '')), await noteText());
+    await p.click('#wsNote button:not(.ibtn)');
+    check('one click writes them, and says how many', await until(() => /Updated 1 shared events file/.test(document.querySelector('#wsNote .txt')?.textContent ?? '')) && (await fake(() => window.__tlmFake.renamesApplied.length)) === 1, await noteText());
+    check('it asked about the open recordings by their path in the folder', JSON.stringify(await fake(() => window.__tlmFake.renamesApplied[0].recordings.map((r) => r.name))) === '["flights/a.tlm"]', await fake(() => window.__tlmFake.renamesApplied));
+
     // Share with this folder…
     await p.click('#wsTabs .wstab[data-tip="/rec/flights/a.tlm"]');
     await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'a.tlm');

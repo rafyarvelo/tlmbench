@@ -263,6 +263,7 @@
             {#if layout}<label class="radio"><input type="checkbox" data-slayout checked={attachedLayout} onchange={(e) => attach('layouts', layout, e.currentTarget.checked)} /><span>Whenever the layout {layout} is in front</span></label>{/if}
           {/if}
           <span class="hint">Runs where it's attached; a check whose channel is missing says "can't run".</span>
+          <label class="lvf sdetail"><span>Light export keeps raw data around its violations</span><input class="sel" data-sdetail placeholder="3x,30s,10min" aria-label="Raw windows for this set in a Light export" value={ed.set.detail ?? ''} oninput={(e) => (ed.set.detail = e.currentTarget.value.trim() || undefined)} spellcheck="false" /><small class="muted">A factor of the event's length, the least and the most: 3x,30s,10min. 30s alone is the least; 0 keeps none. The export dialog's own fields win when changed.</small></label>
         </div>
       </div>
 

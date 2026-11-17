@@ -142,9 +142,12 @@ run(
     // Import settings… on a file in Explorer: its saved settings are filled in; saving opens it again with them
     await fake(() => (window.__tlmFake.pickFolder = '/data'));
     await p.click('#exFolder');
+    await fake((a) => window.__tlmFake.drop([a]), A);
+    await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].some((n) => n.textContent === 'run_a.csv'));
     await p.click('#explorer .row.file[data-path$="run_a.csv"]', { button: 'right' });
     await p.click('.filemenu [data-fm="import"]');
     check('the dialog opens on the file', await until(() => !!document.querySelector('#importDlg')) && /Open run_a\.csv/.test(await text('#importDlg header')));
+    check('it says the file is open already and will open again (S4.3-11)', /Already open: run_a\.csv\. Importing again opens it again/.test((await text('#impAgain')) ?? ''), [await tabs(), await text('#importDlg')]);
     check('with its saved settings', /Using settings from its saved settings/.test((await text('#impApplied')) ?? '') && (await p.inputValue('[data-h=Speed] .impnm')) === 'v' && (await p.isChecked('input[name=imprate][value=fixed]')));
     await p.fill('[data-h=Speed] .impnm', 'speed2');
     const opens = await fake(() => window.__tlmFake.openedWith.length);
@@ -197,7 +200,7 @@ run(
       f.drop(['/data/s1.csv']);
     });
     await until(() => !!document.querySelector('#importDlg'));
-    check('Opens as starts at the Settings choice', /Settings' choice \(Starter charts\)/.test(await p.$eval('#impStarter option[value=default]', (e) => e.textContent)) && (await p.inputValue('#impStarter')) === 'default');
+    check('Opens as starts at the Settings choice', /Settings' choice \(Starter charts\)/.test(await p.$eval('#impStarter option[value=""]', (e) => e.textContent)) && (await p.inputValue('#impStarter')) === '');
     await p.selectOption('#impWhere', 'tabs');
     await p.selectOption('#impStarter', 'table');
     await p.click('#impGo');
@@ -205,9 +208,18 @@ run(
     check('Settings is unchanged', ((await p.evaluate(() => JSON.parse(localStorage.getItem('tlmbench.settings') || '{}').fileOpenNew)) ?? 'starter') === 'starter');
     await fake(() => window.__tlmFake.drop(['/data/s2.csv']));
     await until(() => !!document.querySelector('#importDlg'));
-    check('the next import starts at the Settings choice again', (await p.inputValue('#impStarter')) === 'default');
+    check('the next import starts at the Settings choice again', (await p.inputValue('#impStarter')) === '');
     await p.click('#impGo');
     check('and opens with starter charts', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 's2.csv' && document.querySelectorAll('#stack [data-table]').length === 0 && document.querySelectorAll('#stack .pane').length >= 1));
+    // the choice is part of the header's profile: another file with it opens as a table without asking (design: Import step)
+    check('the profile keeps the choice', (await fake(() => window.__tlmFake.saved.find((s) => s.header[0] === 'ts1').profile.panes)) === 'table');
+    await fake(() => {
+      const f = window.__tlmFake;
+      f.csv('/data/s3.csv', ['ts1', 'a', 'b'], { unit: 's', rate: 10 });
+      f.files['/data/s3.csv'] = {};
+      f.drop(['/data/s3.csv']);
+    });
+    check('a file with that header opens as a table, no dialog', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 's3.csv' && document.querySelectorAll('#stack [data-table]').length === 1) && !(await dlg()));
 
     // a file that isn't a CSV has no import settings
     await p.click('#explorer .row.file[data-path$="flight.tlm"]', { button: 'right' });

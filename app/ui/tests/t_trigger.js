@@ -88,6 +88,12 @@ run(
     await wait(5200);
     const runs = (await fake(() => window.__tlmFake.checkRuns)).filter((r) => r.path === TCP && r.sets.includes('Bench'));
     check('the checks run on the live file again and again', runs.length >= 2 && runs.length <= 5, runs.length);
+
+    // D-check-04: a check that starts failing flashes the tab's badge, and the failure is an event
+    check('the badge is up and quiet while everything passes', !!(await p.$('#wsTabs .cbadge')) && !(await p.$('#wsTabs .cbadge[data-flash]')));
+    await fake(() => (window.__tlmFake.checkOutcomes = { 'RPM under 9000': { verdict: 'fail', runs: [[1, 2]], worst: 9500 } }));
+    check('a check that starts failing flashes the badge', await until(() => !!document.querySelector('#wsTabs .cbadge[data-flash]'), null, 8000), await text('#wsTabs'));
+    check('and says so', /✗/.test(await text('#wsTabs .cbadge')), await text('#wsTabs .cbadge'));
   },
   {
     files: { '/data/frames.toml': {} },

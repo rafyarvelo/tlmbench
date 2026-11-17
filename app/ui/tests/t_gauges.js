@@ -100,6 +100,26 @@ run(
     check('a card turns red with "✗ check" while the time it reads is inside a violation', await until(() => document.querySelector('#stack [data-gw="motor_rpm"]')?.classList.contains('chkviol')), await p.$eval(card('motor_rpm'), (e) => e.className));
     check('its tooltip names the check', /RPM below 7500/.test(await p.$eval(card('motor_rpm'), (e) => e.dataset.tip ?? '')), await p.$eval(card('motor_rpm'), (e) => e.dataset.tip));
     check('a card of a channel no check reads is unmarked', await p.$eval(card('pitch'), (e) => !e.classList.contains('chkviol')));
+
+    // S5.4-05: a widget's text changes at most ten times a second, and the last value always lands
+    const burst = await p.evaluate(async () => {
+      const patch = window.__tlmGauges.patch;
+      let writes = 0;
+      const dst = new Proxy({ txt: '0' }, { set: (t, k, v) => ((writes++, (t[k] = v)), true) });
+      let last = { txt: '0' };
+      const t0 = performance.now();
+      let n = 0;
+      while (performance.now() - t0 < 450) {
+        const src = { txt: String(++n) };
+        patch(dst, last, src);
+        last = src;
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      await new Promise((r) => setTimeout(r, 200));
+      return { writes, shown: dst.txt, wanted: String(n), frames: n };
+    });
+    check('text is written at most about ten times a second under a fast change', burst.frames > 30 && burst.writes >= 3 && burst.writes <= 7, burst);
+    check('and the last value always lands', burst.shown === burst.wanted, burst);
   },
   {
     files: { '/data/flight.tlm': { channels: names, units } },

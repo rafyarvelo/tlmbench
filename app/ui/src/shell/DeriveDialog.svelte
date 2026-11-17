@@ -100,6 +100,9 @@
         {:else}
           <label class="radio"><input type="radio" name="rsc" value="file" checked={derive.scope === 'file'} onchange={() => (derive.scope = 'file')} /><span>This file <small>only</small></span></label>
         {/if}
+        {#if /\.(csv|tsv|txt)$/i.test(ui.path) && !editing}
+          <label class="radio"><input type="radio" name="rsc" value="profile" checked={derive.scope === 'profile'} onchange={() => (derive.scope = 'profile')} /><span>Files with this import profile <small>every file with this header</small></span></label>
+        {/if}
         <label class="radio"><input type="radio" name="rsc" value="auto" checked={derive.scope === 'auto'} onchange={() => (derive.scope = 'auto')} /><span>Any file that has these channels <small>like event rules</small></span></label>
       </div>
       <details class="rechelp"><summary>Functions</summary><p class="hint">{FN_HELP}</p></details>

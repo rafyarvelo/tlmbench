@@ -10,6 +10,9 @@ use tlmbench_store::{Opened, config, events};
 
 use crate::{Common, Fail, Span, open_parts, recipe_library, span_of, store};
 
+/// Light's raw windows when neither `--detail` nor a check set says (the design's default).
+const DEFAULT_DETAIL: &str = "3x,30s,10min";
+
 #[derive(clap::Args, Debug)]
 pub struct Args {
     /// Recordings, the first filling slot 1 of the layout, the next slot 2, and so on
@@ -41,9 +44,10 @@ pub struct Args {
     #[arg(long, value_enum)]
     pub mode: Option<ModeArg>,
     /// Light's raw windows around events and violations: `30s` (the minimum width), or `3x,30s,10min` (the factor of the
-    /// event's duration, the minimum and the cap); `0` turns them off. Default 3x,30s,10min
-    #[arg(long, default_value = "3x,30s,10min")]
-    pub detail: String,
+    /// event's duration, the minimum and the cap); `0` turns them off. Default 3x,30s,10min, or what a check set says
+    /// for its own violations (`detail` in its TOML)
+    #[arg(long)]
+    pub detail: Option<String>,
     /// One HTML file for email or `file://` (`--out` names the file): every raw sample when they fit `--single-limit`,
     /// else Light with the finest levels left out to fit. A folder export needs a web server: a page opened from
     /// `file://` can't fetch its data or the core
@@ -258,7 +262,8 @@ pub fn run(a: Args) -> Result<(), Fail> {
             })?);
         }
     }
-    let window = html::Window::parse(&a.detail).map_err(|e| Fail(3, format!("--detail: {e}")))?;
+    let window = html::Window::parse(a.detail.as_deref().unwrap_or(DEFAULT_DETAIL))
+        .map_err(|e| Fail(3, format!("--detail: {e}")))?;
     let mut events_out = Vec::new();
     let mut checks_out = Vec::new();
     for (k, o) in opened.iter().enumerate() {
@@ -291,21 +296,22 @@ pub fn run(a: Args) -> Result<(), Fail> {
         }
         if let Some(w) = window {
             // raw windows around every event, and around the violations the check sets marked (a check's events)
-            let marked = checks_out
-                .iter()
-                .filter(|c| c["file"] == k)
-                .flat_map(|c| c["events"].as_array().cloned().unwrap_or_default());
-            let evs_json: Vec<Value> = marked.collect();
-            files[k].windows = evs
-                .iter()
-                .map(|e| (e.start.as_str(), e.duration.as_str()))
-                .chain(
-                    evs_json
-                        .iter()
-                        .map(|e| (e["start"].as_str().unwrap_or("0"), e["duration"].as_str().unwrap_or("0"))),
-                )
-                .filter_map(|(s, d)| Some(w.around(s.parse().ok()?, d.parse().ok()?)))
-                .collect();
+            // a set's own `detail` is the default for its violations when --detail isn't given
+            let mut spans: Vec<(i64, i64)> =
+                evs.iter().filter_map(|e| Some(w.around(e.start.parse().ok()?, e.duration.parse().ok()?))).collect();
+            for c in checks_out.iter().filter(|c| c["file"] == k) {
+                let mine = match (&a.detail, c["set"]["detail"].as_str()) {
+                    (None, Some(d)) => {
+                        html::Window::parse(d).map_err(|e| Fail(3, format!("detail in the set: {e}")))?
+                    }
+                    _ => Some(w),
+                };
+                let Some(mine) = mine else { continue };
+                spans.extend(c["events"].as_array().into_iter().flatten().filter_map(|e| {
+                    Some(mine.around(e["start"].as_str()?.parse().ok()?, e["duration"].as_str()?.parse().ok()?))
+                }));
+            }
+            files[k].windows = spans;
         }
         events_out.push(json!({ "file": k, "events": evs }));
     }
@@ -324,7 +330,7 @@ pub fn run(a: Args) -> Result<(), Fail> {
         until,
     };
     let config = json!({
-        "layout": layout, "checks": sets, "detail": a.detail, "mode": format!("{:?}", a.mode), "budget": budget, "single_limit": single.is_some().then_some(limit),
+        "layout": layout, "checks": sets, "detail": a.detail.as_deref().unwrap_or(DEFAULT_DETAIL), "mode": format!("{:?}", a.mode), "budget": budget, "single_limit": single.is_some().then_some(limit),
         "redact": a.redact, "all_channels": a.all_channels, "span": [from, until],
     });
     // the widgets of your own the layout can use, as shared in the config folders: SVG made safe, code as a value card

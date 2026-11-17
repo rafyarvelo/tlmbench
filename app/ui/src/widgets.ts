@@ -28,6 +28,23 @@ export const WIDGET_EXAMPLE: Omit<CustomWidget, 'id'> = {
   svg: '<svg viewBox="0 0 120 96"><path d="M30 86h60" stroke="currentColor" stroke-width="2" opacity=".4"/><g transform="rotate({{angle}} 60 86)"><path d="M60 86V30" stroke="{{color}}" stroke-width="6" stroke-linecap="round"/><circle cx="60" cy="26" r="9" fill="{{color}}"/></g><text x="60" y="14" text-anchor="middle" font-size="12" fill="currentColor">{{value}} {{unit}}</text></svg>',
 };
 
+/** A working code widget to start from: a bar and the value, drawn by `build` once and `update` per frame. */
+export const CODE_WIDGET_EXAMPLE: Omit<CustomWidget, 'id'> = {
+  name: 'Level bar (code)',
+  icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 18h14M7 18V9M12 18V5M17 18v-6"/></svg>',
+  code: `{
+  build(el, info) {
+    el.innerHTML = '<div style="font:12px sans-serif;color:' + info.fg + '"><div class="n"></div><div style="height:10px;border-radius:5px;background:rgba(128,128,128,.3);margin:6px 0"><div class="b" style="height:10px;border-radius:5px;width:0"></div></div><b class="t"></b></div>';
+    el.querySelector('.n').textContent = info.name;
+  },
+  update(el, x) {
+    el.querySelector('.b').style.width = x.pct + '%';
+    el.querySelector('.b').style.background = x.color;
+    el.querySelector('.t').textContent = x.txt + ' ' + x.unit;
+  }
+}`,
+};
+
 export const esc = (s: unknown): string => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 const INVALID = '<svg viewBox="0 0 120 96"><text x="60" y="50" text-anchor="middle" font-size="9" fill="currentColor">Not a valid SVG</text></svg>';

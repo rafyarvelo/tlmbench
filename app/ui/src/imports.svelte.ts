@@ -31,6 +31,46 @@ export interface Profile {
   time: { type: 'auto' } | { type: 'none' } | { type: 'column'; name: string; unit: string | null };
   rate: { type: 'as_recorded' } | { type: 'samples' } | { type: 'resample'; hz: number } | { type: 'assume'; hz: number };
   columns: { source: string; name?: string | null; unit?: string | null; kind?: 'number' | 'text' | 'skip' | null; category?: string | null }[];
+  /** What the profile adds around the file, none of it a decode choice: check sets and recipes by name, a starter
+   *  layout, and the channel prefix rule (tlmbench_decode::profile::PrefixRule). */
+  /** The profile's own name in the Recipes manager (S5.1-12). */
+  name?: string | null;
+  check_sets?: string[];
+  recipes?: string[];
+  layout?: string | null;
+  /** The panes its files open with: a starter (D-ui-57); none: Settings' "Files opened for the first time". */
+  panes?: StarterPanes | null;
+  prefix?: PrefixRule | null;
+}
+
+export type PrefixRule = { type: 'file_name' } | { type: 'separator' } | { type: 'pattern'; pattern: string } | { type: 'custom'; text: string };
+
+/** The profile each open file was read with, by path (what it carries besides the decode: D-check-01, D-derive-01,
+ *  D-share-01, S5.1-10). */
+export const profileOf = $state({} as Record<string, Profile>);
+
+/** A file's channel prefix by a profile's rule: the file's name without its extension, cut or matched as the rule says. */
+export function prefixFor(rule: PrefixRule | null | undefined, path: string): string {
+  const name = path.split(/[\\/]/).pop() ?? path;
+  const stem = name.replace(/\.[^.]*$/, '') || name;
+  switch (rule?.type) {
+    case 'separator': {
+      const i = stem.search(/[_\-. ]/);
+      return i > 0 ? stem.slice(0, i) : stem;
+    }
+    case 'pattern': {
+      try {
+        const m = new RegExp(rule.pattern).exec(stem);
+        return (m && (m[1] ?? m[0])) || stem;
+      } catch {
+        return stem;
+      }
+    }
+    case 'custom':
+      return rule.text || stem;
+    default:
+      return stem;
+  }
 }
 
 export interface Found {
@@ -77,6 +117,13 @@ export interface Job {
   near: Found['near'];
   /** The name of what was applied from a similar file. */
   applied: string | null;
+  /** What the profile adds for these files: check sets, recipes, a starter layout, a channel prefix rule. */
+  checkSets: string[];
+  recipes: string[];
+  layout: string;
+  /** How its files open ('' follows Settings' choice for a file opened for the first time). */
+  panes: '' | StarterPanes;
+  prefix: PrefixRule | null;
 }
 
 export const RATE_UNITS: [string, number][] = [
@@ -116,8 +163,6 @@ export const imp = $state({
   jobs: [] as Job[],
   sel: 0,
   where: 'tabs' as Where,
-  /** How the files open this time: 'default' follows Settings' "Files opened for the first time" (D-ui-57). */
-  starter: 'default' as 'default' | StarterPanes,
   /** Files left out: what they are not. */
   bad: [] as { path: string; why: string }[],
   busy: false,
@@ -145,6 +190,11 @@ export function makeJob(paths: string[], insp: Inspection, near: Found['near']):
     q: '',
     near,
     applied: null,
+    checkSets: [],
+    recipes: [],
+    layout: '',
+    panes: '',
+    prefix: null,
   };
 }
 
@@ -163,7 +213,13 @@ export function toProfile(job: Job): Profile {
     if (c.category.trim()) ch.category = c.category.trim();
     if (Object.keys(ch).length > 1) columns.push(ch);
   }
-  return { time, rate, columns };
+  const out: Profile = { time, rate, columns };
+  if (job.checkSets.length) out.check_sets = [...job.checkSets];
+  if (job.recipes.length) out.recipes = [...job.recipes];
+  if (job.layout) out.layout = job.layout;
+  if (job.panes) out.panes = job.panes;
+  if (job.prefix && job.prefix.type !== 'file_name') out.prefix = job.prefix;
+  return out;
 }
 
 /** Takes a saved profile's choices for the columns this header has (a similar file's: the rest stay as detected). */
@@ -188,6 +244,11 @@ export function applyProfile(job: Job, p: Profile, label: string): void {
     if (ch.kind) c.kind = ch.kind;
     if (ch.category) c.category = ch.category;
   }
+  job.checkSets = [...(p.check_sets ?? [])];
+  job.recipes = [...(p.recipes ?? [])];
+  job.layout = p.layout ?? '';
+  job.panes = p.panes ?? '';
+  job.prefix = p.prefix ?? null;
   job.applied = label;
 }
 

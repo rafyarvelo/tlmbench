@@ -51,6 +51,21 @@ export interface Workspace {
   /** A shared view's time range: seconds from the primary file's first sample. */
   view?: [number, number];
   panes: WsPane[];
+  /** A shared layout's recipes: the ones its panes plot, so a person who lacks them can add them (D-cfg-07). */
+  recipes?: { name: string; expr: string; unit?: string | null; category?: string | null; decimals?: number | null }[];
+}
+
+/** The channel names a layout's panes use, without a file's `·n` slot suffix. */
+export function namesUsed(ws: Workspace): Set<string> {
+  const out = new Set<string>();
+  const add = (n: string | undefined) => n && out.add(n.replace(/·\d+$/, ''));
+  for (const p of ws.panes) {
+    p.channels?.forEach(add);
+    add(p.x);
+    p.hide?.forEach(add);
+    Object.keys(p.widgets ?? {}).forEach(add);
+  }
+  return out;
 }
 
 /** A shared view's file name for a layout name: `flight-review.tlmview.json`. */

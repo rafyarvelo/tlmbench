@@ -62,9 +62,10 @@ import {
   units,
 } from './stack.svelte';
 import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
-import { applyProfile, type Where, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
+import { filterExpr } from './filterrule';
+import { applyProfile, type Profile, fmtRate, imp, prefixFor, profileOf, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
 import { type ExportContext, exp, FORMATS, html, img } from './exports.svelte';
-import { derive, type DerivedInfo, manager, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
+import { derive, type DerivedInfo, manager, type SavedProfile, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
 import { SvgContext, svg } from './svgctx';
 import type { CustomWidget } from './widgets';
 import { cfg, choices, defaultPick, type Problem, rowKey, share as shareDlg, type ShareRow } from './share.svelte';
@@ -72,7 +73,7 @@ import { pluginsState, readPlugins } from './plugins.svelte';
 import { tabs, type TabInfo } from './tabs.svelte';
 import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, isLocked, setLocked, ui, viewLocked } from './ui.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
-import { slotsUsed, fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
+import { namesUsed, slotsUsed, fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
 
 interface ChannelInfo {
   name: string;
@@ -110,6 +111,8 @@ interface Opened {
   derived?: DerivedInfo[];
   skipped?: { name: string; why: string }[];
   missing?: MissingInfo[];
+  /** The import profile the file was read with, for what it carries besides the decode. */
+  profile?: Profile;
 }
 
 interface Progress {
@@ -491,9 +494,11 @@ function linkSend(): void {
   void invoke('link_send', { view: { t0: String(state.t0), t1: String(state.t1), cursors } }).catch(() => {});
 }
 
-/** `--detail` from the dialog's three fields (Light's raw windows); 0 turns them off. */
-function htmlDetail(o: typeof settings.exportHtml): string {
+/** `--detail` from the dialog's three fields (Light's raw windows); 0 turns them off. Fields left at the defaults send
+ *  nothing, so each rule-and-check set's own default applies (D-cli-06). */
+function htmlDetail(o: typeof settings.exportHtml): string | null {
   const d = { ...DEFAULT_DETAIL, ...o.detail };
+  if (d.factor === DEFAULT_DETAIL.factor && d.min === DEFAULT_DETAIL.min && Math.max(d.cap, d.min) === DEFAULT_DETAIL.cap) return null;
   return d.factor <= 0 && d.min <= 0 ? '0' : `${d.factor}x,${d.min}s,${Math.max(d.cap, d.min)}s`;
 }
 
@@ -1454,10 +1459,15 @@ function startPanes(n: number, kind: StarterPanes): Pane[] {
 }
 
 /** A file's panes: those it was left with (when remembering and it has some that fit), else a starter. */
-function panesFor(path: string, n: number): Pane[] {
-  if (starterOnce) return startPanes(n, starterOnce);
+function panesFor(path: string, n: number, names: string[] = []): Pane[] {
   const saved = settings.layouts[path];
   if (settings.fileOpen === 'remember' && saved?.every((p) => p.channels?.every((ch) => ch < n))) return copyPanes(saved);
+  // an import profile's own starter layout comes before Settings' choice (D-derive-01)
+  const ws = profileOf[path]?.layout ? settings.workspaces.find((w) => w.name === profileOf[path]!.layout) : undefined;
+  if (ws) return fromWorkspace(ws, names).panes;
+  // and the panes it chose (D-ui-57)
+  const chosen = profileOf[path]?.panes;
+  if (chosen) return startPanes(n, chosen as StarterPanes);
   return startPanes(n, settings.fileOpen === 'remember' ? settings.fileOpenNew : settings.fileOpen);
 }
 
@@ -1592,6 +1602,8 @@ interface TabData {
   play: null | { t: number; speed: number; win: number; follow: boolean; loop: boolean };
   /** A live tab: whether it followed now, its window, and its source's last health. */
   live: null | { following: boolean; win: number; health: Health | null };
+  /** The Events panel's filters for this tab: categories hidden, and whether charts follow them (S5.2-16). */
+  evFilter?: { hidden: string[]; follow: boolean };
 }
 const tabData = new Map<number, TabData>();
 let nextTab = 1;
@@ -1616,6 +1628,7 @@ function stashTab(): void {
     exactMs: state.exactMs,
     play: play.open ? { t: play.t, speed: play.speed, win: play.win, follow: play.follow, loop: play.loop } : null,
     live: live.on ? { following: live.following, win: live.win, health: live.health } : null,
+    evFilter: { hidden: [...events.hidden], follow: events.follow },
   });
 }
 
@@ -1645,6 +1658,9 @@ async function showTab(key: number): Promise<void> {
   });
   stack.panes = copyPanes(d.panes);
   stack.sel = d.sel;
+  // the Events panel's filters are the tab's own; a tab that has none yet starts with every category shown and Settings' follow choice
+  events.hidden = d.evFilter ? [...d.evFilter.hidden] : [];
+  events.follow = d.evFilter?.follow ?? settings.evChartsFollow;
   normalize();
   closePlay();
   Object.assign(live, { on: !!d.live, following: d.live?.following ?? true, win: d.live?.win ?? 30, sources: false, health: d.live?.health ?? null, trigger: null, trace: '', stopped: false, name: '' });
@@ -1655,6 +1671,7 @@ async function showTab(key: number): Promise<void> {
   ui.channels = chanRows(d.file);
   publishSlots(d.file);
   void loadEvents();
+  void offerRenames();
   scheduleChecks(0);
   $('empty').hidden = true;
   saveSession();
@@ -1724,6 +1741,8 @@ async function openPathNow(path: string, part?: string): Promise<void> {
       await syncExprEnv();
       const o = await invoke<Opened>('open', { path, part: part ?? null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], adjust: adjustList(), progress });
       id = o.id;
+      if (o.profile) profileOf[path] = o.profile;
+      else delete profileOf[path];
       if (early) onProgress(id, early);
       if (!o.range) {
         void invoke('close', { file: o.id });
@@ -1738,7 +1757,7 @@ async function openPathNow(path: string, part?: string): Promise<void> {
     tabData.set(key, {
       file,
       building,
-      panes: panesFor(layoutKey(file.info.path, file.info.part), n),
+      panes: panesFor(layoutKey(file.info.path, file.info.part), n, file.info.channels.map((c) => c.name)),
       sel: 0,
       t0: file.first,
       t1: file.last + 1n,
@@ -2078,6 +2097,11 @@ Object.assign(liveActions, {
     await invoke('live_pause', { file: file ?? liveId(f), paused: !paused });
     void pollLive();
     void pollCards();
+  },
+  saveConnection: (id: string, form: ConnectForm) => {
+    setSetting('savedConnections', settings.savedConnections.map((c) => (c.id === id ? { ...form, id } : c)));
+    live.connect = false;
+    note(`Saved the changes to ${form.name}.`);
   },
   makeRule: () => {
     const T = live.trigger;
@@ -2461,6 +2485,34 @@ async function openWs(name: string): Promise<void> {
 /** The layout the slot picker is asking files for. */
 let pendingLayout: { ws: Workspace; shared?: string } | null = null;
 
+/** A layout with the recipes its panes plot embedded, for sharing (D-cfg-07). */
+function withRecipes(ws: Workspace): Workspace {
+  const used = namesUsed(ws);
+  const own = recipes.list.filter((r) => used.has(r.name)).map((r) => ({ name: r.name, expr: r.expr, unit: r.unit ?? null, category: r.category ?? null, decimals: r.decimals ?? null }));
+  const { recipes: _drop, ...rest } = ws;
+  return own.length ? { ...rest, recipes: own } : rest;
+}
+
+/** A shared layout plots recipes you don't have: offers to add them (D-cfg-07). Existing names are left as they are. */
+function offerRecipes(ws: Workspace): boolean {
+  const lack = (ws.recipes ?? []).filter((r) => !recipes.list.some((x) => x.name === r.name));
+  if (!lack.length) return false;
+  const list = lack.slice(0, 3).map((r) => r.name).join(', ') + (lack.length > 3 ? ', …' : '');
+  note(
+    `"${ws.name}" plots ${lack.length === 1 ? 'a recipe' : `${lack.length} recipes`} you don't have: ${list}.`,
+    () => {
+      void (async () => {
+        for (const r of lack) await invoke('recipe_save', { recipe: { ...r, automatic: false }, replacing: null });
+        await refreshRecipes();
+        await reapplyAll();
+        note(`Added ${lack.length === 1 ? lack[0].name : `${lack.length} recipes`}. Add ${lack.length === 1 ? 'it' : 'them'} to a file from Derive….`, undefined);
+      })();
+    },
+    lack.length === 1 ? 'Add recipe' : 'Add recipes',
+  );
+  return true;
+}
+
 /** Shows `ws` in a new tab on the file in front; a shared view's (`shared`) also sets its time range. */
 async function openLayout(ws: Workspace, shared?: string, picked = false): Promise<void> {
   const f = state.file;
@@ -2492,6 +2544,8 @@ async function openLayout(ws: Workspace, shared?: string, picked = false): Promi
   tabs.list.push({ key, path: f.info.path, name: ws.name, ws: ws.name, shared });
   await showTab(key);
   wsBase.set(key, wsSnapshot());
+  // channels only the layout's own recipes make are not missing: the offer says what to add instead
+  if (offerRecipes(ws)) return;
   if (missing.length) {
     const list = missing.slice(0, 3).join(', ') + (missing.length > 3 ? ', …' : '');
     note(`${nameOf(f.info.path)} has no ${missing.length === 1 ? 'channel' : 'channels'} ${list}: ${missing.length === 1 ? 'it stays' : 'they stay'} out of "${ws.name}".`);
@@ -2604,12 +2658,11 @@ function exportWs(key: number, name?: string): void {
 
 // ---------- Shared configuration: Share…, Use the folder's, Export… ----------
 
-/** What the app's settings and open files hold that the folder's `.tlmbench/` can hold too. */
-function ownConfig(): Record<string, unknown> {
+/** The open files that are in the folder Explorer shows, by their path in it, with their file ids. */
+function openRecordings(): { name: string; file: number }[] {
   const folder = settings.folder.replace(/[\\/]$/, '');
   const s = sep(folder);
   const rel = (p: string) => (folder && p.startsWith(folder + s) ? p.slice(folder.length + 1).split(s).join('/') : null);
-  // the open files in the folder: their events are shared by name and identity
   const recordings: { name: string; file: number }[] = [];
   for (const t of tabs.list) {
     const f = t.live ? null : fileOf(t.key);
@@ -2618,11 +2671,47 @@ function ownConfig(): Record<string, unknown> {
       if (name && !recordings.some((r) => r.name === name)) recordings.push({ name, file: m.id });
     }
   }
+  return recordings;
+}
+
+/** Shared events filed under a recording's old name: matched by identity, and one click writes the new name (D-cfg-04). */
+const offeredRenames = new Set<string>();
+async function offerRenames(): Promise<void> {
+  const folder = settings.folder;
+  if (!folder || !cfg.dir || !cfg.writable || ui.viewer) return;
+  const recordings = openRecordings();
+  if (!recordings.length) return;
+  const found = await invoke<{ file: string; from: string; to: string }[]>('shared_renames', { folder, recordings }).catch(() => []);
+  const fresh = found.filter((r) => !offeredRenames.has(`${r.from}\u0000${r.to}`));
+  if (!fresh.length || folder !== settings.folder) return;
+  for (const r of fresh) offeredRenames.add(`${r.from}\u0000${r.to}`);
+  const one = fresh.length === 1;
+  note(
+    one ? `The shared events for ${fresh[0].to} are filed under its old name, ${fresh[0].from}.` : `Shared events for ${fresh.length} recordings are filed under their old names.`,
+    () => {
+      void (async () => {
+        try {
+          const n = await invoke<number>('shared_renames_apply', { folder, recordings: openRecordings() });
+          await configUse();
+          note(`Updated ${n} shared events file${n === 1 ? '' : 's'} in ${folder}.`);
+        } catch (e) {
+          note(`Couldn't update the shared events: ${e}`);
+        }
+      })();
+    },
+    'Update the folder',
+  );
+}
+
+/** What the app's settings and open files hold that the folder's `.tlmbench/` can hold too. */
+function ownConfig(): Record<string, unknown> {
+  // the open files in the folder: their events are shared by name and identity
+  const recordings = openRecordings();
   return {
     categories: settings.eventCats.map((c) => ({ id: c.id, name: c.name, color: c.color, show_on_charts: c.chart })),
     widgets: settings.customWidgets.filter((w) => !w.shared).map((w) => ({ id: w.id, name: w.name, icon: w.icon ?? null, svg: w.svg ?? null, angle: w.angle ?? null, code: w.code ?? null, by: w.by ?? null })),
     icons: [],
-    views: settings.workspaces.map((w) => ({ file: viewFile(w.name), view: plain(w) })),
+    views: settings.workspaces.map((w) => ({ file: viewFile(w.name), view: withRecipes(plain(w)) })),
     recordings,
   };
 }
@@ -2916,7 +3005,7 @@ async function openWithImport(paths: string[], importOnly = false): Promise<void
   }
   importDirect = importOnly ? [] : direct;
   importRedo = null;
-  Object.assign(imp, { jobs: [...groups.values()].map((g) => makeJob(g.paths, g.i.inspection!, g.i.found.near)), sel: 0, bad: [], error: '', busy: false, open: true, where: importOnly ? 'none' : settings.importWhere, starter: 'default' });
+  Object.assign(imp, { jobs: [...groups.values()].map((g) => makeJob(g.paths, g.i.inspection!, g.i.found.near)), sel: 0, bad: [], error: '', busy: false, open: true, where: importOnly ? 'none' : settings.importWhere });
 }
 
 /** The import dialog again for a file that has settings: they are filled in; saving reopens the file with them. */
@@ -2932,11 +3021,8 @@ async function importAgain(path: string): Promise<void> {
   if (f.found.exact) applyProfile(job, f.found.exact, 'its saved settings');
   importDirect = [];
   importRedo = path;
-  Object.assign(imp, { jobs: [job], sel: 0, bad: [], error: '', busy: false, open: true, where: 'tabs', starter: 'default' });
+  Object.assign(imp, { jobs: [job], sel: 0, bad: [], error: '', busy: false, open: true, where: 'tabs' });
 }
-
-/** The starter the import dialog chose for the files it opens now (D-ui-57); null: the Settings choice. */
-let starterOnce: StarterPanes | null = null;
 
 const headerOf = (job: Job) => job.insp.columns.map((c) => c.source);
 
@@ -2955,19 +3041,9 @@ async function importGo(): Promise<void> {
   const where = imp.where;
   const redo = importRedo;
   const direct = importDirect;
-  const starter = imp.starter;
   imp.open = false;
   imp.busy = false;
   setSetting('importWhere', where);
-  starterOnce = starter === 'default' ? null : starter;
-  try {
-    await importOpen(paths, where, redo, direct);
-  } finally {
-    starterOnce = null;
-  }
-}
-
-async function importOpen(paths: string[], where: Where, redo: string | null, direct: string[]): Promise<void> {
   if (redo) {
     // the same file with its new settings: close its tabs and open it again
     const front = frontTab()?.path === redo;
@@ -3473,8 +3549,10 @@ async function checkPreview(check: Check): Promise<import('./checks.svelte').Out
 async function checkFolderRun(set: string): Promise<void> {
   const root = ui.folder;
   if (!root || folderRun.busy) return;
-  const paths = root.children.filter((c) => !c.dir && c.openable !== false && !c.needsDescriptor).map((c) => c.path);
-  Object.assign(folderRun, { set, files: paths, busy: true, done: 0, rows: {} });
+  // every recording under the folder, sub-folders included, in the tree's order
+  const walk = (es: FolderEntry[]): string[] => es.flatMap((c) => (c.dir ? walk(c.children ?? []) : c.openable !== false && !c.needsDescriptor ? [c.path] : []));
+  const paths = walk(root.children);
+  Object.assign(folderRun, { set, ran: set, files: paths, busy: true, done: 0, rows: {}, at: 0 });
   let next = 0;
   const work = async () => {
     for (let i = next++; i < paths.length; i = next++) {
@@ -3490,6 +3568,30 @@ async function checkFolderRun(set: string): Promise<void> {
   };
   await Promise.all([work(), work(), work()]);
   folderRun.busy = false;
+  folderRun.at = Date.now();
+  saveFolderReport(set, root.path);
+}
+
+/** A folder run's report is kept with the set (settings, this computer) so the Report can be opened again without
+ *  running every file (S5.3-15). Only what the grid, the report and the CSV read is kept. */
+function saveFolderReport(set: string, folder: string): void {
+  const rows: Record<string, unknown> = {};
+  for (const [path, r] of Object.entries(folderRun.rows)) {
+    rows[path] = r.res
+      ? {
+          first: r.first,
+          res: { set: r.res.set, rollup: plain(r.res.rollup), outcomes: r.res.outcomes.map((o) => ({ verdict: o.verdict, count: o.count, secs: o.secs, runs: [], channels: [], message: '' })) },
+        }
+      : { error: r.error ?? 'error' };
+  }
+  setSetting('folderReports', { ...settings.folderReports, [set]: { folder, at: folderRun.at, files: [...folderRun.files], rows } });
+}
+
+/** Opens the report kept for a set when it was run on this folder: its grid and Report, as they were. */
+function checkFolderLoad(set: string): void {
+  const r = settings.folderReports[set];
+  if (folderRun.busy || !r || r.folder !== ui.folder?.path) return;
+  Object.assign(folderRun, { set, ran: set, files: [...r.files], busy: false, done: r.files.length, rows: structuredClone(plain(r.rows)) as typeof folderRun.rows, at: r.at });
 }
 
 /** A folder run's results as CSV, written where the person chooses. */
@@ -3539,6 +3641,27 @@ function checkEditor(name: string | null, focus = -1, rule = false): void {
   const found = name ? checks.sets.find((s) => s.name === name) : null;
   const set = found ? structuredClone(plain(found)) : newSet(rule ? EVENT_RULES : 'New set');
   checks.editor = { set, was: found?.name ?? null, focus, cats: false };
+}
+
+/** Save as rule on a table's filter: its tests as a new rule in Event rules, opened in the editor (S5.3-14). */
+function filterRule(i: number): void {
+  const f = state.file;
+  const pane = stack.panes[i];
+  if (!f || !pane) return;
+  const parts = Object.entries(pane.filters ?? {})
+    .map(([id, text]) => ({ ch: /^c(\d+)$/.exec(id)?.[1], text }))
+    .filter((x): x is { ch: string; text: string } => x.ch != null && !!x.text.trim())
+    .map((x) => ({ channel: f.info.channels[+x.ch]?.name ?? '', text: x.text.trim() }))
+    .filter((x) => x.channel);
+  const expr = filterExpr(parts);
+  if (!expr) return void note('This filter has nothing a rule can test (blank or not-blank only).');
+  const row = newCheck(true, 'Rules');
+  row.name = `Filter: ${parts.map((x) => `${x.channel} ${x.text}`).join(', ')}`.slice(0, 60);
+  row.expect = expr;
+  const set = structuredClone(plain(checks.sets.find((s) => s.name === EVENT_RULES) ?? { ...newSet(EVENT_RULES), runs_on_any_file: true }));
+  set.runs_on_any_file = true;
+  set.check.push(row);
+  checks.editor = { set, was: checks.sets.some((s) => s.name === EVENT_RULES) ? EVENT_RULES : null, focus: set.check.length - 1, cats: false };
 }
 
 /** Add check… and Mark when… on a channel: a row for it, prefilled from its limits, in a new set or Event rules. */
@@ -3723,8 +3846,8 @@ const freshAlign = (): AlignView => ({ method: 'starts', seconds: 0, residuals: 
 
 /** A member's alignment as sessions and shared views keep it (the knots reproduce it exactly). */
 const alignSaved = (a: AlignView, knots: [string, string][]) => ({ method: a.method, seconds: a.seconds, ...(a.channel ? { channel: a.channel } : {}), ...(a.plugin ? { plugin: a.plugin, params: a.params ?? '' } : {}), locked: a.locked, knots, pairs: a.pairs });
-/** A file's short name: its prefix when it has one (Channel prefix…), else its name without the extension. */
-const shortOf = (path: string) => settings.filePrefix[path] || nameOf(path).replace(/\.[^.]*$/, '');
+/** A file's short name: its own prefix (Channel prefix…), else the rule of its import profile, else its name without the extension. */
+const shortOf = (path: string) => settings.filePrefix[path] || prefixFor(profileOf[path]?.prefix, path);
 
 /** A tab of several files: the first two short names joined by +, or the first and how many more. */
 const groupTabName = (paths: string[]) => (paths.length === 2 ? `${shortOf(paths[0])} + ${shortOf(paths[1])}` : `${shortOf(paths[0])} + ${paths.length - 1} more`);
@@ -3781,6 +3904,7 @@ async function openMember(path: string): Promise<Member> {
   progress.onmessage = () => {};
   await syncExprEnv();
   const o = await invoke<Opened>('open', { path, part: null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], adjust: adjustList(), progress });
+  if (o.profile) profileOf[path] = o.profile;
   if (!o.range) {
     void invoke('close', { file: o.id });
     throw new Error('it has no samples');
@@ -4122,6 +4246,16 @@ async function reapplyAll(): Promise<void> {
   for (const f of files) await reapply(f);
 }
 
+/** Adds a recipe to the import profile of a CSV's header: every file with that header gets it (S5.1-10). */
+async function recipeToProfile(path: string, name: string): Promise<void> {
+  const f = (await invoke<Inspected[]>('import_inspect', { paths: [path] }))[0];
+  if (!f?.inspection) return;
+  const base: Profile = f.found.exact ?? profileOf[path] ?? { time: { type: 'auto' }, rate: { type: 'as_recorded' }, columns: [] };
+  const profile: Profile = { ...base, recipes: [...new Set([...(base.recipes ?? []), name])] };
+  await invoke('profile_save', { header: f.inspection.columns.map((c) => c.source), profile });
+  profileOf[path] = profile;
+}
+
 async function deriveSubmit(): Promise<void> {
   const f = state.file;
   if (!f || derive.busy || !derive.status.ok) return;
@@ -4145,6 +4279,10 @@ async function deriveSubmit(): Promise<void> {
       const swap = (m: Record<string, string[]>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.map((n) => (n === editingName ? name : n))]));
       setSetting('fileRecipes', swap(settings.fileRecipes));
       setSetting('fileRecipesOff', swap(settings.fileRecipesOff));
+    }
+    if (!editingName && derive.scope === 'profile') {
+      await recipeToProfile(f.info.path, name);
+      setSetting('fileRecipes', { ...settings.fileRecipes, [f.info.path]: dedupe([...(settings.fileRecipes[f.info.path] ?? []), name]) });
     }
     if (!editingName && derive.scope === 'file') setSetting('fileRecipes', { ...settings.fileRecipes, [f.info.path]: dedupe([...(settings.fileRecipes[f.info.path] ?? []), name]) });
     // an automatic recipe on a file that had left it out comes back
@@ -4205,8 +4343,46 @@ async function deriveRemove(ch: number, from: 'file' | 'all'): Promise<void> {
 // ---------- The Recipes manager ----------
 
 async function recipesOpen(): Promise<void> {
-  await refreshRecipes();
+  await Promise.all([refreshRecipes(), loadProfiles()]);
   Object.assign(manager, { open: true, panel: '', text: '', error: '' });
+}
+
+async function loadProfiles(): Promise<void> {
+  manager.profiles = await invoke<SavedProfile[]>('profile_list').catch(() => [] as SavedProfile[]);
+}
+
+/** Changes fields of an import profile (null or '' takes one out) and keeps it; files opened with it afterwards use them. */
+async function profileChange(header: string[], patch: Record<string, unknown>): Promise<void> {
+  const cur = manager.profiles.find((p) => p.header.join('\u0000') === header.join('\u0000'));
+  if (!cur) return;
+  const next: Record<string, unknown> = { ...cur.profile, ...patch };
+  for (const k of Object.keys(next)) if (next[k] == null || next[k] === '' || (Array.isArray(next[k]) && k !== 'columns' && !(next[k] as unknown[]).length)) delete next[k];
+  try {
+    await invoke('profile_save', { header, profile: next });
+  } catch (e) {
+    manager.error = `Couldn't save the profile: ${e}`;
+    return;
+  }
+  manager.error = '';
+  await loadProfiles();
+}
+
+/** Makes the tab in front the starter layout of an import profile: the panes are kept as a layout of that name. */
+function profileLayoutFromTab(header: string[]): void {
+  const f = state.file;
+  const cur = manager.profiles.find((p) => p.header.join('\u0000') === header.join('\u0000'));
+  if (!f || !cur) return void note('Open a file with this profile and arrange its panes first.');
+  const base = cur.profile.name?.trim() || header.slice(0, 2).join(', ');
+  let name = `${base} layout`;
+  for (let n = 2; findWs(name) && n < 50; n++) name = `${base} layout ${n}`;
+  storeWs(toWorkspace(name, stack.panes, channelNames()));
+  void profileChange(header, { layout: name });
+  note(`Saved the panes in front as the layout "${name}": files with this profile open with it.`);
+}
+
+async function profileForget(header: string[]): Promise<void> {
+  await invoke('profile_delete', { header }).catch(() => {});
+  await loadProfiles();
 }
 
 /** Deletes a recipe from the library and every file; Undo puts it back. */
@@ -5251,6 +5427,8 @@ Object.assign(actions, {
   checkPreview,
   checkShow,
   checkEditor,
+  filterRule,
+  checkFolderLoad,
   checkRun: () => scheduleChecks(0),
   checkFolderRun: (set: string) => void checkFolderRun(set),
   checkFolderCsv: () => void checkFolderCsv(),
@@ -5345,6 +5523,7 @@ Object.assign(actions, {
   importAll: (paths: string[]) => void openWithImport(paths, true),
   importGo: () => void importGo(),
   importCancel,
+  importExtras: () => Promise.all([refreshRecipes(), loadCheckSets()]).then(() => undefined),
   deriveOpen,
   deriveEdit,
   deriveTemplate,
@@ -5364,6 +5543,9 @@ Object.assign(actions, {
   shareApply: () => void shareApply(),
   shareExport: () => void shareExport(),
   recipesOpen: () => void recipesOpen(),
+  profileChange: (h: string[], patch: Record<string, unknown>) => void profileChange(h, patch),
+  profileLayoutFromTab,
+  profileForget: (h: string[]) => void profileForget(h),
   recipesClose: () => {
     manager.open = false;
   },

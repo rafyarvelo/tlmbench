@@ -28,6 +28,13 @@ run('tablefilter', async ({ p, check, text, until, settingsLS, wait, fake }) => 
   check('it counts the matches, runs closer than 0.25 s as one', await until((n) => document.querySelector('[data-table] [data-fpos]')?.textContent === n, `${hits.length.toLocaleString()} ${hits.length === 1 ? 'match' : 'matches'}`), [await text(`${T} [data-fpos]`), hits.length]);
   check('In view is on', (await p.getAttribute(`${T} [data-fscope="view"]`, 'aria-pressed')) === 'true');
 
+  // Save as rule (S5.3-14): the filter becomes a new rule in Event rules, opened in the editor
+  await p.click(`${T} [data-fsave]`);
+  check('Save as rule opens the editor on a new rule in Event rules', await until(() => document.querySelector('#recDlg [data-sname]')?.value === 'Event rules' && !!document.querySelector('#recDlg .ckrow.focus')), await text('#recDlg'));
+  check('named for the filter, a rule', await until(() => /^Filter: .* > 1\.2$/.test(document.querySelector('#recDlg .ckrow.focus [data-kf="name"]')?.value ?? '') && document.querySelector('#recDlg .ckrow.focus [data-kf="kind"]')?.value === 'rule'), await p.evaluate(() => document.querySelector('#recDlg .ckrow.focus [data-kf="name"]')?.value));
+  await p.keyboard.press('Escape');
+  await until(() => !document.querySelector('#recDlg'));
+
   // Whole file asks about every row
   await p.click(`${T} [data-fscope="file"]`);
   check('Whole file is on', await until(() => document.querySelector('[data-table] [data-fscope="file"]')?.getAttribute('aria-pressed') === 'true'));

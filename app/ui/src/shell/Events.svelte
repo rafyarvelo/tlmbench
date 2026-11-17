@@ -108,6 +108,7 @@
       {#if cats.length > 1}
         <div class="evcats" role="group" aria-label="Show events by category">
           <span class="evcfix">
+            <label class="evfollow" data-tip="Charts and the overview show only the events these chips show, in this tab. Off: each category's Show on charts setting decides."><input type="checkbox" data-evfollow checked={events.follow} onchange={(e) => (events.follow = e.currentTarget.checked)} /><span>Charts follow these filters</span></label>
             <button class="evcat all" data-evcatall aria-pressed={!events.hidden.length} onclick={() => (events.hidden = [])}>All</button>
             <button class="evcat all" data-evcatnone aria-pressed={cats.every((c) => events.hidden.includes(c.id))} onclick={() => (events.hidden = cats.map((c) => c.id))}>None</button>
           </span>

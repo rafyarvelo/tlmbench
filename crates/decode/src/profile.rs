@@ -36,6 +36,54 @@ pub enum RateChoice {
     Samples,
 }
 
+/// How a file's channels are named in a tab with several files (design: Channel prefixes). A file's own alias wins.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PrefixRule {
+    /// The file's name without its extension.
+    #[default]
+    FileName,
+    /// The file's name up to its first `_`, `-`, `.` or space.
+    Separator,
+    /// The part of the file's name (without its extension) a regular expression matches: its first group, else the
+    /// whole match. A name it doesn't match falls back to the whole name.
+    Pattern { pattern: String },
+    /// This text for every file with the profile.
+    Custom { text: String },
+}
+
+impl PrefixRule {
+    /// The prefix for a file named `name` (with or without its extension).
+    pub fn apply(&self, name: &str) -> String {
+        let stem = name.rsplit_once('.').filter(|(a, _)| !a.is_empty()).map_or(name, |(a, _)| a);
+        match self {
+            Self::FileName => stem.to_owned(),
+            Self::Separator => {
+                let cut = stem.find(['_', '-', '.', ' ']).filter(|&i| i > 0).unwrap_or(stem.len());
+                stem[..cut].to_owned()
+            }
+            Self::Pattern { pattern } => match regex::Regex::new(pattern)
+                .ok()
+                .and_then(|r| r.captures(stem).map(|c| c.get(1).or(c.get(0)).map(|m| m.as_str().to_owned())))
+            {
+                Some(Some(m)) if !m.is_empty() => m,
+                _ => stem.to_owned(),
+            },
+            Self::Custom { text } => text.clone(),
+        }
+    }
+
+    /// Checks a pattern compiles.
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::Pattern { pattern } => {
+                regex::Regex::new(pattern).map(|_| ()).map_err(|e| format!("the prefix pattern: {e}"))
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ColumnKind {
@@ -67,22 +115,47 @@ pub struct ImportProfile {
     pub time: TimeChoice,
     pub rate: RateChoice,
     pub columns: Vec<ColumnChoice>,
+    /// The profile's own name in the Recipes manager (the header is its identity).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Check sets that run on files with this profile (by name). They change nothing about how the file opens.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub check_sets: Vec<String>,
+    /// Recipes (by name) the files with this profile get when they open, as if they were attached to each.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub recipes: Vec<String>,
+    /// A layout (by name) these files open with, before Settings' choice (design: Import profiles).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
+    /// The panes these files open with: a starter (`starter`, `starterboth`, `table`, `values`, `none`), when no layout is set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panes: Option<String>,
+    /// The channel prefix these files take in a tab with several files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<PrefixRule>,
 }
 
 impl ImportProfile {
     /// True when the profile changes nothing (the file opens as if it had none).
     pub fn is_default(&self) -> bool {
-        self == &Self { check_sets: self.check_sets.clone(), ..Self::default() }
+        let extras = Self {
+            name: self.name.clone(),
+            check_sets: self.check_sets.clone(),
+            recipes: self.recipes.clone(),
+            layout: self.layout.clone(),
+            panes: self.panes.clone(),
+            prefix: self.prefix.clone(),
+            ..Self::default()
+        };
+        self == &extras
     }
 
     /// A short hash of the profile's meaning, for the cache key. Choices equal to the defaults don't count, and
     /// column choices count in the order of their sources, so equal profiles always share an entry.
     pub fn key(&self) -> String {
         let mut p = self.clone();
-        p.check_sets.clear();
+        // what a profile adds around the file doesn't change how it decodes
+        (p.name, p.check_sets, p.recipes, p.layout, p.panes, p.prefix) = Default::default();
         p.columns.retain(|c| *c != ColumnChoice { source: c.source.clone(), ..Default::default() });
         p.columns.sort_by(|a, b| a.source.cmp(&b.source));
         let json = serde_json::to_vec(&p).expect("profiles serialize");
@@ -106,7 +179,8 @@ impl ImportProfile {
         match self.rate_hz() {
             Some(hz) if !(hz.is_finite() && hz > 0.0) => Err(format!("the sample rate must be positive, not {hz}")),
             _ => Ok(()),
-        }
+        }?;
+        self.prefix.as_ref().map_or(Ok(()), PrefixRule::validate)
     }
 }
 
@@ -251,6 +325,11 @@ mod tests {
             rate: RateChoice::Resample { hz: 100.0 },
             columns: vec![ColumnChoice { source: "a".into(), name: Some("A".into()), ..Default::default() }],
             check_sets: vec!["Flight acceptance".into()],
+            recipes: vec!["Return".into()],
+            layout: Some("Flight".into()),
+            name: Some("Bench logs".into()),
+            panes: Some("table".into()),
+            prefix: Some(PrefixRule::Pattern { pattern: "^(.+?)_".into() }),
         };
         // the sets a profile names don't change how a file opens: same key, still the default when nothing else is set
         assert_eq!(p.key(), ImportProfile { check_sets: Vec::new(), ..p.clone() }.key());
@@ -258,5 +337,37 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         assert_eq!(serde_json::from_str::<ImportProfile>(&json).unwrap(), p);
         assert_eq!(serde_json::from_str::<ImportProfile>("{}").unwrap(), ImportProfile::default());
+    }
+
+    #[test]
+    fn what_a_profile_adds_does_not_change_the_key_and_prefix_rules_name_files() {
+        let plain = ImportProfile::default();
+        let rich = ImportProfile {
+            check_sets: vec!["A".into()],
+            recipes: vec!["Return".into()],
+            layout: Some("Flight".into()),
+            name: Some("Bench".into()),
+            panes: Some("values".into()),
+            prefix: Some(PrefixRule::Separator),
+            ..Default::default()
+        };
+        assert_eq!(plain.key(), rich.key());
+        assert!(rich.is_default(), "extras are not decode choices");
+        let json: ImportProfile = serde_json::from_str(&serde_json::to_string(&rich).unwrap()).unwrap();
+        assert_eq!(json, rich);
+        assert_eq!(PrefixRule::FileName.apply("run_a-1.csv"), "run_a-1");
+        assert_eq!(PrefixRule::Separator.apply("run_a-1.csv"), "run");
+        assert_eq!(PrefixRule::Separator.apply("flight.csv"), "flight");
+        assert_eq!(PrefixRule::Pattern { pattern: r"^(\w+?)_\d+".into() }.apply("MS_2024.csv"), "MS");
+        assert_eq!(
+            PrefixRule::Pattern { pattern: r"\d+".into() }.apply("MS_2024.csv"),
+            "2024",
+            "no group: the whole match"
+        );
+        assert_eq!(PrefixRule::Pattern { pattern: "zzz".into() }.apply("MS_2024.csv"), "MS_2024", "no match: the name");
+        assert_eq!(PrefixRule::Custom { text: "ref".into() }.apply("a.csv"), "ref");
+        assert!(PrefixRule::Pattern { pattern: "(".into() }.validate().is_err());
+        let bad = ImportProfile { prefix: Some(PrefixRule::Pattern { pattern: "(".into() }), ..Default::default() };
+        assert!(bad.validate().is_err());
     }
 }

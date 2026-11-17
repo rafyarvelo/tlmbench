@@ -299,6 +299,7 @@
       }
     });
     const w = ((window as unknown as { __tlmGauges?: { renderMs: number[]; deriveMs: number[] } }).__tlmGauges ??= { renderMs: [], deriveMs: [] });
+    (w as unknown as { patch: typeof patch }).patch = patch;
     (w.deriveMs ??= []).push(performance.now() - t0);
     ((w as unknown as { buildMs: number[] }).buildMs ??= []).push(tb);
   });

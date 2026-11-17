@@ -2,7 +2,7 @@
 // for code from a shared folder.
 
 import { setSetting, settings } from './settings.svelte';
-import { type CustomWidget, WIDGET_EXAMPLE } from './widgets';
+import { CODE_WIDGET_EXAMPLE, type CustomWidget, WIDGET_EXAMPLE } from './widgets';
 
 export const widgetDlg = $state({ open: false, text: '', error: '' });
 export const trust = $state({ id: null as string | null });
@@ -21,6 +21,17 @@ export function parseWidgets(text: string): { list: Omit<CustomWidget, 'id'>[] |
   const list = (Array.isArray(arr) ? arr : [arr]) as Omit<CustomWidget, 'id'>[];
   if (list.some((w) => !w || typeof w.name !== 'string' || !w.name || (typeof w.svg !== 'string' && typeof w.code !== 'string'))) return { list: null, error: 'Each widget needs a name and an svg (or code).' };
   return { list, error: '' };
+}
+
+/** Adds a new widget to the editor's list, filled in with a working example (D-ui-59): an SVG one or a code one. A name
+ *  already in the list gets a number. */
+export function addWidgetExample(kind: 'svg' | 'code'): void {
+  const { list } = parseWidgets(widgetDlg.text);
+  const base = kind === 'code' ? CODE_WIDGET_EXAMPLE : WIDGET_EXAMPLE;
+  const have = new Set((list ?? []).map((w) => w.name));
+  let name = base.name;
+  for (let n = 2; have.has(name); n++) name = `${base.name} ${n}`;
+  widgetDlg.text = JSON.stringify([...(list ?? []), { ...base, name }], null, 2);
 }
 
 export const openWidgetEditor = (): void => void Object.assign(widgetDlg, { open: true, text: widgetsText(), error: '' });

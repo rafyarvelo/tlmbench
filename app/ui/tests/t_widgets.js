@@ -37,6 +37,12 @@ run(
     await p.click('.widgetmenu [data-wt="yours"]');
     check('the editor starts from an example with a preview', await until(() => /Throttle lever/.test(document.querySelector('[data-wtxt]')?.value ?? '') && !!document.querySelector('[data-wprev] svg.gsvg')));
     check('the preview binds the values', /4,610/.test(await p.$eval('[data-wprev]', (e) => e.textContent)), await text('[data-wprev]'));
+    // D-ui-59: a new widget of either kind, filled in with a working example
+    await p.click('[data-wnew="code"]');
+    check('New code widget adds a code widget with its example', await until(() => { const v = JSON.parse(document.querySelector('[data-wtxt]').value); return v.length === 2 && v[1].name === 'Level bar (code)' && /build\(el, info\)/.test(v[1].code) && /update\(el, x\)/.test(v[1].code); }));
+    await p.click('[data-wnew="svg"]');
+    check('New SVG widget adds another, named so it is new', await until(() => { const v = JSON.parse(document.querySelector('[data-wtxt]').value); return v.length === 3 && v[2].name === 'Throttle lever 2' && !!v[2].svg; }));
+    check('the list still reads, with no error', !/valid JSON|needs a name/.test(await text('[data-werr]')), await text('[data-werr]'));
     await p.fill('[data-wtxt]', '[{ "name": "x" ');
     check('a JSON mistake is named, and Save is off', (await until(() => /valid JSON/.test(document.querySelector('[data-werr]')?.textContent ?? ''))) && (await p.$eval('[data-wsave]', (e) => e.disabled)), await text('[data-werr]'));
     await p.fill('[data-wtxt]', '[{ "name": "NoSvg" }]');

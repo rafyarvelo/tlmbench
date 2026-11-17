@@ -63,6 +63,11 @@ run(
     // the chips decide underneath
     await p.click('#eventsPanel .evcat[data-evcat="alarm"]');
     check('hiding a category in the panel hides it on the charts', await until(() => window.__tlmApp.eventsDrawn().every((n) => n === 1)), await drawn());
+    // "Charts follow these filters" (S5.2-16): off, the hidden chip no longer hides marks on the charts, in this tab only
+    await p.click('#eventsPanel [data-evfollow]');
+    check('with Charts follow these filters off, the charts mark the hidden category again', await until(() => window.__tlmApp.eventsDrawn().some((n) => n > 1)), await drawn());
+    await p.click('#eventsPanel [data-evfollow]');
+    check('on again, they follow the chips', await until(() => window.__tlmApp.eventsDrawn().every((n) => n === 1)), await drawn());
     await p.click('#eventsPanel [data-evcatall]');
 
     // a category's Charts switch

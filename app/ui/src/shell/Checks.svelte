@@ -4,7 +4,7 @@
      cached by the file's contents and the set's version. -->
 <script lang="ts">
   import { duration, readoutTime } from '../axes';
-  import { type Check, checks, ICONCH, KIND_HELP, type Outcome, outcomeText, setsFor, summary, type Verdict, WORD } from '../checks.svelte';
+  import { type Check, type CheckSet, checks, ICONCH, KIND_HELP, type Outcome, outcomeText, type SetResult, setsFor, summary, type Verdict, WORD } from '../checks.svelte';
   import { ICON } from '../icons';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
@@ -47,6 +47,9 @@
     const warned = r.groups.reduce((n, g) => n + (g.info ? 0 : g.warned), 0);
     return failed || warned ? [failed ? `${failed} failed` : '', warned ? `${warned} warning${warned > 1 ? 's' : ''}` : ''].filter(Boolean).join(', ') : WORD[r.verdict].toLowerCase();
   }
+  /** A group where no check can run on this file (D-check-03): folded into one line instead of listed. */
+  const unrunnable = (g: { verdict: Verdict; passed: number; failed: number; warned: number; events: number; info: boolean }) => g.verdict === 'cant' && !g.passed && !g.failed && !g.warned && !g.events && !g.info;
+  const cantCount = (s: CheckSet, r: SetResult) => r.rollup.groups.filter(unrunnable).reduce((n, g) => n + s.check.filter((k, i) => k.group === g.name && k.kind === 'check' && r.outcomes[i]?.verdict === 'cant').length, 0);
   const tip = (k: Check, o: Outcome | undefined) => {
     const t = [`Expect ${k.expect}`];
     if (k.when) t.push(`when ${k.when}`);
@@ -155,7 +158,8 @@
             <button class="cedit" data-cedit={s.name} aria-label="Edit {s.name}" data-tip="Edit this set" onclick={() => actions.checkEditor(s.name)}>{@html ICON.edit}</button>
           </div>
           {#if open && r}
-            {#each r.rollup.groups as g (g.name)}
+            {@const folded = cantCount(s, r)}
+            {#each r.rollup.groups.filter((g) => !unrunnable(g) || checks.closed.includes(`?${s.name}`)) as g (g.name)}
               {@const gk = `${s.name}/${g.name}`}
               {@const gopen = g.info ? checks.closed.includes('+' + gk) : !checks.closed.includes(gk)}
               <button class="cgrp" data-cgrp={g.name} aria-expanded={gopen} onclick={() => toggle(g.info ? '+' + gk : gk)}>
@@ -186,6 +190,11 @@
                 {/each}
               {/if}
             {/each}
+            {#if folded}
+              <button class="cgrp cfold" data-cfold={s.name} aria-expanded={checks.closed.includes(`?${s.name}`)} onclick={() => toggle(`?${s.name}`)}>
+                <span class="cv cant">{ICONCH.cant}</span><span class="muted">{folded} {folded === 1 ? "check can't" : "checks can't"} run here</span>
+              </button>
+            {/if}
           {/if}
         </div>
       {/each}

@@ -3,6 +3,7 @@
 // them and caches the results by the file's contents and the set's version; here is what the panel, the badges, the
 // chips and the events read. Results are kept by file path, so a tab that isn't in front keeps its badge.
 
+import { profileOf } from './imports.svelte';
 import { settings } from './settings.svelte';
 
 export type Verdict = 'fail' | 'warn' | 'err' | 'cant' | 'pass' | 'na' | 'mark' | 'off';
@@ -28,6 +29,8 @@ export interface CheckSet {
   name: string;
   runs_on_any_file: boolean;
   info_groups: string[];
+  /** Light's raw windows around this set's violations and events, as `--detail` says them (`3x,30s,10min`, `30s`, `0`): the default an HTML export uses when the dialog's fields are untouched (D-cli-06). */
+  detail?: string;
   check: Check[];
 }
 
@@ -121,13 +124,17 @@ export const folderRun = $state({
   busy: false,
   done: 0,
   rows: {} as Record<string, { error?: string; res?: SetResult; first?: string }>,
+  /** When the rows were run (ms since 1970); 0 for none yet. */
+  at: 0,
+  /** The set the rows belong to. */
+  ran: '',
   tab: 'grid' as 'grid' | 'report',
   group: '',
 });
 
 /** The sets that run on a file: the ones that run on any file, the ones attached to the file, to the layout in front
  *  and to the file's import profile. */
-export function setsFor(path: string, layout: string | null, profile: string[] = []): CheckSet[] {
+export function setsFor(path: string, layout: string | null, profile: string[] = profileOf[path]?.check_sets ?? []): CheckSet[] {
   const A = settings.checkAttach;
   const names = new Set([...(A.files[path] ?? []), ...(layout ? (A.layouts[layout] ?? []) : []), ...profile]);
   return checks.sets.filter((s) => s.runs_on_any_file || names.has(s.name));

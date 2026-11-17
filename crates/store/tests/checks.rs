@@ -247,6 +247,7 @@ fn set(checks: Vec<Check>, info: &[&str]) -> CheckSet {
         name: "Test".into(),
         runs_on_any_file: true,
         info_groups: info.iter().map(|s| s.to_string()).collect(),
+        detail: None,
         checks,
     }
 }
@@ -414,4 +415,14 @@ fn a_csv_text_column_is_checked_by_its_texts() {
     // only the spike inside Mission counts
     assert_eq!((o.verdict, o.count), (Verdict::Fail, 1), "{}", o.message);
     assert!((o.scope_secs.unwrap() - 20.0).abs() < 0.2, "{:?}", o.scope_secs);
+}
+
+#[test]
+fn a_set_keeps_its_own_light_detail_in_its_toml() {
+    let text = "schema = 1\nname = \"Bench\"\ndetail = \"2x,10s,2min\"\n";
+    let s = from_toml(text).unwrap();
+    assert_eq!(s.detail.as_deref(), Some("2x,10s,2min"));
+    assert!(to_toml(&s).contains("detail = \"2x,10s,2min\""));
+    assert_eq!(from_toml("schema = 1\nname = \"B\"\n").unwrap().detail, None);
+    assert!(!to_toml(&from_toml("schema = 1\nname = \"B\"\n").unwrap()).contains("detail"));
 }

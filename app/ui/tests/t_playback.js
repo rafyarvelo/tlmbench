@@ -87,6 +87,20 @@ run(
     await p.click('#startPage.overlay [data-conn] .connopen');
     check('opening it fills the dialog as it was saved', (await p.inputValue('#lvName')) === 'Bench demo' && (await p.inputValue('#lvRecording')) === REC && (await p.inputValue('#lvSpeed')) === '5' && (await p.inputValue('#lvStart')) === '12.5' && !(await p.isChecked('#lvLoop')) && !(await p.$('#lvSave')));
     check('the last form is kept for next time', (await settingsLS()).liveForm?.recording === REC);
+    // edit it in place (D-ui-01): change the speed, Save changes keeps it without connecting
+    await p.selectOption('#lvSpeed', '2');
+    const connects0 = (await connects()).length;
+    await p.click('#lvSaveChanges');
+    check('Save changes closes the dialog and keeps the connection changed, without connecting', await until(() => !document.querySelector('#lvConnect')) && Number((await settingsLS()).savedConnections?.[0]?.speed) === 2 && (await connects()).length === connects0 && (await settingsLS()).savedConnections.length === 1, (await settingsLS()).savedConnections);
+    // rename it on the start page
+    await p.click('#b-start');
+    await p.hover('#startPage.overlay [data-conn]');
+    await p.click('#startPage.overlay [data-conn] [data-connren]');
+    await p.fill('[data-connname]', 'Bench demo 2');
+    await p.keyboard.press('Enter');
+    check('a saved connection can be renamed from the start page', await until(() => /Bench demo 2/.test(document.querySelector('#startPage [data-conn]')?.textContent ?? '')) && (await settingsLS()).savedConnections[0].name === 'Bench demo 2' && Number((await settingsLS()).savedConnections[0].speed) === 2);
+    await p.click('#startPage.overlay [data-conn] .connopen');
+    await until(() => !!document.querySelector('#lvName'));
     await p.keyboard.press('Escape');
 
     // record off: the session isn't kept, and the dialog says so. From a live tab, "Open in" picks a new tab.

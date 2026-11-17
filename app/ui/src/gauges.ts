@@ -197,6 +197,32 @@ export interface Reading {
 /** Where `v` falls in the range of `x`, 0–1. */
 export const fr = (x: { lo: number; hi: number }, v: number): number => Math.max(0, Math.min(1, (v - x.lo) / (x.hi - x.lo || 1)));
 
+/** A widget's text changes at most this often (S5.4-05: ten times a second), however fast the value does. */
+export const TEXT_EVERY_MS = 100;
+const TEXT_KEYS = new Set(['txt', 'label']);
+const textState = new WeakMap<object, Record<string, { at: number; timer?: ReturnType<typeof setTimeout> }>>();
+
+/** Writes a text field now when it was last written 100 ms ago or more, else after the rest of that time (the latest
+ *  value wins, and the last one always lands, also when frames stop). */
+function writeText(d: Record<string, unknown>, k: string, b: string): void {
+  const st = ((textState.get(d) ?? textState.set(d, {}).get(d)) as Record<string, { at: number; timer?: ReturnType<typeof setTimeout> }>);
+  const s = (st[k] ??= { at: -Infinity });
+  if (d[k] === b) {
+    clearTimeout(s.timer);
+    s.timer = undefined;
+    return;
+  }
+  const wait = TEXT_EVERY_MS - (performance.now() - s.at);
+  clearTimeout(s.timer);
+  const write = () => {
+    d[k] = b;
+    s.at = performance.now();
+    s.timer = undefined;
+  };
+  if (wait <= 0) write();
+  else s.timer = setTimeout(write, wait);
+}
+
 /** Writes into reactive `dst` only the fields of `src` that differ from `last` (the plain object `src` replaced), so what
  * reads a field wakes only when it changed. Comparing against plain objects keeps identity checks cheap: a reactive
  * object's fields are proxies. Long arrays (traces) count as changed unless they are the same array. */
@@ -204,6 +230,10 @@ export function patch<T extends object>(dst: T, last: T, src: T): void {
   const d = dst as Record<string, unknown>;
   const l = last as Record<string, unknown>;
   for (const [k, b] of Object.entries(src)) {
+    if (TEXT_KEYS.has(k) && typeof b === 'string') {
+      writeText(d, k, b);
+      continue;
+    }
     const a = l[k];
     if (a === b) continue;
     if (typeof b === 'object' && b !== null && a != null && !(Array.isArray(b) && b.length > 32) && JSON.stringify(a) === JSON.stringify(b)) continue;

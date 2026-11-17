@@ -31,6 +31,7 @@ csv-core = "0.1.13"
 dirs = "7.0.0"
 lexical-core = "1.0.6"
 memchr = "2.8.3"
+regex = "1"
 memmap2 = "0.9.12"
 toml = "1.1.8"
 parquet = { version = "60.1.0", default-features = false, features = ["arrow", "snap", "zstd", "lz4", "flate2-zlib-rs", "brotli"] }

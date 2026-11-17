@@ -892,6 +892,53 @@ pub fn profile_from_toml(text: &str) -> std::result::Result<tlmbench_decode::pro
     Ok(f.profile)
 }
 
+/// A shared events file whose recording was renamed or moved: the file still holds the old name, and the recording is
+/// found by its identity under another one (design: "offer to update the references in one click").
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Renamed {
+    /// The events file, relative to `.tlmbench/` (`events/flight.toml`).
+    pub file: String,
+    /// The name the file holds, and the recording's name now.
+    pub from: String,
+    pub to: String,
+}
+
+/// The shared events files of `dir` (a `.tlmbench/`) that name a recording in `recs` by an old name: same identity,
+/// another name. Only reads.
+pub fn renamed_recordings(dir: &Path, recs: &[Recording]) -> Vec<Renamed> {
+    let mut out = Vec::new();
+    for p in files_in(&dir.join("events"), ".toml") {
+        let Ok(f) = fs::read_to_string(&p)
+            .map_err(|e| e.to_string())
+            .and_then(|t| toml::from_str::<EventFile>(&t).map_err(|e| e.to_string()))
+        else {
+            continue;
+        };
+        if f.schema != SCHEMA || f.identity.is_empty() {
+            continue;
+        }
+        if let Some(r) = recs.iter().find(|r| r.identity == f.identity && !r.name.is_empty() && r.name != f.recording) {
+            out.push(Renamed { file: format!("events/{}", name_of(&p)), from: f.recording, to: r.name.clone() });
+        }
+    }
+    out
+}
+
+/// Writes the new names into the files [`renamed_recordings`] found (a user's click: nothing else in the folder is
+/// touched). Returns how many files changed.
+pub fn update_renamed(dir: &Path, recs: &[Recording]) -> Result<usize, String> {
+    let mut n = 0;
+    for r in renamed_recordings(dir, recs) {
+        let path = dir.join(&r.file);
+        let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut f: EventFile = toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        f.recording = r.to;
+        fs::write(&path, toml_of(&f)).map_err(|e| format!("can't write {}: {e}", path.display()))?;
+        n += 1;
+    }
+    Ok(n)
+}
+
 /// The events a `.tlmbench/` folder shares for a recording (matched by identity, else by name), as read-only events of
 /// source `shared`.
 pub fn shared_events(dirs: &[PathBuf], identity: &str, name: &str) -> Vec<Event> {
@@ -1044,5 +1091,40 @@ mod tests {
         }
         assert_eq!(fs::read_dir(&folder).unwrap().count(), 0);
         fs::set_permissions(&folder, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[test]
+    fn a_renamed_recording_is_found_by_identity_and_its_references_updated_on_request() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().join(".tlmbench");
+        std::fs::create_dir_all(dir.join("events")).unwrap();
+        let old = Recording { name: "runs/a.csv".into(), identity: "abc123".into(), file: None };
+        let e = vec![crate::events::Event {
+            id: "m1".into(),
+            name: "Spike".into(),
+            start: "5".into(),
+            duration: "0".into(),
+            category: "alarm".into(),
+            source: "user".into(),
+            channels: vec![],
+            by: None,
+        }];
+        std::fs::write(dir.join("events/a.toml"), event_file(&old, &e)).unwrap();
+        // same name: nothing to offer; another name with the same identity: offered; another identity: not
+        assert!(renamed_recordings(&dir, std::slice::from_ref(&old)).is_empty());
+        let moved = Recording { name: "archive/a.csv".into(), ..old.clone() };
+        let other = Recording { name: "x.csv".into(), identity: "zzz".into(), file: None };
+        assert!(renamed_recordings(&dir, &[other]).is_empty());
+        let found = renamed_recordings(&dir, std::slice::from_ref(&moved));
+        assert_eq!(
+            found,
+            vec![Renamed { file: "events/a.toml".into(), from: "runs/a.csv".into(), to: "archive/a.csv".into() }]
+        );
+        // reading changed nothing; the update does, once
+        assert!(std::fs::read_to_string(dir.join("events/a.toml")).unwrap().contains("runs/a.csv"));
+        assert_eq!(update_renamed(&dir, std::slice::from_ref(&moved)).unwrap(), 1);
+        let text = std::fs::read_to_string(dir.join("events/a.toml")).unwrap();
+        assert!(text.contains("archive/a.csv") && !text.contains("runs/a.csv") && text.contains("Spike"), "{text}");
+        assert!(renamed_recordings(&dir, &[moved]).is_empty());
     }
 }

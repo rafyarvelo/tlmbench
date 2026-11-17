@@ -33,6 +33,8 @@ export const events = $state({
   q: '',
   group: '' as '' | 'cat' | 'name' | 'channel' | 'source',
   hidden: [] as string[],
+  /** Charts and the overview follow the panel's chips (this tab's choice; a new tab starts from Settings). */
+  follow: true,
   closed: [] as string[],
   editing: null as string | null,
   /** An event a table tag pointed at: the panel opens on it and scrolls to it (cleared when shown). */
@@ -77,7 +79,7 @@ export const newId = (): string => 'm' + Date.now().toString(36) + Math.floor(Ma
 /** The events charts mark: none when `on` is false (the top bar's E, or a pane's own choice; see paneEvents). */
 export function marked(on = settings.eventsOn): TlmEvent[] {
   if (!on) return [];
-  return events.list.filter((e) => (catOf(e.category)?.chart ?? true) && !(settings.evChartsFollow && events.hidden.includes(e.category)));
+  return events.list.filter((e) => (catOf(e.category)?.chart ?? true) && !(events.follow && events.hidden.includes(e.category)));
 }
 
 // What charts and the overview mark follows the list and the panel's chips: draw again when either changes.
@@ -85,7 +87,7 @@ let redraw = () => {};
 export const onMarksChange = (f: () => void): void => void (redraw = f);
 $effect.root(() => {
   $effect(() => {
-    void JSON.stringify([events.list, events.hidden]);
+    void JSON.stringify([events.list, events.hidden, events.follow]);
     redraw();
   });
 });

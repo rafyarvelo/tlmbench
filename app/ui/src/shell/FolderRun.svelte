@@ -57,6 +57,16 @@
   $effect(() => {
     if (checks.folder && !folderRun.set) folderRun.set = checks.sets[0]?.name ?? '';
   });
+  // the set picked has a report kept from its last run on this folder: it opens as it was (S5.3-15); another set's rows go
+  $effect(() => {
+    const set = folderRun.set;
+    if (!checks.folder || !set || folderRun.busy || folderRun.ran === set) return;
+    folderRun.rows = {};
+    folderRun.ran = '';
+    folderRun.at = 0;
+    actions.checkFolderLoad(set);
+  });
+  const when = $derived(folderRun.at ? new Date(folderRun.at).toLocaleString() : '');
 </script>
 
 <svelte:window onkeydowncapture={(e) => checks.folder && key(e)} />
@@ -73,6 +83,7 @@
           <label class="lvf"><span>Set</span>
             <select class="sel" data-ffold-set bind:value={folderRun.set} disabled={folderRun.busy}>{#each checks.sets as s (s.name)}<option value={s.name}>{s.name}</option>{/each}</select></label>
           <button class="btn primary" data-frun disabled={folderRun.busy || !folderRun.set} onclick={() => actions.checkFolderRun(folderRun.set)}>{folderRun.busy ? `Running ${folderRun.done} of ${files.length}…` : 'Run'}</button>
+          {#if when && !folderRun.busy}<span class="muted" data-fwhen>Run {when}</span>{/if}
           <button class="btn" data-fcsv disabled={!Object.keys(folderRun.rows).length || folderRun.busy} onclick={actions.checkFolderCsv}>Results as CSV…</button>
         </div>
         {#if Object.keys(folderRun.rows).length || folderRun.busy}

@@ -688,6 +688,7 @@
       <span class="fpos num" data-fpos>{fpos}</span>
       <button class="fb" data-fstep="1" aria-label="Next match" data-tip="Next match" disabled={!q?.hits} onclick={() => stepMatch(1)}>▼</button>
       <span class="spacer"></span>
+      <button class="fb" data-fsave data-tip="Save this filter as a rule in Event rules: its matches become events in every file with these channels" onclick={() => actions.filterRule(i)}>Save as rule</button>
       <label class="fapply" data-tip="Leave the rows this filter doesn't pass out of this tab's charts, autoscale, stats and value tiles">
         <input type="checkbox" data-fapply checked={!!tfilt.apply} onchange={(e) => setTable(i, { tfilt: { ...tfilt, apply: e.currentTarget.checked || undefined } })} />
         <span>Apply to charts</span>

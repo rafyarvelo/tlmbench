@@ -112,6 +112,10 @@ pub struct CheckSet {
     /// Groups that show their results but never fail the set.
     #[serde(default)]
     pub info_groups: Vec<String>,
+    /// Light's raw windows around this set's violations and events, in `--detail`'s words (`3x,30s,10min`, `30s`, `0`):
+    /// what an export uses for them when it isn't told otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
     #[serde(default, rename = "check")]
     pub checks: Vec<Check>,
 }

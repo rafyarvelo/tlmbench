@@ -6,6 +6,8 @@
   import { actions } from '../ui.svelte';
   import { manager, recipes } from '../derive.svelte';
   import { cfg } from '../share.svelte';
+  import { settings } from '../settings.svelte';
+  import { prefixFor } from '../imports.svelte';
 
   let paste = $state('');
   function key(e: KeyboardEvent) {
@@ -30,8 +32,43 @@
         <p class="hint">Paste recipes exported from TelemetryBench (TOML: one [[recipe]] table each). A recipe with the same name is replaced.</p>
         <textarea class="sel txt" id="recPaste" rows="12" spellcheck="false" bind:value={paste}></textarea>
         {#if manager.error}<p class="bad" id="recErr">{manager.error}</p>{/if}
+      {:else if manager.tab === 'profiles'}
+        <div class="bar"><span class="seg sm" role="tablist"><button role="tab" data-mtab="recipes" aria-selected="false" onclick={() => (manager.tab = 'recipes')}>Recipes</button><button role="tab" data-mtab="profiles" aria-selected="true">Import profiles</button></span></div>
+        <p class="hint">A profile is what you decided for a CSV header: its columns, time and rate. It also holds the recipes its files get, a starter layout, how its files open and the channel prefix. Files with the header open with it, without asking.</p>
+        {#if manager.error}<p class="bad" id="profErr">{manager.error}</p>{/if}
+        <div class="list" id="profList">
+          {#each manager.profiles as sp (sp.header.join('\u0000'))}
+            {@const h = sp.header}
+            <div class="rrow" data-prof={h.join(',')}>
+              <div class="main">
+                <input class="sel pname" data-pname value={sp.profile.name ?? ''} placeholder={h.slice(0, 3).join(', ')} aria-label="Name of the profile for {h.join(', ')}" onchange={(e) => actions.profileChange(h, { name: e.currentTarget.value.trim() })} />
+                <span class="cat">{h.length} columns</span>
+              </div>
+              <span class="muted prow">{h.join(', ')}</span>
+              <div class="chips" role="group" aria-label="Recipes its files get">
+                {#each recipes.list as r (r.name)}
+                  <button class="chip" data-precipe={r.name} aria-pressed={(sp.profile.recipes ?? []).includes(r.name)} data-tip={r.expr} onclick={() => actions.profileChange(h, { recipes: (sp.profile.recipes ?? []).includes(r.name) ? (sp.profile.recipes ?? []).filter((n) => n !== r.name) : [...(sp.profile.recipes ?? []), r.name] })}>ƒ {r.name}</button>
+                {:else}<span class="muted">No recipes yet.</span>{/each}
+              </div>
+              <div class="act">
+                <label class="chk">Opens with
+                  <select class="sel" data-player value={sp.profile.layout ?? ''} onchange={(e) => actions.profileChange(h, { layout: e.currentTarget.value })}>
+                    <option value="">Settings' choice</option>
+                    {#each settings.workspaces as w (w.name)}<option value={w.name}>{w.name}</option>{/each}
+                  </select></label>
+                <button class="linkbtn" data-ptab data-tip="Keep the panes of the tab in front as this profile's layout" onclick={() => actions.profileLayoutFromTab(h)}>Use the tab in front</button>
+                <span class="spacer"></span>
+                <button class="linkbtn" data-pdel data-tip="Forget it: the import dialog comes back for files with these columns" onclick={() => actions.profileForget(h)}>Delete</button>
+              </div>
+              {#if sp.profile.prefix}<span class="muted prow">Channel prefix: {prefixFor(sp.profile.prefix, 'example_1.csv')} for example_1.csv</span>{/if}
+            </div>
+          {:else}
+            <p class="hint" id="profNone">None yet. A CSV's import settings are kept by its columns the first time it opens.</p>
+          {/each}
+        </div>
       {:else}
         <div class="bar">
+          <span class="seg sm" role="tablist"><button role="tab" data-mtab="recipes" aria-selected="true">Recipes</button><button role="tab" data-mtab="profiles" aria-selected="false" onclick={() => (manager.tab = 'profiles')}>Import profiles</button></span>
           <button class="tbtn" id="recExport" disabled={!recipes.list.length} onclick={actions.recipesExport}>Export…</button>
           <button class="tbtn" id="recImport" onclick={() => ((paste = ''), (manager.error = ''), (manager.panel = 'import'))}>Import…</button>
         </div>
@@ -96,6 +133,32 @@
   .bar {
     display: flex;
     gap: 6px;
+  }
+  .pname {
+    flex: 1;
+    min-height: 28px;
+  }
+  .prow {
+    overflow-wrap: anywhere;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .chip {
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fg-muted);
+    font: 11.5px var(--font-ui);
+    cursor: pointer;
+  }
+  .chip[aria-pressed='true'] {
+    border-color: var(--accent-line);
+    background: var(--accent-soft);
+    color: var(--fg);
   }
   .list {
     display: flex;
