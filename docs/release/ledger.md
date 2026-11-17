@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 311 · **Partial** 16 · **Missing** 5 · **Diverged** 3 · **Unverified** 25 · **Owner pass** 17 (377 rows).
+Counts: **Done** 312 · **Partial** 16 · **Missing** 5 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (377 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -68,7 +68,7 @@ where each step stands, and nothing else records either.
 | S4.3-05 | roadmap 4.3 | The descriptor form on an unclaimed binary file, with the preview, Find frames and the TOML. | Done | `t_descriptor`, `tlmbench-decode::preview::packets_decode_with_checksums_and_scaled_values` | The form keeps `[[packet_types]]` but can't edit them |
 | S4.3-06 | roadmap 4.3 | Descriptors found by `files` patterns in the app cache and `.tlmbench/decoders/`, the CLI the same way. | Done | `tlmbench-decode::descriptor::descriptors_are_found_by_pattern_in_the_folder_then_the_cache`, `tlmbench::import::a_descriptor_is_found_by_its_file_patterns` | |
 | S4.3-07 | roadmap 4.3 | Packets without a length field; bitfields; counter time bases with wraparound. | Done | `tlmbench-decode::packets::fixed_frames_without_a_length_field`, `tlmbench-decode::fixed::bitfields_are_read_in_place`, `tlmbench-decode::fixed::a_wrapping_counter_is_unwrapped_into_times` | |
-| S4.3-08 | roadmap 4.3 | Packet types in the app: one recording per type in the same tab. | Diverged | `t_packets` (a tab per type) | The owner allowed a tab per type "until 5.6" (Nov 8); 5.6 is done and they are still tabs. Make them slots of one tab: R2.5 |
+| S4.3-08 | roadmap 4.3 | Packet types in the app: one recording per type in the same tab. | Done | `t_packets` (Nov 17: one tab named for the file, a slot per type named `flight.bin · gps` in the descriptor's order, on the file's clock with nothing estimated, a first layout drawing every type, the session keeping each type's slot, Close this file closing the tab) | Nov 17. Live packet streams keep a tab per type (owner, Nov 16, D-ingest-11); browser-only mode keeps a tab per type (several recordings in one browser tab are after v1). Real window: sheet W1. R2.5 |
 | S4.3-09 | roadmap 4.3 | Import a folder (Import all); the data rate on imported files. | Done | `t_import` | |
 | S4.3-10 | roadmap 4.3, Done when | Every Gate 4 format opens in the app through its dialog or descriptor. | Unverified | `just gate4 app` (not run in this review: it drives the release window; last passed Nov 8 per `docs/design.md`) | Re-run in R6 |
 | S4.3-11 | roadmap 4.3, Done when | `t_descriptor` and the import tests from the prototype are ported. | Done | `t_import`, `t_profileextras`, `t_descriptor` | Nov 17. The Panes choice (Opens as, from the profile) and the already-open warning are built and ported; the "as one table" case is in `t_import`. R2.5 |

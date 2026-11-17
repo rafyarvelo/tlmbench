@@ -1,6 +1,6 @@
-// Packet types in the app: a packet file whose descriptor has [[packet_types]] opens one recording per type, each in
-// a tab of its own (`flight.bin · gps`) until step 5.6 puts several recordings in one tab. The tab's identity is the
-// file plus the type: opening the file again fronts them, closing the file closes them all.
+// Packet types in the app (S4.3-08): a packet file whose descriptor has [[packet_types]] opens one recording per type,
+// as the design says, in the same tab on the same clock: the first type is slot 1, the others slots 2, 3, … named
+// `flight.bin · gps`. Opening the file again fronts the tab; closing the file closes it.
 import { run } from './lib.js';
 
 const DIR = '/data/logs';
@@ -25,25 +25,38 @@ run(
     check('a file whose descriptor names it is listed, with no descriptor badge', !/no descriptor/.test(await text('#explorer .row.file')), await text('#explorer .row.file'));
 
     await p.dblclick('#explorer .row.file[data-path$="flight.bin"]');
-    check('opening it opens a tab per packet type', await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].length === 2), await tabs());
-    check('named file · type, in the descriptor\'s order', (await tabs()).join() === 'flight.bin · gps,flight.bin · imu', await tabs());
-    check('the first type is in front', (await front()) === 'flight.bin · gps', await front());
-    check('each recording has its own channels', (await chans()).join() === 'lat,lon', await chans());
+    check('opening it opens one tab for the file', await until(() => document.querySelector('#wsTabs .wstab .nm')?.textContent === 'flight.bin' && document.querySelectorAll('#explorer .row.slot').length === 2), await tabs());
+    check('only that tab', (await tabs()).join() === 'flight.bin', await tabs());
+    const tip = await p.$eval('#wsTabs .wstab', (t) => t.getAttribute('data-tip') || t.getAttribute('title') || '');
+    check("its tooltip lists the types, file · type", tip.includes('flight.bin · gps') && tip.includes('flight.bin · imu'), tip);
+    const slots = await p.$$eval('#explorer .row.slot .nm', (r) => r.map((x) => x.textContent));
+    check("a slot per type, in the descriptor's order", slots.join() === 'flight.bin · gps,flight.bin · imu', slots);
+    check('the file row says how many types', /2 packet types/.test(await text('#explorer .row.file [data-fslotmeta]')), await text('#explorer .row.file'));
+    check('the second type is on the same clock', /same clock|clock/i.test(await text('#explorer .row.slot[data-slot="2"] [data-asum]')), await text('#explorer .row.slot[data-slot="2"]'));
+    check('each type keeps its channels, the second numbered as slot 2', (await chans()).join() === 'lat,lon,gx,gy,gz', await chans());
     const opened = await fake(() => window.__tlmFake.opened);
     check('each opened by its type, after the file alone was refused', opened.map((o) => o.part).join() === ',gps,imu', opened);
+    const sets = await fake(() => window.__tlmFake.groupSets);
+    check('the two recordings are grouped', sets.at(-1)?.length === 2, sets);
+    const aligns = await fake(() => window.__tlmFake.aligns.length);
+    check('nothing is estimated: one file, one clock', aligns === 0, aligns);
+    const panes = await p.evaluate(() => document.querySelectorAll('#stack .pane').length);
+    check('a first layout draws both types', panes >= 2, panes);
 
-    await p.click('#wsTabs .wstab:nth-child(2)');
-    check('the other tab shows the other type', (await until(() => document.querySelector('#explorer .row.chan .nm')?.textContent === 'gx')) && (await chans()).join() === 'gx,gy,gz', await chans());
-
-    // opening the file again only brings a tab forward
+    // opening the file again only brings the tab forward
     await p.dblclick('#explorer .row.file[data-path$="flight.bin"]');
     await p.waitForTimeout(300);
-    check('opening it again opens nothing new', (await tabs()).length === 2 && (await fake(() => window.__tlmFake.opened.length)) === 3, await tabs());
+    check('opening it again opens nothing new', (await tabs()).length === 1 && (await fake(() => window.__tlmFake.opened.length)) === 3, await tabs());
 
-    // closing the file closes every type
+    // the session brings the types back in their slots
+    await until(() => window.__tlmSettings.get('sessions')?.['/data/logs']?.groups);
+    const session = await p.evaluate(() => window.__tlmSettings.get('sessions')?.['/data/logs']);
+    check('the session keeps the second type with its part', session.groups?.[BIN]?.[0]?.part === 'imu', session.groups);
+
+    // closing the file closes the tab
     await p.click('#explorer .row.file[data-path$="flight.bin"]', { button: 'right' });
     await p.click('.filemenu [data-fm="close"]');
-    check('Close this file closes them all', await until(() => document.querySelectorAll('#wsTabs .wstab').length === 0), await tabs());
+    check('Close this file closes it', await until(() => document.querySelectorAll('#wsTabs .wstab').length === 0), await tabs());
   },
   { files: {}, launch: null },
 );

@@ -315,6 +315,16 @@ Expect: memory stays reasonable, zoom stays smooth.
 Result:
 Notes:
 
+## W. Built Nov 17 (the Opus run)
+
+### W1. A packet file's types in one tab (S4.3-08)
+Do: open a packet file whose descriptor has `[[packet_types]]` (two or more types).
+Expect: one tab named for the file; in the Explorer the file row says "N packet types" and each type is a slot
+(`flight.bin · gps`, `flight.bin · imu`) on the same clock; the first charts draw every type; Close this file closes the tab;
+quitting and reopening brings the tab back with every type.
+Result:
+Notes:
+
 ---
 
 ## Other things I noticed

@@ -175,7 +175,7 @@ const renderer = await createRenderer($<HTMLCanvasElement>('gl'));
 type MissingInfo = { channel: number; count: number; ns: number };
 type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[]; missing: MissingInfo[]; adjustKey: string; /** Channels whose changes are events from the file (D-ui-12). */ eventChannels?: string[]; /** The files of a tab that holds several, in slot order (the first is the primary); `id` is then the group's. */ members?: Member[] };
 /** One file of a tab with several. `first`/`count` are its channels' numbers in the tab; `knots` its time map. */
-type Member = { id: number; path: string; /** What the sidebar calls it when not its file name (a live source's name). */ name?: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint] };
+type Member = { id: number; path: string; /** The packet type it holds, for one of a packet file's types (S4.3-08). */ part?: string; /** What the sidebar calls it when not its file name (a live source's name, `flight.bin · gps`). */ name?: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint] };
 
 /** Explorer's rows for a file's channels: the recording's, then its derived ones (marked ƒ). */
 const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, labels: c.labels, missing: f.missing.find((m) => m.channel === i)?.count, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
@@ -1704,8 +1704,7 @@ const tabName = (path: string, part?: string | null) => (part ? `${nameOf(path)}
 /** What a file's saved pane layout is kept under: its path, and the packet type if it has them. */
 const layoutKey = (path: string, part?: string | null) => (part ? `${path}\u0000${part}` : path);
 
-/** Opens `path` in a tab of its own (or brings its tab to the front); `part`: one packet type of a file that has
- * several (a tab each, until step 5.6 puts them in one tab). */
+/** Opens `path` in a tab of its own (or brings its tab to the front); a packet file's types share one tab (S4.3-08). */
 /** Opens in flight, by file and part: a second request for the same file (a double click, two drops) joins the first. */
 const opening = new Map<string, Promise<void>>();
 
@@ -1780,15 +1779,10 @@ async function openPathNow(path: string, part?: string): Promise<void> {
     await showTab(key);
     if (notes.length) note(notes.join(' '));
   } catch (e) {
-    // a file with several packet types opens as a tab for each
+    // a file with several packet types opens them in one tab, a slot each on the file's clock (design; S4.3-08)
     if (part == null) {
       const parts = await invoke<string[]>('packet_parts', { path }).catch(() => [] as string[]);
-      if (parts.length > 1) {
-        for (const q of parts) await openPath(path, q);
-        const first = tabs.list.find((t) => t.path === path && t.part === parts[0]);
-        if (first) await showTab(first.key);
-        return;
-      }
+      if (parts.length > 1) return void (await openPacketTypes(path, parts));
     }
     // a binary file nothing claims: the descriptor form, not an error
     if (await invoke<boolean>('needs_descriptor', { path }).catch(() => false)) return void dscOpenForm(path);
@@ -2205,7 +2199,7 @@ function sessionOf(kept: TabInfo[], front: TabInfo | undefined): Session {
   const groups: NonNullable<Session['groups']> = {};
   for (const t of kept) {
     const ms = t.ws ? undefined : fileOf(t.key)?.members;
-    if (ms && ms.length > 1) groups[t.path] = ms.slice(1).map((m) => ({ path: m.path, ...alignSaved(m.align, m.knots) }));
+    if (ms && ms.length > 1) groups[t.path] = ms.slice(1).map((m) => ({ path: m.path, ...(m.part ? { part: m.part } : {}), ...alignSaved(m.align, m.knots) }));
   }
   if (Object.keys(groups).length) session.groups = groups;
   session.at = Date.now();
@@ -2337,7 +2331,7 @@ async function restoreSession(s: Session | undefined, front: string | null = nul
     };
     for (const f of files) {
       await openPath(f);
-      for (const m of s?.groups?.[f] ?? []) await addToTab(m.path, m);
+      for (const m of s?.groups?.[f] ?? []) await addToTab(m.path, m, m.part);
       at(f);
     }
     if (ws?.some((w) => w.shared)) await loadShared().catch(() => {});
@@ -3878,7 +3872,7 @@ const groupTabName = (paths: string[]) => (paths.length === 2 ? `${shortOf(paths
 
 /** The files of a tab: a plain file is one. */
 function membersOf(f: OpenFile): Member[] {
-  return f.members ?? [{ id: f.id, path: f.info.path, info: f.info, first: 0, count: f.info.channels.length, knots: [], derived: f.derived, missing: f.missing, align: freshAlign(), own: [f.first, f.last] }];
+  return f.members ?? [{ id: f.id, path: f.info.path, ...(f.info.part ? { part: f.info.part, name: tabName(f.info.path, f.info.part) } : {}), info: f.info, first: 0, count: f.info.channels.length, knots: [], derived: f.derived, missing: f.missing, align: freshAlign(), own: [f.first, f.last] }];
 }
 
 /** A time map applied (or inverted) at `x`: knots are `[t_file, t_shared]`; one is an offset, more interpolate and the ends continue. */
@@ -3916,6 +3910,8 @@ function saveTimemapsSoon(f: OpenFile): void {
     const ms = f.members;
     if (!ms || ms.length < 2 || live.on) return;
     for (const m of ms.slice(1)) {
+      // a packet file's own types share its clock: nothing to keep
+      if (m.part && m.path === ms[0].path) continue;
       const map = { folder: settings.folder, primary: ms[0].id, file: m.id, method: m.align.method, seconds: m.align.seconds, channel: m.align.channel ?? '', plugin: m.align.plugin ?? '', params: m.align.params ?? '', locked: m.align.locked, knots: m.knots, pairs: m.align.pairs };
       void invoke('timemap_save', { map }).catch(() => {});
     }
@@ -3923,18 +3919,18 @@ function saveTimemapsSoon(f: OpenFile): void {
 }
 
 /** Opens a file to join a tab: its own id in the core, not shown anywhere until the group lists it. */
-async function openMember(path: string): Promise<Member> {
+async function openMember(path: string, part?: string): Promise<Member> {
   const progress = new Channel<Progress>();
   progress.onmessage = () => {};
   await syncExprEnv();
-  const o = await invoke<Opened>('open', { path, part: null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], adjust: adjustList(), progress });
+  const o = await invoke<Opened>('open', { path, part: part ?? null, recipes: settings.fileRecipes[path] ?? [], exclude: settings.fileRecipesOff[path] ?? [], adjust: adjustList(), progress });
   if (o.profile) profileOf[path] = o.profile;
   if (!o.range) {
     void invoke('close', { file: o.id });
     throw new Error('it has no samples');
   }
   const own: [bigint, bigint] = [BigInt(o.range[0]), BigInt(o.range[1])];
-  return { id: o.id, path: o.info.path, info: o.info, first: 0, count: o.info.channels.length, knots: [], derived: o.derived ?? [], missing: o.missing ?? [], align: freshAlign(), own };
+  return { id: o.id, path: o.info.path, ...(part ? { part, name: tabName(path, part) } : {}), info: o.info, first: 0, count: o.info.channels.length, knots: [], derived: o.derived ?? [], missing: o.missing ?? [], align: freshAlign(), own };
 }
 
 /** Shows the tab's files as `order` (slot order): the core regroups them, and the panes follow their channels to their new numbers. */
@@ -3974,8 +3970,10 @@ async function groupApply(f: OpenFile, order: Member[], before?: { id: number; f
     if (t.key !== tabs.active) d.panes.forEach((p) => remapPane(p, to));
     // a tab is named for its files ("flight-1 + flight-2", "flight-1 + 2 more"; owner, Nov 16), its tooltip listing each
     t.path = f.info.path;
-    if (!t.compare) t.name = order.length > 1 ? groupTabName(order.map((m) => m.path)) : tabName(f.info.path, f.info.part);
-    t.tip = order.length > 1 ? order.map((m) => m.path).join('\n') : undefined;
+    // a packet file's types in one tab: the tab is the file's, its tooltip lists the types (S4.3-08)
+    const oneFile = order.every((m) => m.path === order[0].path);
+    if (!t.compare) t.name = order.length > 1 ? (oneFile ? nameOf(order[0].path) : groupTabName(order.map((m) => m.path))) : tabName(f.info.path, f.info.part);
+    t.tip = order.length > 1 ? order.map((m) => m.name || m.path).join('\n') : undefined;
   }
   if (state.file === f) {
     stack.panes.forEach((p) => remapPane(p, to));
@@ -4002,14 +4000,30 @@ function closeMembers(file: OpenFile): void {
 /** Whether two files' own times overlap: logged on one clock, most likely. */
 const overlaps = (a: [bigint, bigint], b: [bigint, bigint]) => a[0] <= b[1] && b[0] <= a[1];
 
-async function addToTab(path: string, saved?: NonNullable<Session['groups']>[string][number]): Promise<void> {
+async function addToTab(path: string, saved?: NonNullable<Session['groups']>[string][number], part = saved?.part): Promise<void> {
   const f = state.file;
   if (!f || live.on) return void note('Files join a live tab as sources: use + Add source on its strip.');
   const have = membersOf(f);
-  if (have.some((m) => m.path === path)) return void note(`${nameOf(path)} is in this tab already.`);
+  const already = have.find((m) => m.path === path && (m.part ?? null) === (part ?? null));
+  // a session's packet type comes back with its file (S4.3-08): only its alignment is the session's
+  if (already && saved && already !== have[0]) {
+    already.knots = saved.knots;
+    already.align = { ...already.align, method: saved.method as AlignMethod, seconds: saved.seconds, channel: saved.channel, plugin: saved.plugin, params: saved.params, locked: saved.locked, pairs: saved.pairs, ...mapFacts(saved.knots, already.own[0]) };
+    await groupApply(f, have);
+    publishSlots(f);
+    return;
+  }
+  if (already) return void note(`${tabName(path, part)} is in this tab already.`);
   try {
-    const m = await openMember(path);
+    const m = await openMember(path, part);
     const order = [...have, m];
+    // a packet file's types are read from one file: one clock, nothing to align (S4.3-08)
+    if (part && !saved && have.some((h) => h.path === path)) {
+      m.align = { ...m.align, method: 'clock' };
+      await groupApply(f, order);
+      publishSlots(f);
+      return;
+    }
     if (saved) {
       // a session's file comes back with the alignment it had, knots and all
       m.knots = saved.knots;
@@ -4033,6 +4047,27 @@ async function addToTab(path: string, saved?: NonNullable<Session['groups']>[str
   } catch (e) {
     note(`Couldn't add ${nameOf(path)}: ${e}`);
   }
+}
+
+/** A packet file's types in one tab (`flight.bin`): the first type is the primary, the others slots 2, 3, … on the same
+ *  clock, each named `flight.bin · type`. A new tab gets its saved layout, else one that draws every type. */
+async function openPacketTypes(path: string, parts: string[]): Promise<void> {
+  await openPathNow(path, parts[0]);
+  const t = tabs.list.find((x) => x.path === path && x.part === parts[0] && !x.ws && !x.live);
+  if (!t) return;
+  await showTab(t.key);
+  for (const q of parts.slice(1)) await addToTab(path, undefined, q);
+  const f = state.file;
+  if (!f?.members || f.members.length < 2) return;
+  const saved = settings.layouts[layoutKey(path, parts[0])];
+  const n = f.info.channels.length;
+  stack.panes = settings.fileOpen === 'remember' && saved?.length && saved.every((p) => p.channels?.every((ch) => ch < n)) ? copyPanes(saved) : togetherLayout(f);
+  stack.sel = 0;
+  normalize();
+  await tick();
+  renderPanes();
+  state.ovStale = true;
+  void requestView('exact');
 }
 
 /** Open together: the first file in a tab of its own, the others on its timeline (slots 2, 3, …). */
