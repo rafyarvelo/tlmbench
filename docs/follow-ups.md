@@ -278,3 +278,6 @@ removed Nov 15; git history keeps them.
   - Quiet interface (D-ui-10): as the prototype's quiet rules, it also hides an empty chip readout (it shows while you
     point at a plot), a file's slot number in the folder listing until you point at the file (the channel tree's slot
     heads keep theirs), and a table's resize grip until hovered. The setting stays off by default (the prototype's is on).
+  - Events filters and layouts (S5.2-16): a saved layout keeps its tab's hidden categories and "Charts follow these
+    filters" (`events` in the layout JSON, only when not the defaults); changing them marks the layout tab unsaved. The
+    follow switch is the prototype's link toggle in the chip row.

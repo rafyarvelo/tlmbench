@@ -158,12 +158,13 @@
     padding: 6px 14px 0;
   }
   .tabs button {
-    padding: 4px 10px;
+    padding: 6px 10px;
     border: 0;
     border-bottom: 2px solid transparent;
     background: transparent;
     color: var(--fg-muted);
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
   }
   .tabs button[aria-selected='true'] {
     border-bottom-color: var(--accent);
@@ -179,6 +180,7 @@
   .lvf {
     display: flex;
     flex: 1;
+    min-width: 0;
     flex-direction: column;
     gap: 4px;
     font-size: 12px;
@@ -197,6 +199,11 @@
     display: flex;
     gap: 10px;
   }
+  /* three fields in a row share it rather than run past the dialog's edge */
+  .lvrow .sel {
+    width: 100%;
+    min-width: 0;
+  }
   .swrow {
     display: flex;
     flex-wrap: wrap;
@@ -204,11 +211,12 @@
     gap: 6px;
   }
   .sw {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border: 2px solid transparent;
     border-radius: 50%;
     padding: 0;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
   }
   .sw.on {
     border-color: var(--fg);

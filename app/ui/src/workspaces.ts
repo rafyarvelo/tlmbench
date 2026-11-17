@@ -53,6 +53,8 @@ export interface Workspace {
   panes: WsPane[];
   /** A shared layout's recipes: the ones its panes plot, so a person who lacks them can add them (D-cfg-07). */
   recipes?: { name: string; expr: string; unit?: string | null; category?: string | null; decimals?: number | null }[];
+  /** The Events panel's filters in its tab (S5.2-16): hidden categories and whether charts follow the chips. */
+  events?: { hidden: string[]; follow: boolean };
 }
 
 /** The channel names a layout's panes use, without a file's `·n` slot suffix. */

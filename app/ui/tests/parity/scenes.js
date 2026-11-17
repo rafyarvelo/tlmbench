@@ -287,6 +287,55 @@ export const SCENES = [
     focus: ['#liveDlg', '#dscDlg'],
   },
   {
+    name: 'events',
+    about: 'The Events panel from the rail: the add buttons, filter and grouping, the category chips, the list.',
+    proto: click('[data-rail="events"]'),
+    // the prototype's synthetic flight has events from its rules and checks: give the app's a few of each kind
+    app: async (p) => {
+      await p.evaluate(async () => {
+        const t0 = BigInt(window.__tlmApp.view().t0);
+        const at = (s) => String(t0 + BigInt(s) * 1000000000n);
+        window.__tlmFake.events['/data/recordings/flights/2026-10-12/synthetic_flight.tlm'] = [
+          { id: 'e1', name: 'RPM within 5% of its target', start: at(43), duration: '43030000000', category: 'check', source: 'user', channels: [] },
+          { id: 'e2', name: 'Takeoff', start: at(60), duration: '0', category: 'mode', source: 'user', channels: [] },
+          { id: 'e3', name: 'Battery low', start: at(90), duration: '12000000000', category: 'alarm', source: 'user', channels: [] },
+        ];
+        await window.__tlmApp.loadEvents();
+      });
+      await p.click('[data-rail="events"]');
+    },
+    pairs: [
+      ['panel', 'section[data-panel="events"]', '#eventsPanel'],
+      ['add button', '#evMarker, [data-evadd]', '#evMarker'],
+      ['filter box', '#evQ', '#evQ'],
+      ['group select', '#evGroup', '#evGroup'],
+      ['category chip', '.evcat[data-evcat]', '.evcat[data-evcat]'],
+      ['All chip', '[data-evcatall]', '[data-evcatall]'],
+      ['summary', '.evsum', '#evSum'],
+      ['event row', '.ev[data-ev]', '.ev[data-ev]'],
+      ['event name', '.ev[data-ev] .evname, .ev[data-ev] span', '.ev[data-ev] .evname'],
+      ['empty note', 'section[data-panel="events"] .hint', '#eventsPanel .evnote'],
+    ],
+    focus: ['section[data-panel="events"]', '#eventsPanel'],
+  },
+  {
+    name: 'channel-editor',
+    about: 'A chip clicked: the channel editor on its Display tab.',
+    proto: (p) => p.click('#stack .phead .chip'),
+    app: (p) => p.click('#stack .phead .chip'),
+    pairs: [
+      ['editor', '.cheditor', '#chEditor'],
+      ['heading', '.cheditor header', '#chEditor header'],
+      ['tab', '.cheditor [role=tab]', '#chEditor [role=tab]'],
+      ['selected tab', '.cheditor [role=tab][aria-selected=true]', '#chEditor [role=tab][aria-selected=true]'],
+      ['field label', '.cheditor .lvf > span', '#chEditor .lvf > span'],
+      ['number box', '.cheditor input[type=number]', '#chEditor input[type=number]'],
+      ['colour swatch', '.cheditor .sw', '#chEditor .sw'],
+      ['close', '.cheditor [data-close]', '#chEditor [data-close], #chEditor .pclose'],
+    ],
+    focus: ['.cheditor', '#chEditor'],
+  },
+  {
     name: 'axis-dialog',
     about: 'Axis and scale… from a pane\'s ⋯ menu.',
     proto: async (p) => { await hoverPane(p, 0); await p.click('#stack [data-pmenu]'); await p.click('[role=menu] .mi:has-text("Axis and scale")'); },

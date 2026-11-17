@@ -2376,7 +2376,14 @@ const fileOf = (key: number) => (key === tabs.active ? state.file : tabData.get(
 const channelNames = () => state.file?.info.channels.map((c) => c.name) ?? [];
 const findWs = (name: string) => settings.workspaces.find((w) => w.name === name);
 /** The front tab's panes as a layout's, to compare with the layout as loaded or saved. */
-const wsSnapshot = () => JSON.stringify(toWorkspace('', stack.panes, channelNames()).panes);
+/** The tab's Events filters as a layout keeps them (S5.2-16): only when they aren't the defaults. */
+const wsEvents = (): Workspace['events'] => (events.hidden.length || events.follow !== settings.evChartsFollow ? { hidden: [...events.hidden], follow: events.follow } : undefined);
+/** A layout of the tab in front: its panes and its Events filters. */
+function wsOfTab(name: string): Workspace {
+  const ev = wsEvents();
+  return { ...toWorkspace(name, stack.panes, channelNames()), ...(ev ? { events: ev } : {}) };
+}
+const wsSnapshot = () => JSON.stringify([toWorkspace('', stack.panes, channelNames()).panes, wsEvents() ?? null]);
 /** Each workspace tab's panes as loaded or last saved. */
 const wsBase = new Map<number, string>();
 
@@ -2414,7 +2421,7 @@ function saveAs(key: number, raw: string): string | null {
   const err = t ? nameError(name, t.shared ? undefined : t.ws) : 'That tab is closed.';
   if (err || !t) return err;
   void atTab(key, () => {
-    storeWs(toWorkspace(name, stack.panes, channelNames()));
+    storeWs(wsOfTab(name));
     Object.assign(t, { ws: name, name, dirty: false, shared: undefined });
     wsBase.set(key, wsSnapshot());
     saveSession();
@@ -2427,7 +2434,7 @@ function saveWs(key: number): void {
   const t = tabs.list.find((x) => x.key === key);
   if (!t?.ws || t.shared) return;
   void atTab(key, () => {
-    storeWs(toWorkspace(t.ws!, stack.panes, channelNames()));
+    storeWs(wsOfTab(t.ws!));
     wsBase.set(key, wsSnapshot());
     t.dirty = false;
   });
@@ -2440,6 +2447,8 @@ function revertWs(key: number): void {
   void atTab(key, () => {
     stack.panes = fromWorkspace(ws, channelNames()).panes;
     stack.sel = 0;
+    events.hidden = [...(ws.events?.hidden ?? [])];
+    events.follow = ws.events?.follow ?? settings.evChartsFollow;
     normalize();
     void layoutChanged();
   });
@@ -2548,7 +2557,9 @@ async function openLayout(ws: Workspace, shared?: string, picked = false): Promi
   const key = nextTab++;
   const at = (s: number) => f.first + BigInt(Math.round(s * 1e9));
   const view = shared && ws.view && ws.view[1] > ws.view[0] ? { t0: at(ws.view[0]), t1: at(ws.view[1]) } : {};
-  tabData.set(key, { ...cur, panes, sel: 0, history: [], future: [], play: null, live: null, ...view });
+  // the layout's Events filters, else the tab it opens from keeps its own (S5.2-16)
+  const evFilter = ws.events ? { hidden: [...ws.events.hidden], follow: ws.events.follow, files: [] } : cur.evFilter;
+  tabData.set(key, { ...cur, panes, sel: 0, history: [], future: [], play: null, live: null, ...view, ...(evFilter ? { evFilter } : {}) });
   tabs.list.push({ key, path: f.info.path, name: ws.name, ws: ws.name, shared });
   await showTab(key);
   wsBase.set(key, wsSnapshot());
@@ -2616,7 +2627,7 @@ function sharedView(name: string): Workspace | string {
     slot: i + 1,
     ...(i > 0 && m.align ? { align: alignSaved(m.align, m.knots) } : {}),
   }));
-  return { ...toWorkspace(name, stack.panes, channelNames()), files, view: [secs(state.t0), secs(state.t1)] };
+  return { ...wsOfTab(name), files, view: [secs(state.t0), secs(state.t1)] };
 }
 
 /** Share…: writes tab `key`'s layout to the folder's `.tlmbench/views/`; a folder that can't be written offers
@@ -3420,7 +3431,8 @@ async function loadEvents(keep = false): Promise<void> {
 }
 
 onMarksChange(() => scheduleDraw());
-onFiltersChange(() => scheduleSessionSave());
+// a filter change is kept with the session, and is an unsaved change of a layout tab (S5.2-16)
+onFiltersChange(() => (scheduleSessionSave(), markDirty()));
 
 /** The tooltip over an event marker: name, category, start and duration (design: Events). */
 let evTip: HTMLElement | null = null;
@@ -6065,6 +6077,8 @@ export const gateApi = {
     state[which] = BigInt(t);
     scheduleDraw();
   },
+  /** Reads the events of the tab in front again (after a test gave the fake core some). */
+  loadEvents: () => loadEvents(),
   /** The Events list as it is (every file's events in a tab of several, on its timeline). */
   eventList: () => JSON.parse(JSON.stringify(events.list)),
   /** The check results by file key, as the panels read them. */

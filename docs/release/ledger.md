@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 317 · **Partial** 12 · **Missing** 5 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
+Counts: **Done** 318 · **Partial** 11 · **Missing** 5 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -114,7 +114,7 @@ where each step stands, and nothing else records either.
 | S5.2-13 | roadmap 5.2 | The table's Event column and tinted rows. | Done | `t_eventstop` | A table tag click reveals the event in the Events panel (commit 156dd46; the ledger was behind). R3.3 |
 | S5.2-14 | roadmap 5.2 | The top bar's E toggle and each pane's. | Done | `t_eventmarks` | |
 | S5.2-15 | roadmap 5.2 | Stop at in the transport (any event, or chosen categories). | Done | `t_eventstop` (Nov 15) | Stop at is a menu: Nothing, Any event, or any number of ticked categories; the button names them |
-| S5.2-16 | roadmap 5.2, Done when | The prototype's events and limits tests are ported and their harness scenes match. | Partial | `t_events`, `t_eventmarks`, `t_limits`, `app/ui/tests/parity/scenes.js` (no scene for the Events panel or the channel editor) | "Charts follow these filters" and the chips are per tab and kept with the session (`t_eventmarks`, Nov 17; not saved with a layout). Left: the Events panel and channel editor parity scenes. R3.3 |
+| S5.2-16 | roadmap 5.2, Done when | The prototype's events and limits tests are ported and their harness scenes match. | Done | `t_events`, `t_eventmarks`, `t_limits`, `t_layoutevents`, `app/ui/tests/parity/scenes.js` (scenes `events` and `channel-editor`, Nov 17) | Nov 17: the per-tab filters are kept with the session and with a saved layout (Save as…, Save layout, Revert, opening it; a change marks the layout unsaved). The two new parity scenes found two real faults, fixed (`parity-classes.md` P13, P14): the follow switch wrapped and stretched the category chips (now the prototype's link toggle), and the channel editor's missing-value row ran past the dialog. The Events panel's top row (the app's Marker and Range against the prototype's + Event, Share…, Categories) waits on the owner as App is better or Port. R3.3 |
 | S5.3-01 | roadmap 5.3 | Core: the rule and check engine on the expressions: Expect, When, grace, settle. | Done | `tlmbench-store::checks::a_sample_check_finds_its_violations`, `tlmbench-store::checks::when_scopes_the_check`, `tlmbench-store::checks::grace_ignores_short_violations_and_settle_the_start_of_the_scope` | |
 | S5.3-02 | roadmap 5.3 | Summary functions (`pct`, `duration`, `occurrences`, `since`, min, max, mean, first, last). | Done | `tlmbench-expr::functions::one_number_family`, `tlmbench-store::checks::summary_checks_see_only_the_scope` | |
 | S5.3-03 | roadmap 5.3 | Severity and roll-up. | Done | `tlmbench-store::checks::groups_and_sets_take_their_worst_result`, `t_checks` | |

@@ -89,8 +89,8 @@
 <div class="evin" id="eventsPanel">
   <div class="phd" role="presentation" draggable="true" ondragstart={(e) => startPanelDrag(e, 'events')} ondragend={endPanelDrag}>
     <button class="phtog" aria-expanded={!closed} data-tip="Collapse or expand. Drag the title to move this panel." onclick={() => setPanelOpen('events', closed)}><span class="chv" class:shut={closed}>{@html ICON.chev}</span>Events</button><span class="spacer"></span>
-    <button class="tbtn small" id="evExpand" onclick={() => (events.closed = [])}>Expand all</button>
-    <button class="tbtn small" id="evCollapse" onclick={collapseAll}>Collapse all</button>
+    <button class="ibtn" id="evExpand" aria-label="Expand all groups" data-tip="Expand all" onclick={() => (events.closed = [])}>{@html ICON.expand}</button>
+    <button class="ibtn" id="evCollapse" aria-label="Collapse all groups" data-tip="Collapse all" onclick={collapseAll}>{@html ICON.collapse}</button>
     <button class="ibtn pmove" data-pmove aria-label="Move Events to the {other} sidebar" data-tip="Move to the {other} sidebar" onclick={() => movePanel('events', other)}>{@html ICON.swap}</button>
   </div>
   {#if !closed}
@@ -114,7 +114,8 @@
       {#if cats.length > 1}
         <div class="evcats" role="group" aria-label="Show events by category">
           <span class="evcfix">
-            <label class="evfollow" data-tip="Charts and the overview show only the events these chips show, in this tab. Off: each category's Show on charts setting decides."><input type="checkbox" data-evfollow checked={events.follow} onchange={(e) => (events.follow = e.currentTarget.checked)} /><span>Charts follow these filters</span></label>
+            <!-- as the prototype's: a link toggle in the chip row (a label here wrapped and stretched the chips) -->
+            <button class="evlink" data-evfollow aria-pressed={events.follow} aria-label="Charts follow these filters" data-tip={events.follow ? 'Charts follow these filters: what is hidden here is hidden on the charts too, in this tab. Click to filter only this list.' : "Charts don't follow these filters: each category's Show on charts setting decides. Click to link them."} onclick={() => (events.follow = !events.follow)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />{#if !events.follow}<path d="M4 4l16 16" />{/if}</svg></button>
             <button class="evcat all" data-evcatall aria-pressed={!events.hidden.length} onclick={() => (events.hidden = [])}>All</button>
             <button class="evcat all" data-evcatnone aria-pressed={cats.every((c) => events.hidden.includes(c.id))} onclick={() => (events.hidden = cats.map((c) => c.id))}>None</button>
           </span>
@@ -185,10 +186,6 @@
     gap: 4px;
     padding: 0 0 8px;
   }
-  .small {
-    padding: 1px 6px;
-    font-size: 11px;
-  }
   .evbar,
   .evfilter {
     display: flex;
@@ -234,8 +231,37 @@
     position: sticky;
     left: 0;
     display: flex;
+    align-items: center;
     gap: 4px;
     background: var(--bg);
+  }
+  .evlink {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fg-muted);
+    cursor: pointer;
+  }
+  .evlink[aria-pressed='true'] {
+    border-color: var(--accent-line);
+    color: var(--accent);
+  }
+  .evlink svg {
+    width: 12px;
+    height: 12px;
+  }
+  /* panel controls at the panel's size, as the prototype's (24 px, 12 px) */
+  .evfilter :global(.sel) {
+    height: 24px;
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 12px;
   }
   .evcat {
     display: inline-flex;

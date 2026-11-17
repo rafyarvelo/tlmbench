@@ -29,10 +29,17 @@ Every difference is in one class:
 | P10 | Time range in the top bar (`main`) | Fixed decimals (`00:00:00.000`), so it keeps its width | Decimals follow the zoom, so the text and what's beside it shift as you zoom | R3.1, D-ui-40. **Decided Nov 15 (owner):** the prototype's fixed width (tabular numbers), keeping the app's decimals inside it |
 | P11 | The viewer's tab (README screenshot `app-viewer.png`) | — | A long layout name is cut at the left ("ltitude and …") | R3.1, D-ui-41 |
 | P12 | Explorer ⋯ (`explorer-menu`) | "Recipes and profiles…" | "Recipes…" (the profiles tab isn't built) | R3.2, S5.1-12 |
+| P13 | Events panel (`events`, scene added Nov 17) | "Charts follow these filters" is a small link toggle in the chip row; the panel's filter and group boxes are 24 px, 12 px | The switch was a checkbox label that wrapped into a tall column and stretched the chips into 97 px pills; boxes 30 px | **Fixed Nov 17** (S5.2-16): the prototype's link toggle (`[data-evfollow]`, aria-pressed), 24 px boxes, Expand and Collapse all as icon buttons |
+| P14 | Channel editor (`channel-editor`, scene added Nov 17) | Tabs 13 px medium; swatches 22 px with a hairline ring; the missing-value fields wrap inside the dialog | Tabs 12 px; swatches 20 px; Treat as missing · Valid from · Valid to ran past the dialog's right edge | **Fixed Nov 17** (S5.2-16): the three fields share the row; tabs and swatches as the prototype's |
 
 Also Port, already ledger rows that R3.0 confirms (no screenshot shows them because the fake recording has no such data):
 dragging a channel to a pane's edge or between rows (D-ui-17, D-ui-18; Nov 16 the scenes `drag-edge`, `drag-edge-right`, `drag-into`, `drag-gap`, `drag-pane-top` and `drag-pane-merge` hold a drag on both pages, and the app's outlines were matched: what is left is the panes' few pixels of size), event markers' tooltips (D-ui-11), Stop at several
 categories (S5.2-15), Play's lost transport test (D-ui-13, D-ui-14), folder runs over sub-folders with a trends tab.
+
+Waiting on the owner (Nov 17, the new scenes): the Events panel's top row is "+ Event, Share…, Rules, Categories" in the
+prototype and "Marker at A, Range A–B, Rules…" in the app (categories are in Settings; Share is the top bar's), and the
+prototype has a source filter ("All" sources) the app has as a grouping only. Recommendation: the app's (one click per
+kind of event, nothing said twice); to approve as App is better, or to port.
 
 ## App is better (never ported back)
 
@@ -73,5 +80,8 @@ categories (S5.2-15), Play's lost transport test (D-ui-13, D-ui-14), folder runs
   come from the fake core; the import dialog's 970 px field is the app's one-row layout of a scene with fewer fields; table
   row counts follow the recording; the table filter strip shows because the scene typed a filter in the app.
 - **The overview strip** draws a min/max band in both (S4.1-12); the fake recording's smooth sines make the band as thin as a line.
+- **Events and channel editor scenes** (Nov 17): event counts and times follow each page's data (the prototype's flight has
+  36 events, the app's scene seeds three); the prototype's event rows are two lines (start over duration) where the
+  app's are one at the panel's width; the editor's height follows the app's extra Line width and Style rows.
 - **Item counts where the app has more features** (view menu Checks, pane menu, explorer menu separators): what the extra
   item does is in the ledger; the count isn't a difference to fix.
