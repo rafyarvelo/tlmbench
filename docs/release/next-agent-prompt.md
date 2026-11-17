@@ -16,7 +16,7 @@ update; it goes up with your first code push.
 2. Skim the memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/`, above all
    `owner-decisions-nov16.md` and `owner-decisions-nov17.md`.
 3. Run the open-rows script from the ledger (rows still Partial, Missing or Diverged whose note names R2.x or R3.x).
-4. Ledger counts at the hand-off: Done 313, Partial 14, Missing 2, Diverged 3, Unverified 25, Owner pass 17.
+4. Ledger counts at the hand-off: Done 311, Partial 16, Missing 5, Diverged 3, Unverified 25, Owner pass 17.
 
 ## Your rows, in this order
 
