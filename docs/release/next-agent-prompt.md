@@ -5,57 +5,47 @@ repository, agree with it which files each of you touches before you edit.
 This prompt is only a hand-off. **Where each step stands is the status table in `docs/release/release-plan.md`; what is
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
-Written for **Opus** (Nov 17, after the Sonnet run and the run that built the owner's Nov 17 decisions). Everything those
-two runs built is pushed and **CI is green on `ada6c41` (run 44134441175)**. The one unpushed commit is a docs-only status
-update; it goes up with your first code push.
+Written Nov 17 (night) after the Opus run. What it built is in the status table's "Opus run" row; the CI result of its
+push is in the CI row.
 
 ## First
 
-1. Read `CLAUDE.md` (its hard requirements bind you), then `docs/release/release-plan.md` (the status table, and R2.5 to
-   R3.4) and `docs/release/owner-test-sheet.md`.
+1. Read `CLAUDE.md` (its hard requirements bind you), then `docs/release/release-plan.md` (the status table) and
+   `docs/release/owner-test-sheet.md` (sections W and X are new and untested).
 2. Skim the memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/`, above all
-   `owner-decisions-nov16.md` and `owner-decisions-nov17.md`.
-3. Run the open-rows script from the ledger (rows still Partial, Missing or Diverged whose note names R2.x or R3.x).
-4. Ledger counts at the hand-off: Done 311, Partial 16, Missing 5, Diverged 3, Unverified 25, Owner pass 17.
+   `owner-decisions-nov16.md` and `owner-decisions-nov17.md`, and any newer owner-decisions file.
+3. Run the open-rows script: `python3 ci/ledger_check.py`, then list rows that aren't Done or Owner pass.
+4. Ledger counts at the hand-off: Done 325, Partial 5, Missing 4, Diverged 2, Unverified 25, Owner pass 17 (378 rows).
 
-## Your rows, in this order
+## Waiting on the owner (don't build these until answered)
 
-**1. The Opus list** (judgement across many files; nobody has started these):
-- S4.3-08: packet types as slots of one tab.
-- S5.6-12, S5.6-07, D-derive-03: events, checks, rules and derived channels on every file of a tab through its time map.
-  This also makes the Events panel's "group by file" and file chips mean something (today each tab shows its primary
-  file's events).
-- S5.3-06: incremental live checks.
-- D-ingest-09's last part: payload plugins in browser-only mode.
-- D-live-11: Reconnect (the core's reconnect first). It also closes most of what is left of S4.1-21 (the prototype's TCP
-  form has it).
-- S5.4-06 (canvas traces): **ask the owner first**; the design has an Accepted decision that the app's SVG sparklines
-  diverge from. Give a recommendation and the trade-off.
-- D-gauge-04: after R6's measurement.
-- R3.4: D-ui-10 (chips and grips), the quiet-interface pass, the whole-app apple-design audit (`ui-audits.md`).
+- **S5.4-06, canvas traces.** The design has an Accepted decision ("trace-heavy widgets (sparkline, XY, GPS track) draw on
+  canvas in the app; dials stay SVG"); the app draws them as SVG. Recommendation: build canvas traces for the sparkline, XY
+  trail and cloud and the GPS track (the design's budget is 100 widgets under 2 ms a frame, and a trail of thousands of
+  points is where SVG costs most), keeping the widget API; the alternative is to measure first in R6 and change the decision
+  to "SVG unless measured slow". Trade-off: canvas means HiDPI, theme colours and text by hand; SVG keeps them free.
+- **S5.3-15, the folder report as a Report tab.** The design wants a separate Report tab saved with the set; the owner's
+  decision 8 of Nov 17 kept the report in settings as a dialog tab for v1 and called the Report tab "a later row".
+  Recommendation: ask whether "later" means R3.3 (v1) or post-v1; if v1, a tab of the tab strip, saved with the set.
+- **The Events panel's top row** (`parity-classes.md`, waiting section): the app's "Marker at A · Range A–B · Rules…"
+  against the prototype's "+ Event · Share… · Rules · Categories". Recommendation: App is better.
+- **Four items of the Nov 17 audit** (`ui-audits.md`, last section): "Streaming" in red, the residuals plot without axes,
+  the Explorer header's icons, and the Events top row.
 
-**2. Rows left Partial that are well specified:**
-- S5.3-15: the design wants the folder report as a separate Report tab (saved with the set, reopened, re-run). Today it is
-  a dialog tab and the report is kept in settings (`folderReports`).
-- S5.2-16: the per-tab Events filters are kept with the session (`Session.events`); the design keeps them with a saved
-  layout too. Also the Events panel and channel editor scenes in `app/ui/tests/parity/scenes.js`.
-- S4.1-19, S4.2-19 (and what is left of S4.1-21, S4.3-12): parity classification. Run `just app-parity`, read
-  `docs/release/parity-classes.md` first, never port back an "App is better" row. The Connect scene now opens on TCP in
-  both pages; the import dialog's differences are mostly the prototype's extra sections (P5).
+## Your rows
 
-**3. The owner sheet.** Nothing built on Nov 17 has been seen in a real window. Add sheet items (what to look at) and, if
-the owner is present, try the release app yourself (`headless-tests-miss-real-window.md`): Settings › Icons and the pinned
-strip; the Events box in the import dialog and the descriptor form; "Inputs and settings…" on a code widget; dragging a
-channel onto a category and Cmd/Ctrl-click on categories; "Preview a frame" on a real UDP, TCP or serial source; the import
-dialog's "Also for files with this header"; the Recipes manager's Import profiles tab; the badge flash on a failing live
-check; renaming a saved connection; the folded "N checks can't run here" line; Save as rule from a table filter.
+- **S4.3-12** (the import dialog's extra sections, parity P5): what is left is the prototype's Derived channels and
+  Categories by prefix sections against the app's "Also for files with this header". Classify with the owner or port.
+- **S5.6-13** (new, Missing): tables sort and filter by another file's columns, and XY across files (`group.rs`
+  `xy_points` refuses two files). Core first (a held column for sort keys; XY by pairing on the shared timeline).
+- **The rest of R3.4:** keyboard coverage against the prototype's list, every tooltip and empty state, the copy review
+  (plain, short, sentence case). Then the UI freezes.
+- **D-gauge-04** waits for R6's measurement; **D-live-09** is the owner's (review decision 5).
+- Then R4 (packaging and release automation, Opus), per the plan.
 
 ## What is decided, and what you must not decide
 
-- **Owner decisions are the owner's.** Settled Nov 17 (memory `owner-decisions-nov17.md`): the pinned strip and icons, events
-  from a marked column or descriptor field, widget inputs by role and parameters, category drops, Connect's "Preview a
-  frame" (one second, only on a click), the regular-expression prefix pattern, `panes` saved in the profile, the folder-run
-  report kept in settings. Where the design says "Open" or two readings are reasonable, stop the row and ask.
+- **Owner decisions are the owner's.** Where the design says "Open" or two readings are reasonable, stop the row and ask.
 - **Never propose cutting scope.** Post-v1 items go to `docs/post-v1.md`.
 - **"App is better" rows are never ported back.**
 - The design (`docs/design.md`) is the source of truth; a behaviour change needs a note in `docs/follow-ups.md`.
@@ -66,26 +56,28 @@ check; renaming a saved connection; the folded "N checks can't run here" line; S
   `python3 ci/ledger_check.py` passing with its counts line updated, `docs/follow-ups.md` where behaviour differs from the
   design, and an owner sheet item when only a real window shows it. Small commits, one row or topic each.
 - **Push** once your rows are done and `just app-test`, `just proto-test`, `cargo nextest run --workspace`,
-  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all --check` and `npm run typecheck` pass locally.
-  The crates outside the workspace lint on their own: `crates/web` and `crates/web-parquet` (`cargo clippy --target
-  wasm32-unknown-unknown`) include `decode` files as source, so **a new dependency in `decode` must also go into their
-  `Cargo.toml` and lock files** (the Nov 17 regex did), and `python`. Then watch CI to green. A full run takes about 1.5
-  hours and bills about 545 minutes: don't push per row. **Don't change `ci/` or the CI image.**
-- **CI lessons (Nov 17):** `[profile.test]` has `debug = false` because the Windows linker's PDB limit (LNK1140) was hit by
-  the store, decode and app test binaries; keep an eye on it as test binaries grow. A setting saved on a timer can race
-  `t_windows` ("applying it does not send it back"): save only on a real change. `t_browserfolder` (the folder's plugin,
-  jco in the page) failed once on a loaded Linux runner and passed on the rerun; if it fails again, find the race. Known
-  flakes under full-suite local load: `t_browser`, `t_descriptor`, `t_windows` (pass alone).
-- **Never edit Rust sources while a cargo build or test run is going in the background**: the run compiles a half-edited
-  tree. Start background commands with `</dev/null` (a stray `cat` hung one for 15 minutes). A change to `decode` or
-  `store` means a 20 to 40 minute workspace test build.
-- Headless tests don't see the real window: anything only a real window shows is an Owner pass row with what to look at.
-- The Mac has 8 GB of memory and a small disk (about 15 GB free at the hand-off). Never run two cargo builds or two UI suites
-  at once. Check `df -h /`; `rm -rf target/debug` is fine (the owner OK'd it). `CARGO_PROFILE_DEV_DEBUG=0
-  CARGO_INCREMENTAL=0` keeps a workspace run near 8 GB.
-- Build order: `just viewer` before the CLI or the app; `cargo build --release -p tlmbench` for the release CLI
-  (`t_viewer`, `t_viewerctl`, `t_exportreal`). UI tests: `./run.sh t_name` in `app/ui/tests`; the fake core is
-  `fakecore.js`.
+  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all --check` and `npm run typecheck` pass locally,
+  plus `cargo clippy --target wasm32-unknown-unknown -- -D warnings` and `cargo fmt --check` in `crates/web` and
+  `crates/web-parquet` (they include `decode` files as source: a new dependency in `decode` goes into their `Cargo.toml`
+  and lock files too), and `python`. Then watch CI to green. A full run takes about 1.5 hours and bills about 545 minutes:
+  don't push per row. **Don't change `ci/` or the CI image.**
+- **Lessons (Nov 17):**
+  - The UI tests' harness waits a fixed 600 ms for the page; under a cargo build every core is busy and tests fail at boot
+    (`__tlmApp` undefined). Never run the UI suite while cargo builds; rerun such failures alone.
+  - `node app/ui/tests/shots.js` with no argument writes into `docs/images` (tracked): pass an output folder.
+  - The parity harness (`just app-parity`) found two real layout faults on its first run of new scenes: add a scene when
+    you touch a panel.
+  - Browser-only mode keeps a tab per packet type (several recordings in one browser tab are after v1); the app's slots
+    path is skipped there (`ui.browserOnly`).
+  - `[profile.test]` has `debug = false` (Windows' PDB limit). Known flakes under full-suite load: `t_browser`,
+    `t_descriptor`, `t_windows` (pass alone); `t_browserfolder` failed once on a loaded Linux runner.
+- **Never edit Rust sources while a cargo build is going** (tests that only run already-built binaries are fine). Start
+  background commands with `</dev/null`. A change to `decode` or `store` means a 20 to 40 minute workspace test build.
+- The Mac has 8 GB of memory and a small disk. Never run two cargo builds or two UI suites at once. Check `df -h /`;
+  `rm -rf target/debug` is fine (the owner OK'd it). `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0` keeps a workspace run
+  near 8 GB.
+- Build order: `just viewer` before the CLI or the app (and before the browser tests: `app/browser/dist`); `cargo build
+  --release -p tlmbench` for the release CLI. UI tests: `./run.sh t_name` in `app/ui/tests`; the fake core is `fakecore.js`.
 - In zsh write `"${var}:path"` when a colon follows a variable. macOS `sed -i ''`; never `git stash`; add files by name;
   don't rewrite history. End commits with the attribution line your session's instructions give.
 - Replies to the owner: concise, lead with what changed and what's left.

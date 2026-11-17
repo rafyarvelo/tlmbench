@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 324 · **Partial** 6 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
+Counts: **Done** 325 · **Partial** 5 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -97,7 +97,7 @@ where each step stands, and nothing else records either.
 | S5.1-14 | roadmap 5.1 | CLI: derived channels in `info`, `query` and `convert`. | Done | `tlmbench::derived::info_lists_derived_channels`, `tlmbench::derived::query_reads_derived_channels_beside_raw_ones`, `tlmbench::derived::convert_writes_derived_columns` | |
 | S5.1-15 | roadmap 5.1, budget | Over 100M samples an element-wise derived channel evaluates at pyramid speed and a stateful one within about 2×. | Done | `just derived-bench` (Nov 11, M1, release, this review, 100M samples: pyramid build 0.94 s; element-wise 0.35 to 0.51 s; difference 0.79 s, running total 0.66 s, rolling mean and std 0.37 s, median 0.74 s, zero-phase low-pass 1.52 s, z-score 1.93 s) | The z-score (two passes) is at 2.05× the pyramid, the edge of "about 2×" |
 | S5.1-16 | roadmap 5.1, Done when | Every function in the design's table has a core test against a reference. | Done | `tlmbench-expr::functions::every_function_in_the_table_is_tested_here` | |
-| S5.1-17 | roadmap 5.1, Done when | The prototype's derived tests (`t_derived`) are ported. | Partial | `t_derived`, `t_recipes`, `t_spectrum`, `proto:t_derived` | "Recipes in import profiles" has nothing to port to (S5.1-10) |
+| S5.1-17 | roadmap 5.1, Done when | The prototype's derived tests (`t_derived`) are ported. | Done | `t_derived`, `t_recipes`, `t_spectrum`, `t_profileextras`, `proto:t_derived` | Nov 17: "Recipes in import profiles" has its port since S5.1-10 was built: `t_profileextras` (the profile offers recipes, the picked ones are on the file, Derive… can put one in the profile, the profiles tab takes one off). R2.5 |
 | S5.1-18 | roadmap 5.1, Done when | The feature matrix's section 10 is all ✓. | Done | `docs/feature-matrix.md` (5 of 9 rows ✓) | Nov 17: the four rows it waited on (S5.1-06, S5.1-10, S5.1-12, S5.6-07) are Done |
 | S5.2-01 | roadmap 5.2 | Channel display by channel name in settings: alias, colour, decimals, unit label, line width, dashed, steps. | Done | `t_display` | How width, dashes and steps are drawn is X-win-05 |
 | S5.2-02 | roadmap 5.2 | Scale and offset, in the pyramid key. | Done | `tlmbench-store::derived::adjusted_channels_scale_and_go_missing_where_asked_and_get_their_own_pyramid`, `t_missing` | No CLI flags for them (`--scale`, `--missing`): R2.5 |
