@@ -187,6 +187,28 @@ run(
     await p.click('#impGo');
     check('they open in one tab as two slots, named for both', (await until(() => window.__tlmFake.groupSets.length === 1 && window.__tlmFake.groupSets[0].length === 2)) && (await tabs()).includes('h1 + h2') && !(await tabs()).includes('h2.csv'), await tabs());
 
+    // Opens as (D-ui-57): one import opens as a table without changing Settings; the next follows Settings again
+    await fake(() => {
+      const f = window.__tlmFake;
+      for (const k of ['/data/s1.csv', '/data/s2.csv']) {
+        f.csv(k, ['ts' + k.slice(-5, -4), 'a', 'b'], { unit: 's', rate: 10 });
+        f.files[k] = {};
+      }
+      f.drop(['/data/s1.csv']);
+    });
+    await until(() => !!document.querySelector('#importDlg'));
+    check('Opens as starts at the Settings choice', /Settings' choice \(Starter charts\)/.test(await p.$eval('#impStarter option[value=default]', (e) => e.textContent)) && (await p.inputValue('#impStarter')) === 'default');
+    await p.selectOption('#impWhere', 'tabs');
+    await p.selectOption('#impStarter', 'table');
+    await p.click('#impGo');
+    check('the file opens as one table', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 's1.csv' && document.querySelectorAll('#stack [data-table]').length === 1));
+    check('Settings is unchanged', ((await p.evaluate(() => JSON.parse(localStorage.getItem('tlmbench.settings') || '{}').fileOpenNew)) ?? 'starter') === 'starter');
+    await fake(() => window.__tlmFake.drop(['/data/s2.csv']));
+    await until(() => !!document.querySelector('#importDlg'));
+    check('the next import starts at the Settings choice again', (await p.inputValue('#impStarter')) === 'default');
+    await p.click('#impGo');
+    check('and opens with starter charts', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 's2.csv' && document.querySelectorAll('#stack [data-table]').length === 0 && document.querySelectorAll('#stack .pane').length >= 1));
+
     // a file that isn't a CSV has no import settings
     await p.click('#explorer .row.file[data-path$="flight.tlm"]', { button: 'right' });
     check('Import settings… is off for it', await p.isDisabled('.filemenu [data-fm="import"]'));

@@ -62,7 +62,7 @@ import {
   units,
 } from './stack.svelte';
 import { blankFor, checkSize, dsc, editing, fieldsEnd, type Frames, type Known, namePattern, normalizeDescriptor, type Preview } from './descriptors.svelte';
-import { applyProfile, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
+import { applyProfile, type Where, fmtRate, imp, type Inspected, makeJob, type Job, toProfile } from './imports.svelte';
 import { type ExportContext, exp, FORMATS, html, img } from './exports.svelte';
 import { derive, type DerivedInfo, manager, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
 import { SvgContext, svg } from './svgctx';
@@ -1455,6 +1455,7 @@ function startPanes(n: number, kind: StarterPanes): Pane[] {
 
 /** A file's panes: those it was left with (when remembering and it has some that fit), else a starter. */
 function panesFor(path: string, n: number): Pane[] {
+  if (starterOnce) return startPanes(n, starterOnce);
   const saved = settings.layouts[path];
   if (settings.fileOpen === 'remember' && saved?.every((p) => p.channels?.every((ch) => ch < n))) return copyPanes(saved);
   return startPanes(n, settings.fileOpen === 'remember' ? settings.fileOpenNew : settings.fileOpen);
@@ -2915,7 +2916,7 @@ async function openWithImport(paths: string[], importOnly = false): Promise<void
   }
   importDirect = importOnly ? [] : direct;
   importRedo = null;
-  Object.assign(imp, { jobs: [...groups.values()].map((g) => makeJob(g.paths, g.i.inspection!, g.i.found.near)), sel: 0, bad: [], error: '', busy: false, open: true, where: importOnly ? 'none' : settings.importWhere });
+  Object.assign(imp, { jobs: [...groups.values()].map((g) => makeJob(g.paths, g.i.inspection!, g.i.found.near)), sel: 0, bad: [], error: '', busy: false, open: true, where: importOnly ? 'none' : settings.importWhere, starter: 'default' });
 }
 
 /** The import dialog again for a file that has settings: they are filled in; saving reopens the file with them. */
@@ -2931,8 +2932,11 @@ async function importAgain(path: string): Promise<void> {
   if (f.found.exact) applyProfile(job, f.found.exact, 'its saved settings');
   importDirect = [];
   importRedo = path;
-  Object.assign(imp, { jobs: [job], sel: 0, bad: [], error: '', busy: false, open: true, where: 'tabs' });
+  Object.assign(imp, { jobs: [job], sel: 0, bad: [], error: '', busy: false, open: true, where: 'tabs', starter: 'default' });
 }
+
+/** The starter the import dialog chose for the files it opens now (D-ui-57); null: the Settings choice. */
+let starterOnce: StarterPanes | null = null;
 
 const headerOf = (job: Job) => job.insp.columns.map((c) => c.source);
 
@@ -2951,9 +2955,19 @@ async function importGo(): Promise<void> {
   const where = imp.where;
   const redo = importRedo;
   const direct = importDirect;
+  const starter = imp.starter;
   imp.open = false;
   imp.busy = false;
   setSetting('importWhere', where);
+  starterOnce = starter === 'default' ? null : starter;
+  try {
+    await importOpen(paths, where, redo, direct);
+  } finally {
+    starterOnce = null;
+  }
+}
+
+async function importOpen(paths: string[], where: Where, redo: string | null, direct: string[]): Promise<void> {
   if (redo) {
     // the same file with its new settings: close its tabs and open it again
     const front = frontTab()?.path === redo;

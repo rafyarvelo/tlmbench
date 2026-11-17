@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 286 · **Partial** 35 · **Missing** 11 · **Diverged** 3 · **Unverified** 25 · **Owner pass** 17 (377 rows).
+Counts: **Done** 287 · **Partial** 35 · **Missing** 10 · **Diverged** 3 · **Unverified** 25 · **Owner pass** 17 (377 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -216,7 +216,7 @@ where each step stands, and nothing else records either.
 | D-ui-54 | owner sheet T1 note, decided Nov 16 | Open together names the tab after its files ("flight-1 + flight-2"; three or more "flight-1 + 2 more"), and its tooltip lists each file. | Done | `t_together`, `t_slots` (Nov 16); the owner in the release window (Nov 16: the tab is right; the primary's Explorer row now reads as the tab too, `t_together`); the owner (Nov 16: V1, Explorer's row works) | Any tab of several files is named so (Add to tab too); Compare keeps "a vs b" |
 | D-ui-55 | owner sheet, Other things (Nov 16) | The folder's ⌄ menu has a space between Refresh and "New files show by themselves". | Done | `t_watch` (Nov 16); the owner in the release window (Nov 16: V3) | Every menu item's note: a space apart, muted, 11 px |
 | D-ui-56 | owner sheet U2, decided Nov 16 | In browser-only mode the Events panel is not on the rail (it comes back when events reach the browser, after v1). | Done | `t_browseronly` (Nov 16) | |
-| D-ui-57 | owner idea, v1 (sheet, Nov 15) | The import dialog has a choice of how the file opens, defaulting to Settings' "Files opened for the first time", so one file can open differently without changing the setting. | Missing | | R2.5 |
+| D-ui-57 | owner idea, v1 (sheet, Nov 15) | The import dialog has a choice of how the file opens, defaulting to Settings' "Files opened for the first time", so one file can open differently without changing the setting. | Done | `t_import` | The import dialog's "Opens as" (Settings' choice by default, or a starter for this import only). R2.5 |
 | D-ui-58 | owner idea, v1 (sheet, Nov 15) | Explorer's file menu has Open in the system's app: the OS opens the file with its default app, as Help opens the manual (decision 6; the app runs no program itself). | Done | `t_exmenus` (Nov 16: the request reaches the core), `app/src-tauri/src/main.rs` (`open_with_system`, the opener plugin); the owner in the release window (Nov 16: V3, a CSV opened in its app) |  |
 | D-ui-59 | owner sheet G3 (Nov 16) | A code widget can be made from the app without knowing the JSON: the widget editor offers a new SVG widget and a new code widget, each filled in with a working example. | Missing | | R3.3 |
 | D-ui-60 | owner, sheet V2 (Nov 16) | The channels in a pane's +N list drag as its chips do (the prototype's), to another pane, an edge or a gap. | Done | `t_chips` (Nov 16); the owner (Nov 16: V2 works) |  |

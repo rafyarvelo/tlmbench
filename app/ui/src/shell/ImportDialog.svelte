@@ -5,6 +5,7 @@
 <script lang="ts">
   import { ICON } from '../icons';
   import { actions } from '../ui.svelte';
+  import { settings } from '../settings.svelte';
   import { applyProfile, rateWords, imp, type Job, type Kind, problem, rateFactor, RATE_UNITS, type RateMode, TIME_UNITS, type Where } from '../imports.svelte';
 
   const job = $derived<Job>(imp.jobs[imp.sel]);
@@ -48,6 +49,7 @@
       actions.importCancel();
     }
   }
+  const STARTER_NAMES: Record<string, string> = { starter: 'Starter charts', starterboth: 'Starter charts + tables', table: 'One table, every channel', values: 'One values pane', none: 'Nothing plotted' };
   const WHERE: [Where, string, boolean][] = [
     ['tabs', 'Each file in its own tab', true],
     ['shared', 'All files in one new tab', true],
@@ -166,6 +168,11 @@
           <label class="lvf"><span>{nFiles > 1 ? `${nFiles} files` : 'This file'}</span>
             <select class="sel" id="impWhere" bind:value={imp.where}>
               {#each WHERE as [v, t, ok] (v)}<option value={v} disabled={!ok}>{t}{ok ? '' : ' (needs several files in a tab)'}</option>{/each}
+            </select></label>
+          <label class="lvf"><span>Opens as</span>
+            <select class="sel" id="impStarter" bind:value={imp.starter}>
+              <option value="default">Settings' choice ({STARTER_NAMES[settings.fileOpenNew]})</option>
+              {#each Object.entries(STARTER_NAMES) as [v, t] (v)}<option value={v}>{t}</option>{/each}
             </select></label>
         </div>
       </div>

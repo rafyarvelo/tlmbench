@@ -3,6 +3,8 @@
 // when the file is decoded; the UI never reads the file's rows itself.
 
 /** One column as the core reads the header (tlmbench_decode::csv::InspectedColumn). */
+import type { StarterPanes } from './settings.svelte';
+
 export interface InspectedColumn {
   source: string;
   name: string;
@@ -114,6 +116,8 @@ export const imp = $state({
   jobs: [] as Job[],
   sel: 0,
   where: 'tabs' as Where,
+  /** How the files open this time: 'default' follows Settings' "Files opened for the first time" (D-ui-57). */
+  starter: 'default' as 'default' | StarterPanes,
   /** Files left out: what they are not. */
   bad: [] as { path: string; why: string }[],
   busy: false,
