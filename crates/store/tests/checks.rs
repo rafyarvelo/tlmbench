@@ -514,7 +514,11 @@ fn a_live_check_follows_a_growing_recording_and_reads_only_what_is_new() {
         run_set_live(&g, &follow, t0, &[], &mut state, "");
     }
     let per_row = g.read.get() / 8;
-    assert!(per_row < 4 * N, "read {per_row} samples a row over {steps} runs (a whole run each time reads ~{})", N * steps / 2);
+    assert!(
+        per_row < 4 * N,
+        "read {per_row} samples a row over {steps} runs (a whole run each time reads ~{})",
+        N * steps / 2
+    );
 
     // a changed row, or labels and limits, start again from the beginning
     let mut changed = follow.clone();

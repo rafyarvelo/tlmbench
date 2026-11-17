@@ -766,7 +766,8 @@ impl LiveCheck {
             None => None,
         };
         let up = plan.lhs.as_ref().is_some_and(|(_, up)| *up);
-        let better = |v: f64, w: Option<(f64, f64)>| !v.is_nan() && w.is_none_or(|(x, _)| if up { v > x } else { v < x });
+        let better =
+            |v: f64, w: Option<(f64, f64)>| !v.is_nan() && w.is_none_or(|(x, _)| if up { v > x } else { v < x });
         let missing_fails = k.missing == Missing::Fail && !mark;
         let scoped = plan.when.is_some();
         let in_scope_at = |t: f64| !scoped || mask.iter().any(|&(x, y)| x <= t && t < y);
@@ -814,7 +815,11 @@ impl LiveCheck {
     fn outcome(&self, env: &dyn Env, k: &Check, t_first: i64) -> Outcome {
         let plan = self.plan.as_ref().expect("planned");
         let mark = k.kind == Kind::Rule;
-        let mut out = Outcome { name: k.name.clone(), verdict: if mark { Verdict::Mark } else { Verdict::Pass }, ..Outcome::default() };
+        let mut out = Outcome {
+            name: k.name.clone(),
+            verdict: if mark { Verdict::Mark } else { Verdict::Pass },
+            ..Outcome::default()
+        };
         for e in std::iter::once(&plan.expect).chain(&plan.when) {
             for n in e.names() {
                 let first = n.split('|').next().unwrap_or(n).trim().to_string();
@@ -851,7 +856,13 @@ impl LiveCheck {
         if kept.is_empty() {
             return out;
         }
-        out.verdict = if mark { Verdict::Mark } else if k.severity == Severity::Warn { Verdict::Warn } else { Verdict::Fail };
+        out.verdict = if mark {
+            Verdict::Mark
+        } else if k.severity == Severity::Warn {
+            Verdict::Warn
+        } else {
+            Verdict::Fail
+        };
         out.count = kept.len();
         out.secs = kept.iter().map(|r| r.b - r.a + dt).sum();
         let keep = if mark { KEEP_RULE } else { KEEP_CHECK };
@@ -890,7 +901,14 @@ pub fn run_set(env: &dyn Env, set: &CheckSet, t_first: i64, recipes: &[Recipe]) 
 
 /// [`run_set`] on a live recording, each row following it with its [`LiveCheck`] in `state`; `key` names what else
 /// the rows depend on (the labels and limits).
-pub fn run_set_live(env: &dyn Env, set: &CheckSet, t_first: i64, recipes: &[Recipe], state: &mut LiveSet, key: &str) -> SetResult {
+pub fn run_set_live(
+    env: &dyn Env,
+    set: &CheckSet,
+    t_first: i64,
+    recipes: &[Recipe],
+    state: &mut LiveSet,
+    key: &str,
+) -> SetResult {
     state.rows.resize_with(set.checks.len(), LiveCheck::default);
     let outcomes: Vec<Outcome> =
         set.checks.iter().zip(&mut state.rows).map(|(k, live)| live.advance(env, k, t_first, recipes, key)).collect();

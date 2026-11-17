@@ -4268,11 +4268,20 @@ mod group_tests {
             o.build(&mut |_, _| {}).unwrap();
         }
         // file 2 is 5 s later on the tab's timeline
-        let g = Group::new(vec![(a.clone(), TimeMap::identity()), (b.clone(), TimeMap::offset(5_000_000_000))], vec![1, 2]);
-        let names: Vec<String> = foreign_named(&g, Some(&["flight".into(), "gps".into()])).into_iter().map(|f| f.name).collect();
+        let g =
+            Group::new(vec![(a.clone(), TimeMap::identity()), (b.clone(), TimeMap::offset(5_000_000_000))], vec![1, 2]);
+        let names: Vec<String> =
+            foreign_named(&g, Some(&["flight".into(), "gps".into()])).into_iter().map(|f| f.name).collect();
         assert_eq!(names, ["v·2", "gps v"]);
         assert_eq!(foreign_named(&g, None).len(), 1);
-        assert!(tlmbench_store::check_cross(a.recording(), "v - \"gps v\"", &foreign_named(&g, Some(&["".into(), "gps".into()]))).is_ok());
+        assert!(
+            tlmbench_store::check_cross(
+                a.recording(),
+                "v - \"gps v\"",
+                &foreign_named(&g, Some(&["".into(), "gps".into()]))
+            )
+            .is_ok()
+        );
         assert!(tlmbench_store::check_cross(a.recording(), "v - \"gps v\"", &g.foreign()).is_err());
 
         // channel 1 is file 2's v: its spectrum over shared 5..15 s is its own over 0..10 s

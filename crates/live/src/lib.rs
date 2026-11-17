@@ -375,13 +375,9 @@ impl Source {
                         &opts,
                         &held,
                     ),
-                    Endpoint::Serial { port, baud } => linked(
-                        |_| open_serial(port, *baud),
-                        |s| pump(&mut **s, &stop, &mut feed),
-                        &stop,
-                        &opts,
-                        &held,
-                    ),
+                    Endpoint::Serial { port, baud } => {
+                        linked(|_| open_serial(port, *baud), |s| pump(&mut **s, &stop, &mut feed), &stop, &opts, &held)
+                    }
                     Endpoint::Udp(a) => pump_udp(a, &stop, &opts, &mut feed),
                     Endpoint::File(_) | Endpoint::Replay(_) => Ok(()),
                 };
