@@ -350,6 +350,13 @@ Stop works while reconnecting; the session folder lands where you chose.
 Result:
 Notes:
 
+### W5. Payload plugins in the browser (D-ingest-09)
+Do: in browser-only mode (`just browser-site`, served), add `plugins/template-payload/.../my_payload.wasm` in Settings ›
+Plugins, keep a descriptor that names `demo-payload` for a packet type, and drop a matching file.
+Expect: the file opens with the plugin's channels; without the plugin added, the note says to add it.
+Result:
+Notes:
+
 ---
 
 ## Other things I noticed

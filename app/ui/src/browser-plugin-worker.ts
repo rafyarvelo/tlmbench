@@ -11,8 +11,14 @@ import * as filesystem from '@bytecodealliance/preview2-shim/filesystem';
 import * as io from '@bytecodealliance/preview2-shim/io';
 import * as random from '@bytecodealliance/preview2-shim/random';
 
+/** What a descriptor's payload plugin decodes (the core's `payload_requests`, D-ingest-09): a packet type's packets, each
+ *  `[header length u32][payload length u32][header][payload]`, or plugin fields' bytes, field after field. */
+export type PayloadWork =
+  | { kind: 'packets'; type: string; params: string; packets: number; bin: ArrayBuffer }
+  | { kind: 'fields'; records: number; fields: { name: string; params: string; dtype: string; size: number }[]; bin: ArrayBuffer };
+
 export interface PluginJob {
-  op: 'about' | 'sniff' | 'decode';
+  op: 'about' | 'sniff' | 'decode' | 'payload';
   /** The plugin's bytes, and a digest of them that names its translation in the page's storage. */
   wasm: ArrayBuffer;
   id: string;
@@ -21,6 +27,7 @@ export interface PluginJob {
   file?: File;
   head?: Uint8Array;
   name?: string;
+  payload?: PayloadWork;
 }
 
 export type PluginReply =
@@ -28,6 +35,7 @@ export type PluginReply =
   | { kind: 'about'; about: { name: string; version: string; description?: string; files: string[] } }
   | { kind: 'sniff'; yes: boolean }
   | { kind: 'decoded'; meta: Record<string, unknown>; bin: ArrayBuffer }
+  | { kind: 'values'; bin: ArrayBuffer }
   | { kind: 'error'; error: string };
 
 /** FileReaderSync: Workers have it; the project's DOM types don't. */
@@ -135,6 +143,14 @@ interface Decoder {
   next(max: number): { rows: number; time: BigInt64Array | bigint[]; columns: Uint8Array[] } | undefined;
 }
 
+/** A payload plugin's exports (the WIT's `payload` world, as jco names them). */
+interface Payload {
+  describe(): { name: string; version: string; description?: string; files: string[] };
+  packetSchema(typeName: string, params: string): { channels: { name: string; unit?: string; dtype: string }[]; timed: boolean };
+  decodePackets(typeName: string, params: string, packets: { header: Uint8Array; payload: Uint8Array }[]): { rows: number; time: BigInt64Array | bigint[]; columns: Uint8Array[] };
+  decodeField(field: string, params: string, dtype: string, size: number, count: number, data: Uint8Array): Uint8Array;
+}
+
 /** The plugin, instantiated with only what the sandbox gives it. */
 async function instantiate(job: PluginJob): Promise<Decoder> {
   const files = await translated(job);
@@ -216,11 +232,86 @@ const message = (e: unknown): string => {
   return typeof p?.payload === 'string' ? p.payload : String(p?.message ?? e);
 };
 
+/** Packets a call takes at most, as the app's batches. */
+const BATCH_PACKETS = 4096;
+
+/** A payload plugin's work (D-ingest-09), as the app runs it: a packet type's rows (as a decoder plugin's columns, for
+ *  `import_columns`) or each plugin field's values (f64, field after field, for `import_described`). */
+function payload(p: Payload, w: PayloadWork): PluginReply {
+  const bytes = new Uint8Array(w.bin);
+  const view = new DataView(w.bin);
+  if (w.kind === 'fields') {
+    const out = new Float64Array(w.fields.length * w.records);
+    let at = 0;
+    w.fields.forEach((f, k) => {
+      const n = f.size * w.records;
+      const got = p.decodeField(f.name, f.params, f.dtype, f.size, w.records, bytes.subarray(at, at + n));
+      at += n;
+      if (got.length !== w.records * SIZES[f.dtype]) throw new Error(`field ${f.name}: ${got.length} bytes for ${w.records} values of ${f.dtype}`);
+      asF64(got, f.dtype, w.records, out, k * w.records);
+      post({ kind: 'progress', rows: (k + 1) * w.records });
+    });
+    return { kind: 'values', bin: out.buffer };
+  }
+  const schema = p.packetSchema(w.type, w.params);
+  const seen = new Set<string>();
+  for (const c of schema.channels) {
+    if (!c.name || seen.has(c.name)) throw new Error(`channel names must be unique and not empty ("${c.name}")`);
+    if (!SIZES[c.dtype]) throw new Error(`channel ${c.name}: no type ${c.dtype}`);
+    seen.add(c.name);
+  }
+  const times: bigint[] = [];
+  const cols: number[][] = schema.channels.map(() => []);
+  let rows = 0;
+  let at = 0;
+  for (let done = 0; done < w.packets; ) {
+    const batch: { header: Uint8Array; payload: Uint8Array }[] = [];
+    while (done < w.packets && batch.length < BATCH_PACKETS) {
+      const h = view.getUint32(at, true);
+      const n = view.getUint32(at + 4, true);
+      batch.push({ header: bytes.slice(at + 8, at + 8 + h), payload: bytes.slice(at + 8 + h, at + 8 + h + n) });
+      at += 8 + h + n;
+      done++;
+    }
+    const chunk = p.decodePackets(w.type, w.params, batch);
+    if (schema.timed && chunk.time.length !== chunk.rows) throw new Error(`a batch of ${chunk.rows} rows has ${chunk.time.length} times`);
+    if (chunk.columns.length !== schema.channels.length) throw new Error(`a batch has ${chunk.columns.length} columns for ${schema.channels.length} channels`);
+    chunk.columns.forEach((b, k) => {
+      const c = schema.channels[k];
+      if (b.length !== chunk.rows * SIZES[c.dtype]) throw new Error(`channel ${c.name}: a column of ${b.length} bytes for ${chunk.rows} rows of ${c.dtype}`);
+      const f = new Float64Array(chunk.rows);
+      asF64(b, c.dtype, chunk.rows, f, 0);
+      for (const x of f) cols[k].push(x);
+    });
+    if (schema.timed) for (const t of chunk.time) times.push(BigInt(t));
+    rows += chunk.rows;
+    post({ kind: 'progress', rows });
+  }
+  const bin = new Uint8Array((schema.timed ? rows * 8 : 0) + rows * 8 * schema.channels.length);
+  const out = new DataView(bin.buffer);
+  let o = 0;
+  if (schema.timed) for (const t of times) (out.setBigInt64(o, t, true), (o += 8));
+  for (const c of cols) for (const x of c) (out.setFloat64(o, x, true), (o += 8));
+  const meta = {
+    samples: rows,
+    time: schema.timed ? { kind: 'column', name: 'time' } : { kind: 'rate', t0: '0', hz: 1 },
+    index: !schema.timed,
+    channels: schema.channels.map((c) => ({ name: c.name, unit: c.unit ?? null })),
+    format: 'Descriptor',
+    part: w.type,
+  };
+  return { kind: 'decoded', meta, bin: bin.buffer };
+}
+
 self.onmessage = async (e: MessageEvent<PluginJob>) => {
   const job = e.data;
   try {
     const p = await instantiate(job);
     if (job.op === 'about') return post({ kind: 'about', about: p.describe() });
+    if (job.op === 'payload') {
+      const r = payload(p as unknown as Payload, job.payload!);
+      return post(r, r.kind === 'values' || r.kind === 'decoded' ? [r.bin] : []);
+    }
     if (job.op === 'sniff') return post({ kind: 'sniff', yes: !!p.sniff(job.head ?? new Uint8Array(), job.name ?? '') });
     const schema = p.start();
     const seen = new Set<string>();

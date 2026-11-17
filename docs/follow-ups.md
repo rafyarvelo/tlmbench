@@ -289,3 +289,7 @@ removed Nov 15; git history keeps them.
     on into the same file; frames sent meanwhile are lost and a frame cut by the drop counts as malformed. A rate-timed
     descriptor's times run on from the record count, so the gap doesn't show in time; a time field shows it. UDP has no
     link: it listens until stopped. The Connect dialog's "Save recordings to" is per connection, starting from Settings.
+  - Payload plugins in browser-only mode (D-ingest-09): built as in the app, in two steps since the plugin runs in a
+    Worker: the page's core lists the plugin's work, the plugin decodes it, the core reads the file with the result.
+    The plugin is found by its name among the plugins added to the browser (or the trusted folder's). A file with several
+    packet types still opens a tab per type in a browser tab.

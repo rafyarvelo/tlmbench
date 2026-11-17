@@ -324,6 +324,21 @@ export async function installBrowserOnly(): Promise<void> {
       }
     }
     note(0, f.size);
+    // a descriptor that names a payload plugin (D-ingest-09): the core lists the plugin's work, the plugin runs in its own
+    // Worker, then the core reads the file with what it gave
+    if (described && /"plugin"/.test(JSON.stringify(described.descriptor))) {
+      const r = await openWithPayload(f, k, path, described);
+      (window as unknown as { __tlmCache?: string; __tlmParse?: string }).__tlmCache = 'miss';
+      (window as unknown as { __tlmParse?: string }).__tlmParse = 'payload';
+      setTimeout(() => {
+        try {
+          void writeCache(key, new Uint8Array(core('dump', { file: k }) as ArrayBuffer));
+        } catch {
+          /* nothing kept */
+        }
+      }, 50);
+      return r;
+    }
     if (plugin) {
       // decoded in the plugin's own Worker, then loaded by the page's core
       const { meta, bin } = await plugins.decode(plugin, f);
@@ -364,6 +379,49 @@ export async function installBrowserOnly(): Promise<void> {
       }
     }, 50);
     return r;
+  }
+
+  /** Reads a described file whose descriptor names a payload plugin: a plugin packet type's rows load as a plugin's
+   *  columns; plugin fields' values join the descriptor's channels. */
+  async function openWithPayload(f: File, k: number, path: string, described: { descriptor: unknown; part: string | null }): Promise<unknown> {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const out = new Uint8Array(core('payload_requests', { descriptor: described.descriptor, part: described.part }, bytes) as ArrayBuffer);
+    const n = Number(new DataView(out.buffer, out.byteOffset).getBigUint64(0, true));
+    const meta = JSON.parse(new TextDecoder().decode(out.subarray(8, 8 + n))) as {
+      kind: 'none' | 'packets' | 'fields';
+      plugin?: string;
+      params?: string;
+      type?: string;
+      packets?: number;
+      damaged?: number;
+      records?: number;
+      fields?: { name: string; plugin: string; params: string; dtype: string; size: number }[];
+    };
+    const work = out.slice(8 + n);
+    const args = { file: k, path, descriptor: described.descriptor, part: described.part };
+    if (meta.kind === 'packets') {
+      const r = await plugins.payloadRun(meta.plugin!, { kind: 'packets', type: meta.type!, params: meta.params!, packets: meta.packets!, bin: work.buffer }, trustedFolders());
+      if (r.kind !== 'decoded') throw new Error(`${meta.plugin}: no rows`);
+      const notes = meta.damaged ? [`${meta.damaged} damaged packet${meta.damaged === 1 ? '' : 's'} skipped`] : [];
+      return core('import_columns', { file: k, path, meta: { ...r.meta, notes } }, new Uint8Array(r.bin));
+    }
+    if (meta.kind !== 'fields') return core('import_described', args, bytes);
+    // each field's bytes are in the list's order; a field's plugin decodes its own, and the values go back in that order
+    const fields = meta.fields!;
+    const records = meta.records!;
+    const values = new Float64Array(fields.length * records);
+    let at = 0;
+    for (const [i, fd] of fields.entries()) {
+      const len = fd.size * records;
+      const r = await plugins.payloadRun(fd.plugin, { kind: 'fields', records, fields: [{ name: fd.name, params: fd.params, dtype: fd.dtype, size: fd.size }], bin: work.slice(at, at + len).buffer }, trustedFolders());
+      at += len;
+      if (r.kind !== 'values') throw new Error(`${fd.plugin}: no values`);
+      values.set(new Float64Array(r.bin), i * records);
+    }
+    const all = new Uint8Array(bytes.length + values.byteLength);
+    all.set(bytes);
+    all.set(new Uint8Array(values.buffer), bytes.length);
+    return core('import_described', { ...args, plugin: values.byteLength }, all);
   }
 
   const commands: Commands = {

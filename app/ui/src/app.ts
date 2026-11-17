@@ -1783,7 +1783,14 @@ async function openPathNow(path: string, part?: string): Promise<void> {
     // a file with several packet types opens them in one tab, a slot each on the file's clock (design; S4.3-08)
     if (part == null) {
       const parts = await invoke<string[]>('packet_parts', { path }).catch(() => [] as string[]);
-      if (parts.length > 1) return void (await openPacketTypes(path, parts));
+      if (parts.length > 1 && !ui.browserOnly) return void (await openPacketTypes(path, parts));
+      // a browser tab holds one recording (several in a tab are after v1): a tab per type
+      if (parts.length > 1) {
+        for (const q of parts) await openPath(path, q);
+        const first = tabs.list.find((t) => t.path === path && t.part === parts[0]);
+        if (first) await showTab(first.key);
+        return;
+      }
     }
     // a binary file nothing claims: the descriptor form, not an error
     if (await invoke<boolean>('needs_descriptor', { path }).catch(() => false)) return void dscOpenForm(path);

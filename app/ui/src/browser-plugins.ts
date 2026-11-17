@@ -3,7 +3,7 @@
 // of its own (browser-plugin-worker.ts) with the app's limits: no files or network, 1 GiB of memory, 30 s for a call; a
 // Worker that runs past it is ended. Native plugins can't run in a browser: they are listed as needing the app.
 
-import type { PluginJob, PluginReply } from './browser-plugin-worker';
+import type { PayloadWork, PluginJob, PluginReply } from './browser-plugin-worker';
 import type { PluginRow } from './plugins.svelte';
 
 const STORE = 'tlmbench.plugins';
@@ -185,6 +185,21 @@ export async function claim(f: File, trusted: string[]): Promise<WasmPlugin | nu
     if (r.kind === 'sniff' && r.yes) return p;
   }
   return null;
+}
+
+/** Runs a descriptor's payload plugin (by its name; yours, or the open folder's once trusted) on what the page's core
+ *  listed (`payload_requests`, D-ingest-09): a packet type's rows, or the plugin fields' values. */
+export async function payloadRun(
+  name: string,
+  work: PayloadWork,
+  trusted: string[],
+  onProgress?: (rows: number) => void,
+): Promise<PluginReply> {
+  const p = (await runnable(trusted)).find((x) => x.about.name === name);
+  if (!p) throw new Error(`its descriptor names the payload plugin "${name}": add it in Settings › Plugins`);
+  const r = await run({ op: 'payload', wasm: await p.bytes(), id: p.id, payload: work }, onProgress);
+  if (r.kind === 'error') throw new Error(`${name}: ${r.error}`);
+  return r;
 }
 
 /** Decodes a file through a plugin: what the page's core loads (`import_columns`). */

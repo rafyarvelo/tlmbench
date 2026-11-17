@@ -144,7 +144,7 @@ pub fn import_tlm(st: &mut crate::data::State, k: usize, path: &str, bytes: &[u8
     let stride = desc.record_size as usize;
     let n = (bytes.len() - header_len) / stride;
     let records = &bytes[header_len..header_len + n * stride];
-    import_records(st, k, path, "tlmbench reference", None, &desc, records, stride, Vec::new())
+    import_records(st, k, path, "tlmbench reference", None, &desc, records, stride, Vec::new(), Vec::new())
 }
 
 /// A descriptor as the page keeps it: TOML text, or the descriptor form's JSON (as the app's commands take it).
@@ -214,60 +214,38 @@ pub fn described_parts(desc: &Value) -> Result<Vec<String>, String> {
     Ok(d.parts().into_iter().map(|(_, p)| p.map(|p| p.name).unwrap_or_default()).collect())
 }
 
-/// Reads a binary file laid out by a descriptor the page keeps (fixed-width records after `header_size` bytes, or
-/// packets: framing, checksums and decompression by the app's own `packets_core.rs`) into file `k`: packet type `part`
-/// of the descriptor's (0 when it has none). Damaged packets are skipped and counted, as the app does.
-pub fn import_described(
-    st: &mut crate::data::State,
-    k: usize,
-    path: &str,
-    bytes: &[u8],
-    descriptor: &Value,
-    part: Option<&str>,
-) -> Result<Reply, String> {
-    use crate::packets_core::{frame, packet_records};
-    let name = path.rsplit('/').next().unwrap_or(path);
-    let bad = |msg: String| format!("{name}: {msg}");
-    let whole = descriptor_of(descriptor).map_err(bad)?;
-    whole.validate().map_err(|e| bad(e.to_string()))?;
+/// The descriptor's layout for packet type `part` (its only one when it has none), and that type.
+fn layout_of(descriptor: &Value, part: Option<&str>) -> Result<(Descriptor, Option<crate::descriptor::Part>), String> {
+    let whole = descriptor_of(descriptor)?;
+    whole.validate().map_err(|e| e.to_string())?;
     let mut parts = whole.parts();
     // a file with several packet types opens one type at a time, by name (as the app's `open` takes `part`)
     let at = match part {
         Some(p) => parts.iter().position(|(_, q)| q.as_ref().is_some_and(|q| q.name == p)),
         None if parts.len() == 1 => Some(0),
-        None => return Err(bad(format!("it has {} packet types: open one at a time", parts.len()))),
+        None => return Err(format!("it has {} packet types: open one at a time", parts.len())),
     }
-    .ok_or_else(|| bad("the descriptor has no such packet type".into()))?;
-    let (desc, part) = parts.swap_remove(at);
-    // payload plugins (D-ingest-09) decode in the app; the page doesn't run them yet
-    if let Some(n) = part
-        .as_ref()
-        .and_then(|q| q.plugin.as_ref())
-        .map(|p| &p.0)
-        .or(desc.plugin_fields().next().and_then(|f| f.plugin.as_ref()))
-    {
-        return Err(bad(format!("its descriptor names the payload plugin \"{n}\": open it in the app")));
-    }
-    let part_name = part.as_ref().map(|p| p.name.clone());
+    .ok_or("the descriptor has no such packet type")?;
+    Ok(parts.swap_remove(at))
+}
+
+/// The records of a described file as read (a packet file's: each packet's header, then a record), their stride, and
+/// what to say about damaged packets.
+fn described_records(
+    bytes: &[u8],
+    desc: &Descriptor,
+    part: Option<&crate::descriptor::Part>,
+) -> Result<(Vec<u8>, usize, Vec<String>), String> {
+    use crate::packets_core::{frame, packet_records};
     let start = (desc.header_size as usize).min(bytes.len());
     let Some(p) = desc.packets.clone() else {
         let stride = desc.record_size as usize;
         let n = (bytes.len() - start) / stride;
-        return import_records(
-            st,
-            k,
-            path,
-            "Descriptor",
-            None,
-            &desc,
-            &bytes[start..start + n * stride],
-            stride,
-            Vec::new(),
-        );
+        return Ok((bytes[start..start + n * stride].to_vec(), stride, Vec::new()));
     };
     let big = desc.endian == Endian::Big;
-    let sync = p.sync_bytes().map_err(|e| bad(e.to_string()))?;
-    let framing = frame(bytes, start, &p, desc.record_size, part.as_ref(), &sync, big);
+    let sync = p.sync_bytes().map_err(|e| e.to_string())?;
+    let framing = frame(bytes, start, &p, desc.record_size, part, &sync, big);
     let mut records = Vec::new();
     let mut damaged = framing.bad;
     for f in &framing.packets {
@@ -280,8 +258,121 @@ pub fn import_described(
         .then(|| format!("{damaged} damaged packet{} skipped", if damaged == 1 { "" } else { "s" }))
         .into_iter()
         .collect();
-    let stride = (p.header_size + desc.record_size) as usize;
-    import_records(st, k, path, "Descriptor", part_name, &desc, &records, stride, notes)
+    Ok((records, (p.header_size + desc.record_size) as usize, notes))
+}
+
+/// What a descriptor's payload plugin (D-ingest-09) must decode before the page reads the file, since the plugin runs
+/// in a Worker of its own: the JSON says which and the bytes hold the input.
+///
+/// - `{"kind": "packets", plugin, params, type, packets, damaged}`: packet type `part` has a plugin; the bytes are each
+///   packet as `[header length u32][payload length u32][header][payload]` (the payload after checksum and
+///   decompression), in file order. Its rows then load as a plugin's columns do (`import_columns`).
+/// - `{"kind": "fields", records, fields: [{name, plugin, params, dtype, size}]}`: plugin fields; the bytes are each
+///   field's `size` bytes of every record, field after field. Their values go back to [`import_described`].
+/// - `{"kind": "none"}`: no plugin.
+pub fn payload_requests(bytes: &[u8], descriptor: &Value, part: Option<&str>) -> Result<(Value, Vec<u8>), String> {
+    use crate::packets_core::{decompress, frame};
+    let (desc, part) = layout_of(descriptor, part)?;
+    if let (Some(q), Some(p)) = (part.as_ref().filter(|q| q.plugin.is_some()), desc.packets.clone()) {
+        let (plugin, params) = q.plugin.clone().expect("checked");
+        let big = desc.endian == Endian::Big;
+        let sync = p.sync_bytes().map_err(|e| e.to_string())?;
+        let framing = frame(bytes, (desc.header_size as usize).min(bytes.len()), &p, 0, Some(q), &sync, big);
+        let hs = p.header_size as usize;
+        let (mut out, mut n, mut bad) = (Vec::new(), 0usize, framing.bad);
+        for f in &framing.packets {
+            let at = f.offset as usize;
+            match decompress(p.compression, &bytes[at + hs..at + hs + f.stored as usize]) {
+                Some(payload) => {
+                    out.extend_from_slice(&(hs as u32).to_le_bytes());
+                    out.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+                    out.extend_from_slice(&bytes[at..at + hs]);
+                    out.extend_from_slice(&payload);
+                    n += 1;
+                }
+                None => bad += 1,
+            }
+        }
+        let meta = json!({ "kind": "packets", "plugin": plugin, "params": params, "type": q.name, "packets": n, "damaged": bad });
+        return Ok((meta, out));
+    }
+    let fields: Vec<&crate::descriptor::Field> = desc.plugin_fields().collect();
+    if fields.is_empty() {
+        return Ok((json!({ "kind": "none" }), Vec::new()));
+    }
+    let (records, stride, _) = described_records(bytes, &desc, part.as_ref())?;
+    let n = records.len() / stride;
+    let mut out = Vec::new();
+    for f in &fields {
+        let (at, size) = (f.offset as usize, f.size as usize);
+        for i in 0..n {
+            out.extend_from_slice(&records[i * stride + at..i * stride + at + size]);
+        }
+    }
+    let list: Vec<Value> = fields
+        .iter()
+        .map(|f| {
+            json!({
+                "name": f.name, "plugin": f.plugin, "params": crate::descriptor::params_json(f.params.as_ref()),
+                "dtype": f.dtype.name(), "size": f.size, "unit": f.unit,
+            })
+        })
+        .collect();
+    Ok((json!({ "kind": "fields", "records": n, "fields": list }), out))
+}
+
+/// Reads a binary file laid out by a descriptor the page keeps (fixed-width records after `header_size` bytes, or
+/// packets: framing, checksums and decompression by the app's own `packets_core.rs`) into file `k`: packet type `part`
+/// of the descriptor's (0 when it has none). Damaged packets are skipped and counted, as the app does. A descriptor
+/// with plugin fields needs their values (`plugin`: f64 LE, field after field, a value per record, from the plugin the
+/// page ran on [`payload_requests`]); they join the channels after the descriptor's own.
+pub fn import_described(
+    st: &mut crate::data::State,
+    k: usize,
+    path: &str,
+    bytes: &[u8],
+    descriptor: &Value,
+    part: Option<&str>,
+    plugin: Option<&[u8]>,
+) -> Result<Reply, String> {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let bad = |msg: String| format!("{name}: {msg}");
+    let (desc, part) = layout_of(descriptor, part).map_err(bad)?;
+    if let Some((n, _)) = part.as_ref().and_then(|q| q.plugin.as_ref()) {
+        return Err(bad(format!(
+            "packet type {} is the payload plugin \"{n}\"'s to decode first",
+            part.as_ref().map_or("", |q| q.name.as_str())
+        )));
+    }
+    let part_name = part.as_ref().map(|p| p.name.clone());
+    let (records, stride, notes) = described_records(bytes, &desc, part.as_ref()).map_err(bad)?;
+    let fields: Vec<&crate::descriptor::Field> = desc.plugin_fields().collect();
+    let mut extra = Vec::new();
+    if !fields.is_empty() {
+        let n = records.len() / stride;
+        let Some(values) = plugin else {
+            let p = fields[0].plugin.as_deref().unwrap_or_default();
+            return Err(bad(format!("its field {} needs the payload plugin \"{p}\"", fields[0].name)));
+        };
+        if values.len() != fields.len() * n * 8 {
+            return Err(bad(format!("the payload plugin gave {} values for {} records", values.len() / 8, n)));
+        }
+        for (k, f) in fields.iter().enumerate() {
+            let v: Vec<f64> = values[k * n * 8..(k + 1) * n * 8]
+                .chunks_exact(8)
+                .map(|b| f64::from_le_bytes(b.try_into().expect("8 bytes")))
+                .collect();
+            let info = ChannelInfo {
+                name: f.name.clone(),
+                unit: f.unit.clone(),
+                dtype: f.dtype.name(),
+                category: None,
+                labels: Vec::new(),
+            };
+            extra.push((info, v));
+        }
+    }
+    import_records(st, k, path, "Descriptor", part_name, &desc, &records, stride, notes, extra)
 }
 
 /// Whole records of `stride` bytes laid out by `desc` (a packet file's: the packet header then the record) into file
@@ -297,6 +388,7 @@ fn import_records(
     records: &[u8],
     stride: usize,
     mut notes: Vec<String>,
+    extra: Vec<(ChannelInfo, Vec<f64>)>,
 ) -> Result<Reply, String> {
     let n = records.len() / stride;
     let big = desc.endian == Endian::Big;
@@ -348,12 +440,17 @@ fn import_records(
             category: None,
             labels: Vec::new(),
         })
+        .chain(extra.iter().map(|(c, _)| c.clone()))
         .collect();
     let mut d = Ds::new(path, format, part, n, time, tm, channels);
     notes.extend(found.note_of("record", "record"));
     d.info.notes = notes;
     for (col, f) in d.cols.iter_mut().zip(&fields) {
         col.raw = crate::data::Raw::whole(field_values(records, stride, f.offset as usize, f.dtype, big, f));
+    }
+    // a payload plugin's fields, after the descriptor's own (as the app joins them)
+    for (col, (_, v)) in d.cols.iter_mut().skip(fields.len()).zip(extra) {
+        col.raw = crate::data::Raw::whole(v);
     }
     d.refresh();
     for c in 0..d.cols.len() {
@@ -648,7 +745,7 @@ unit = "V"
         bytes.extend(packet(0, &ZST_1));
         assert_eq!(described_parts(&json!(PACKETS_ZSTD)).unwrap(), [""]);
         let mut st = State::default();
-        import_described(&mut st, 0, "local://run.bin", &bytes, &json!(PACKETS_ZSTD), None).unwrap();
+        import_described(&mut st, 0, "local://run.bin", &bytes, &json!(PACKETS_ZSTD), None, None).unwrap();
         let d = st.files[0].as_ref().unwrap();
         assert_eq!(d.len, 4, "three records, then one");
         assert_eq!(d.info.format, "Descriptor");
@@ -718,7 +815,7 @@ unit = "V"
         for (kind, payload) in [("lz4", lz4), ("gzip", gz)] {
             let toml = PACKETS_ZSTD.replace("compression = \"zstd\"", &format!("compression = \"{kind}\""));
             let mut st = State::default();
-            import_described(&mut st, 0, "x.bin", &packet(0, &payload), &json!(toml), None).unwrap();
+            import_described(&mut st, 0, "x.bin", &packet(0, &payload), &json!(toml), None, None).unwrap();
             let d = st.files[0].as_ref().unwrap();
             assert_eq!(d.cols[0].raw.slice(3).unwrap(), [10.0, 20.0, 30.0], "{kind}");
             assert!(d.info.notes.is_empty(), "{kind}: {:?}", d.info.notes);
@@ -760,8 +857,8 @@ fields = [ { name = "ax", type = "i16", offset = 6 } ]
         assert_eq!(described_parts(&json!(types)).unwrap(), ["gps", "imu"]);
         let types = &json!(types);
         let mut st = State::default();
-        import_described(&mut st, 0, "x.bin", &bytes, types, Some("gps")).unwrap();
-        import_described(&mut st, 1, "x.bin", &bytes, types, Some("imu")).unwrap();
+        import_described(&mut st, 0, "x.bin", &bytes, types, Some("gps"), None).unwrap();
+        import_described(&mut st, 1, "x.bin", &bytes, types, Some("imu"), None).unwrap();
         let (gps, imu) = (st.files[0].as_ref().unwrap(), st.files[1].as_ref().unwrap());
         assert_eq!(gps.cols[0].raw.slice(2).unwrap(), [5.0, 6.0]);
         assert_eq!(imu.cols[0].raw.slice(2).unwrap(), [7.0, 8.0]);
@@ -773,8 +870,10 @@ fields = [ { name = "ax", type = "i16", offset = 6 } ]
             Some("imu"),
             "a type kept in the page keeps its name"
         );
-        assert!(import_described(&mut st, 2, "x.bin", &bytes, types, Some("nope")).is_err());
-        assert!(import_described(&mut st, 2, "x.bin", &bytes, types, None).err().unwrap().contains("2 packet types"));
+        assert!(import_described(&mut st, 2, "x.bin", &bytes, types, Some("nope"), None).is_err());
+        assert!(
+            import_described(&mut st, 2, "x.bin", &bytes, types, None, None).err().unwrap().contains("2 packet types")
+        );
 
         // fixed-width records after a header, with the descriptor kept in the page (no packets)
         let fixed = FIELD_TIME.replace("record_size = 8", "record_size = 8\nheader_size = 4");
@@ -785,7 +884,95 @@ fields = [ { name = "ax", type = "i16", offset = 6 } ]
         );
         // the form's JSON works as well as TOML
         let as_json = serde_json::to_value(Descriptor::parse(&fixed).unwrap()).unwrap();
-        import_described(&mut st, 3, "plain.bin", &raw, &as_json, None).unwrap();
+        import_described(&mut st, 3, "plain.bin", &raw, &as_json, None, None).unwrap();
         assert_eq!(st.files[3].as_ref().unwrap().cols[0].raw.slice(2).unwrap(), [2.0, 3.0]);
+    }
+
+    /// Payload plugins in the page (D-ingest-09): the core lists what the plugin must decode, a packet type's packets
+    /// (header and payload, after checksum and decompression) or a field's bytes of every record, and loads the
+    /// plugin's field values after the descriptor's own channels.
+    #[test]
+    fn a_payload_plugins_work_is_listed_then_its_values_load() {
+        let types = r#"
+schema = 1
+name = "pl"
+[packets]
+sync = "EB90"
+header_size = 6
+length = { offset = 2, type = "u16" }
+id = { offset = 4, type = "u8" }
+[[packet_types]]
+id = 1
+name = "status"
+plugin = "demo-payload"
+params = { temp_scale = 0.5 }
+[[packet_types]]
+id = 2
+name = "imu"
+record_size = 5
+time = { source = "index" }
+fields = [ { name = "ax", type = "i16", offset = 6 }, { name = "packed", type = "f64", offset = 8, size = 3, plugin = "demo-payload" } ]
+"#;
+        let unchecked = |kind: u8, payload: &[u8]| {
+            let mut p = packet(kind, payload);
+            p.pop();
+            p
+        };
+        let mut bytes = unchecked(1, &[1, 2, 3]);
+        bytes.extend(unchecked(2, &[7, 0, 0, 0, 1]));
+        bytes.extend(unchecked(1, &[4, 5]));
+        bytes.extend(unchecked(2, &[8, 0, 0, 0, 2, 9, 0, 0, 0, 3]));
+        let types = &json!(types);
+        // the plugin packet type: two packets, header then payload each
+        let (meta, bin) = payload_requests(&bytes, types, Some("status")).unwrap();
+        assert_eq!(
+            (meta["kind"].as_str(), meta["plugin"].as_str(), meta["type"].as_str(), meta["packets"].as_u64()),
+            (Some("packets"), Some("demo-payload"), Some("status"), Some(2))
+        );
+        assert_eq!(meta["params"].as_str(), Some(r#"{"temp_scale":0.5}"#));
+        let first = |b: &[u8]| {
+            (u32::from_le_bytes(b[0..4].try_into().unwrap()), u32::from_le_bytes(b[4..8].try_into().unwrap()))
+        };
+        assert_eq!(first(&bin), (6, 3));
+        assert_eq!(&bin[8 + 6..8 + 9], &[1, 2, 3]);
+        assert_eq!(bin.len(), (8 + 6 + 3) + (8 + 6 + 2));
+        let mut st = State::default();
+        assert!(
+            import_described(&mut st, 0, "x.bin", &bytes, types, Some("status"), None)
+                .err()
+                .unwrap()
+                .contains("decode first")
+        );
+
+        // the plugin field: 3 bytes of each of the 3 records
+        let (meta, bin) = payload_requests(&bytes, types, Some("imu")).unwrap();
+        assert_eq!((meta["kind"].as_str(), meta["records"].as_u64()), (Some("fields"), Some(3)));
+        assert_eq!(
+            (
+                meta["fields"][0]["name"].as_str(),
+                meta["fields"][0]["size"].as_u64(),
+                meta["fields"][0]["dtype"].as_str()
+            ),
+            (Some("packed"), Some(3), Some("f64"))
+        );
+        assert_eq!(bin, [0, 0, 1, 0, 0, 2, 0, 0, 3]);
+        assert!(
+            import_described(&mut st, 0, "x.bin", &bytes, types, Some("imu"), None)
+                .err()
+                .unwrap()
+                .contains("needs the payload plugin")
+        );
+        let values: Vec<u8> = [10.0f64, 20.0, 30.0].iter().flat_map(|v| v.to_le_bytes()).collect();
+        assert!(import_described(&mut st, 0, "x.bin", &bytes, types, Some("imu"), Some(&values[..16])).is_err());
+        import_described(&mut st, 0, "x.bin", &bytes, types, Some("imu"), Some(&values)).unwrap();
+        let d = st.files[0].as_ref().unwrap();
+        let names: Vec<&str> = d.info.channels.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["ax", "packed"]);
+        assert_eq!(d.cols[0].raw.slice(3).unwrap(), [7.0, 8.0, 9.0]);
+        assert_eq!(d.cols[1].raw.slice(3).unwrap(), [10.0, 20.0, 30.0]);
+
+        // a descriptor with no plugin asks for nothing
+        let none = payload_requests(&bytes, &json!(FIELD_TIME), None).unwrap();
+        assert_eq!(none.0["kind"].as_str(), Some("none"));
     }
 }

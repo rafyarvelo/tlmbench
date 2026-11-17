@@ -72,14 +72,26 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
         "import_csv" => crate::import::import_csv(st, arg::<usize>(a, "file")?, &arg::<String>(a, "path")?, bin),
         // a binary file laid out by a descriptor the page keeps: its packet types, then one file per type
         "described_parts" => Ok(Reply::Json(json!(crate::import::described_parts(&a["descriptor"])?))),
-        "import_described" => crate::import::import_described(
-            st,
-            arg::<usize>(a, "file")?,
-            &arg::<String>(a, "path")?,
-            bin,
-            &a["descriptor"],
-            a["part"].as_str(),
-        ),
+        // `plugin`: how many of the last bytes are a payload plugin's field values (see `payload_requests`)
+        "import_described" => {
+            let tail = a["plugin"].as_u64().unwrap_or(0) as usize;
+            let (file, values) = bin.split_at(bin.len().checked_sub(tail).ok_or("the plugin's values are short")?);
+            crate::import::import_described(
+                st,
+                arg::<usize>(a, "file")?,
+                &arg::<String>(a, "path")?,
+                file,
+                &a["descriptor"],
+                a["part"].as_str(),
+                (tail > 0).then_some(values),
+            )
+        }
+        // what a descriptor's payload plugin must decode first (D-ingest-09): JSON, then the bytes it reads
+        "payload_requests" => {
+            let (meta, data) = crate::import::payload_requests(bin, &a["descriptor"], a["part"].as_str())?;
+            let json = serde_json::to_vec(&meta).map_err(|e| e.to_string())?;
+            Ok(Reply::Bytes([(json.len() as u64).to_le_bytes().to_vec(), json, data].concat()))
+        }
         // the descriptor form over the first bytes of a file (`bin`), as the app's commands answer it
         "descriptor_preview" => Ok(Reply::Json(json!(match crate::import::descriptor_of(&a["descriptor"]) {
             Ok(d) => crate::preview::preview(bin, &d),
