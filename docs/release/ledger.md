@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 325 · **Partial** 5 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
+Counts: **Done** 326 · **Partial** 5 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (379 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -129,7 +129,7 @@ where each step stands, and nothing else records either.
 | S5.3-12 | roadmap 5.3 | + From limits. | Unverified | `app/ui/src/shell/CheckEditor.svelte:342` | No test presses it; "Check against limits…" in a sets menu is not built. Test in R3.3 |
 | S5.3-13 | roadmap 5.3 | The Checks pane view. | Done | `t_checks` | |
 | S5.3-14 | roadmap 5.3 | Save as rule from a table filter. | Done | `t_tablefilter` | Nov 17. Save as rule in the table's filter strip (`filterrule.ts`). R2.5 |
-| S5.3-15 | roadmap 5.3 | Folder run and the Report tab with trends. | Partial | `t_checkfolder` | Nov 17: sub-folders run; the report is kept with the set (settings) and comes back without running. Still a dialog tab, not a separate Report tab as the design says; a cell opens the earliest violation of its group. R3.3 |
+| S5.3-15 | roadmap 5.3 | Folder run and the Report tab with trends. | Partial | `t_checkfolder` | Nov 17: sub-folders run; the report is kept with the set (settings) and comes back without running. Still a dialog tab, not a separate Report tab as the design says; a cell opens the earliest violation of its group. R3.3 Owner, Nov 17: the separate Report tab is v1 (R3.3): a tab in the tab strip, saved with the set, reopened and re-run. |
 | S5.3-16 | roadmap 5.3, Done when | `t_checks`, `t_checksel` and `t_rules` from the prototype are ported. | Done | `t_checks`, `t_rules`, `t_checkfolder`, `proto:t_checksel` | |
 | S5.3-17 | roadmap 5.3, Done when | A folder check of 20 files runs from the CLI. | Done | `tlmbench::check::twenty_files_run_in_parallel_and_report_in_name_order` | |
 | S5.3-18 | roadmap 5.3, Done when | The CLI's results match the app's. | Unverified | `crates/store/src/checks.rs` (both call it) | No test runs one set through both and compares. Add one through the daemon in R2.5 |
@@ -138,7 +138,7 @@ where each step stands, and nothing else records either.
 | S5.4-03 | roadmap 5.4 | Pairs and groups by name, sizes S/M/L/2×2, min/max marks, the widget ⋯ menu. | Done | `t_gauges` | Dragging a widget's title (prototype) is not built: R3.3 |
 | S5.4-04 | roadmap 5.4 | Core: one call per frame returning every widget's value, min/max in view and state-run starts. | Done | `tlmbench-store::store::a_widget_frame_answers_value_min_max_and_run_start_in_one_call` | |
 | S5.4-05 | roadmap 5.4 | Typed updates (build and update per widget, text at most 10 times a second). | Done | `t_gauges` | Nov 17. A widget's text changes at most ten times a second, the last value always landing. R3.3 |
-| S5.4-06 | roadmap 5.4 | Traces on canvas. | Diverged | `app/ui/src/shell/Widget.svelte` (sparklines, trails and timelines are SVG; only XY and Spectrum panes use a canvas) | An Accepted decision ("trace-heavy widgets draw on canvas"). Owner decision 4 in review.md; else R3.3 |
+| S5.4-06 | roadmap 5.4 | Traces on canvas. | Diverged | `app/ui/src/shell/Widget.svelte` (sparklines, trails and timelines are SVG; only XY and Spectrum panes use a canvas) | An Accepted decision ("trace-heavy widgets draw on canvas"). Owner decision 4 in review.md; else R3.3 Owner, Nov 17: build canvas for the sparkline, XY trail and cloud and the GPS track, as the Accepted decision says; dials stay SVG. |
 | S5.4-07 | roadmap 5.4 | XY plot: core pairing by time onto a pixel grid. | Done | `tlmbench-store::store::xy_points_pair_by_time_reduce_on_a_grid_and_follow_the_zoom` | Both channels must be in one file |
 | S5.4-08 | roadmap 5.4 | XY: X channel picker, time colouring, 1:1 with the latitude correction, Alt-drag back to time, local zoom. | Done | `t_xy` | |
 | S5.4-09 | roadmap 5.4 | Declarative SVG widgets (sanitised, live preview). | Done | `t_widgets` | |
@@ -250,6 +250,7 @@ where each step stands, and nothing else records either.
 | A-09 | accepted differences (owner, Nov 15; parity-classes B14) | The descriptor form has a Bits column for bit fields. | Done | `t_descriptor` (passed in CI run 43727929100, Linux, Nov 15) | |
 | A-10 | accepted differences (owner, Nov 15; parity-classes B15) | Settings has the sections only real software has: Plugins, Browser access, Cache, Shared configuration, Record live sessions to. | Done | `t_plugins`, `t_shell` (passed in CI run 43727929100, Linux, Nov 15) | |
 | A-11 | accepted differences (owner, Nov 15; parity-classes B16) | The table bar keeps Go to A, Go to B and the table's height grip in reach. | Done | `t_tablerows`, `t_height` (passed in CI run 43727929100, Linux, Nov 15) | |
+| A-12 | accepted differences (owner, Nov 17; parity-classes B17) | The Events panel's top row is "Marker at A · Range A–B · Rules…" (Share is the top bar's, categories are in Settings). | Done | `t_events`, `t_eventmarks` | Approved Nov 17 as App is better: one click per kind of event, nothing offered twice |
 | D-req-01 | CLAUDE.md, design Storage | Full capability from the app cache alone; nothing is written next to the data except by Share and exports. | Done | `just ro-test` (Nov 11, this review: pass), `tlmbench-store::config::nothing_is_written_outside_the_dot_tlmbench_folder`, `tlmbench::export_html::writes_the_layout_channels_and_nothing_beside_the_input` | `ro-test` runs CLI commands only; the app on a read-only image is X-win-09 |
 | D-req-02 | CLAUDE.md, design Ingestion | The app never runs Python or other external programs. | Done | `grep -rn "Command::new" app/src-tauri/src crates/*/src cli/src` (Nov 11: no hits) | |
 | D-req-03 | CLAUDE.md | Exports are static files that open from any static host with nothing to install. | Done | `t_viewer`, `t_exportreal`, `just gate5` | A folder export does not open from `file://` (the browser won't fetch the WASM core): say so in the manual, and see D-cli-05 |

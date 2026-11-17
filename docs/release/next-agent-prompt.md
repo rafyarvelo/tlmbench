@@ -15,22 +15,17 @@ push is in the CI row.
 2. Skim the memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/`, above all
    `owner-decisions-nov16.md` and `owner-decisions-nov17.md`, and any newer owner-decisions file.
 3. Run the open-rows script: `python3 ci/ledger_check.py`, then list rows that aren't Done or Owner pass.
-4. Ledger counts at the hand-off: Done 325, Partial 5, Missing 4, Diverged 2, Unverified 25, Owner pass 17 (378 rows).
+4. Ledger counts at the hand-off: Done 326, Partial 5, Missing 4, Diverged 2, Unverified 25, Owner pass 17 (379 rows).
 
-## Waiting on the owner (don't build these until answered)
+## Decided by the owner Nov 17 (night), all as recommended: build these
 
-- **S5.4-06, canvas traces.** The design has an Accepted decision ("trace-heavy widgets (sparkline, XY, GPS track) draw on
-  canvas in the app; dials stay SVG"); the app draws them as SVG. Recommendation: build canvas traces for the sparkline, XY
-  trail and cloud and the GPS track (the design's budget is 100 widgets under 2 ms a frame, and a trail of thousands of
-  points is where SVG costs most), keeping the widget API; the alternative is to measure first in R6 and change the decision
-  to "SVG unless measured slow". Trade-off: canvas means HiDPI, theme colours and text by hand; SVG keeps them free.
-- **S5.3-15, the folder report as a Report tab.** The design wants a separate Report tab saved with the set; the owner's
-  decision 8 of Nov 17 kept the report in settings as a dialog tab for v1 and called the Report tab "a later row".
-  Recommendation: ask whether "later" means R3.3 (v1) or post-v1; if v1, a tab of the tab strip, saved with the set.
-- **The Events panel's top row** (`parity-classes.md`, waiting section): the app's "Marker at A · Range A–B · Rules…"
-  against the prototype's "+ Event · Share… · Rules · Categories". Recommendation: App is better.
-- **Four items of the Nov 17 audit** (`ui-audits.md`, last section): "Streaming" in red, the residuals plot without axes,
-  the Explorer header's icons, and the Events top row.
+- **S5.4-06:** canvas for the sparkline, XY trail and cloud and the GPS track, as the design's Accepted decision says;
+  dials stay SVG. Keep the widget API; HiDPI, theme colours and reduced motion by hand.
+- **S5.3-15:** the folder report as a separate Report tab in the tab strip (v1, R3.3), saved with the check set, reopened
+  and re-run; the dialog's report moves there.
+- **Events panel top row:** the app's is approved as App is better (ledger A-12, parity B17). Don't port.
+- **Audit items (`ui-audits.md`, Nov 17):** "Streaming" in the accent colour (the LIVE badge stays red); a zero line and
+  the residual range on the Alignment's residuals; the Explorer header's icons stay as they are.
 
 ## Your rows
 

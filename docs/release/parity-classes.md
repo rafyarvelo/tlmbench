@@ -38,8 +38,8 @@ categories (S5.2-15), Play's lost transport test (D-ui-13, D-ui-14), folder runs
 
 Waiting on the owner (Nov 17, the new scenes): the Events panel's top row is "+ Event, Share…, Rules, Categories" in the
 prototype and "Marker at A, Range A–B, Rules…" in the app (categories are in Settings; Share is the top bar's), and the
-prototype has a source filter ("All" sources) the app has as a grouping only. Recommendation: the app's (one click per
-kind of event, nothing said twice); to approve as App is better, or to port.
+prototype has a source filter ("All" sources) the app has as a grouping only. **Approved Nov 17 as App is better (B17,
+ledger A-12).**
 
 ## App is better (never ported back)
 
@@ -61,6 +61,7 @@ kind of event, nothing said twice); to approve as App is better, or to port.
 | B14 | Descriptor form (`descriptor`) | A Bits column | Bit fields, which the design accepted | Approved Nov 15 |
 | B15 | Settings (`settings`) | Sections the prototype can't have: Plugins, Browser access, Cache, Shared configuration, Record live sessions to | Real features | Approved Nov 15 |
 | B16 | Table bar | Go to A, Go to B and the table's height grip always in reach | Fewer clicks for the frequent move | Approved Nov 15 |
+| B17 | Events panel | "Marker at A · Range A–B · Rules…" | One click per kind of event; Share and categories already have their places | Approved Nov 17 |
 
 ## Noise (not to chase)
 
