@@ -378,8 +378,8 @@ Do: open a packet file whose descriptor has `[[packet_types]]` (two or more type
 Expect: one tab named for the file; in the Explorer the file row says "N packet types" and each type is a slot
 (`flight.bin · gps`, `flight.bin · imu`) on the same clock; the first charts draw every type; Close this file closes the tab;
 quitting and reopening brings the tab back with every type.
-Result:
-Notes:
+Result: Works as expected
+Notes: Nominal behavior
 
 ### W2. Every file of a tab: events, checks, recipes, scale (S5.6-12, S5.6-07, D-derive-03)
 Do: open `flights/flight-1.csv`, add `flight-2.csv` to the tab (right-click › Add to this tab). Add a marker on each
@@ -388,15 +388,15 @@ Expect: both files' events in the list, each with its file's name, and chips to 
 the file; editing an event shows a File picker that moves it. Rules & checks has "Results for" with both files; the Flight
 limits set runs on each. Make a derived channel with "Any file that has these channels": both files get it (`name` and
 `name·2`). A recipe like `altitude - "flight-2 altitude"` works. Changing a scale in the channel editor redraws both files.
-Result:
-Notes:
+Result: All of these work
+Notes: "Results for" has a dropdown box for the files, and the "rules and checks" correctly runs for each one. Not sure if maybe a tree with each file would be better so all files can be seen at once, I'm open to discussion.
 
 ### W3. Quiet interface (D-ui-10)
 Do: Settings › Quiet interface on. Open two files in one tab and a table pane.
 Expect: chips have no empty gap where the value goes until you point at a plot; the folder listing's slot numbers show
 only when you point at a file; a table's resize grip shows only when you hover it. Calm, nothing popping under the pointer.
-Result:
-Notes:
+Result: I didn't really see anything change? UI looks fine, I'm not sure what this setting does.
+Notes: Consider deleting?
 
 ### W4. Reconnect (D-live-11)
 Do: connect a TCP source (a logger, or `nc -l 9000 < frames.bin` with a descriptor) with Reconnect on; stop and start
