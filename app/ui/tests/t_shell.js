@@ -21,6 +21,9 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   check('Settings replaces Explorer', (await visible('#setPanel')) && !(await visible('#chans')));
   const basic = await rows();
   check('Basic: the prototype\'s everyday settings', basic.length === 11 && ['Mouse mode', 'Theme', 'Group channels into categories', 'Tooltips', 'When a file opens', 'Files opened for the first time', 'Clicking a row', 'Left sidebar', 'Right sidebar', 'Quiet interface', 'Time format'].every((r) => basic.includes(r)), basic);
+  // R3.4 audit: a long label doesn't squeeze its choice to "…" (it goes under the label instead)
+  const narrow = await p.$$eval('#setPanel select[data-set]', (s) => s.filter((x) => x.offsetParent && x.getBoundingClientRect().width < 120).map((x) => x.dataset.set));
+  check('every choice is wide enough to read', narrow.length === 0, narrow);
   await p.click('#setPanel [data-sv="all"]');
   check('All settings shows more', (await rows()).length === 33, await rows()); // 30, Run code widgets (D-gauge-03), and Default line width and style (decision 4)
   await p.click('#setPanel [data-sv="basic"]');

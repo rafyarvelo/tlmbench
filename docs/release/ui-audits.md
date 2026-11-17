@@ -208,3 +208,43 @@ honesty of copy, spatial consistency, materials) and CLAUDE.md's tokens.
 
 - Firefox and Safari: plugins need Workers with `FileReaderSync` and module Workers (both there today); folders need
   `showDirectoryPicker` (Chromium only, as before). Real browsers: R5.
+
+## Nov 17, 2026: R3.4, the whole app before the freeze (Opus; dark and light, 1440 × 900, Chromium; `shots.js` and the parity harness's 31 scenes)
+
+Screens: the main view, light, several files with Alignment, live, Settings, Connect, Export to HTML, the viewer, browser-only
+mode, and every parity scene (`parity-classes.md`, "Re-run Nov 17"). Headings as the apple-design skill's; CLAUDE.md's
+conventions win where they differ.
+
+**Fixed in this pass** (each with its test):
+
+1. *Craft, layout breaks* (Settings, `app-settings.png`): in the sidebar's Basic view, "When a file opens" and "Files opened
+   for the first time" showed "…" where their choice should be, and Time format's was clipped: a long label squeezed the
+   select to nothing. A choice that doesn't fit beside its label now goes under it (`Settings.svelte` `.row` wraps).
+2. *Craft, layout breaks* (Events, parity `events`): "Charts follow these filters" wrapped into a tall column and stretched
+   every category chip into a 97 px pill. Now the prototype's link toggle in the chip row (P13; `t_layoutevents`,
+   `t_eventmarks`).
+3. *Craft* (channel editor, parity `channel-editor`): Treat as missing · Valid from · Valid to ran past the dialog's edge.
+   The three fields share the row (P14).
+4. *Calm UI / restraint* (D-ui-10, `t_quiet`): with Quiet interface on, empty chip readouts, folder slot numbers and table
+   grips wait until they matter, as the prototype's quiet rules.
+5. *Grouping and mapping* (Connect, parity `connect`): Host and Port side by side, Reconnect beside them, Save recordings
+   to beside Record (D-live-11).
+6. *Familiarity* (parity): Chart and values back in Add pane, "Recipes and profiles…", the Alignment controls at the
+   sidebar's 24 px, the Events panel's boxes at 24 px.
+
+**Checked, nothing to change:** reduced motion stops every animation (`style.css`), and the failing-check flash becomes a
+static outline; the live dot pulses at 0.6 Hz (not the 0.2 Hz the skill warns about); dialogs rise over a scrim from their
+place and leave the same way; menus open from their trigger.
+
+**Open, for the owner (recommendation each):**
+
+- *Feedback kinds* (live, `app-live.png`): a healthy source's state word, "Streaming", is red in the Explorer and on its card,
+  the colour of errors elsewhere; only the LIVE badge needs red (recording). Recommendation: the word in the accent colour,
+  the badge stays red.
+- *Wayfinding* (Alignment, `app-slots.png`): the fit's residuals are dots with no axis or scale (known since step 5.6), so
+  "Fit 97%" can't be read against anything. Recommendation: a zero line and the residual range as two numbers (R3.3 polish,
+  or post-v1).
+- *Simplicity* (Explorer header): seven unlabelled icons in a row; each has a tooltip. Recommendation: keep, since the
+  owner's convention is icons with tooltips that retire, and a label row would not fit a 300 px sidebar.
+- The Events panel's top row (App's "Marker at A · Range A–B" against the prototype's "+ Event · Share… · Categories"):
+  App is better or Port (`parity-classes.md`).

@@ -440,12 +440,21 @@
     gap: 12px;
     min-height: 30px;
   }
+  /* a label and its choice; a choice that won't fit beside a long label goes under it rather than shrink to "…" */
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+  }
   .row > span:first-child {
     flex: 1 1 40%;
     min-width: 0;
   }
   .row > select {
-    max-width: 58%;
+    flex: 0 1 auto;
+    min-width: 128px;
+    max-width: 100%;
     min-height: 30px;
     padding: 0 6px;
     font: 13px var(--font-ui);
