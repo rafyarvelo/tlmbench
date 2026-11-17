@@ -71,6 +71,9 @@ export interface WidgetCfg {
   tol?: number;
   /** XY dot: the trail's length in seconds. */
   trail?: number;
+  /** A code widget's inputs: its roles bound to channels by name, and its parameters' values. */
+  inputs?: Record<string, string>;
+  params?: Record<string, string>;
 }
 
 /** Columns a row holds at most. */

@@ -295,23 +295,27 @@ pub fn run(a: Args) -> Result<(), Fail> {
             e.channels.retain(|c| !a.redact.contains(c));
         }
         if let Some(w) = window {
-            // raw windows around every event, and around the violations the check sets marked (a check's events)
-            // a set's own `detail` is the default for its violations when --detail isn't given
-            let mut spans: Vec<(i64, i64)> =
-                evs.iter().filter_map(|e| Some(w.around(e.start.parse().ok()?, e.duration.parse().ok()?))).collect();
-            for c in checks_out.iter().filter(|c| c["file"] == k) {
-                let mine = match (&a.detail, c["set"]["detail"].as_str()) {
-                    (None, Some(d)) => {
-                        html::Window::parse(d).map_err(|e| Fail(3, format!("detail in the set: {e}")))?
-                    }
-                    _ => Some(w),
-                };
-                let Some(mine) = mine else { continue };
-                spans.extend(c["events"].as_array().into_iter().flatten().filter_map(|e| {
-                    Some(mine.around(e["start"].as_str()?.parse().ok()?, e["duration"].as_str()?.parse().ok()?))
-                }));
-            }
-            files[k].windows = spans;
+            // raw windows around every event, and around the violations the check sets marked (a check's events); a
+            // set's own `detail` is the default for its violations when --detail isn't given
+            let evs_spans: Vec<(i64, i64)> =
+                evs.iter().filter_map(|e| Some((e.start.parse().ok()?, e.duration.parse().ok()?))).collect();
+            let sets_spans: Vec<(Option<&str>, Vec<(i64, i64)>)> = checks_out
+                .iter()
+                .filter(|c| c["file"] == k)
+                .map(|c| {
+                    let marked = c["events"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|e| {
+                            Some((e["start"].as_str()?.parse().ok()?, e["duration"].as_str()?.parse().ok()?))
+                        })
+                        .collect();
+                    (c["set"]["detail"].as_str(), marked)
+                })
+                .collect();
+            files[k].windows =
+                html::window_spans(w, a.detail.is_some(), &evs_spans, &sets_spans).map_err(|e| Fail(3, e))?;
         }
         events_out.push(json!({ "file": k, "events": evs }));
     }

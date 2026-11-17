@@ -1,6 +1,6 @@
 <!-- The Events panel: the markers and ranges you added to the open recording, sorted by start. Add a marker at cursor A
      or a range A–B; edit a name or category inline; filter by text and by category chips (click hides one, double-click
-     shows only it); group by category, name, channel or source; click an event to frame it. Categories are in Settings. -->
+     shows only it); group by category, name, channel, source or file; click an event to frame it. Categories are in Settings. -->
 <script lang="ts">
   import { duration, readoutTime } from '../axes';
   import { checks } from '../checks.svelte';
@@ -38,7 +38,7 @@
     return out.sort((a, b) => at(a.id) - at(b.id));
   });
   const NOADD = 'An export is a static file: events are added in the app';
-  const keyOf = (e: TlmEvent) => (events.group === 'cat' ? catName(e.category) : events.group === 'name' ? e.name : events.group === 'channel' ? (e.channels[0] ?? 'No channel') : events.group === 'source' ? (e.source === 'user' ? 'Added by you' : e.source === 'rule' ? 'From rules' : e.source === 'check' ? 'From checks' : e.source === 'shared' ? 'Shared in the folder' : 'From the file') : '');
+  const keyOf = (e: TlmEvent) => (events.group === 'cat' ? catName(e.category) : events.group === 'name' ? e.name : events.group === 'channel' ? (e.channels[0] ?? 'No channel') : events.group === 'file' ? (e.file ?? ui.file) : events.group === 'source' ? (e.source === 'user' ? 'Added by you' : e.source === 'rule' ? 'From rules' : e.source === 'check' ? 'From checks' : e.source === 'shared' ? 'Shared in the folder' : 'From the file') : '');
   const groups = $derived.by(() => {
     const out: { k: string; items: TlmEvent[] }[] = [];
     for (const e of shown) {
@@ -102,7 +102,7 @@
       <div class="evfilter">
         <input class="sel" id="evQ" type="search" placeholder="Filter" aria-label="Filter events by name, category or channel" bind:value={events.q} />
         <select class="sel" id="evGroup" aria-label="Group events" bind:value={events.group}>
-          <option value="">No groups</option><option value="cat">By category</option><option value="name">By name</option><option value="channel">By channel</option><option value="source">By source</option>
+          <option value="">No groups</option><option value="cat">By category</option><option value="name">By name</option><option value="channel">By channel</option><option value="source">By source</option><option value="file">By file</option>
         </select>
       </div>
       {#if cats.length > 1}

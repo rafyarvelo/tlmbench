@@ -3,6 +3,7 @@
      for the sockets and a preview of how they decode. It opens a live tab, or adds a source to the session in front,
      recording into the Recordings folder unless the switch is off. -->
 <script lang="ts">
+  import type { Preview } from '../live.svelte';
   import { live, liveActions, LIVE_SPEEDS } from '../live.svelte';
   import { ICON } from '../icons';
   import { type ConnectForm, settings } from '../settings.svelte';
@@ -80,7 +81,16 @@
   const shownName = $derived(nameEdited ? name : auto);
 
   /** How the frames decode, asked of the core once the form says where they come from. */
-  let preview = $state<{ detail: string; channels: [string, string | null][] } | string>('');
+  let preview = $state<Preview | string>('');
+  /** A read of the stream is running (S5.5-02: a second, only when asked). */
+  let reading = $state(false);
+  async function readStream() {
+    reading = true;
+    const ep = endpoint;
+    const r = await liveActions.preview(ep, descriptor, true);
+    reading = false;
+    if (ep === endpoint) preview = r;
+  }
   let previewTimer = 0;
   $effect(() => {
     const [ep, d, can] = [endpoint, descriptor, kind === 'playback' ? !!recording : kind === 'file' ? !!path : !!descriptor];
@@ -152,7 +162,12 @@
         <div class="lvprev" id="lvPreview">
           {#if typeof preview === 'string'}<span class="muted">{preview}</span>
           {:else}<b>Decodes as</b><span class="muted">{preview.detail}</span>
-            <div class="lvchips">{#each preview.channels as [c, u] (c)}<code>{c}{u ? ` [${u}]` : ''}</code>{/each}</div>{/if}
+            <div class="lvchips">{#each preview.channels as [c, u] (c)}<code>{c}{u ? ` [${u}]` : ''}</code>{/each}</div>
+            {#if preview.values?.length}
+              <b>{kind === 'playback' || kind === 'file' ? 'First values' : 'Latest frame'}{preview.seen_hz != null ? ` · ${+preview.seen_hz.toPrecision(3)} frames a second` : ''}</b>
+              <div class="lvchips" id="lvValues">{#each preview.values as [c, v] (c)}<code>{c} = {+v.toPrecision(6)}</code>{/each}</div>
+            {/if}{/if}
+        {#if needsDescriptor && descriptor}<div><button class="tbtn" id="lvRead" disabled={reading} data-tip="Reads the stream for a second to show a frame as it decodes: a UDP port is bound and a device opened for that second, nothing is kept" onclick={readStream}>{reading ? 'Reading…' : 'Preview a frame'}</button> <small class="muted">reads for a second</small></div>{/if}
         </div>
       {/if}
       {#if live.cards.length}

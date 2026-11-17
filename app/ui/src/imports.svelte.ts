@@ -38,6 +38,8 @@ export interface Profile {
   check_sets?: string[];
   recipes?: string[];
   layout?: string | null;
+  /** Columns whose changes are events from the file (D-ui-12), by their header names. */
+  event_columns?: string[];
   /** The panes its files open with: a starter (D-ui-57); none: Settings' "Files opened for the first time". */
   panes?: StarterPanes | null;
   prefix?: PrefixRule | null;
@@ -95,6 +97,8 @@ export interface Col {
   unit: string;
   kind: Kind;
   category: string;
+  /** Its changes are events from the file: one event at each change of its value (D-ui-12). */
+  events: boolean;
   /** A text column's different texts in the rows read. */
   texts?: number;
   /** What the core detected: the name, unit and kind the choices are measured against. */
@@ -176,7 +180,7 @@ export function makeJob(paths: string[], insp: Inspection, near: Found['near']):
   const t = insp.time == null ? null : insp.columns[insp.time].source;
   const cols = insp.columns.map((c) => {
     const kind = toKind(c.kind);
-    return { source: c.source, name: c.name, unit: c.unit ?? '', kind, category: '', texts: c.texts, det: { name: c.name, unit: c.unit ?? '', kind } };
+    return { source: c.source, name: c.name, unit: c.unit ?? '', kind, category: '', events: false, texts: c.texts, det: { name: c.name, unit: c.unit ?? '', kind } };
   });
   return {
     paths,
@@ -218,6 +222,8 @@ export function toProfile(job: Job): Profile {
   if (job.recipes.length) out.recipes = [...job.recipes];
   if (job.layout) out.layout = job.layout;
   if (job.panes) out.panes = job.panes;
+  const ev = job.cols.filter((c) => c.events && c.kind !== 'skip' && c.source !== job.timeCol).map((c) => c.source);
+  if (ev.length) out.event_columns = ev;
   if (job.prefix && job.prefix.type !== 'file_name') out.prefix = job.prefix;
   return out;
 }
@@ -248,6 +254,7 @@ export function applyProfile(job: Job, p: Profile, label: string): void {
   job.recipes = [...(p.recipes ?? [])];
   job.layout = p.layout ?? '';
   job.panes = p.panes ?? '';
+  for (const c of job.cols) c.events = (p.event_columns ?? []).includes(c.source);
   job.prefix = p.prefix ?? null;
   job.applied = label;
 }

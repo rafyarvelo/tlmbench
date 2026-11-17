@@ -18,6 +18,8 @@ export interface TlmEvent {
   /** Who added it (the account name), when known. */
   by?: string;
   channels: string[];
+  /** The file it belongs to (its name), for grouping by file. */
+  file?: string;
 }
 
 export const UNCATEGORIZED = '#8A94A3';
@@ -27,11 +29,13 @@ export const events = $state({
   list: [] as TlmEvent[],
   mine: [] as TlmEvent[],
   auto: [] as TlmEvent[],
+  /** The events the file itself makes: one at each change of a marked column or field (D-ui-12). Read-only. */
+  fromFile: [] as TlmEvent[],
   /** Rules and checks are still running on the open file. */
   checking: false,
   /** The panel: text filter, grouping, categories hidden in the list (ids; '' is uncategorized), groups closed, the event being edited. */
   q: '',
-  group: '' as '' | 'cat' | 'name' | 'channel' | 'source',
+  group: '' as '' | 'cat' | 'name' | 'channel' | 'source' | 'file',
   hidden: [] as string[],
   /** Charts and the overview follow the panel's chips (this tab's choice; a new tab starts from Settings). */
   follow: true,
@@ -47,12 +51,17 @@ const byStart = (a: TlmEvent, b: TlmEvent) => (BigInt(a.start) < BigInt(b.start)
 /** The events you added, as the core keeps them. */
 export function setMine(list: TlmEvent[]): void {
   events.mine = list;
-  events.list = [...list, ...events.auto].sort(byStart);
+  events.list = [...list, ...events.auto, ...events.fromFile].sort(byStart);
+}
+/** The events the file's marked columns make. */
+export function setFileEvents(list: TlmEvent[]): void {
+  events.fromFile = list;
+  events.list = [...events.mine, ...events.auto, ...list].sort(byStart);
 }
 /** The events rules and checks make, read-only: recomputed whenever they run. */
 export function setAuto(list: TlmEvent[]): void {
   events.auto = list;
-  events.list = [...events.mine, ...list].sort(byStart);
+  events.list = [...events.mine, ...list, ...events.fromFile].sort(byStart);
 }
 
 /** A category by id: the folder's win for shared rules and events, so a shared view looks the same for everyone. */

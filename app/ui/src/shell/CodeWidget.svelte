@@ -4,12 +4,12 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
 
-  import { gNum, type Ctx } from '../gauges';
+  import { gNum, type Ctx, type Extra } from '../gauges';
   import { settings } from '../settings.svelte';
   import { trust } from '../customwidgets.svelte';
   import { type CustomWidget, codeTrusted, widgetHostUrl } from '../widgets';
 
-  let { spec, x, title }: { spec: CustomWidget; x: Ctx; title: string } = $props();
+  let { spec, x, e, title }: { spec: CustomWidget; x: Ctx; e?: Extra; title: string } = $props();
 
   const allowed = $derived(settings.codeWidgets);
   const trusted = $derived(allowed && codeTrusted(spec, settings.trustedWidgetSources));
@@ -29,7 +29,7 @@
     pending = null;
   }
   function onload() {
-    frame?.contentWindow?.postMessage({ code: spec.code, info: { name: x.name, unit: x.unit, min: gNum(x.lo, x.dec), max: gNum(x.hi, x.dec), fg: tok('--fg') } }, '*');
+    frame?.contentWindow?.postMessage({ code: spec.code, info: { name: x.name, unit: x.unit, min: gNum(x.lo, x.dec), max: gNum(x.hi, x.dec), fg: tok('--fg'), params: $state.snapshot(e?.params ?? {}), roles: (spec.inputs ?? []).map((i) => i.role) } }, '*');
   }
   function onmessage(e: MessageEvent) {
     if (!e.data?.tlmReady || e.source !== frame?.contentWindow) return;
@@ -38,7 +38,7 @@
   }
   $effect(() => {
     if (!trusted) return;
-    const msg = { v: x.ok ? x.v : null, txt: x.txt, pct: x.ok ? +(x.p * 100).toFixed(1) : 0, color: color(), level: x.lvl || 'none', unit: x.unit };
+    const msg = { v: x.ok ? x.v : null, txt: x.txt, pct: x.ok ? +(x.p * 100).toFixed(1) : 0, color: color(), level: x.lvl || 'none', unit: x.unit, series: (e?.trace ?? []).map((p) => p[1]).filter((v) => v != null).slice(-64), inputs: e?.roles ? $state.snapshot(e.roles) : undefined, params: e?.params ? $state.snapshot(e.params) : undefined };
     pending = msg;
     if (!ready) return;
     const wait = 100 - (performance.now() - sentAt);

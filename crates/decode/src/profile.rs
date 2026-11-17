@@ -127,6 +127,9 @@ pub struct ImportProfile {
     /// A layout (by name) these files open with, before Settings' choice (design: Import profiles).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
+    /// Columns (by their header names) whose changes are events from the file: one event at each change of the value.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub event_columns: Vec<String>,
     /// The panes these files open with: a starter (`starter`, `starterboth`, `table`, `values`, `none`), when no layout is set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub panes: Option<String>,
@@ -144,6 +147,7 @@ impl ImportProfile {
             recipes: self.recipes.clone(),
             layout: self.layout.clone(),
             panes: self.panes.clone(),
+            event_columns: self.event_columns.clone(),
             prefix: self.prefix.clone(),
             ..Self::default()
         };
@@ -155,7 +159,7 @@ impl ImportProfile {
     pub fn key(&self) -> String {
         let mut p = self.clone();
         // what a profile adds around the file doesn't change how it decodes
-        (p.name, p.check_sets, p.recipes, p.layout, p.panes, p.prefix) = Default::default();
+        (p.name, p.check_sets, p.recipes, p.layout, p.panes, p.prefix, p.event_columns) = Default::default();
         p.columns.retain(|c| *c != ColumnChoice { source: c.source.clone(), ..Default::default() });
         p.columns.sort_by(|a, b| a.source.cmp(&b.source));
         let json = serde_json::to_vec(&p).expect("profiles serialize");
@@ -329,6 +333,7 @@ mod tests {
             layout: Some("Flight".into()),
             name: Some("Bench logs".into()),
             panes: Some("table".into()),
+            event_columns: vec!["mode".into()],
             prefix: Some(PrefixRule::Pattern { pattern: "^(.+?)_".into() }),
         };
         // the sets a profile names don't change how a file opens: same key, still the default when nothing else is set
@@ -348,6 +353,7 @@ mod tests {
             layout: Some("Flight".into()),
             name: Some("Bench".into()),
             panes: Some("values".into()),
+            event_columns: vec!["state".into()],
             prefix: Some(PrefixRule::Separator),
             ..Default::default()
         };

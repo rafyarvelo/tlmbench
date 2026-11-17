@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::events::Event;
 use crate::{Error, Result};
 
-pub use crate::config_core::{Category, FromFolder, Icon, SCHEMA, Tree, Widget, from_tree};
+pub use crate::config_core::{Category, FromFolder, Icon, SCHEMA, Tree, Widget, WidgetInput, WidgetParam, from_tree};
 use crate::config_core::{CategoryFile, WidgetFile, schema_ok};
 
 /// The kinds of object a `.tlmbench/` holds.
@@ -297,6 +297,8 @@ fn widget_files(w: &Widget) -> Vec<(String, Vec<u8>)> {
         icon: w.icon.as_ref().map(|_| "icon.svg".to_owned()),
         angle: if kind == "svg" { w.angle } else { None },
         by: w.by.clone(),
+        inputs: if kind == "code" { w.inputs.clone() } else { Vec::new() },
+        params: if kind == "code" { w.params.clone() } else { Vec::new() },
     };
     let mut files = vec![(format!("{dir}/widget.toml"), toml_of(&head)), (format!("{dir}/{entry}"), body.into_bytes())];
     if let Some(icon) = &w.icon {

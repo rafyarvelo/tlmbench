@@ -194,7 +194,7 @@ impl PacketFile {
                     name: f.name.clone(),
                     unit: f.unit.clone(),
                     dtype: f.dtype.name(),
-                    category: None,
+                    category: f.category.clone(),
                     labels: Vec::new(),
                 }
             })

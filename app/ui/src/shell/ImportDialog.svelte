@@ -162,7 +162,7 @@
         <h4>Columns <small>{count('number')} number · {count('text')} text · {count('skip')} skipped</small></h4>
         <div class="impbar"><input type="search" class="sel" id="impFilter" placeholder="Filter columns" aria-label="Filter columns" bind:value={job.q} /></div>
         <div class="implist" id="impCols">
-          <div class="impcol head"><span></span><span>In the file</span><span>Name</span><span>Unit</span><span>Type</span><span>Category</span></div>
+          <div class="impcol head"><span></span><span>In the file</span><span>Name</span><span>Unit</span><span>Type</span><span>Category</span><span data-tip="One event at each change of this column's value">Events</span></div>
           {#each vis as c (c.source)}
             <div class="impcol" class:skip={c.kind === 'skip'} data-h={c.source}>
               <span class="sw" aria-hidden="true"></span>
@@ -173,6 +173,7 @@
                 <option value="number">Number</option><option value="text">Text</option><option value="skip">Skip</option>
               </select>
               <input class="impcatin" bind:value={c.category} placeholder="by name" aria-label="Category of {c.source}" spellcheck="false" disabled={c.kind !== 'number'} />
+              <input class="impevt" type="checkbox" data-evcol bind:checked={c.events} aria-label="Changes of {c.source} are events" disabled={c.kind === 'skip'} />
               {#if c.kind === 'text' && (c.texts ?? 0) > 256}<small class="imptoo" data-toomany>Left out: more than 256 different texts</small>{/if}
             </div>
           {:else}
@@ -500,7 +501,7 @@
   }
   .impcol {
     display: grid;
-    grid-template-columns: 10px minmax(110px, 1.3fr) minmax(90px, 1fr) 70px 108px minmax(80px, 0.8fr);
+    grid-template-columns: 10px minmax(110px, 1.3fr) minmax(90px, 1fr) 70px 108px minmax(80px, 0.8fr) 48px;
     gap: 6px;
     align-items: center;
     padding: 3px 6px;

@@ -17,6 +17,7 @@ fn desc(compression: Compression, checksum: Checksum) -> Descriptor {
         unit: None,
         scale: 1.0,
         value_offset: 0.0,
+        category: None,
         bits: None,
         plugin: None,
         size: 0,
@@ -35,6 +36,7 @@ fn desc(compression: Compression, checksum: Checksum) -> Descriptor {
         fields: vec![field("count", DType::U32, 4), field("t", DType::U64, 12), field("v", DType::F32, 20), w],
         files: Vec::new(),
         packet_types: Vec::new(),
+        events: Vec::new(),
         packets: Some(Packets {
             sync: Some("EB90".into()),
             header_size: 12,

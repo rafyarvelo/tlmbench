@@ -243,3 +243,20 @@ removed Nov 15; git history keeps them.
   `.tlmbench/icons/`, the folder's read back and listed after yours). An event category and a pin can use one. A layout (Layouts
   panel) or a recipe (Recipes manager) pinned to the top bar is one click: the layout opens, the recipe joins the file in front.
   At most eight pins; Settings › Icons lists them with their icon and Unpin.
+- Owner's decisions of Nov 17, built (Opus-free run):
+  - Events from the file (D-ui-12): an import profile's `event_columns` and a descriptor's `events` (field names) mark
+    channels whose changes are events; the core (`events::from_channels`, command `file_events`) makes one read-only
+    event of source `file` at each change of the shown value (a text channel: its text), category Mode change, at most
+    20,000 per file. The import dialog has an Events box per column, the descriptor form one per field; the Events panel
+    can group by file. Format metadata (Parquet, HDF5) is post-v1.
+  - Code widget inputs and parameters (S5.4-10): `[[input]]` (role, label) and `[[param]]` (name, label, type, default,
+    choices) in `widget.toml`; the widget menu's "Inputs and settings…" binds each role to a channel and values each
+    parameter, kept per widget in the layout. The frame message adds `inputs` (per role: value, text, unit, last 64
+    samples), `series` (the widget's own last 64 samples) and `params`.
+  - Explorer (D-ui-09): a channel dropped on a category row moves into it (the per-file override); Cmd/Ctrl-click and
+    Shift-click pick categories, and Enter plots their channels. Descriptor fields take `category`, the same word an
+    import profile's column category is.
+  - Connect (S5.5-02): "Preview a frame" reads a socket or port for one second (a UDP port is bound, a device opened,
+    into a temporary recording that is deleted) and shows the latest frame and the frames a second; never on opening
+    the dialog. A file or replay source shows its first values at once.
+  - Export detail (D-cli-06): `html::window_spans` is the one place the windows are worked out (CLI and app).

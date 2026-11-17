@@ -116,6 +116,14 @@ export interface ConnectArgs {
 }
 
 /** What the strip and the dialog do: app.ts fills these in. */
+/** How a source decodes; after a read, its latest frame and the frames a second brought (S5.5-02). */
+export interface Preview {
+  detail: string;
+  channels: [string, string | null][];
+  values?: [string, number][];
+  seen_hz?: number;
+}
+
 export const liveActions = {
   connect: (_a: ConnectArgs, _save: boolean, _form: ConnectForm) => {},
   setWindow: (_s: number) => {},
@@ -132,7 +140,7 @@ export const liveActions = {
   show: (_key: number) => {},
   /** Arms a trigger, or stops it (null); returns why it couldn't. */
   trigger: async (_spec: TriggerForm | null): Promise<string | null> => null,
-  preview: async (_endpoint: string, _descriptor: string): Promise<{ detail: string; channels: [string, string | null][] } | string> => '',
+  preview: async (_endpoint: string, _descriptor: string, _read = false): Promise<Preview | string> => '',
   /** Keeps the changes made to a saved connection in the Connect dialog, without connecting (D-ui-01). */
   saveConnection: (_id: string, _form: ConnectForm) => {},
   /** Opens the Connect dialog: for a session in front, "+ Add source" (its source joins it). */

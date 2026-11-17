@@ -42,6 +42,51 @@ fn path(root: &Path, fingerprint: &str) -> PathBuf {
 }
 
 /// The events kept for the recording with this fingerprint, in start order.
+/// The most events one recording's marked columns make: a noisy column can't flood the list.
+pub const MAX_FILE_EVENTS: usize = 20_000;
+
+/// The events a recording's marked channels make: one at each change of the shown value, named for the new value (its
+/// text for a text channel) and listing the channel. Read-only, source `file`, in the `mode` category; the first sample
+/// is the starting state, not a change. Missing values are skipped.
+pub fn from_channels(rec: &dyn tlmbench_core::Recording, channels: &[usize]) -> Vec<Event> {
+    let info = rec.info();
+    let held = tlmbench_core::chunks::Held::default();
+    let mut out = Vec::new();
+    for &ch in channels {
+        let Some(c) = info.channels.get(ch) else { continue };
+        let mut prev: Option<f64> = None;
+        for i in 0..info.samples {
+            let v = rec.value_at(ch, i, &held);
+            if v.is_nan() {
+                continue;
+            }
+            if prev.is_some_and(|p| p != v) {
+                let text = if v >= 0.0 && v.fract() == 0.0 && (v as usize) < c.labels.len() {
+                    c.labels[v as usize].clone()
+                } else {
+                    format!("{v}")
+                };
+                out.push(Event {
+                    id: format!("file-{ch}-{i}"),
+                    name: text,
+                    start: rec.time_at(i).to_string(),
+                    duration: "0".into(),
+                    category: "mode".into(),
+                    source: "file".into(),
+                    channels: vec![c.name.clone()],
+                    by: None,
+                });
+                if out.len() >= MAX_FILE_EVENTS {
+                    return out;
+                }
+            }
+            prev = Some(v);
+        }
+    }
+    out.sort_by_key(|e| e.start.parse::<i64>().unwrap_or(0));
+    out
+}
+
 pub fn list(root: &Path, fingerprint: &str) -> Result<Vec<Event>> {
     let p = path(root, fingerprint);
     let text = match fs::read_to_string(&p) {

@@ -74,6 +74,9 @@ pub struct Descriptor {
     /// layout.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub packet_types: Vec<PacketType>,
+    /// Fields (by name) whose changes are events from the file: one event at each change of the shown value.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<String>,
 }
 
 /// One kind of packet in a file with an `id` field: `[[packet_types]]`, each with the keys a descriptor has for its
@@ -343,6 +346,9 @@ pub struct Field {
     pub offset: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+    /// A group for Explorer's channel list (the same word an import profile's column category is).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
     #[serde(default = "one", skip_serializing_if = "is_one")]
     pub scale: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -1008,6 +1014,17 @@ mod tests {
         let d = Descriptor::parse(EXAMPLE).unwrap();
         assert_eq!(d.time, TimeSpec::Field { field: "t".into(), unit: TimeUnit::Us, t0_ns: 0 });
         assert_eq!(d.channels().map(|(_, f)| f.name.as_str()).collect::<Vec<_>>(), ["battery_v"]);
+        assert_eq!(Descriptor::parse(&d.to_toml()).unwrap(), d);
+    }
+
+    #[test]
+    fn a_field_can_name_its_category_and_events() {
+        let text = EXAMPLE
+            .replace("unit = \"V\"", "unit = \"V\"\ncategory = \"Power\"")
+            .replace("[time]", "events = [\"battery_v\"]\n[time]");
+        let d = Descriptor::parse(&text).unwrap();
+        assert_eq!(d.fields.iter().find(|f| f.name == "battery_v").unwrap().category.as_deref(), Some("Power"));
+        assert_eq!(d.events, ["battery_v"]);
         assert_eq!(Descriptor::parse(&d.to_toml()).unwrap(), d);
     }
 

@@ -20,7 +20,7 @@
   const METHODS: [AlignMethod, string][] = [
     ['starts', 'Align starts'],
     ['clock', 'Same clock'],
-    ['timesrc', 'Time channel'],
+    ['timesrc', 'Time channel (gps_tow)'],
     ['xcorr', 'Cross-correlation'],
     ['events', 'Event matching'],
     ['sync', 'Sync points'],

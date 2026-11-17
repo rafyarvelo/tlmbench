@@ -357,6 +357,10 @@
      * each open was given, and every profile_save. */
     csvs: {},
     sharedRenames: [],
+    previewReads: 0,
+    fileEvents: {},
+    fileEventsAsked: [],
+    descriptorEvents: {},
     renamesApplied: [],
     profiles: {},
     openedWith: [],
@@ -635,7 +639,7 @@
       r.base = r.chans.slice();
       const { derived, skipped } = applyRecipes(r, [...(recipes ?? []), ...(profile?.recipes ?? []).filter((n) => !(recipes ?? []).includes(n) && !(exclude ?? []).includes(n))], exclude ?? []);
       const info = { path, ...(part ? { part } : {}), format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
-      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped, missing: missingOf(r, adjust), ...(profile ? { profile } : {}) };
+      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped, missing: missingOf(r, adjust), ...(profile ? { profile } : {}), event_channels: [...(profile?.event_columns ?? []).map((src) => r.chans[numeric.indexOf(src)]?.name).filter(Boolean), ...(fake.descriptorEvents?.[path] ?? [])] };
     },
     // derived channels: the library (`recipes`), the recipes each open or apply was given, and what a check or spectrum was asked
     /** The events you added, by file path (the core keeps them per recording in the app cache). */
@@ -1178,7 +1182,8 @@
       const T = L.trigger;
       return T ? { armed: T.armed, count: T.count, last: T.last, pending: false, error: null, spec: T.spec, rule: `prev(${T.spec.channel}) < ${T.spec.level} && ${T.spec.channel} >= ${T.spec.level}` } : { armed: false, count: 0, last: null, pending: false, error: null, spec: null, rule: null };
     },
-    live_preview({ endpoint, descriptor }) {
+    live_preview({ endpoint, descriptor, read }) {
+      if (read) fake.previewReads++;
       const path = endpoint.replace(/^(replay|file):\/\//, '').replace(/\?.*$/, '');
       if (/^(replay|file):/.test(endpoint)) {
         const r = recording(path, fake.files[path] ?? {});
@@ -1186,7 +1191,7 @@
       }
       if (!descriptor) throw "Choose the frames' descriptor to see how they decode";
       const spec = fake.sources[endpoint] ?? { channels: ['rpm', 'temp'] };
-      return { detail: '16 bytes a frame, 1000 Hz', channels: spec.channels.map((c) => [c, null]) };
+      return { detail: '16 bytes a frame, 1000 Hz', channels: spec.channels.map((c) => [c, null]), ...(read ? { values: spec.channels.map((c, k) => [c, 1500 + k]), seen_hz: 1000 } : {}) };
     },
     'plugin:dialog|open': ({ options }) => (options?.directory ? fake.pickFolder : fake.pick),
     // ask() is a confirm message: it answers with the label of the button pressed
@@ -1201,6 +1206,12 @@
       return { rows: fake.cfgRows, problems: fake.cfgProblems, writable: fake.cfgWritable, git: fake.cfgGit };
     },
     // shared events filed under a recording's old name (D-cfg-04): what to offer, and what was applied
+    // the events a file's marked columns make: what a test put in fileEvents by path, and what was asked
+    file_events({ file, channels }) {
+      fake.fileEventsAsked.push({ file, channels });
+      const path = fake.open.get(file).r.path;
+      return (fake.fileEvents[path] ?? []).map((e) => ({ source: 'file', channels, duration: '0', category: 'mode', ...e }));
+    },
     shared_renames: () => fake.sharedRenames.map((r) => ({ ...r })),
     shared_renames_apply({ folder, recordings }) {
       fake.renamesApplied.push({ folder, recordings });

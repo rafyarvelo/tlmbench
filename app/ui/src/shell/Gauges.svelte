@@ -17,7 +17,8 @@
   import Menu, { type MenuItem } from './Menu.svelte';
   import CodeWidget from './CodeWidget.svelte';
   import Widget from './Widget.svelte';
-  import { fillTemplate, sanitizeSvg } from '../widgets';
+  import { type CustomWidget, fillTemplate, sanitizeSvg } from '../widgets';
+  import { ICON } from '../icons';
   import { openWidgetEditor } from '../customwidgets.svelte';
 
   let { i }: { i: number } = $props();
@@ -265,7 +266,26 @@
       t1: endsText[1],
       uid: `${i}-${ch}`,
     };
+    const spec = customs.get(L.type);
+    if (spec?.code) {
+      // the roles bound to channels, and the parameters with their defaults (S5.4-10)
+      e.params = Object.fromEntries((spec.params ?? []).map((q) => [q.name, own.params?.[q.name] ?? q.default ?? '']));
+      e.roles = Object.fromEntries(
+        (spec.inputs ?? []).map((inp) => {
+          const to = ui.channels.findIndex((c) => c.name === (own.inputs?.[inp.role] ?? name));
+          const k = to >= 0 ? to : ch;
+          const rx = ctxOf(k);
+          return [inp.role, { name: rx.name, unit: rx.unit, v: rx.ok ? rx.v : null, txt: rx.txt, series: seriesOf(k) }];
+        }),
+      );
+    }
     return { x, r, members, e, worst, viol: violated.get(name) ?? null };
+  }
+  /** The last 64 samples a channel has up to the reading time (from the trace over the view). */
+  function seriesOf(ch: number): number[] {
+    const tr = (readings[ch]?.trace ?? []).map((p) => p[1]).filter((v): v is number => v != null);
+    const upTo = tFrac == null ? tr.length : Math.max(1, Math.ceil(tr.length * tFrac));
+    return tr.slice(Math.max(0, upTo - 64), upTo);
   }
   /** What each card reads, as stable reactive objects patched in place: a frame writes only the fields whose values
    * changed, so the page updates only what those fields feed (a needle's angle, a number's text), not whole widgets. */
@@ -304,6 +324,12 @@
     ((w as unknown as { buildMs: number[] }).buildMs ??= []).push(tb);
   });
   void wrote;
+
+  // ---------- a code widget's inputs and parameters (S5.4-10) ----------
+  let inputsFor = $state<null | { ch: number; name: string; spec: CustomWidget }>(null);
+  const inputCfg = $derived(inputsFor ? cfgOf(inputsFor.ch) : null);
+  const setInput = (role: string, ch: string) => inputsFor && setWidget(i, inputsFor.name, { inputs: { ...(inputCfg?.inputs ?? {}), [role]: ch } });
+  const setParam = (name: string, v: string) => inputsFor && setWidget(i, inputsFor.name, { params: { ...(inputCfg?.params ?? {}), [name]: v } });
 
   // ---------- the widget's menu ----------
   let menu = $state<null | { ch: number; anchor: HTMLElement }>(null);
@@ -355,6 +381,8 @@
         set(m.length === 2 && m[1] > m[0] ? { min: m[0], max: m[1] } : { min: undefined, max: undefined });
       },
     });
+    const code = customs.get(cfg.type ?? '');
+    if (code?.code && (code.inputs?.length || code.params?.length)) out.push({ label: 'Inputs and settings…', data: { wt: 'inputs' }, run: () => (inputsFor = { ch, name: c.name, spec: code }) });
     out.push({ label: 'Your widgets…', data: { wt: 'yours' }, run: openWidgetEditor });
     return out;
   }
@@ -386,7 +414,7 @@
         </div>
         <div class="gwb">
           {#if !readings[ch]}<div class="gpend">reading…</div>
-          {:else if customs.get(L.type)?.code}<CodeWidget spec={customs.get(L.type)!} x={c.x} title={chName(ch)} />
+          {:else if customs.get(L.type)?.code}<CodeWidget spec={customs.get(L.type)!} x={c.x} e={c.e} title={chName(ch)} />
           {:else if customs.get(L.type)}{@html fillTemplate(customs.get(L.type)!, c.x)}
           {:else}<Widget type={L.type} x={c.x} r={c.r} members={c.members} e={c.e} />{/if}
         </div>
@@ -398,12 +426,57 @@
   </div>
 </div>
 
+{#if inputsFor && inputCfg}
+  <div class="scrim" role="presentation" onclick={() => (inputsFor = null)}></div>
+  <div class="dlg widdlg" id="widgetInputs" role="dialog" aria-label="Inputs and settings of {inputsFor.spec.name}">
+    <header><b>{inputsFor.spec.name}</b><span class="dsub">{inputsFor.name}</span><span class="spacer"></span><button class="dclose" aria-label="Close" onclick={() => (inputsFor = null)}>{@html ICON.close}</button></header>
+    <div class="widbody">
+      {#if inputsFor.spec.inputs?.length}
+        <h4>Inputs</h4>
+        {#each inputsFor.spec.inputs as inp (inp.role)}
+          <label class="lvf"><span>{inp.label ?? inp.role}</span>
+            <select class="sel" data-inrole={inp.role} value={inputCfg.inputs?.[inp.role] ?? inputsFor.name} onchange={(e) => setInput(inp.role, e.currentTarget.value)}>
+              {#each ui.channels as c (c.name)}<option value={c.name}>{c.name}</option>{/each}
+            </select></label>
+        {/each}
+      {/if}
+      {#if inputsFor.spec.params?.length}
+        <h4>Settings</h4>
+        {#each inputsFor.spec.params as q (q.name)}
+          <label class="lvf"><span>{q.label ?? q.name}</span>
+            {#if q.type === 'choice'}
+              <select class="sel" data-inparam={q.name} value={inputCfg.params?.[q.name] ?? q.default ?? ''} onchange={(e) => setParam(q.name, e.currentTarget.value)}>{#each q.choices ?? [] as ch (ch)}<option value={ch}>{ch}</option>{/each}</select>
+            {:else}
+              <input class="sel" data-inparam={q.name} type={q.type === 'number' ? 'number' : 'text'} step="any" value={inputCfg.params?.[q.name] ?? q.default ?? ''} onchange={(e) => setParam(q.name, e.currentTarget.value)} />
+            {/if}</label>
+        {/each}
+      {/if}
+    </div>
+    <footer><span class="hint muted">Kept with the layout.</span><span class="spacer"></span><button class="tbtn primary" onclick={() => (inputsFor = null)}>Done</button></footer>
+  </div>
+{/if}
+
 {#if menu}
   <!-- read through ?. : the menu's props are read once more while it closes, after `menu` is null -->
   <Menu class="widgetmenu chmenu" label="Widget for {menu ? chName(menu.ch) : ''}" anchor={menu?.anchor} onclose={() => (menu = null)} items={menu ? items(menu.ch) : []} />
 {/if}
 
 <style>
+  .widdlg {
+    width: min(420px, calc(100vw - 32px));
+  }
+  .widbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 14px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .widbody h4 {
+    margin: 4px 0 0;
+    font-size: 12px;
+  }
   .fgauges {
     background: var(--plot-bg);
     padding: 4px 10px 10px;

@@ -78,6 +78,14 @@ run(
     await p.selectOption('[data-falign="2"]', 'timesrc');
     check('a method that fails says why, the map stays', (await until(() => /Both files need a channel named gps_tow/.test(document.querySelector('.align .anote')?.textContent ?? ''))) && /−3\.33/.test(await text('[data-offset]')));
 
+    // Time channel (GPS time of week), ported from the prototype's t_align: the option names the channel, and the note says what matched
+    check('alignment offers Time channel (gps_tow) and Cross-correlation', await p.$$eval('[data-falign="2"] option', (o) => o.some((x) => x.textContent === 'Time channel (gps_tow)') && o.some((x) => /Cross-correlation/.test(x.textContent))));
+    const keep = await fake(() => window.__tlmFake.alignResults.xcorr ?? null);
+    await fake(() => (window.__tlmFake.alignResults.timesource = { knots: (window.__tlmFake.aligns.length, window.__tlmFake.lastKnots ?? [['0', '-200000000000']]), residuals: [], quality: 1, note: 'gps_tow: −3.33 min', channel: 'gps_tow' }));
+    await p.selectOption('[data-falign="2"]', 'timesrc');
+    check('Time channel says what it matched on', await until(() => /gps_tow: −3\.33 min/.test(document.querySelector('.align .anote')?.textContent ?? '')), await text('.align .anote'));
+    await fake(() => delete window.__tlmFake.alignResults.timesource);
+    void keep;
     // lock
     await p.check('[data-lock="2"]');
     check('Lock disables the controls', (await p.isDisabled('[data-falign="2"]')) && (await p.isDisabled('[data-nudge="+"]')));

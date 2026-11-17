@@ -19,6 +19,10 @@ export interface CustomWidget {
   /** Where a shared widget came from (a folder's `.tlmbench/widgets/<name>`) and who shared it; code from there asks first. */
   shared?: string;
   by?: string;
+  /** A code widget's inputs by role (`pitch`, `roll`, `series`): each is bound to a channel per widget (S5.4-10). */
+  inputs?: { role: string; label?: string }[];
+  /** A code widget's parameters: a number, a text or a choice, valued per widget. */
+  params?: { name: string; label?: string; type: 'number' | 'text' | 'choice'; default?: string; choices?: string[] }[];
 }
 
 export const WIDGET_EXAMPLE: Omit<CustomWidget, 'id'> = {

@@ -76,6 +76,7 @@
     f.name = to.trim();
     if (d.time.source !== 'rate' && d.time.source !== 'index' && d.time.field === was) d.time.field = f.name;
     if (d.sequence === was) d.sequence = f.name;
+    if (d.events?.includes(was)) d.events = d.events.map((n) => (n === was ? f.name : n));
   }
   function setBits(f: DField, text: string) {
     const b = parseBits(text);
@@ -189,7 +190,7 @@
 
       <h4>Fields <small>{d.fields.length} · shown value = raw × scale + offset</small></h4>
       <div class="dscfields">
-        <div class="dscf head"><span></span><span>Name</span><span>Type</span><span>Offset</span><span>Bits</span><span>Unit</span><span>Scale</span><span>Offset</span><span></span></div>
+        <div class="dscf head"><span></span><span>Name</span><span>Type</span><span>Offset</span><span>Bits</span><span>Unit</span><span>Scale</span><span>Offset</span><span data-tip="One event at each change of this field's value">Events</span><span></span></div>
         {#each d.fields as f, i (i)}
           <div class="dscf" class:bad={!!problem && (problem.startsWith(`field "${f.name}"`) || problem.includes(`"${f.name}"`))} data-fi={i}>
             <span class="sw" style="background: {swatch(i)}"></span>
@@ -200,6 +201,7 @@
             <input data-ff="unit" value={f.unit ?? ''} placeholder="unit" aria-label="{f.name} unit" spellcheck="false" onchange={(e) => (e.currentTarget.value.trim() ? (f.unit = e.currentTarget.value.trim()) : delete f.unit)} />
             <input data-ff="scale" type="number" step="any" value={f.scale ?? 1} aria-label="{f.name} scale" onchange={(e) => (e.currentTarget.value === '' ? delete f.scale : (f.scale = +e.currentTarget.value))} />
             <input data-ff="value_offset" type="number" step="any" value={f.value_offset ?? 0} aria-label="{f.name} value offset" onchange={(e) => (f.value_offset = +e.currentTarget.value || 0)} />
+            <input data-ff="events" type="checkbox" checked={!!d.events?.includes(f.name)} aria-label="Changes of {f.name} are events" onchange={(e) => (d.events = e.currentTarget.checked ? [...new Set([...(d.events ?? []), f.name])] : (d.events ?? []).filter((n) => n !== f.name))} />
             <button class="ib" data-fdel aria-label="Remove {f.name}" data-tip="Remove this field" onclick={() => d.fields.splice(i, 1)}>×</button>
           </div>
         {/each}
@@ -394,7 +396,7 @@
   }
   .dscf {
     display: grid;
-    grid-template-columns: 10px minmax(110px, 1.4fr) 76px 64px 60px 70px 70px 70px 24px;
+    grid-template-columns: 10px minmax(110px, 1.4fr) 76px 64px 60px 70px 70px 70px 44px 24px;
     gap: 6px;
     align-items: center;
     padding: 3px 6px;

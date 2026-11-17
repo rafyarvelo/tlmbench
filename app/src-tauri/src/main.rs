@@ -200,6 +200,10 @@ struct Opened {
     /// check sets, recipes, a starter layout and the channel prefix rule.
     #[serde(skip_serializing_if = "Option::is_none")]
     profile: Option<ImportProfile>,
+    /// Channels (by name) whose changes are events from the file: the profile's event columns and the descriptor's
+    /// `events`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    event_channels: Vec<String>,
 }
 
 /// How much of a channel is missing.
@@ -524,6 +528,7 @@ async fn open<R: tauri::Runtime>(
     .map_err(|e| e.to_string())??;
     let id = files.next.fetch_add(1, Ordering::Relaxed) + 1;
     let info = shown.recording().info().clone();
+    let event_channels = event_channels_of(&files.store, &info, profile.as_ref());
     let range = info.t_first.zip(info.t_last).map(|(a, b)| (a.to_string(), b.to_string()));
     let status = shown.status();
     files.holds.add(id, window.label());
@@ -533,7 +538,47 @@ async fn open<R: tauri::Runtime>(
         build_in_background(shown.clone(), progress);
     }
     let missing = missing_all(shown.recording());
-    Ok(Opened { id, info, range, status, derived, skipped, missing, profile })
+    Ok(Opened { id, info, range, status, derived, skipped, missing, profile, event_channels })
+}
+
+/// The channels (by name) a file's profile or descriptor marks as events.
+fn event_channels_of(store: &Store, info: &RecordingInfo, profile: Option<&ImportProfile>) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    if let Some(p) = profile {
+        // a column's channel is named as its choice says, else as the header does
+        for src in &p.event_columns {
+            names.push(p.column(src).and_then(|c| c.name.clone()).unwrap_or_else(|| src.clone()));
+        }
+    }
+    if let (Some(dir), Some(file)) = (info.path.parent(), info.path.file_name().and_then(|n| n.to_str())) {
+        for k in tlmbench_decode::descriptor::known(dir, store.root()) {
+            if k.descriptor.files.iter().any(|p| tlmbench_decode::descriptor::name_matches(p, file)) {
+                names.extend(k.descriptor.events.iter().cloned());
+                break;
+            }
+        }
+    }
+    names.retain(|n| info.channels.iter().any(|c| &c.name == n));
+    names.dedup();
+    names
+}
+
+/// The events a file's marked channels make (one at each change), by channel name: read-only, source `file`.
+#[tauri::command]
+async fn file_events(
+    file: u32,
+    channels: Vec<String>,
+    files: State<'_, Files>,
+) -> Result<Vec<tlmbench_store::events::Event>, String> {
+    let base = files.base(file)?;
+    spawn_blocking(move || {
+        let rec = base.recording();
+        let idx: Vec<usize> =
+            channels.iter().filter_map(|n| rec.info().channels.iter().position(|c| &c.name == n)).collect();
+        tlmbench_store::events::from_channels(rec, &idx)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// One file of a tab with several, as asked for.
@@ -748,6 +793,7 @@ async fn derive_apply(
                 skipped,
                 missing: Vec::new(),
                 profile: None,
+                event_channels: Vec::new(),
             })
         })
         .await
@@ -770,7 +816,7 @@ async fn derive_apply(
         build_in_background(shown.clone(), progress);
     }
     let missing = missing_all(shown.recording());
-    Ok(Opened { id: file, info, range, status, derived, skipped, missing, profile: None })
+    Ok(Opened { id: file, info, range, status, derived, skipped, missing, profile: None, event_channels: Vec::new() })
 }
 
 /// One value label: channel `channel`'s stored number `value` is called `text`.
@@ -839,7 +885,7 @@ async fn adjust_apply(
         build_in_background(shown.clone(), progress);
     }
     let missing = missing_all(shown.recording());
-    Ok(Opened { id: file, info, range, status, derived, skipped, missing, profile: None })
+    Ok(Opened { id: file, info, range, status, derived, skipped, missing, profile: None, event_channels: Vec::new() })
 }
 
 /// Yours, then the events the folder's `.tlmbench/events/` shares for this recording that you don't have (read-only,
@@ -1536,6 +1582,7 @@ fn register_live<R: tauri::Runtime>(files: &Files, window: &tauri::Window<R>, en
         skipped: Vec::new(),
         missing: Vec::new(),
         profile: None,
+        event_channels: Vec::new(),
     }
 }
 
@@ -1617,13 +1664,21 @@ struct LivePreview {
     /// How the frames are laid out (`16 bytes a frame, 1000 Hz`), or the file's format.
     detail: String,
     channels: Vec<(String, Option<String>)>,
+    /// With a read: the latest frame's values by channel, and the frames a second brought.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    values: Vec<(String, f64)>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seen_hz: Option<f64>,
 }
 
+/// Previews how the source decodes. With `read`, a stream is also read for a second (a socket or serial port is opened,
+/// a UDP port bound, then let go) and the latest frame's values and the rate seen come with it (S5.5-02).
 #[tauri::command]
-async fn live_preview(endpoint: String, descriptor: Option<String>) -> Result<LivePreview, String> {
+async fn live_preview(endpoint: String, descriptor: Option<String>, read: Option<bool>) -> Result<LivePreview, String> {
     spawn_blocking(move || -> Result<LivePreview, String> {
         use tlmbench_decode::descriptor::TimeSpec;
         let ep: tlmbench_live::Endpoint = endpoint.parse().unwrap_or(tlmbench_live::Endpoint::Tcp(String::new()));
+        let read = read.unwrap_or(false);
         match (&ep, descriptor.filter(|d| !d.is_empty())) {
             (tlmbench_live::Endpoint::Replay(r), _) => preview_file(&r.path),
             (tlmbench_live::Endpoint::File(p), _) => preview_file(p),
@@ -1639,7 +1694,7 @@ async fn live_preview(endpoint: String, descriptor: Option<String>) -> Result<Li
                     }
                     TimeSpec::Index => ("numbered".to_string(), None),
                 };
-                Ok(LivePreview {
+                let mut out = LivePreview {
                     detail: format!("{} bytes a frame, {time}", d.record_size),
                     channels: d
                         .fields
@@ -1647,7 +1702,13 @@ async fn live_preview(endpoint: String, descriptor: Option<String>) -> Result<Li
                         .filter(|f| Some(&f.name) != time_field.as_ref() && Some(&f.name) != d.sequence.as_ref())
                         .map(|f| (f.name.clone(), f.unit.clone()))
                         .collect(),
-                })
+                    values: Vec::new(),
+                    seen_hz: None,
+                };
+                if read {
+                    read_stream(&ep, &d, &mut out)?;
+                }
+                Ok(out)
             }
             _ => Err("Choose the frames' descriptor to see how they decode".into()),
         }
@@ -1663,7 +1724,59 @@ fn preview_file(path: &Path) -> Result<LivePreview, String> {
     Ok(LivePreview {
         detail: format!("{}, {} samples", info.format, info.samples),
         channels: info.channels.iter().map(|c| (c.name.clone(), c.unit.clone())).collect(),
+        values: latest_values(rec.as_ref()),
+        seen_hz: None,
     })
+}
+
+/// The values of a recording's last sample, by channel name (the first frames a preview shows).
+fn latest_values(rec: &dyn tlmbench_core::Recording) -> Vec<(String, f64)> {
+    let info = rec.info();
+    if info.samples == 0 {
+        return Vec::new();
+    }
+    let held = tlmbench_core::chunks::Held::default();
+    info.channels
+        .iter()
+        .enumerate()
+        .map(|(k, c)| (c.name.clone(), rec.value_at(k, info.samples - 1, &held)))
+        .filter(|(_, v)| v.is_finite())
+        .collect()
+}
+
+/// Reads a stream for a second into a temporary recording (never next to anything of yours), and says what arrived: the
+/// latest frame's values and how many frames a second.
+fn read_stream(
+    ep: &tlmbench_live::Endpoint,
+    d: &tlmbench_decode::descriptor::Descriptor,
+    out: &mut LivePreview,
+) -> Result<(), String> {
+    if d.packets.is_some() {
+        return Err("A packet stream previews in its own tab once connected".into());
+    }
+    let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let base = dir.path().join("preview");
+    let src = tlmbench_live::Source::start(ep.clone(), Some(d), &base, &tlmbench_live::Options::default())
+        .map_err(|e| e.to_string())?;
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let health = src.stop();
+    if let Some(e) = health.error.clone() {
+        return Err(e);
+    }
+    let tlm = std::fs::read_dir(dir.path())
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|x| x == "tlm"));
+    let rec = tlm.and_then(|p| tlmbench_decode::open(&p, &tlmbench_decode::OpenOptions::default()).ok());
+    match rec {
+        Some(rec) if rec.info().samples > 0 => {
+            out.seen_hz = Some(health.records_in as f64 / health.seconds.max(1.0));
+            out.values = latest_values(rec.as_ref());
+            Ok(())
+        }
+        _ => Err("Nothing arrived in a second".into()),
+    }
 }
 
 /// Stops reading a live source; its recording stays open (and complete) in its tab.
@@ -3142,21 +3255,18 @@ async fn export_html<R: tauri::Runtime>(
         // raw windows around every event and every violation the sets marked; a set's own `detail` is the default for
         // its violations when the export dialog sent none
         let windows: Vec<(i64, i64)> = if let Some(w) = window {
-            let span = |win: &html::Window, e: &serde_json::Value| -> Option<(i64, i64)> {
-                Some(win.around(e["start"].as_str()?.parse().ok()?, e["duration"].as_str()?.parse().ok()?))
+            let pair = |e: &serde_json::Value| -> Option<(i64, i64)> {
+                Some((e["start"].as_str()?.parse().ok()?, e["duration"].as_str()?.parse().ok()?))
             };
-            let mut out: Vec<(i64, i64)> =
-                extra["events"][0]["events"].as_array().into_iter().flatten().filter_map(|e| span(&w, e)).collect();
-            for c in extra["checks"].as_array().into_iter().flatten() {
-                let mine = match (&req.detail, c["set"]["detail"].as_str()) {
-                    (None, Some(d)) => html::Window::parse(d)?,
-                    _ => Some(w),
-                };
-                if let Some(mine) = mine {
-                    out.extend(c["events"].as_array().into_iter().flatten().filter_map(|e| span(&mine, e)));
-                }
-            }
-            out
+            let evs: Vec<(i64, i64)> =
+                extra["events"][0]["events"].as_array().into_iter().flatten().filter_map(pair).collect();
+            let sets: Vec<(Option<&str>, Vec<(i64, i64)>)> = extra["checks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|c| (c["set"]["detail"].as_str(), c["events"].as_array().into_iter().flatten().filter_map(pair).collect()))
+                .collect();
+            html::window_spans(w, req.detail.is_some(), &evs, &sets)?
         } else {
             Vec::new()
         };
@@ -3780,6 +3890,7 @@ macro_rules! commands {
             import_inspect,
             profile_save,
             shared_renames,
+            file_events,
             shared_renames_apply,
             usage,
             cache_info,

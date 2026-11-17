@@ -138,6 +138,16 @@ fn widgets_categories_and_time_maps_round_trip() {
         name: "Level".into(),
         code: Some("({ build(){}, update(){} })".into()),
         by: Some("j.kim".into()),
+        inputs: vec![
+            tlmbench_store::config::WidgetInput { role: "roll".into(), label: None },
+            tlmbench_store::config::WidgetInput { role: "pitch".into(), label: Some("Pitch channel".into()) },
+        ],
+        params: vec![tlmbench_store::config::WidgetParam {
+            name: "gain".into(),
+            kind: "number".into(),
+            default: Some("2".into()),
+            ..Default::default()
+        }],
         ..Default::default()
     };
     let own = Own { widgets: vec![w.clone(), code.clone()], ..Default::default() };
@@ -150,6 +160,10 @@ fn widgets_categories_and_time_maps_round_trip() {
     assert_eq!(by_name("Throttle lever").svg, w.svg);
     assert_eq!(by_name("Throttle lever").angle, w.angle);
     assert_eq!(by_name("Level").code, code.code);
+    // a code widget's inputs by role and parameters travel in its widget.toml
+    assert_eq!(by_name("Level").inputs, code.inputs);
+    assert_eq!(by_name("Level").params, code.params);
+    assert!(by_name("Throttle lever").inputs.is_empty());
     // a time map goes through the cache's folder as the folder's own file
     let t = TimeMapFile {
         schema: 1,

@@ -49,6 +49,32 @@ pub struct Widget {
     pub angle: Option<[f64; 2]>,
     pub code: Option<String>,
     pub by: Option<String>,
+    /// A code widget's inputs by role (`pitch`, `roll`, `series`): each is bound to a channel per widget.
+    pub inputs: Vec<WidgetInput>,
+    /// A code widget's parameters, valued per widget.
+    pub params: Vec<WidgetParam>,
+}
+
+/// One input of a code widget: a role it reads, bound to a channel in the layout.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct WidgetInput {
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// One parameter of a code widget: a `number`, a `text` or a `choice` among `choices`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct WidgetParam {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
 }
 
 /// An icon: an SVG that uses `currentColor`.
@@ -86,6 +112,10 @@ pub(crate) struct WidgetFile {
     pub(crate) angle: Option<[f64; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) by: Option<String>,
+    #[serde(default, rename = "input", skip_serializing_if = "Vec::is_empty")]
+    pub(crate) inputs: Vec<WidgetInput>,
+    #[serde(default, rename = "param", skip_serializing_if = "Vec::is_empty")]
+    pub(crate) params: Vec<WidgetParam>,
 }
 
 pub(crate) fn schema_ok(n: u32, what: &str) -> std::result::Result<(), String> {
@@ -107,7 +137,11 @@ pub(crate) fn read_widget(t: &dyn Tree, dir: &str) -> std::result::Result<Widget
     };
     let mut w = Widget { id: String::new(), name: f.name, icon, by: f.by, ..Default::default() };
     match f.kind.as_str() {
-        "code" => w.code = Some(body),
+        "code" => {
+            w.code = Some(body);
+            w.inputs = f.inputs;
+            w.params = f.params;
+        }
         "svg" => {
             w.svg = Some(body);
             w.angle = f.angle;

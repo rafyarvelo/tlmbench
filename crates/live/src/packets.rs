@@ -47,7 +47,19 @@ fn session(name: &str, what: &str) -> Result<Box<dyn PayloadSession>, String> {
 }
 
 fn plain(name: String, dtype: DType, offset: u64, unit: Option<String>) -> Field {
-    Field { name, dtype, offset, unit, scale: 1.0, value_offset: 0.0, bits: None, plugin: None, size: 0, params: None }
+    Field {
+        name,
+        dtype,
+        offset,
+        unit,
+        scale: 1.0,
+        value_offset: 0.0,
+        category: None,
+        bits: None,
+        plugin: None,
+        size: 0,
+        params: None,
+    }
 }
 
 /// One plan per packet type of `d` (which has `[packets]`), in the descriptor's order.
@@ -71,6 +83,7 @@ pub(crate) fn plans(d: &Descriptor) -> Result<Vec<Plan>, String> {
             fields: Vec::new(),
             packets: None,
             packet_types: Vec::new(),
+            events: Vec::new(),
         };
         if let Some((plugin, params)) = part.as_ref().and_then(|q| q.plugin.clone()) {
             let what = format!("packet type \"{}\"", label.clone().unwrap_or_default());

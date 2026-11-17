@@ -27,7 +27,7 @@ import { COMMANDS, matches, menuLabel } from './commands';
 import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, REMEMBERED, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS, stopCats } from './play.svelte';
-import { catColor, catName, events, marked, newId, onMarksChange, setAuto, setMine, type TlmEvent } from './events.svelte';
+import { catColor, catName, events, marked, newId, onMarksChange, setAuto, setFileEvents, setMine, type TlmEvent } from './events.svelte';
 import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, lineOf, type Limits, limitsOf, openChannelEditor, twinIn } from './display.svelte';
 import {
@@ -111,6 +111,7 @@ interface Opened {
   derived?: DerivedInfo[];
   skipped?: { name: string; why: string }[];
   missing?: MissingInfo[];
+  event_channels?: string[];
   /** The import profile the file was read with, for what it carries besides the decode. */
   profile?: Profile;
 }
@@ -172,7 +173,7 @@ const renderer = await createRenderer($<HTMLCanvasElement>('gl'));
 
 /** An open file: its id in the core, what it holds, and its first and last sample times. */
 type MissingInfo = { channel: number; count: number; ns: number };
-type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[]; missing: MissingInfo[]; adjustKey: string; /** The files of a tab that holds several, in slot order (the first is the primary); `id` is then the group's. */ members?: Member[] };
+type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[]; missing: MissingInfo[]; adjustKey: string; /** Channels whose changes are events from the file (D-ui-12). */ eventChannels?: string[]; /** The files of a tab that holds several, in slot order (the first is the primary); `id` is then the group's. */ members?: Member[] };
 /** One file of a tab with several. `first`/`count` are its channels' numbers in the tab; `knots` its time map. */
 type Member = { id: number; path: string; /** What the sidebar calls it when not its file name (a live source's name). */ name?: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint] };
 
@@ -1748,7 +1749,7 @@ async function openPathNow(path: string, part?: string): Promise<void> {
         void invoke('close', { file: o.id });
         throw new Error('it has no samples');
       }
-      file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: o.derived ?? [], missing: o.missing ?? [], adjustKey: JSON.stringify(adjustList()) };
+      file = { id: o.id, info: o.info, first: BigInt(o.range[0]), last: BigInt(o.range[1]), derived: o.derived ?? [], missing: o.missing ?? [], adjustKey: JSON.stringify(adjustList()), eventChannels: o.event_channels ?? [] };
       for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
       notes = (o.info.notes ?? []).map((n) => `${nameOf(path)}: ${n}`);
       building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
@@ -2137,9 +2138,9 @@ Object.assign(liveActions, {
       return String(e);
     }
   },
-  preview: async (endpoint: string, descriptor: string) => {
+  preview: async (endpoint: string, descriptor: string, read = false) => {
     try {
-      return await invoke<{ detail: string; channels: [string, string | null][] }>('live_preview', { endpoint, descriptor: descriptor || null });
+      return await invoke<import('./live.svelte').Preview>('live_preview', { endpoint, descriptor: descriptor || null, read });
     } catch (e) {
       return String(e);
     }
@@ -2709,7 +2710,7 @@ function ownConfig(): Record<string, unknown> {
   const recordings = openRecordings();
   return {
     categories: settings.eventCats.map((c) => ({ id: c.id, name: c.name, color: c.color, show_on_charts: c.chart })),
-    widgets: settings.customWidgets.filter((w) => !w.shared).map((w) => ({ id: w.id, name: w.name, icon: w.icon ?? null, svg: w.svg ?? null, angle: w.angle ?? null, code: w.code ?? null, by: w.by ?? null })),
+    widgets: settings.customWidgets.filter((w) => !w.shared).map((w) => ({ id: w.id, name: w.name, icon: w.icon ?? null, svg: w.svg ?? null, angle: w.angle ?? null, code: w.code ?? null, by: w.by ?? null, inputs: w.inputs ?? [], params: w.params ?? [] })),
     icons: settings.userIcons.map((i) => ({ name: i.name, svg: i.svg })),
     views: settings.workspaces.map((w) => ({ file: viewFile(w.name), view: withRecipes(plain(w)) })),
     recordings,
@@ -2740,6 +2741,8 @@ function widgetFrom(w: Record<string, unknown>, dir: string): CustomWidget {
   const out: CustomWidget = { id: `fw_${w.id}`, name: String(w.name), shared: dir };
   for (const k of ['icon', 'svg', 'code', 'by'] as const) if (typeof w[k] === 'string') out[k] = w[k] as string;
   if (Array.isArray(w.angle)) out.angle = [Number(w.angle[0]), Number(w.angle[1])];
+  if (Array.isArray(w.inputs) && w.inputs.length) out.inputs = w.inputs as CustomWidget['inputs'];
+  if (Array.isArray(w.params) && w.params.length) out.params = w.params as CustomWidget['params'];
   return out;
 }
 
@@ -3347,11 +3350,19 @@ async function loadEvents(): Promise<void> {
   if (!f) {
     setMine([]);
     setAuto([]);
+    setFileEvents([]);
     return;
   }
   try {
     const list = await invoke<TlmEvent[]>('events_list', { file: f.id });
     if (state.file === f) setMine(list);
+    // the columns and fields marked as events make one event at each change (D-ui-12)
+    const marked = f.eventChannels ?? [];
+    if (!marked.length) setFileEvents([]);
+    else {
+      const made = await invoke<TlmEvent[]>('file_events', { file: f.id, channels: marked });
+      if (state.file === f) setFileEvents(made);
+    }
   } catch (e) {
     note(`Couldn't read the events: ${e}`);
   }

@@ -28,6 +28,10 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   await p.click('#lvConnect');
   check('a refused connection says so', await until(() => /connection refused/.test(document.getElementById('lvErr')?.textContent ?? '')), await text('#lvErr'));
   await p.fill('#lvAddr', '127.0.0.1:9000');
+  // S5.5-02: nothing reads the stream until asked; Preview a frame reads it for a second and shows the latest frame
+  check('the preview names the channels and does not read the stream by itself', await until(() => /Decodes as/.test(document.getElementById('lvPreview')?.textContent ?? '')) && !(await p.$('#lvValues')) && (await fake(() => window.__tlmFake.previewReads)) === 0);
+  await p.click('#lvRead');
+  check('Preview a frame shows the latest frame and the frames a second', await until(() => /rpm = 1500/.test(document.getElementById('lvValues')?.textContent ?? '') && /1000 frames a second/.test(document.getElementById('lvPreview')?.textContent ?? '')), await text('#lvPreview'));
   await p.click('#lvConnect');
   check('connecting opens a live tab', await until(() => document.querySelector('#wsTabs [aria-selected=true]')?.dataset.tip === 'tcp://127.0.0.1:9000') && !(await p.isVisible('#liveDlg')));
   check('a pulsing dot on the live tab and on the rail', (await p.$$('[data-live-tab]')).length === 1 && (await p.$$('[data-live-dot]')).length === 1);

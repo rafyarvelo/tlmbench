@@ -46,6 +46,8 @@ export interface Descriptor {
   header_size: number;
   record_size: number;
   sequence?: string;
+  /** Fields (by name) whose changes are events from the file (D-ui-12). */
+  events?: string[];
   time: Time;
   fields: DField[];
   packets?: Packets;
@@ -152,6 +154,7 @@ export function normalizeDescriptor(d: Partial<Descriptor>): Descriptor {
     time: out.time ?? { source: 'index' },
     fields: out.fields ?? [],
     ...(out.sequence ? { sequence: out.sequence } : {}),
+    ...(out.events?.length ? { events: out.events } : {}),
     ...(out.packets ? { packets: { ...out.packets, checksum: out.packets.checksum ?? 'none', compression: out.packets.compression ?? 'none' } } : {}),
     ...(out.packet_types?.length ? { packet_types: out.packet_types } : {}),
   };

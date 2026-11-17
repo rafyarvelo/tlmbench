@@ -6,12 +6,12 @@
 <script lang="ts">
   import { live, stateOf } from '../live.svelte';
   import { untrack } from 'svelte';
-  import { groupChannels } from '../groups';
+  import { type Group, groupChannels, overrideKey } from '../groups';
   import { ICON } from '../icons';
   import { chBase, chCss, chName, chUnit } from '../display.svelte';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
-  import { addChannels, newPaneWith, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
+  import { addChannels, newPaneWith, note, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui, viewLocked } from '../ui.svelte';
   import Alignment from './Alignment.svelte';
@@ -25,6 +25,37 @@
   /** Channels picked together (Ctrl/Cmd-click, Shift-click a range, Ctrl+A); `sel` is the one last clicked. */
   let picked = $state<number[]>([]);
   let fmenu = $state<null | { at: { x: number; y: number }; path: string; layouts?: boolean }>(null);
+  /** Categories picked together (Cmd/Ctrl-click adds one, Shift-click a range): their channels are the channels picked (D-ui-09). */
+  let pickedCats = $state<string[]>([]);
+  /** A category's click: plain opens or closes it; Cmd/Ctrl picks it with the others, Shift a range. Returns whether it was a pick. */
+  function clickCat(e: MouseEvent, name: string, visible: Group[]): boolean {
+    if (!(e.metaKey || e.ctrlKey || e.shiftKey)) {
+      pickedCats = [];
+      return false;
+    }
+    if (e.shiftKey && pickedCats.length) {
+      const names = visible.map((g) => g.name);
+      const a = names.indexOf(pickedCats[pickedCats.length - 1]);
+      const b = names.indexOf(name);
+      pickedCats = a >= 0 && b >= 0 ? names.slice(Math.min(a, b), Math.max(a, b) + 1) : [name];
+    } else pickedCats = pickedCats.includes(name) ? pickedCats.filter((n) => n !== name) : [...pickedCats, name];
+    picked = visible.filter((g) => pickedCats.includes(g.name)).flatMap((g) => g.chs.filter((ch) => chanMatch(ui.channels[ch]) || matcher.test(name)));
+    return true;
+  }
+  /** A drop of channels on a category row moves them into it (kept per file, by channel name; Undo puts them back). */
+  let catOver = $state<string | null>(null);
+  function dropOnCat(e: DragEvent, cat: string) {
+    catOver = null;
+    const raw = e.dataTransfer?.getData('application/x-tlm-channels');
+    if (!raw) return;
+    e.preventDefault();
+    const chs = (JSON.parse(raw) as number[]).filter((ch) => ui.channels[ch]);
+    const was = settings.catOverride;
+    const next = { ...was };
+    for (const ch of chs) next[overrideKey(ui.path, ui.channels[ch].name)] = cat;
+    setSetting('catOverride', next);
+    note(`Moved ${chs.length === 1 ? ui.channels[chs[0]].name : `${chs.length} channels`} to ${cat}.`, () => setSetting('catOverride', was));
+  }
   /** Files picked together (Cmd/Ctrl-click, Shift-click a range) to open or close at once. */
   let pickedFiles = $state<string[]>([]);
 
@@ -493,9 +524,12 @@
           {@const shut = settings.exCatClosed.includes(g.name)}
           {@const vis = g.chs.filter((ch) => chanMatch(ui.channels[ch]) || matcher.test(name))}
           {#if vis.length}
-            <div class="row cat" role="treeitem" aria-selected="false" aria-expanded={!shut} tabindex="0" style="--d: {depth + 1}" data-cat={g.name}
-              onclick={() => setSetting('exCatClosed', shut ? settings.exCatClosed.filter((n) => n !== g.name) : [...settings.exCatClosed, g.name])}
-              onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), (e.currentTarget as HTMLElement).click())}>
+            <div class="row cat" class:catover={catOver === g.name} role="treeitem" aria-selected={pickedCats.includes(g.name)} aria-expanded={!shut} tabindex="0" style="--d: {depth + 1}" data-cat={g.name}
+              ondragover={(e) => e.dataTransfer?.types.includes('application/x-tlm-channels') && (e.preventDefault(), (catOver = g.name))}
+              ondragleave={() => catOver === g.name && (catOver = null)}
+              ondrop={(e) => dropOnCat(e, g.name)}
+              onclick={(e) => !clickCat(e, g.name, groups) && setSetting('exCatClosed', shut ? settings.exCatClosed.filter((n) => n !== g.name) : [...settings.exCatClosed, g.name])}
+              onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), pickedCats.length > 1 && pickedCats.includes(g.name) ? addChannels(picked) : (e.currentTarget as HTMLElement).click())}>
               <span class="chev" class:on={!shut}>{@html ICON.chev}</span><span class="nm">{g.name}</span>
               <span class="catact">
                 <button class="linkbtn" data-cat-act="add" data-tip="Plot the group in the selected pane" onclick={(e) => (e.stopPropagation(), addChannels(vis))}>Add</button>
@@ -836,6 +870,13 @@
   .act {
     margin-left: auto;
     min-height: 22px;
+  }
+  .row.cat.catover {
+    outline: 1px dashed var(--accent);
+    outline-offset: -2px;
+  }
+  .row.cat[aria-selected='true'] {
+    background: var(--accent-soft);
   }
   .row.cat {
     font-weight: 600;

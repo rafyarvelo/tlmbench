@@ -279,6 +279,10 @@ export interface Extra {
   since: number | null;
   /** XY dot: the view's cloud, the trail, the dot, and whether the pair is longitude/latitude. */
   xy: { view: [number, number][]; trail: [number, number][]; now: [number, number] | null; geo: boolean };
+  /** A code widget's inputs by role: the channel bound to each, its value and its last samples at the reading time. */
+  roles?: Record<string, { name: string; unit: string; v: number | null; txt: string; series: number[] }>;
+  /** A code widget's parameters as set for this widget (defaults filled in). */
+  params?: Record<string, string>;
   /** The ends of the view, as text, for the timeline. */
   t0: string;
   t1: string;

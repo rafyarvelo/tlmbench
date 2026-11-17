@@ -120,6 +120,28 @@ impl Window {
     }
 }
 
+/// The raw windows Light keeps: around each of `events` (start, duration) by `default`, and around each set's marked
+/// violations by the set's own `detail` (in `--detail`'s words) unless the export was told its windows (`explicit`).
+/// A set whose detail is `0` keeps none around its violations.
+pub fn window_spans(
+    default: Window,
+    explicit: bool,
+    events: &[(i64, i64)],
+    sets: &[(Option<&str>, Vec<(i64, i64)>)],
+) -> std::result::Result<Vec<(Timestamp, Timestamp)>, String> {
+    let mut out: Vec<(Timestamp, Timestamp)> = events.iter().map(|&(s, d)| default.around(s, d)).collect();
+    for (detail, marked) in sets {
+        let mine = match (explicit, detail) {
+            (false, Some(d)) => Window::parse(d).map_err(|e| format!("detail in the set: {e}"))?,
+            _ => Some(default),
+        };
+        if let Some(w) = mine {
+            out.extend(marked.iter().map(|&(s, d)| w.around(s, d)));
+        }
+    }
+    Ok(out)
+}
+
 /// `30s`, `500ms`, `10min`, `2h` or plain seconds, in nanoseconds.
 fn duration_ns(text: &str) -> std::result::Result<i64, String> {
     let t = text.trim().to_ascii_lowercase();

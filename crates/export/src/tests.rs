@@ -426,3 +426,25 @@ fn a_one_file_export_is_full_when_it_fits_the_limit_and_light_when_it_does_not()
     assert!(e.to_string().contains("limit"), "{e}");
     assert!(!refused.exists());
 }
+
+#[test]
+fn a_sets_own_detail_sets_the_windows_around_its_violations_unless_the_export_says_otherwise() {
+    let s = 1_000_000_000i64;
+    let default = crate::html::Window::default();
+    // an event at 100 s, and a set's violation at 1000 s
+    let events = [(100 * s, 0)];
+    let marked = vec![(1000 * s, 0)];
+    let plain = crate::html::window_spans(default, false, &events, &[(None, marked.clone())]).unwrap();
+    assert_eq!(plain, vec![default.around(100 * s, 0), default.around(1000 * s, 0)], "no detail: the default");
+    // the set says 10 s: its violation's window is 10 s wide, the event's still the default
+    let own = crate::html::window_spans(default, false, &events, &[(Some("10s"), marked.clone())]).unwrap();
+    assert_eq!(own[0], default.around(100 * s, 0));
+    assert_eq!(own[1].1 - own[1].0, 10 * s);
+    // an explicit --detail wins over the set
+    let told = crate::html::window_spans(default, true, &events, &[(Some("10s"), marked.clone())]).unwrap();
+    assert_eq!(told, plain);
+    // 0 keeps none around the set's violations
+    let none = crate::html::window_spans(default, false, &events, &[(Some("0"), marked.clone())]).unwrap();
+    assert_eq!(none, vec![default.around(100 * s, 0)]);
+    assert!(html::window_spans(default, false, &events, &[(Some("soon"), marked)]).is_err());
+}
