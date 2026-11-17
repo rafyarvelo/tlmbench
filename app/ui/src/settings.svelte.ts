@@ -172,6 +172,8 @@ export interface Settings {
   clickMode: 'select' | 'act';
   /** Hides badges and counts until they matter. */
   quietUI: boolean;
+  /** Code widgets run (in a sandboxed frame). Off: they stay value cards and never ask (D-gauge-03). */
+  codeWidgets: boolean;
   /** A reduced trace (min and max per pixel column) gets a faint fill between its extremes. */
   envelope: boolean;
   /** The channel the overview is pinned to (null: it follows the selected pane). */
@@ -297,6 +299,7 @@ export const DEFAULTS: Settings = {
   fileOpenNew: 'starter',
   clickMode: 'select',
   quietUI: false,
+  codeWidgets: true,
   envelope: true,
   overviewCh: null,
   tooltips: 'short',

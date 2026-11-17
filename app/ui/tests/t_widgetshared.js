@@ -39,6 +39,15 @@ run(
     await p.click('#trustDlg [data-trust]');
     check('trusting runs it in a sandboxed frame', await until(() => document.querySelector('#stack [data-gw="current_a"] iframe.gcodefr')?.getAttribute('sandbox') === 'allow-scripts' || null, null, 8000));
     check('the folder is remembered', ((await settingsLS()).trustedWidgetSources ?? []).includes('.tlmbench/widgets/level-bar'), (await settingsLS()).trustedWidgetSources);
+
+    // Settings › Run code widgets off (D-gauge-03): trusted code stops, the card stays a value card and nothing asks
+    await p.click('#b-settings');
+    await p.click('#setPanel [data-sv="all"]');
+    await p.click('[data-set="codeWidgets"]');
+    await p.click('[data-rail="explorer"]');
+    check('with code widgets off the frame is gone and the card says so', await until(() => !document.querySelector('#stack [data-gw="current_a"] iframe') && !!document.querySelector('#stack [data-gw="current_a"] [data-codeoff]')), await text(card('current_a')));
+    check('and nothing asks to run it', !(await p.$(`${card('current_a')} [data-trustw]`)));
+    check('the setting is saved', (await settingsLS()).codeWidgets === false);
   },
   {
     files: { '/data/flight.tlm': { channels: ['battery_v', 'current_a', 'throttle_pct'], units: ['V', 'A', '%'] } },

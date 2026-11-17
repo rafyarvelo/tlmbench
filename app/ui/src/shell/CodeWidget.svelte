@@ -11,7 +11,8 @@
 
   let { spec, x, title }: { spec: CustomWidget; x: Ctx; title: string } = $props();
 
-  const trusted = $derived(codeTrusted(spec, settings.trustedWidgetSources));
+  const allowed = $derived(settings.codeWidgets);
+  const trusted = $derived(allowed && codeTrusted(spec, settings.trustedWidgetSources));
   let frame = $state<HTMLIFrameElement>();
   let ready = false;
   let pending: unknown = null;
@@ -54,6 +55,8 @@
 
 {#if trusted}
   <iframe bind:this={frame} class="gcodefr" sandbox="allow-scripts" title="{spec.name} for {title}" src={widgetHostUrl()} {onload}></iframe>
+{:else if !allowed}
+  <div class="gcode off" data-codeoff><b>{x.txt}</b> <span class="muted">{x.unit}</span><span class="muted" data-tip="Settings › Run code widgets is off">Code widgets are off</span></div>
 {:else}
   <div class="gcode off"><b>{x.txt}</b> <span class="muted">{x.unit}</span><button class="tbtn sm" data-trustw={spec.id} data-tip="This widget runs code from {spec.shared}. Choose whether to run it." onclick={(e) => (e.stopPropagation(), (trust.id = spec.id))}>Code widget · Run?</button></div>
 {/if}

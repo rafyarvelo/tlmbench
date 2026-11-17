@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 287 · **Partial** 35 · **Missing** 10 · **Diverged** 3 · **Unverified** 25 · **Owner pass** 17 (377 rows).
+Counts: **Done** 288 · **Partial** 34 · **Missing** 10 · **Diverged** 3 · **Unverified** 25 · **Owner pass** 17 (377 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -341,7 +341,7 @@ where each step stands, and nothing else records either.
 | D-filt-02 | design Filters | Masked samples are a view: derived channels, rules and exports still read the full data. | Unverified | `tlmbench-store::store::a_mask_makes_samples_missing_in_views_stats_and_values` (the mask itself) | A mask belongs to the file, so two tabs share it; no test shows a derived channel or export ignoring it. R2.5 |
 | D-gauge-01 | design Gauges | The widget type is picked from unit and name, changed per channel, and saved in the pane. | Done | `t_gauges` | |
 | D-gauge-02 | design Gauges | Gauge colours come from channel limits; "✗ check" inside a violation. | Done | `t_gauges` | |
-| D-gauge-03 | design Gauges | A shared code widget asks once, remembered per folder; an organisation setting can turn code widgets off. | Partial | `t_widgetshared` | No setting turns them off. R2.5 |
+| D-gauge-03 | design Gauges | A shared code widget asks once, remembered per folder; an organisation setting can turn code widgets off. | Done | `t_widgetshared` | Settings › Run code widgets (on by default); off: code widgets stay value cards and never ask. Per-folder trust unchanged. R2.5 |
 | D-gauge-04 | design Gauges | If a frame of widgets takes over 4 ms, visible widgets update in turns. | Missing | `app/ui/src/shell/Gauges.svelte` | R3.3, after the measurement in R6 |
 | D-gauge-05 | design Gauges | Off-screen cards are skipped and drawn when they scroll in. | Unverified | `proto:t_perf_gauges` (the prototype's check; the app's `t_perf_gauges` has none) | No visibility test found in `Gauges.svelte`. R3.3 |
 | D-gauge-06 | design Gauges | Icons (SVG, `currentColor`) for categories, widget menus and toolbar buttons that run a recipe or layout. | Partial | `tlmbench-store::config::widgets_categories_and_time_maps_round_trip` | Stored and shared; nothing in the app creates or shows one, and the toolbar takes no user items. R2.5 |

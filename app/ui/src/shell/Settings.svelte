@@ -44,6 +44,7 @@
     { key: 'measureOpen', section: 'Display', basic: true, label: 'Right sidebar', hint: 'Cursor values and stats, unless you moved other panels there. Ctrl+Alt+B. With Measure on it, it also opens by itself when both cursors are placed (see below).' },
     { key: 'showHints', section: 'Display', label: 'Show tips and extra controls', hint: 'How-to notes in the panels.' },
     { key: 'quietUI', section: 'Display', basic: true, label: 'Quiet interface', hint: 'Hides badges and counts until they matter: the panes a channel is in, file sizes and category counts.' },
+    { key: 'codeWidgets', section: 'Display', label: 'Run code widgets', hint: 'Off: a widget made of code stays a plain value card and never asks to run. For a machine that must not run any shared code.' },
     { key: 'showStart', section: 'Display', label: 'Show the start page at launch', hint: 'Recent recordings and ways to open things, over your tabs when the app starts.' },
     { key: 'timeFormat', section: 'Display', basic: true, label: 'Time format', hint: 'Used for axes, readouts, tables and cursors. A file with no time reads in sample numbers. Click the time range in the top bar to switch quickly.', options: TIME_FORMATS.map(([k, n, ex]) => [k, k === 'wall' ? 'Wall clock or dates (files with absolute time)' : `${n} · ${ex}`] as [string, string]) },
     { key: 'timeDecimals', section: 'Display', label: 'Time decimals', options: [['auto', 'Automatic'], ...[0, 1, 2, 3, 4, 5, 6].map((n) => [String(n), String(n)] as [string, string])] },
