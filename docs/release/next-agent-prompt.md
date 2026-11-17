@@ -27,6 +27,18 @@ push is in the CI row.
 - **Audit items (`ui-audits.md`, Nov 17):** "Streaming" in the accent colour (the LIVE badge stays red); a zero line and
   the residual range on the Alignment's residuals; the Explorer header's icons stay as they are.
 
+## The owner's test notes (Nov 17 night, release build `e484d77`; sheet section W)
+
+- **W1 (packet types in one tab): passed.** W4, W5 and all of section X are not tested yet.
+- **W2 (every file of a tab): passed.** The owner asks whether Rules & checks' "Results for" dropdown should be a tree of
+  every file, so all files' results show at once, and is open to discussion. Ask, with a recommendation (mine: a tree with
+  a row per file, each folding to its sets, the primary open, since a dropdown hides failures in the other files).
+- **W3 (Quiet interface): the owner saw no change and asks whether to delete the setting.** The design lists Quiet
+  interface among its settings ("Each of these is a setting (Clicking a row, Tooltips, Quiet interface)"), so deleting it
+  is a design change: ask the owner, don't decide. Recommendation: keep it, but make its effect visible (the setting's
+  hint says what it hides, and its effects are subtle on a single file at rest); the alternative is to make quiet the
+  default (the prototype's default is on) and drop the switch from Basic.
+
 ## Your rows
 
 - **S4.3-12** (the import dialog's extra sections, parity P5): what is left is the prototype's Derived channels and
