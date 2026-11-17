@@ -2195,6 +2195,13 @@ function sessionOf(kept: TabInfo[], front: TabInfo | undefined): Session {
     views[t.path] = { t0: String(d.t0), t1: String(d.t1), ...(d.A != null ? { A: String(d.A) } : {}), ...(d.B != null ? { B: String(d.B) } : {}) };
   }
   if (Object.keys(views).length) session.views = views;
+  const evf: NonNullable<Session['events']> = {};
+  for (const t of kept) {
+    if (t.ws) continue;
+    const f = t.key === tabs.active ? { hidden: [...events.hidden], follow: events.follow } : tabData.get(t.key)?.evFilter;
+    if (f && (f.hidden.length || f.follow !== settings.evChartsFollow)) evf[t.path] = { hidden: [...f.hidden], follow: f.follow };
+  }
+  if (Object.keys(evf).length) session.events = evf;
   const groups: NonNullable<Session['groups']> = {};
   for (const t of kept) {
     const ms = t.ws ? undefined : fileOf(t.key)?.members;
@@ -2314,9 +2321,13 @@ function followIncomingTabs(): void {
 async function restoreSession(s: Session | undefined, front: string | null = null): Promise<void> {
   sessionBusy = true;
   try {
-    const { files = [], active = null, ws, activeWs, views } = s ?? {};
+    const { files = [], active = null, ws, activeWs, views, events: evf } = s ?? {};
     const at = (path: string) => {
       const v = views?.[path];
+      if (state.file?.info.path === path && evf?.[path]) {
+        events.hidden = [...evf[path].hidden];
+        events.follow = evf[path].follow;
+      }
       if (!v || state.file?.info.path !== path) return;
       setView(BigInt(v.t0), BigInt(v.t1));
       state.A = v.A != null ? BigInt(v.A) : null;
@@ -3368,7 +3379,10 @@ async function loadEvents(): Promise<void> {
   }
 }
 
-onMarksChange(() => scheduleDraw());
+onMarksChange(() => {
+  scheduleDraw();
+  scheduleSessionSave();
+});
 
 /** The tooltip over an event marker: name, category, start and duration (design: Events). */
 let evTip: HTMLElement | null = null;

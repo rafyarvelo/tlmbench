@@ -260,3 +260,5 @@ removed Nov 15; git history keeps them.
     into a temporary recording that is deleted) and shows the latest frame and the frames a second; never on opening
     the dialog. A file or replay source shows its first values at once.
   - Export detail (D-cli-06): `html::window_spans` is the one place the windows are worked out (CLI and app).
+- Events panel filters (S5.2-16, Nov 17): the tab's hidden categories and "Charts follow these filters" are kept in the
+  folder's session (`Session.events`, by file), so they come back with the tabs. They are not part of a saved layout.

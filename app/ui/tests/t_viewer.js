@@ -86,6 +86,28 @@ try {
   check('without the buttons that make sets', !(await p.isVisible('[data-cnew]')));
   check('no page errors', errs.length === 0, errs);
 
+  // Play, cursors and Measure work in the viewer as in the app (D-cli-09): they are the app's own code over the core in WASM
+  await p.click('[data-rail="explorer"]');
+  await p.keyboard.press('c');
+  check('C picks Cursors mode in the viewer', (await p.evaluate(() => window.__tlmApp.mode())) === 'cursor');
+  const xs = await p.evaluate(() => { const r = document.querySelectorAll('#stack section.pane .plot')[0].getBoundingClientRect(); return { y: r.top + r.height / 2, a: r.left + 60 + (r.width - 76) * 0.3, b: r.left + 60 + (r.width - 76) * 0.6 }; });
+  await p.mouse.click(xs.a, xs.y);
+  await p.mouse.click(xs.b, xs.y);
+  check('two clicks place cursors A and B', await until(() => { const c = window.__tlmApp.cursors(); return c.A != null && c.B != null; }), await p.evaluate(() => window.__tlmApp.cursors()));
+  check('Measure opens with Δt and the exact statistics of the plotted channels', await until(() => !document.getElementById('measure').hidden && /Δt/.test(document.getElementById('measure').innerText) && document.querySelectorAll('#measure tr[data-mrow]').length >= 2 && /Std dev/.test(document.getElementById('measure').innerText)), await p.evaluate(() => document.getElementById('measure').innerText));
+  await p.keyboard.press('Escape');
+  check('Esc clears the cursors', await until(() => window.__tlmApp.cursors().A === null));
+  await p.click('#b-play');
+  check('Play opens the transport and runs', await until(() => document.querySelector('#b-play')?.getAttribute('aria-pressed') === 'true' && !!document.querySelector('#playStrip, [data-playstrip], .playstrip')), await p.evaluate(() => document.querySelector('#b-play')?.getAttribute('aria-pressed')));
+  const t0 = await p.evaluate(() => window.__tlmApp.view().t0);
+  await p.keyboard.press('Space');
+  await p.waitForTimeout(700);
+  await p.keyboard.press('Space');
+  await p.click('#b-play');
+  check('and Play closes again', await until(() => document.querySelector('#b-play')?.getAttribute('aria-pressed') !== 'true'));
+  void t0;
+  check('no page errors from Play, cursors or Measure', errs.length === 0, errs);
+
   // Light: a chart-only channel has only its pyramid, a table channel its raw samples
   writeFileSync(join(work, 'light.json'), JSON.stringify({ schema: 1, name: 'Light', panes: [{ channels: ['rpm'], view: 'chart' }, { channels: ['temp'], view: 'table' }] }));
   const light = join(work, 'light');

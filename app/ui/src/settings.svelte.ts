@@ -132,6 +132,8 @@ export interface Session {
   ws?: { path: string; name: string; at: number; shared?: string }[];
   activeWs?: string;
   views?: Record<string, { t0: string; t1: string; A?: string; B?: string }>;
+  /** Each file tab's Events panel filters: the categories hidden and whether charts follow them (S5.2-16). */
+  events?: Record<string, { hidden: string[]; follow: boolean }>;
   /** Tabs with several files, by the primary's path: the others in slot order with their alignment (the knots reproduce it exactly). */
   groups?: Record<string, { path: string; method: string; seconds: number; channel?: string; plugin?: string; params?: string; locked: boolean; knots: [string, string][]; pairs: [number, number][] }[]>;
   at?: number;

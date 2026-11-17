@@ -66,6 +66,7 @@ run(
     // "Charts follow these filters" (S5.2-16): off, the hidden chip no longer hides marks on the charts, in this tab only
     await p.click('#eventsPanel [data-evfollow]');
     check('with Charts follow these filters off, the charts mark the hidden category again', await until(() => window.__tlmApp.eventsDrawn().some((n) => n > 1)), await drawn());
+    check('the tab\'s filters are kept with the session (S5.2-16)', await until(async () => true) && (await (async () => { for (let k = 0; k < 20; k++) { const e = Object.values((await settingsLS()).sessions ?? {}).map((x) => x.events?.['/data/flight.tlm']).find(Boolean); if (e && e.follow === false && e.hidden.includes('alarm')) return true; await p.waitForTimeout(150); } return false; })()), JSON.stringify(Object.values((await settingsLS()).sessions ?? {}).map((x) => x.events)));
     await p.click('#eventsPanel [data-evfollow]');
     check('on again, they follow the chips', await until(() => window.__tlmApp.eventsDrawn().every((n) => n === 1)), await drawn());
     await p.click('#eventsPanel [data-evcatall]');
