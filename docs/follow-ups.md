@@ -275,3 +275,6 @@ removed Nov 15; git history keeps them.
     alignment change maps them again without running.
   - Scale, offset and missing values go by channel name, so `accel_x`'s apply to every file's `accel_x` (as limits do,
     D-ui-49); a change reopens every file of the tab.
+  - Quiet interface (D-ui-10): as the prototype's quiet rules, it also hides an empty chip readout (it shows while you
+    point at a plot), a file's slot number in the folder listing until you point at the file (the channel tree's slot
+    heads keep theirs), and a table's resize grip until hovered. The setting stays off by default (the prototype's is on).

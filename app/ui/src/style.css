@@ -980,6 +980,17 @@ input[role='switch']:checked::after {
 .quiet :is(.where, .meta, .catact + .meta) {
   display: none;
 }
+/* chip values only while you point at a plot (an empty readout takes no room); a file's slot number in the folder
+   listing on hover or selection (the channel tree's slot heads keep theirs); resize grips until you hover them (D-ui-10) */
+.quiet .chip .val:empty {
+  display: none;
+}
+.quiet .row.file:not(:hover, :focus-visible, .sel) [data-fslot] {
+  visibility: hidden;
+}
+.quiet .tgrip:not(:hover, :focus-visible)::before {
+  opacity: 0;
+}
 
 /* the overview's header: what it shows, its range, and the switch for showing it on top */
 /* as the prototype's #ovCh: 24 px, monospace */

@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 316 · **Partial** 13 · **Missing** 5 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
+Counts: **Done** 317 · **Partial** 12 · **Missing** 5 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -315,7 +315,7 @@ where each step stands, and nothing else records either.
 | D-ui-07 | design UI | Pane axes (range, label, decimals, log) are stored with the pane. | Done | `t_axes` | |
 | D-ui-08 | design UI | Every toolbar and panel choice is a saved setting, with Reset to defaults and Reset UI layout; Basic and All. | Done | `t_shell`, `t_sidebars`, `t_fileopen` | |
 | D-ui-09 | design UI | Explorer: channels drag to a pane's edge, between rows and onto a category; categories multi-select; Enter runs the primary action for several rows. | Done | `t_channels`, `t_colors`, `t_catdrop`, `proto:t_explorer`, `tlmbench-decode::descriptor::a_field_can_name_its_category_and_events` | Nov 17 (owner decision). A drop on a category row moves the channels into it (Undo); categories pick with Cmd/Ctrl and Shift and Enter plots them; descriptor fields take `category`. R3.2 |
-| D-ui-10 | design UI | Quiet interface and "nothing appears under a passing pointer". | Partial | `t_fileopen`, `t_slots` | Nov 15: a channel row's unit and pane show on hover, focus or selection. Quiet interface still doesn't reach chips, file numbers or grips. R3.4 |
+| D-ui-10 | design UI | Quiet interface and "nothing appears under a passing pointer". | Done | `t_quiet`, `t_fileopen`, `t_slots` | Nov 15: a channel row's unit and pane show on hover, focus or selection. Nov 17, as the prototype's quiet rules: with Quiet interface on, a chip's empty readout takes no room until you point at a plot, a file's slot number in the folder listing shows on hover or selection, a table's resize grip on hover; chip × and an inactive tab's × already wait for hover. Real window: sheet W3. R3.4 |
 | D-ui-11 | design Events | Hovering an event marker shows a tooltip (name, category, start, duration). | Done | `t_eventmarks` (Nov 15) | A floating tip near the pointer: name, category, start and length ("instant" for a marker) |
 | D-ui-12 | design Events | Events come from the file too; an event lists the channels it concerns. | Done | `t_fileevents`, `tlmbench-store::file_events::a_marked_column_makes_an_event_at_each_change`, `tlmbench-decode::descriptor::a_field_can_name_its_category_and_events` | Nov 17 (owner decision). Event columns in the profile and `events` in a descriptor make read-only events from the file; the Events panel groups by file. R2.5 |
 | D-ui-13 | design Time modes | Play: the transport (play/pause, Space, speed, window presets, scrubber, Follow, the A–B loop, stopping at the end). | Done | `t_transport` (Nov 15) | The lost test restored: opens paused, Play, speed, window presets, Space, scrubber, Follow, the end, the A–B loop, Stop at offered |

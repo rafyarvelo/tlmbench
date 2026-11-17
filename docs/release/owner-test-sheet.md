@@ -335,6 +335,13 @@ limits set runs on each. Make a derived channel with "Any file that has these ch
 Result:
 Notes:
 
+### W3. Quiet interface (D-ui-10)
+Do: Settings › Quiet interface on. Open two files in one tab and a table pane.
+Expect: chips have no empty gap where the value goes until you point at a plot; the folder listing's slot numbers show
+only when you point at a file; a table's resize grip shows only when you hover it. Calm, nothing popping under the pointer.
+Result:
+Notes:
+
 ---
 
 ## Other things I noticed
