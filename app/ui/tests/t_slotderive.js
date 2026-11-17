@@ -32,8 +32,8 @@ run(
     await p.fill('#deriveDlg [data-r="name"]', 'Offset');
     await until(() => !document.querySelector('#deriveDlg [data-ok]').disabled);
     await p.click('#deriveDlg [data-ok]');
-    check('the core computes it on the primary, with the group', await until(() => window.__tlmFake.derivedApplied.length === 1 && window.__tlmFake.derivedApplied[0].file === 1 && window.__tlmFake.derivedApplied[0].group != null), await fake(() => window.__tlmFake.derivedApplied));
-    check('the group is made again with the new primary', await until(() => window.__tlmFake.groupSets.length === 2));
+    check('the core computes it on the primary, with the group (the other file keeps its own recipes, applied first)', await until(() => window.__tlmFake.derivedApplied.at(-1)?.file === 1 && window.__tlmFake.derivedApplied.at(-1).group != null && window.__tlmFake.derivedApplied.at(-1).recipes.join() === 'Offset' && window.__tlmFake.derivedApplied.some((d) => d.file !== 1 && d.group == null)), await fake(() => window.__tlmFake.derivedApplied));
+    check('the group is made again with the new primary', await until(() => window.__tlmFake.groupSets.length >= 2));
     check('Offset follows the primary\'s channels and the other file\'s move up', await until(() => document.querySelector('#explorer .row.chan[data-ch="6"][data-derived]')) && !!(await p.$('#explorer .row.chan[data-ch="7"]')), await p.$$eval('#explorer .row.chan', (e) => e.map((x) => x.dataset.ch + ':' + x.querySelector('.nm').textContent)));
     check('the plotted lat followed its file (6 → 7), and the new channel is plotted too', (await app('panes'))[0].includes(7) && (await app('panes'))[0].includes(6), await app('panes'));
     check('slot 2 still starts after it', (await text('#explorer .row.slot[data-slot="2"] .nm')) === 'gps');

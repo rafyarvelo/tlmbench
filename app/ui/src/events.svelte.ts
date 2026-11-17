@@ -20,6 +20,8 @@ export interface TlmEvent {
   channels: string[];
   /** The file it belongs to (its name), for grouping by file. */
   file?: string;
+  /** In a tab of several files, the file's slot (1 is the primary); its times are then on the tab's timeline. */
+  slot?: number;
 }
 
 export const UNCATEGORIZED = '#8A94A3';
@@ -37,6 +39,8 @@ export const events = $state({
   q: '',
   group: '' as '' | 'cat' | 'name' | 'channel' | 'source' | 'file',
   hidden: [] as string[],
+  /** In a tab of several files, the files whose events are hidden (their names, as `file` has them). */
+  hiddenFiles: [] as string[],
   /** Charts and the overview follow the panel's chips (this tab's choice; a new tab starts from Settings). */
   follow: true,
   closed: [] as string[],
@@ -76,7 +80,7 @@ export const catColor = (id: string): string => catOf(id)?.color ?? UNCATEGORIZE
 export function listed(): TlmEvent[] {
   const q = events.q.trim().toLowerCase();
   return events.list.filter(
-    (e) => !events.hidden.includes(e.category) && (!q || e.name.toLowerCase().includes(q) || catName(e.category).toLowerCase().includes(q) || e.channels.some((c) => c.toLowerCase().includes(q))),
+    (e) => !events.hidden.includes(e.category) && !(e.file && events.hiddenFiles.includes(e.file)) && (!q || e.name.toLowerCase().includes(q) || catName(e.category).toLowerCase().includes(q) || e.channels.some((c) => c.toLowerCase().includes(q))),
   );
 }
 
@@ -88,7 +92,7 @@ export const newId = (): string => 'm' + Date.now().toString(36) + Math.floor(Ma
 /** The events charts mark: none when `on` is false (the top bar's E, or a pane's own choice; see paneEvents). */
 export function marked(on = settings.eventsOn): TlmEvent[] {
   if (!on) return [];
-  return events.list.filter((e) => (catOf(e.category)?.chart ?? true) && !(events.follow && events.hidden.includes(e.category)));
+  return events.list.filter((e) => (catOf(e.category)?.chart ?? true) && !(events.follow && (events.hidden.includes(e.category) || (!!e.file && events.hiddenFiles.includes(e.file)))));
 }
 
 // What charts and the overview mark follows the list and the panel's chips: draw again when either changes.
@@ -100,12 +104,12 @@ export const onFiltersChange = (f: () => void): void => void (filtersChanged = f
 $effect.root(() => {
   let first = true;
   $effect(() => {
-    void JSON.stringify([events.hidden, events.follow]);
+    void JSON.stringify([events.hidden, events.hiddenFiles, events.follow]);
     if (first) first = false;
     else filtersChanged();
   });
   $effect(() => {
-    void JSON.stringify([events.list, events.hidden, events.follow]);
+    void JSON.stringify([events.list, events.hidden, events.hiddenFiles, events.follow]);
     redraw();
   });
 });

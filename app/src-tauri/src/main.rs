@@ -760,6 +760,8 @@ async fn derive_apply(
     exclude: Vec<String>,
     // the tab's group, when the file is the primary of several: recipes may read the other files' channels
     group: Option<u32>,
+    // each file's short name in slot order, so `"MS Close"` names file 2's Close as `"Close·2"` does
+    prefixes: Option<Vec<String>>,
     progress: Channel<Progress>,
     files: State<'_, Files>,
 ) -> Result<Opened, String> {
@@ -802,7 +804,7 @@ async fn derive_apply(
     let base = files.bases.lock().unwrap().get(&file).cloned().ok_or("that file is not open")?;
     let store = files.store.clone();
     let b = base.clone();
-    let foreign = group.and_then(|g| files.group(g)).map_or_else(Vec::new, |g| g.foreign());
+    let foreign = group.and_then(|g| files.group(g)).map_or_else(Vec::new, |g| foreign_named(&g, prefixes.as_deref()));
     let (shown, derived, skipped) = spawn_blocking(move || with_derived(&store, &b, &recipes, &exclude, &foreign))
         .await
         .map_err(|e| e.to_string())??;
@@ -817,6 +819,25 @@ async fn derive_apply(
     }
     let missing = missing_all(shown.recording());
     Ok(Opened { id: file, info, range, status, derived, skipped, missing, profile: None, event_channels: Vec::new() })
+}
+
+/// The other files' channels as a recipe of the primary may name them: `Close·2`, and with the file's short name
+/// `MS Close` (design: "the file's prefix such as `MS Close`"), each read through the file's map.
+fn foreign_named(g: &Group, prefixes: Option<&[String]>) -> Vec<tlmbench_store::Foreign> {
+    let mut out = g.foreign();
+    for (i, s) in g.slots().iter().enumerate().skip(1) {
+        let Some(p) = prefixes.and_then(|p| p.get(i)).map(|p| p.trim()).filter(|p| !p.is_empty()) else { continue };
+        let map = s.map();
+        for (k, c) in s.opened.recording().info().channels.iter().enumerate() {
+            out.push(tlmbench_store::Foreign {
+                name: format!("{p} {}", c.name),
+                opened: s.opened.clone(),
+                channel: k,
+                map: map.clone(),
+            });
+        }
+    }
+    out
 }
 
 /// One value label: channel `channel`'s stored number `value` is called `text`.
@@ -1154,9 +1175,14 @@ struct CheckReply {
 /// The Derive dialog's check: an expression against a file's channels, with a summary of what it gives over the start
 /// of the file, or the mistake and the character it is at.
 #[tauri::command]
-async fn derive_check(file: u32, expr: String, files: State<'_, Files>) -> Result<CheckReply, String> {
+async fn derive_check(
+    file: u32,
+    expr: String,
+    prefixes: Option<Vec<String>>,
+    files: State<'_, Files>,
+) -> Result<CheckReply, String> {
     let o = files.get(file)?;
-    let foreign = files.group(file).map_or_else(Vec::new, |g| g.foreign());
+    let foreign = files.group(file).map_or_else(Vec::new, |g| foreign_named(&g, prefixes.as_deref()));
     spawn_blocking(move || match tlmbench_store::check_cross(o.recording(), &expr, &foreign) {
         Ok(p) => CheckReply { preview: Some(p), error: None },
         Err(e) => CheckReply { preview: None, error: Some(CheckError { msg: e.msg, at: e.at }) },
@@ -1190,12 +1216,14 @@ async fn spectrum(
     files: State<'_, Files>,
 ) -> Result<Vec<SpectrumReply>, String> {
     let o = files.get(file)?;
+    // in a tab of several files each channel is read from its own file, over the view in that file's clock
+    let group = files.group(file);
     let (t0, t1) = (parse_time(&t0)?, parse_time(&t1)?);
     spawn_blocking(move || {
         channels
             .iter()
             .filter_map(|&c| {
-                let s = o.spectrum(c as usize, t0, t1, tlmbench_expr::fft::MAX_POINTS)?;
+                let s = channel_spectrum(&o, group.as_deref(), c as usize, t0, t1)?;
                 Some(SpectrumReply {
                     channel: c,
                     df: s.df,
@@ -1210,6 +1238,22 @@ async fn spectrum(
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+/// One channel's spectrum over the shared span `t0..t1`: in a tab of several files, read from the channel's own file
+/// over the span in that file's clock (S5.6-12).
+fn channel_spectrum(
+    o: &StoreOpened,
+    group: Option<&Group>,
+    c: usize,
+    t0: i64,
+    t1: i64,
+) -> Option<tlmbench_expr::Spectrum> {
+    let Some(g) = group else { return o.spectrum(c, t0, t1, tlmbench_expr::fft::MAX_POINTS) };
+    let (slot, local) = g.route(c)?;
+    let s = &g.slots()[slot];
+    let m = s.map();
+    s.opened.spectrum(local, m.inverse(t0), m.inverse(t1), tlmbench_expr::fft::MAX_POINTS)
 }
 
 /// A window stops using a file, group or source: it closes when no window holds it.
@@ -4183,6 +4227,49 @@ mod derive_tests {
         }
         let (plain, derived, _) = with_derived(&store, &base, &[], &[], &[]).unwrap();
         assert!(Arc::ptr_eq(&plain, &base) && derived.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod group_tests {
+    use super::*;
+
+    fn csv(dir: &Path, name: &str, f: impl Fn(usize) -> f64) -> std::path::PathBuf {
+        let path = dir.join(name);
+        let body: String = (0..2000).map(|i| format!("{},{}\n", i as f64 / 100.0, f(i))).collect();
+        std::fs::write(&path, format!("time,v\n{body}")).unwrap();
+        path
+    }
+
+    /// In a tab of two files, a recipe of the primary names the other file's channels by slot (`v·2`) and by the
+    /// file's short name (`gps v`), and a spectrum of the other file's channel is that file's own, over the span in its
+    /// clock (S5.6-07, S5.6-12).
+    #[test]
+    fn the_other_files_channels_by_prefix_and_their_spectrum() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(Some(&dir.path().join("cache")));
+        let a = Arc::new(store.open(&csv(dir.path(), "flight.csv", |i| (i % 7) as f64), None).unwrap());
+        let b = Arc::new(store.open(&csv(dir.path(), "gps.csv", |i| (i as f64 * 0.9).sin()), None).unwrap());
+        for o in [&a, &b] {
+            o.build(&mut |_, _| {}).unwrap();
+        }
+        // file 2 is 5 s later on the tab's timeline
+        let g = Group::new(vec![(a.clone(), TimeMap::identity()), (b.clone(), TimeMap::offset(5_000_000_000))], vec![1, 2]);
+        let names: Vec<String> = foreign_named(&g, Some(&["flight".into(), "gps".into()])).into_iter().map(|f| f.name).collect();
+        assert_eq!(names, ["v·2", "gps v"]);
+        assert_eq!(foreign_named(&g, None).len(), 1);
+        assert!(tlmbench_store::check_cross(a.recording(), "v - \"gps v\"", &foreign_named(&g, Some(&["".into(), "gps".into()]))).is_ok());
+        assert!(tlmbench_store::check_cross(a.recording(), "v - \"gps v\"", &g.foreign()).is_err());
+
+        // channel 1 is file 2's v: its spectrum over shared 5..15 s is its own over 0..10 s
+        let (t0, t1) = (5_000_000_000, 15_000_000_000);
+        let got = channel_spectrum(&a, Some(&g), 1, t0, t1).unwrap();
+        let own = b.spectrum(0, 0, 10_000_000_000, tlmbench_expr::fft::MAX_POINTS).unwrap();
+        assert_eq!((got.n, got.peak_hz), (own.n, own.peak_hz));
+        // and channel 0 is still the primary's
+        let prim = channel_spectrum(&a, Some(&g), 0, t0, t1).unwrap();
+        assert_eq!(prim.peak_hz, a.spectrum(0, t0, t1, tlmbench_expr::fft::MAX_POINTS).unwrap().peak_hz);
+        assert!(channel_spectrum(&a, Some(&g), 2, t0, t1).is_none());
     }
 }
 

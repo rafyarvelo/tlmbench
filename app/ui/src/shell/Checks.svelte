@@ -16,10 +16,14 @@
   const closed = $derived(settings.panelsClosed.includes('checks'));
   const other = $derived(sideOf('checks') === 'left' ? 'right' : 'left');
   const layout = $derived(tabs.list.find((t) => t.key === tabs.active)?.ws ?? null);
-  const applied = $derived(ui.path ? setsFor(ui.path, layout) : []);
+  // in a tab of several files the panel shows one file's results at a time (S5.6-12)
+  const cur = $derived(ui.slots.length > 1 ? (ui.slots.find((s) => s.key === checks.file) ?? ui.slots[0]) : null);
+  const cpath = $derived(cur ? cur.path : ui.path);
+  const ckey = $derived(cur ? cur.key : ui.path);
+  const applied = $derived(cpath ? setsFor(cpath, layout) : []);
   const idle = $derived(checks.sets.filter((s) => !applied.includes(s)));
-  const results = $derived(checks.runs[ui.path] ?? {});
-  const sum = $derived(ui.path ? summary(ui.path) : null);
+  const results = $derived(checks.runs[ckey] ?? {});
+  const sum = $derived(ckey ? summary(ckey) : null);
   const span = $derived(Math.max(1, Number(BigInt(ui.view.t1) - BigInt(ui.view.t0))));
   const at = (ns: string) => readoutTime(BigInt(ns), span);
   const secs = (s: number) => duration(s * 1e9);
@@ -107,11 +111,11 @@
   }
   function attach(set: string) {
     const A = settings.checkAttach;
-    setSetting('checkAttach', { ...A, files: { ...A.files, [ui.path]: [...new Set([...(A.files[ui.path] ?? []), set])] } });
+    setSetting('checkAttach', { ...A, files: { ...A.files, [cpath]: [...new Set([...(A.files[cpath] ?? []), set])] } });
   }
   function detach(set: string) {
     const A = settings.checkAttach;
-    setSetting('checkAttach', { ...A, files: { ...A.files, [ui.path]: (A.files[ui.path] ?? []).filter((n) => n !== set) } });
+    setSetting('checkAttach', { ...A, files: { ...A.files, [cpath]: (A.files[cpath] ?? []).filter((n) => n !== set) } });
   }
   function bg(e: MouseEvent) {
     if (!(e.target as HTMLElement).closest('.crow, button, .cset')) checks.sel = null;
@@ -146,6 +150,13 @@
           <p><b>Check</b>: {KIND_HELP.check.replace(/^A check /, '')}</p>
           <p><b>Rule</b>: {KIND_HELP.rule.replace(/^A rule /, '')}</p>
         </div>
+      {/if}
+      {#if cur}
+        <label class="ckfile"><span>Results for</span>
+          <select class="sel" data-ckfile aria-label="Which file's results" value={cur.key} onchange={(e) => (checks.file = e.currentTarget.value)}>
+            {#each ui.slots as s (s.key)}<option value={s.key}>{s.slot} · {s.name}</option>{/each}
+          </select>
+        </label>
       {/if}
       {#if ui.path && checks.running && !Object.keys(results).length}<p class="cknote" data-cprog>Checking…</p>{/if}
       {#each applied as s (s.name)}
@@ -206,9 +217,9 @@
           {/each}
         </div>
       {/if}
-      {#if ui.path && applied.some((s) => !s.runs_on_any_file && (settings.checkAttach.files[ui.path] ?? []).includes(s.name))}
+      {#if ui.path && applied.some((s) => !s.runs_on_any_file && (settings.checkAttach.files[cpath] ?? []).includes(s.name))}
         <div class="cother">
-          {#each applied.filter((s) => !s.runs_on_any_file && (settings.checkAttach.files[ui.path] ?? []).includes(s.name)) as s (s.name)}
+          {#each applied.filter((s) => !s.runs_on_any_file && (settings.checkAttach.files[cpath] ?? []).includes(s.name)) as s (s.name)}
             <div class="coset"><span class="muted">{s.name} runs on this file</span><button class="linkbtn" data-cdetach={s.name} onclick={() => detach(s.name)}>Stop</button></div>
           {/each}
         </div>
@@ -245,6 +256,18 @@
     width: 11px;
     height: 11px;
     margin-right: 4px;
+  }
+  .ckfile {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 12px;
+    color: var(--fg-muted);
+    font-size: 11.5px;
+  }
+  .ckfile select {
+    flex: 1;
+    min-width: 0;
   }
   .cknote {
     margin: 4px 12px;

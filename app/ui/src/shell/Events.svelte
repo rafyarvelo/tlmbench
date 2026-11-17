@@ -37,6 +37,12 @@
     };
     return out.sort((a, b) => at(a.id) - at(b.id));
   });
+  /** In a tab of several files, each file with events and how many (S5.6-12). */
+  const fileChips = $derived.by(() => {
+    if (ui.slots.length < 2) return [];
+    return ui.slots.map((s) => ({ name: s.name, slot: s.slot, n: events.list.filter((e) => e.file === s.name).length })).filter((f) => f.n);
+  });
+  const hideFile = (n: string) => (events.hiddenFiles = events.hiddenFiles.includes(n) ? events.hiddenFiles.filter((x) => x !== n) : [...events.hiddenFiles, n]);
   const NOADD = 'An export is a static file: events are added in the app';
   const keyOf = (e: TlmEvent) => (events.group === 'cat' ? catName(e.category) : events.group === 'name' ? e.name : events.group === 'channel' ? (e.channels[0] ?? 'No channel') : events.group === 'file' ? (e.file ?? ui.file) : events.group === 'source' ? (e.source === 'user' ? 'Added by you' : e.source === 'rule' ? 'From rules' : e.source === 'check' ? 'From checks' : e.source === 'shared' ? 'Shared in the folder' : 'From the file') : '');
   const groups = $derived.by(() => {
@@ -117,11 +123,18 @@
           {/each}
         </div>
       {/if}
+      {#if fileChips.length > 1}
+        <div class="evcats" role="group" aria-label="Show events by file">
+          {#each fileChips as c (c.slot)}
+            <button class="evcat evfile" data-evfile={c.slot} aria-pressed={!events.hiddenFiles.includes(c.name)} data-tip="Show or hide this file's events" onclick={() => hideFile(c.name)}><b class="slotn">{c.slot}</b>{c.name} <small>{c.n}</small></button>
+          {/each}
+        </div>
+      {/if}
       <div class="evsum" id="evSum">{shown.length === events.list.length ? `${events.list.length} ${events.list.length === 1 ? 'event' : 'events'}` : `${shown.length} of ${events.list.length} events`}{#if events.auto.length} · {events.mine.length} yours, {events.auto.filter((e) => e.source === 'rule').length} from rules, {events.auto.filter((e) => e.source === 'check').length} from checks{/if}{#if events.checking} · checking rules…{/if}</div>
       {#snippet row(e: TlmEvent)}
         <div class="evitem" class:editing={events.editing === e.id}>
           <button class="ev" class:revealed={events.reveal === e.id} data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? (e.by ? ` · added by ${e.by}` : ' · added by you') : e.source === 'shared' ? ` · shared${e.by ? ` by ${e.by}` : ''}` : e.source === 'rule' ? ' · from a rule' : e.source === 'check' ? ' · a check failed' : ''}" onclick={() => actions.eventShow(e.id)}>
-            <i></i><span class="evname">{e.name}</span><span class="evwhen num">{when(e)}<small>{lasts(e)}</small></span>
+            <i></i><span class="evname">{e.name}</span>{#if e.file && ui.slots.length > 1}<span class="evfilelbl" data-evfilelbl>{e.file}</span>{/if}<span class="evwhen num">{when(e)}<small>{lasts(e)}</small></span>
           </button>
           {#if ui.browserOnly}
             <!-- events are not edited in a browser tab -->
@@ -138,6 +151,12 @@
               <select class="sel" data-evf="cat" value={editing.category} onchange={(ev) => actions.eventSave({ ...editing, category: ev.currentTarget.value })}>
                 {#each settings.eventCats as c (c.id)}<option value={c.id}>{c.name}</option>{/each}<option value="">Uncategorized</option>
               </select></label>
+            {#if ui.slots.length > 1}
+              <label>File
+                <select class="sel" data-evf="file" value={editing.slot ?? 1} onchange={(ev) => actions.eventMove(editing.id, +ev.currentTarget.value)}>
+                  {#each ui.slots as s (s.slot)}<option value={s.slot}>{s.slot} · {s.name}</option>{/each}
+                </select></label>
+            {/if}
             <div class="evformbtns"><button class="tbtn" data-evdel={e.id} onclick={() => actions.eventDelete(e.id)}>Delete</button><button class="tbtn" data-evdone onclick={() => (events.editing = null)}>Done</button></div>
           </div>
         {/if}
@@ -189,6 +208,16 @@
     margin: 4px 12px;
     color: var(--fg-muted);
     font-size: 11.5px;
+  }
+  .evfilelbl {
+    flex: none;
+    margin-left: 6px;
+    color: var(--fg-muted);
+    font-size: 11px;
+  }
+  .evfile .slotn {
+    margin-right: 4px;
+    font-size: 11px;
   }
   .evsum {
     padding: 0 12px;

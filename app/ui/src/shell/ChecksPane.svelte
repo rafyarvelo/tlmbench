@@ -8,7 +8,8 @@
 
   let { i }: { i: number } = $props();
   const names = $derived((stack.panes[i]?.channels ?? []).map((c) => ui.channels[c]?.name).filter(Boolean));
-  const results = $derived(checks.runs[ui.path] ?? {});
+  const cur = $derived(ui.slots.length > 1 ? (ui.slots.find((s) => s.key === checks.file) ?? ui.slots[0]) : null);
+  const results = $derived(checks.runs[cur ? cur.key : ui.path] ?? {});
   const span = $derived(Math.max(1, Number(BigInt(ui.view.t1) - BigInt(ui.view.t0))));
   const at = (ns: string) => readoutTime(BigInt(ns), span);
   const secs = (s: number) => duration(s * 1e9);

@@ -115,6 +115,8 @@ export const checks = $state({
   folder: false,
   /** A folder run's grid cell that was clicked: once its file is open and has run, go to the first violation in that group. */
   goto: null as null | { path: string; set: string; group: string },
+  /** In a tab of several files, the file whose results the panel shows (its slot's key; empty: the primary). */
+  file: '',
 });
 
 /** A folder run: one set over the files of a folder. Each row is a file's result (or why it couldn't be checked). */

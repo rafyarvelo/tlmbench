@@ -50,6 +50,8 @@ export interface SlotRow {
   slot: number;
   file: number;
   path: string;
+  /** Where its check results are kept (`checks.runs`): its path, or the path and type for a packet file's other types. */
+  key: string;
   name: string;
   /** Its first channel in the tab's numbering, and how many it has. */
   first: number;
@@ -204,6 +206,8 @@ export const actions = {
   eventsRedraw: () => {},
   eventSave: (_e: TlmEvent) => {},
   eventDelete: (_id: string) => {},
+  /** Moves an event you added to another file of the tab (its slot). */
+  eventMove: (_id: string, _slot: number) => {},
   eventShow: (_id: string) => {},
   /** Rules & checks: keep a set (the name it had before, for an edit; an error to show, or null), delete one, run one
    *  row on the file in front (the editor's preview), frame a violation, open the editor on a set (null: a new one) at a

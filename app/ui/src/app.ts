@@ -175,7 +175,7 @@ const renderer = await createRenderer($<HTMLCanvasElement>('gl'));
 type MissingInfo = { channel: number; count: number; ns: number };
 type OpenFile = { id: number; info: RecordingInfo; first: bigint; last: bigint; derived: DerivedInfo[]; missing: MissingInfo[]; adjustKey: string; /** Channels whose changes are events from the file (D-ui-12). */ eventChannels?: string[]; /** The files of a tab that holds several, in slot order (the first is the primary); `id` is then the group's. */ members?: Member[] };
 /** One file of a tab with several. `first`/`count` are its channels' numbers in the tab; `knots` its time map. */
-type Member = { id: number; path: string; /** The packet type it holds, for one of a packet file's types (S4.3-08). */ part?: string; /** What the sidebar calls it when not its file name (a live source's name, `flight.bin · gps`). */ name?: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint] };
+type Member = { id: number; path: string; /** The packet type it holds, for one of a packet file's types (S4.3-08). */ part?: string; /** What the sidebar calls it when not its file name (a live source's name, `flight.bin · gps`). */ name?: string; info: RecordingInfo; first: number; count: number; knots: [string, string][]; derived: DerivedInfo[]; missing: MissingInfo[]; align: AlignView; own: [bigint, bigint]; /** Its columns or fields marked as events (D-ui-12). */ eventChannels?: string[] };
 
 /** Explorer's rows for a file's channels: the recording's, then its derived ones (marked ƒ). */
 const chanRows = (f: OpenFile) => f.info.channels.map((c, i) => ({ name: c.name, unit: c.unit, category: c.category, labels: c.labels, missing: f.missing.find((m) => m.channel === i)?.count, derived: f.derived.find((d) => d.channel === i) && { expr: f.derived.find((d) => d.channel === i)!.expr, automatic: f.derived.find((d) => d.channel === i)!.automatic } }));
@@ -1604,7 +1604,7 @@ interface TabData {
   /** A live tab: whether it followed now, its window, and its source's last health. */
   live: null | { following: boolean; win: number; health: Health | null };
   /** The Events panel's filters for this tab: categories hidden, and whether charts follow them (S5.2-16). */
-  evFilter?: { hidden: string[]; follow: boolean };
+  evFilter?: { hidden: string[]; follow: boolean; files?: string[] };
 }
 const tabData = new Map<number, TabData>();
 let nextTab = 1;
@@ -1629,7 +1629,7 @@ function stashTab(): void {
     exactMs: state.exactMs,
     play: play.open ? { t: play.t, speed: play.speed, win: play.win, follow: play.follow, loop: play.loop } : null,
     live: live.on ? { following: live.following, win: live.win, health: live.health } : null,
-    evFilter: { hidden: [...events.hidden], follow: events.follow },
+    evFilter: { hidden: [...events.hidden], follow: events.follow, files: [...events.hiddenFiles] },
   });
 }
 
@@ -1661,6 +1661,7 @@ async function showTab(key: number): Promise<void> {
   stack.sel = d.sel;
   // the Events panel's filters are the tab's own; a tab that has none yet starts with every category shown and Settings' follow choice
   events.hidden = d.evFilter ? [...d.evFilter.hidden] : [];
+  events.hiddenFiles = [...(d.evFilter?.files ?? [])];
   events.follow = d.evFilter?.follow ?? settings.evChartsFollow;
   normalize();
   closePlay();
@@ -2192,8 +2193,8 @@ function sessionOf(kept: TabInfo[], front: TabInfo | undefined): Session {
   const evf: NonNullable<Session['events']> = {};
   for (const t of kept) {
     if (t.ws) continue;
-    const f = t.key === tabs.active ? { hidden: [...events.hidden], follow: events.follow } : tabData.get(t.key)?.evFilter;
-    if (f && (f.hidden.length || f.follow !== settings.evChartsFollow)) evf[t.path] = { hidden: [...f.hidden], follow: f.follow };
+    const f = t.key === tabs.active ? { hidden: [...events.hidden], follow: events.follow, files: [...events.hiddenFiles] } : tabData.get(t.key)?.evFilter;
+    if (f && (f.hidden.length || f.files?.length || f.follow !== settings.evChartsFollow)) evf[t.path] = { hidden: [...f.hidden], follow: f.follow, ...(f.files?.length ? { files: [...f.files] } : {}) };
   }
   if (Object.keys(evf).length) session.events = evf;
   const groups: NonNullable<Session['groups']> = {};
@@ -2320,6 +2321,7 @@ async function restoreSession(s: Session | undefined, front: string | null = nul
       const v = views?.[path];
       if (state.file?.info.path === path && evf?.[path]) {
         events.hidden = [...evf[path].hidden];
+        events.hiddenFiles = [...(evf[path].files ?? [])];
         events.follow = evf[path].follow;
       }
       if (!v || state.file?.info.path !== path) return;
@@ -3266,7 +3268,7 @@ async function deriveCheck(): Promise<void> {
   const expr = derive.expr;
   const token = ++deriveCheckToken;
   if (!f) return;
-  const r = await invoke<{ preview: { samples: number; values: number; min: number | null; max: number | null; number: number | null } | null; error: { msg: string; at: number } | null }>('derive_check', { file: f.id, expr }).catch((e) => ({ preview: null, error: { msg: String(e), at: -1 } }));
+  const r = await invoke<{ preview: { samples: number; values: number; min: number | null; max: number | null; number: number | null } | null; error: { msg: string; at: number } | null }>('derive_check', { file: f.id, expr, prefixes: f.members ? prefixesOf(f) : null }).catch((e) => ({ preview: null, error: { msg: String(e), at: -1 } }));
   if (token !== deriveCheckToken) return;
   const u = derive.unit ? ` ${derive.unit}` : '';
   const sig = (x: number | null) => (x == null ? '' : +x.toPrecision(4));
@@ -3347,11 +3349,39 @@ function deriveEditRecipe(name: string): void {
 
 // ---------- events ----------
 
-/** Reads the open file's events from the core. */
-async function loadEvents(): Promise<void> {
+/** The files of a tab that holds several (slot order), else null. */
+const severalOf = (f: OpenFile | null): Member[] | null => (f?.members && f.members.length > 1 ? f.members : null);
+/** What the Events panel and markers call a file of a tab. */
+const fileLabel = (m: Member) => m.name || shortOf(m.path);
+/** An event's id in a tab of several files: the core's, after the slot for every file but the primary (ids are per file). */
+const tabEventId = (slot: number, id: string) => (slot > 1 ? `${slot}/${id}` : id);
+const ownEventId = (e: TlmEvent) => ((e.slot ?? 1) > 1 ? e.id.slice(e.id.indexOf('/') + 1) : e.id);
+
+/** A file's events on the tab's timeline: each start and end through its time map, labelled with its file (S5.6-12). */
+function eventsOnTab(list: TlmEvent[], m: Member, slot: number): TlmEvent[] {
+  return list.map((e) => {
+    const a = mapAt(m.knots, BigInt(e.start));
+    const b = mapAt(m.knots, BigInt(e.start) + BigInt(e.duration));
+    return { ...e, id: tabEventId(slot, e.id), start: String(a), duration: String(b - a), file: fileLabel(m), slot };
+  });
+}
+
+/** An event of the tab as its file keeps it: in its own clock, with the core's id. */
+function eventInFile(e: TlmEvent, m: Member): TlmEvent {
+  const a = mapAt(m.knots, BigInt(e.start), true);
+  const b = mapAt(m.knots, BigInt(e.start) + BigInt(e.duration), true);
+  const { file: _f, slot: _s, ...rest } = e;
+  return { ...rest, id: ownEventId(e), start: String(a), duration: String(b > a ? b - a : 0n), channels: [...e.channels] };
+}
+
+/** Reads the open file's events from the core: in a tab of several files, every file's, through its time map.
+ *  `keep`: an edit in progress stays open. */
+async function loadEvents(keep = false): Promise<void> {
   const f = state.file;
-  events.msg = '';
-  events.editing = null;
+  if (!keep) {
+    events.msg = '';
+    events.editing = null;
+  }
   if (!f) {
     setMine([]);
     setAuto([]);
@@ -3359,6 +3389,22 @@ async function loadEvents(): Promise<void> {
     return;
   }
   try {
+    const ms = severalOf(f);
+    if (ms) {
+      const mine: TlmEvent[] = [];
+      const made: TlmEvent[] = [];
+      for (const [i, m] of ms.entries()) {
+        mine.push(...eventsOnTab(await invoke<TlmEvent[]>('events_list', { file: m.id }), m, i + 1));
+        if (m.eventChannels?.length) made.push(...eventsOnTab(await invoke<TlmEvent[]>('file_events', { file: m.id, channels: m.eventChannels }), m, i + 1));
+      }
+      if (state.file !== f) return;
+      setMine(mine);
+      setFileEvents(made);
+      // a file that left the tab takes its hidden chip with it
+      const names = new Set(ms.map(fileLabel));
+      if (events.hiddenFiles.some((n) => !names.has(n))) events.hiddenFiles = events.hiddenFiles.filter((n) => names.has(n));
+      return;
+    }
     const list = await invoke<TlmEvent[]>('events_list', { file: f.id });
     if (state.file === f) setMine(list);
     // the columns and fields marked as events make one event at each change (D-ui-12)
@@ -3394,7 +3440,9 @@ function showEventTip(hit: TlmEvent | null): void {
   }
   const span = Number(state.t1 - state.t0);
   const len = BigInt(hit.duration);
-  evTip.innerHTML = `<b>${esc(hit.name)}</b><br>${esc(catName(hit.category))} · ${esc(readoutTime(BigInt(hit.start), span))} · ${len > 0n ? esc(duration(Number(len))) : 'instant'}`;
+  // in a tab of several files a marker says whose event it is (S5.6-12)
+  const whose = hit.file && severalOf(state.file) ? `${esc(hit.file)} · ` : '';
+  evTip.innerHTML = `<b>${esc(hit.name)}</b><br>${whose}${esc(catName(hit.category))} · ${esc(readoutTime(BigInt(hit.start), span))} · ${len > 0n ? esc(duration(Number(len))) : 'instant'}`;
   const [w, h] = [evTip.offsetWidth, evTip.offsetHeight];
   evTip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, pointerAt.x + 12))}px`;
   evTip.style.top = `${Math.max(8, Math.min(window.innerHeight - h - 8, pointerAt.y + 18))}px`;
@@ -3420,15 +3468,31 @@ async function eventAdd(range: boolean): Promise<void> {
   events.msg = '';
   const a = range ? (state.A < state.B! ? state.A : state.B!) : state.A;
   const dur = range ? (state.B! > state.A ? state.B! - state.A : state.A - state.B!) : 0n;
-  const ev: TlmEvent = { id: newId(), name: range ? 'Range' : 'Marker', start: a.toString(), duration: dur.toString(), category: settings.eventCats[0]?.id ?? '', source: 'user', channels: [] };
+  // in a tab of several files it goes to file 1, unless the selected pane shows only another file's channels
+  const ms = severalOf(f);
+  const slots = new Set((stack.panes[stack.sel]?.channels ?? []).map((ch) => ms?.findIndex((m) => ch >= m.first && ch < m.first + m.count) ?? -1).filter((k) => k >= 0).map((k) => k + 1));
+  const slot = ms && slots.size === 1 ? [...slots][0] : 1;
+  const ev: TlmEvent = { id: newId(), name: range ? 'Range' : 'Marker', start: a.toString(), duration: dur.toString(), category: settings.eventCats[0]?.id ?? '', source: 'user', channels: [], ...(ms ? { slot } : {}) };
   await eventSave(ev);
-  events.editing = ev.id;
+  events.editing = ms ? tabEventId(slot, ev.id) : ev.id;
 }
 
 /** Keeps an event (added or edited). */
 async function eventSave(e: TlmEvent): Promise<void> {
   const f = state.file;
   if (!f) return;
+  const ms = severalOf(f);
+  if (ms) {
+    const m = ms[(e.slot ?? 1) - 1] ?? ms[0];
+    try {
+      await invoke<TlmEvent[]>('event_save', { file: m.id, event: eventInFile(e, m) });
+      await loadEvents(true);
+      renderPanes();
+    } catch (err) {
+      events.msg = String(err);
+    }
+    return;
+  }
   try {
     const list = await invoke<TlmEvent[]>('event_save', { file: f.id, event: { ...e, channels: [...e.channels] } });
     if (state.file === f) setMine(list);
@@ -3441,10 +3505,40 @@ async function eventSave(e: TlmEvent): Promise<void> {
 async function eventDelete(id: string): Promise<void> {
   const f = state.file;
   if (!f) return;
+  const ms = severalOf(f);
+  if (ms) {
+    const e = events.list.find((x) => x.id === id);
+    const m = ms[(e?.slot ?? 1) - 1];
+    if (e && m) await invoke<TlmEvent[]>('event_delete', { file: m.id, id: ownEventId(e) });
+    events.editing = null;
+    await loadEvents(true);
+    renderPanes();
+    return;
+  }
   const list = await invoke<TlmEvent[]>('event_delete', { file: f.id, id });
   if (state.file === f) setMine(list);
   events.editing = null;
   renderPanes();
+}
+
+/** Moves an event you added to another file of the tab (the add form's file picker): the same times on the tab's
+ *  timeline, kept by that file in its own clock. */
+async function eventMove(id: string, slot: number): Promise<void> {
+  const f = state.file;
+  const ms = severalOf(f);
+  const e = events.list.find((x) => x.id === id);
+  const from = ms?.[(e?.slot ?? 1) - 1];
+  const to = ms?.[slot - 1];
+  if (!e || !from || !to || from === to) return;
+  try {
+    await invoke('event_save', { file: to.id, event: eventInFile({ ...e, slot }, to) });
+    await invoke('event_delete', { file: from.id, id: ownEventId(e) });
+    await loadEvents(true);
+    events.editing = tabEventId(slot, ownEventId(e));
+    renderPanes();
+  } catch (err) {
+    events.msg = String(err);
+  }
 }
 
 /** Frames an event with some context either side (an instant keeps the span in view). */
@@ -3486,14 +3580,86 @@ function scheduleChecks(ms = 200): void {
 
 const layoutNow = (): string | null => tabs.list.find((t) => t.key === tabs.active)?.ws ?? null;
 
+type CheckRunOut = { set: string; result: SetResult; events: TlmEvent[] };
+/** What each file of a tab of several found, as the core gave it (in the file's own clock); `publishRuns` puts it on the
+ *  tab's timeline, again whenever an alignment changes, without running anything. */
+const tabRuns = new WeakMap<OpenFile, { key: string; slot: number; runs: CheckRunOut[] }[]>();
+/** Where a tab's file keeps its results: its path, or for a packet file's other types the path and the type. */
+const runKey = (ms: Member[], i: number) => (i > 0 && ms.slice(0, i).some((x) => x.path === ms[i].path) ? `${ms[i].path}\u0000${ms[i].part ?? i + 1}` : ms[i].path);
+
+/** A file's result on the tab's timeline: violations and worst times through its map, channels by the tab's names. */
+function resultOnTab(r: SetResult, m: Member, slot: number): SetResult {
+  const at = (t: string) => String(mapAt(m.knots, BigInt(t)));
+  const name = (c: string) => (slot > 1 ? `${c}·${slot}` : c);
+  return { ...r, outcomes: r.outcomes.map((o) => ({ ...o, runs: o.runs.map((x) => ({ ...x, start: at(x.start), end: at(x.end) })), ...(o.worst_t ? { worst_t: at(o.worst_t) } : {}), channels: o.channels.map(name) })) };
+}
+
+/** Puts what every file of the tab found on its timeline: the results each file's row reads, the events they made. */
+function publishRuns(f: OpenFile): void {
+  const ms = f.members;
+  const raw = tabRuns.get(f);
+  if (!ms || !raw) return;
+  const auto: TlmEvent[] = [];
+  for (const r of raw) {
+    const m = ms[r.slot - 1];
+    if (!m) continue;
+    checks.runs[r.key] = Object.fromEntries(r.runs.map((x) => [x.set, resultOnTab(x.result, m, r.slot)]));
+    auto.push(...eventsOnTab(r.runs.flatMap((x) => x.events).map((e) => ({ ...e, channels: e.channels.map((c) => (r.slot > 1 ? `${c}·${r.slot}` : c)) })), m, r.slot));
+  }
+  if (state.file === f) setAuto(auto);
+}
+
+/** A folder run's cell asked to see its group's first violation in this file: go there once the results are in. */
+function gotoFirst(path: string): void {
+  const g = checks.goto;
+  if (!g || g.path !== path) return;
+  checks.goto = null;
+  const set = checks.sets.find((s) => s.name === g.set);
+  const res = checks.runs[path]?.[g.set];
+  const first = set?.check
+    .map((k, n) => ({ k, o: res?.outcomes[n] }))
+    .filter((x) => x.k.group === g.group && x.o?.runs.length)
+    .map((x) => x.o!.runs[0])
+    .sort((a, b) => (BigInt(a.start) < BigInt(b.start) ? -1 : 1))[0];
+  if (first) checkShow(first.start, first.end);
+}
+
 /** Runs the sets that apply to the file in front, or reads the results kept for its contents and their versions; the
- *  events they make join the Events list. */
+ *  events they make join the Events list. In a tab of several files, each file's sets run on that file (S5.6-12). */
 async function runChecks(): Promise<void> {
   const f = state.file;
   const gen = ++checkGen;
   if (!f) return;
   const path = f.info.path;
   if (!checks.sets.length) await loadCheckSets();
+  const ms = severalOf(f);
+  if (ms) {
+    checks.running = events.checking = true;
+    try {
+      await syncExprEnv();
+      const raw: { key: string; slot: number; runs: CheckRunOut[] }[] = [];
+      for (const [i, m] of ms.entries()) {
+        const key = runKey(ms, i);
+        const names = setsFor(m.path, layoutNow()).map((s) => s.name);
+        if (!names.length) {
+          delete checks.runs[key];
+          continue;
+        }
+        const runs = await invoke<CheckRunOut[]>('checks_run', { file: m.id, sets: names });
+        if (gen !== checkGen || state.file !== f) return;
+        raw.push({ key, slot: i + 1, runs });
+      }
+      tabRuns.set(f, raw);
+      publishRuns(f);
+      if (!raw.length) setAuto([]);
+      for (const m of ms) gotoFirst(m.path);
+    } catch (e) {
+      note(`Couldn't run the checks: ${e}`);
+    } finally {
+      if (gen === checkGen) checks.running = events.checking = false;
+    }
+    return;
+  }
   const names = setsFor(path, layoutNow()).map((s) => s.name);
   if (!names.length) {
     delete checks.runs[path];
@@ -3503,22 +3669,11 @@ async function runChecks(): Promise<void> {
   checks.running = events.checking = true;
   try {
     await syncExprEnv();
-    const runs = await invoke<{ set: string; result: SetResult; events: TlmEvent[] }[]>('checks_run', { file: f.id, sets: names });
+    const runs = await invoke<CheckRunOut[]>('checks_run', { file: f.id, sets: names });
     if (gen !== checkGen || state.file !== f) return;
     checks.runs[path] = Object.fromEntries(runs.map((r) => [r.set, r.result]));
     setAuto(runs.flatMap((r) => r.events));
-    const g = checks.goto;
-    if (g && g.path === path) {
-      checks.goto = null;
-      const set = checks.sets.find((s) => s.name === g.set);
-      const res = checks.runs[path]?.[g.set];
-      const first = set?.check
-        .map((k, n) => ({ k, o: res?.outcomes[n] }))
-        .filter((x) => x.k.group === g.group && x.o?.runs.length)
-        .map((x) => x.o!.runs[0])
-        .sort((a, b) => (BigInt(a.start) < BigInt(b.start) ? -1 : 1))[0];
-      if (first) checkShow(first.start, first.end);
-    }
+    gotoFirst(path);
   } catch (e) {
     note(`Couldn't run the checks: ${e}`);
   } finally {
@@ -3799,35 +3954,62 @@ async function reapply(file: OpenFile, reopen = false): Promise<void> {
   }
 }
 
-/** A tab with several files: the recipes apply to its primary, and may read the other files' channels (`"Close·2"`). */
-async function reapplyGroup(file: OpenFile, reopen: boolean): Promise<void> {
-  const ms = file.members!;
-  const prim = ms[0];
-  if (reopen) return void note('Scale, offset and missing values change with the file on its own: close the others to adjust it.');
-  const path = prim.path;
+/** The recipes a file should have now: those it has that are still wanted (renamed ones by their new name), then the
+ *  ones attached to it, all in the library. */
+function wantedRecipes(path: string, derived: DerivedInfo[]): string[] {
   const have = new Set(recipes.list.map((r) => r.name));
   const att = settings.fileRecipes[path] ?? [];
   const off = settings.fileRecipesOff[path] ?? [];
-  const kept = prim.derived.filter((d) => !off.includes(d.name) && (d.automatic || att.includes(d.name))).map((d) => d.name);
-  const wanted = dedupe([...kept.map((n) => renamed[n] ?? n), ...att]).filter((n) => have.has(n));
-  const beforeNames = prim.info.channels.map((c) => c.name);
+  const kept = derived.filter((d) => !off.includes(d.name) && (d.automatic || att.includes(d.name))).map((d) => d.name);
+  return dedupe([...kept.map((n) => renamed[n] ?? n), ...att]).filter((n) => have.has(n));
+}
+
+/** Each file's short name in slot order: a recipe of the primary names another file's channel as `"MS Close"` too. */
+const prefixesOf = (f: OpenFile): string[] => membersOf(f).map((m) => (m.part ? m.part : shortOf(m.path)));
+
+/** A tab with several files: every file gets its own recipes (an automatic one gives each file that has its channels a
+ *  copy, `temp_avg` and `temp_avg·2`; D-derive-03), the others first, then the primary, whose recipes may read the
+ *  other files' channels (`"Close·2"`, `"MS Close"`). With `reopen`, each file opens again with the adjustments. */
+async function reapplyGroup(file: OpenFile, reopen: boolean): Promise<void> {
+  const ms = file.members!;
   const before = ms.map((m) => ({ id: m.id, first: m.first, count: m.count }));
+  const names = new Map(ms.map((m) => [m.id, m.info.channels.map((c) => c.name)] as const));
+  const adjust = adjustList();
   const progress = new Channel<Progress>();
   progress.onmessage = (p) => onProgress(file.id, p);
-  let o: Opened;
+  const take = (m: Member, o: Opened, notes: boolean) => {
+    m.info = o.info;
+    m.derived = o.derived ?? [];
+    m.missing = o.missing ?? [];
+    if (notes) for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${tabName(m.path, m.part)}: ${k.why}`);
+  };
   try {
-    o = await invoke<Opened>('derive_apply', { file: prim.id, recipes: wanted, exclude: settings.fileRecipesOff[path] ?? [], group: file.id, progress });
+    for (const m of ms.slice(1)) {
+      const wanted = wantedRecipes(m.path, m.derived);
+      const exclude = settings.fileRecipesOff[m.path] ?? [];
+      take(m, reopen ? await invoke<Opened>('adjust_apply', { file: m.id, adjust, recipes: wanted, exclude, progress }) : await invoke<Opened>('derive_apply', { file: m.id, recipes: wanted, exclude, group: null, progress }), true);
+    }
+    const prim = ms[0];
+    const wanted = wantedRecipes(prim.path, prim.derived);
+    const exclude = settings.fileRecipesOff[prim.path] ?? [];
+    if (reopen) {
+      // the primary's new values first; its recipes that read other files then run against the group made again
+      await invoke<Opened>('adjust_apply', { file: prim.id, adjust, recipes: [], exclude: [], progress });
+      file.adjustKey = JSON.stringify(adjust);
+    }
+    // the group is made again from the files as they are now, so the primary's recipes read them
+    await invoke('group_set', { group: file.id, members: ms.map((m) => ({ file: m.id, knots: m.knots })), progress });
+    take(prim, await invoke<Opened>('derive_apply', { file: prim.id, recipes: wanted, exclude, group: file.id, prefixes: prefixesOf(file), progress }), true);
   } catch (e) {
     editor.error = String(e);
     return;
   }
-  prim.info = o.info;
-  prim.derived = o.derived ?? [];
-  prim.missing = o.missing ?? [];
-  for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
-  const after = o.info.channels.map((c) => c.name);
-  await groupApply(file, ms, before, (n) => {
-    const k = after.indexOf(renamed[beforeNames[n]] ?? beforeNames[n]);
+  if (reopen) editor.error = '';
+  await groupApply(file, ms, before, (id, n) => {
+    const m = ms.find((x) => x.id === id);
+    const was = names.get(id)?.[n];
+    if (!m || was == null) return undefined;
+    const k = m.info.channels.findIndex((c) => c.name === (renamed[was] ?? was));
     return k < 0 ? undefined : k;
   });
 }
@@ -3872,7 +4054,7 @@ const groupTabName = (paths: string[]) => (paths.length === 2 ? `${shortOf(paths
 
 /** The files of a tab: a plain file is one. */
 function membersOf(f: OpenFile): Member[] {
-  return f.members ?? [{ id: f.id, path: f.info.path, ...(f.info.part ? { part: f.info.part, name: tabName(f.info.path, f.info.part) } : {}), info: f.info, first: 0, count: f.info.channels.length, knots: [], derived: f.derived, missing: f.missing, align: freshAlign(), own: [f.first, f.last] }];
+  return f.members ?? [{ id: f.id, path: f.info.path, ...(f.info.part ? { part: f.info.part, name: tabName(f.info.path, f.info.part) } : {}), info: f.info, first: 0, count: f.info.channels.length, knots: [], derived: f.derived, missing: f.missing, align: freshAlign(), own: [f.first, f.last], eventChannels: f.eventChannels }];
 }
 
 /** A time map applied (or inverted) at `x`: knots are `[t_file, t_shared]`; one is an offset, more interpolate and the ends continue. */
@@ -3898,7 +4080,7 @@ function mapFacts(knots: [string, string][], own: bigint): { offset: number; dri
 function publishSlots(f: OpenFile | null): void {
   const ms = f?.members;
   if (f && ms && ms.length > 1) saveTimemapsSoon(f);
-  ui.slots = ms && ms.length > 1 ? ms.map((m, i): SlotRow => ({ slot: i + 1, file: m.id, path: m.path, name: m.name || shortOf(m.path), first: m.first, count: m.count, align: { ...m.align, residuals: [...m.align.residuals], pairs: [...m.align.pairs] } })) : [];
+  ui.slots = ms && ms.length > 1 ? ms.map((m, i): SlotRow => ({ slot: i + 1, file: m.id, path: m.path, key: runKey(ms, i), name: m.name || shortOf(m.path), first: m.first, count: m.count, align: { ...m.align, residuals: [...m.align.residuals], pairs: [...m.align.pairs] } })) : [];
 }
 
 /** Keeps each file's alignment against the primary in the app cache (per pair, by identity), so the pair opens aligned
@@ -3930,11 +4112,11 @@ async function openMember(path: string, part?: string): Promise<Member> {
     throw new Error('it has no samples');
   }
   const own: [bigint, bigint] = [BigInt(o.range[0]), BigInt(o.range[1])];
-  return { id: o.id, path: o.info.path, ...(part ? { part, name: tabName(path, part) } : {}), info: o.info, first: 0, count: o.info.channels.length, knots: [], derived: o.derived ?? [], missing: o.missing ?? [], align: freshAlign(), own };
+  return { id: o.id, path: o.info.path, ...(part ? { part, name: tabName(path, part) } : {}), info: o.info, first: 0, count: o.info.channels.length, knots: [], derived: o.derived ?? [], missing: o.missing ?? [], align: freshAlign(), own, eventChannels: o.event_channels ?? [] };
 }
 
 /** Shows the tab's files as `order` (slot order): the core regroups them, and the panes follow their channels to their new numbers. */
-async function groupApply(f: OpenFile, order: Member[], before?: { id: number; first: number; count: number }[], primaryTo?: (n: number) => number | undefined): Promise<void> {
+async function groupApply(f: OpenFile, order: Member[], before?: { id: number; first: number; count: number }[], localTo?: (id: number, n: number) => number | undefined): Promise<void> {
   // where each file's channels were, before the numbers change
   const old = before ?? membersOf(f).map((m) => ({ id: m.id, first: m.first, count: m.count }));
   const had = !!f.members;
@@ -3949,8 +4131,8 @@ async function groupApply(f: OpenFile, order: Member[], before?: { id: number; f
     const m = old.find((m) => n >= m.first && n < m.first + m.count);
     const k = m ? order.findIndex((o) => o.id === m.id) : -1;
     if (!m || k < 0) return undefined;
-    // the primary's own channels may have been renamed or gone (its recipes changed): they follow by name
-    const local = primaryTo && k === 0 && m.id === old[0].id ? primaryTo(n - m.first) : n - m.first;
+    // a file's own channels may have been renamed or gone (its recipes changed): they follow by name
+    const local = localTo ? localTo(m.id, n - m.first) : n - m.first;
     return local == null ? undefined : g.slots[k].first + local;
   };
   order.forEach((m, i) => {
@@ -3988,6 +4170,9 @@ async function groupApply(f: OpenFile, order: Member[], before?: { id: number; f
     state.ovStale = true;
     void requestView('exact');
     void refreshMeasure();
+    // every file's events, and what its checks found, on the timeline as it is now (S5.6-12)
+    void loadEvents(true);
+    scheduleChecks();
   }
 }
 
@@ -4227,6 +4412,8 @@ async function setMap(f: OpenFile, slot: number, knots: [string, string][]): Pro
   if (g.range) [f.first, f.last] = [BigInt(g.range[0]), BigInt(g.range[1])];
   if (state.file !== f) return;
   publishSlots(f);
+  void loadEvents(true);
+  publishRuns(f);
   state.ovStale = true;
   renderPanes();
   void requestView('exact');
@@ -5480,6 +5667,7 @@ Object.assign(actions, {
   eventAdd: (range: boolean) => void eventAdd(range),
   eventSave: (e: TlmEvent) => void eventSave(e),
   eventDelete: (id: string) => void eventDelete(id),
+  eventMove: (id: string, slot: number) => void eventMove(id, slot),
   eventShow,
   checkSave: checkSetSave,
   checkDelete: (name: string) => void checkSetDelete(name),
@@ -5865,6 +6053,22 @@ export const gateApi = {
   sharedConfig: () => ({ dir: cfg.dir, categories: JSON.parse(JSON.stringify(cfg.categories)), widgets: cfg.widgets.map((w) => ({ id: w.id, name: w.name, svg: !!w.svg, code: !!w.code })) }),
   /** Adds a file to the tab in front, on its timeline (what the import dialog's "This tab" does). */
   addToTab: (path: string) => addToTab(path),
+  /** Replaces the panes of the tab in front (channel numbers each) and selects the first. */
+  setPanes: (ps: { channels: number[] }[]) => {
+    stack.panes = ps.map((p) => ({ channels: [...p.channels] }));
+    stack.sel = 0;
+    normalize();
+    renderPanes();
+  },
+  /** Places cursor A at a time (ns, as a decimal string). */
+  setCursor: (which: 'A' | 'B', t: string) => {
+    state[which] = BigInt(t);
+    scheduleDraw();
+  },
+  /** The Events list as it is (every file's events in a tab of several, on its timeline). */
+  eventList: () => JSON.parse(JSON.stringify(events.list)),
+  /** The check results by file key, as the panels read them. */
+  checkRuns: () => JSON.parse(JSON.stringify(checks.runs)),
   /** What a drop or the Explorer's Open does: files the user chose. */
   openPaths: (paths: string[]) => openWithImport(paths),
   view: () => ({ t0: String(state.t0), t1: String(state.t1), back: state.history.length }),

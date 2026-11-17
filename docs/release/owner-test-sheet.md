@@ -325,6 +325,16 @@ quitting and reopening brings the tab back with every type.
 Result:
 Notes:
 
+### W2. Every file of a tab: events, checks, recipes, scale (S5.6-12, S5.6-07, D-derive-03)
+Do: open `flights/flight-1.csv`, add `flight-2.csv` to the tab (right-click › Add to this tab). Add a marker on each
+(select a pane of flight-2's channels before Marker at A). Open Events and Rules & checks.
+Expect: both files' events in the list, each with its file's name, and chips to hide one file's; the marker tooltip names
+the file; editing an event shows a File picker that moves it. Rules & checks has "Results for" with both files; the Flight
+limits set runs on each. Make a derived channel with "Any file that has these channels": both files get it (`name` and
+`name·2`). A recipe like `altitude - "flight-2 altitude"` works. Changing a scale in the channel editor redraws both files.
+Result:
+Notes:
+
 ---
 
 ## Other things I noticed

@@ -262,3 +262,16 @@ removed Nov 15; git history keeps them.
   - Export detail (D-cli-06): `html::window_spans` is the one place the windows are worked out (CLI and app).
 - Events panel filters (S5.2-16, Nov 17): the tab's hidden categories and "Charts follow these filters" are kept in the
   folder's session (`Session.events`, by file), so they come back with the tabs. They are not part of a saved layout.
+- Opus run (Nov 17), several files in a tab:
+  - Packet types (S4.3-08): built as the design says (slots of one tab on one clock). The tab is named for the file,
+    each slot `flight.bin · gps`, the file row "N packet types"; Close this file closes the tab. Browser-only mode keeps a
+    tab per type.
+  - Events of every file (S5.6-12): the Events panel adds file chips (hide a file's events; charts follow them when they
+    follow the category chips; kept in the session as `Session.events[path].files`) and, on an event you added, a File
+    picker that moves it to another file of the tab. A new event goes to the file whose channels the selected pane
+    holds, if only one; else file 1. A marker's tooltip names its file.
+  - Checks of every file (S5.6-12): each file's sets run on that file; the Rules & checks panel shows one file's results
+    at a time ("Results for", default the primary). Violations and check events are on the tab's timeline; an
+    alignment change maps them again without running.
+  - Scale, offset and missing values go by channel name, so `accel_x`'s apply to every file's `accel_x` (as limits do,
+    D-ui-49); a change reopens every file of the tab.

@@ -346,6 +346,8 @@
     checkSetSaves: [],
     /** The adjustments (scale, offset, missing) each open or adjust_apply was given. */
     adjusts: [],
+    /** The file each adjust_apply reopened. */
+    adjustFiles: [],
     checks: [],
     spectra: [],
     /** What every widgets_frame and xy_points call asked for. */
@@ -729,6 +731,7 @@
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
       fake.adjusts.push(adjust ?? []);
+      fake.adjustFiles.push(file);
       badWhen(adjust);
       const r = o.r;
       r.chans = r.base.slice();
@@ -741,23 +744,24 @@
       if (!o) throw 'that file is not open';
       return channels.filter((c) => (o.r.missing ?? []).some((m) => m.channel === c)).map((c) => ({ channel: c, count: 3, ns: 3e6 }));
     },
-    derive_apply({ file, recipes, exclude, group, progress }) {
+    derive_apply({ file, recipes, exclude, group, prefixes, progress }) {
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
       const r = o.r;
       r.chans = r.base.slice();
-      // the other files of the tab: their channels by the names the tab gives them
-      const extra = (fake.open.get(group)?.group?.members ?? []).slice(1).flatMap((m, i) => fake.open.get(m.file).r.chans.map((c) => `${c.name}·${i + 2}`));
+      // the other files of the tab: their channels by the names the tab gives them, and by their file's short name
+      const extra = (fake.open.get(group)?.group?.members ?? []).slice(1).flatMap((m, i) => fake.open.get(m.file).r.chans.flatMap((c) => [`${c.name}·${i + 2}`, ...(prefixes?.[i + 1] ? [`${prefixes[i + 1]} ${c.name}`] : [])]));
       const { derived, skipped } = applyRecipes(r, recipes, exclude ?? [], extra);
-      fake.derivedApplied.push({ file, recipes, exclude, group });
+      fake.derivedApplied.push({ file, recipes, exclude, group, ...(prefixes ? { prefixes } : {}) });
       const info = { path: r.path, format: 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
       return { id: file, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: { state: 'built' }, derived, skipped, missing: r.missing ?? [] };
     },
-    derive_check({ file, expr }) {
+    derive_check({ file, expr, prefixes }) {
       const o = fake.open.get(file);
       if (!o) throw 'that file is not open';
       fake.checks.push(expr);
-      const bad = exprError(expr) ?? exprNames(expr).filter((n) => !o.r.chans.some((c) => c.name === n)).map((n) => ({ msg: `There's no channel called ${n}`, at: expr.indexOf(n) }))[0];
+      const alias = (o.group?.members ?? []).slice(1).flatMap((m, i) => (prefixes?.[i + 1] ? fake.open.get(m.file).r.chans.map((c) => `${prefixes[i + 1]} ${c.name}`) : []));
+      const bad = exprError(expr) ?? exprNames(expr).filter((n) => !o.r.chans.some((c) => c.name === n) && !alias.includes(n)).map((n) => ({ msg: `There's no channel called ${n}`, at: expr.indexOf(n) }))[0];
       if (bad) return { preview: null, error: bad };
       return { preview: { samples: Math.min(o.r.samples, 1048576), values: Math.min(o.r.samples, 1048576), min: -2.5, max: 2.5, mean: 0.1, number: /^\s*(mean|max|min)\(/.test(expr) ? 0.1 : null }, error: null };
     },
