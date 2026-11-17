@@ -54,6 +54,9 @@ struct Files {
     cancels: Mutex<HashMap<u32, Arc<AtomicBool>>>,
     /// The plugins found in the plugins folders and which native ones are on.
     plugins: Arc<plugins::State>,
+    /// What each set's checks found so far on a live source, by source and set: the next run looks only at what is new
+    /// (S5.3-06).
+    live_checks: Arc<Mutex<HashMap<(u32, String), tlmbench_store::checks::LiveSet>>>,
 }
 
 /// Windows holding each id. An id nobody holds is closed at once.
@@ -1072,6 +1075,7 @@ async fn checks_run(file: u32, sets: Vec<String>, files: State<'_, Files>) -> Re
     let live = files.live.lock().unwrap().contains_key(&file);
     let base = if live { files.get(file)? } else { files.base(file)? };
     let store = files.store.clone();
+    let live_checks = files.live_checks.clone();
     spawn_blocking(move || -> Result<Vec<CheckRun>, String> {
         let library = tlmbench_store::checks::Sets::new(store.root());
         let recipes = tlmbench_store::Library::new(store.root()).list();
@@ -1080,7 +1084,12 @@ async fn checks_run(file: u32, sets: Vec<String>, files: State<'_, Files>) -> Re
             .map(|set| {
                 // a recording that grows is checked afresh each time, and not kept
                 let result = if live {
-                    store.run_checks_live(&base, &set, &recipes)
+                    // the state is taken out while it runs, so another window's run of the same set starts afresh
+                    let at = (file, set.name.clone());
+                    let mut state = live_checks.lock().unwrap().remove(&at).unwrap_or_default();
+                    let r = store.run_checks_live(&base, &set, &recipes, &mut state);
+                    live_checks.lock().unwrap().insert(at, state);
+                    r
                 } else {
                     store.run_checks(&base, &set, &recipes).map_err(|e| e.to_string())?
                 };
@@ -1422,6 +1431,7 @@ fn close_now(file: u32, files: &Files) {
     if let Some(o) = files.open.lock().unwrap().remove(&file) {
         o.cancel();
     }
+    files.live_checks.lock().unwrap().retain(|(f, _), _| *f != file);
     if let Some(l) = files.live.lock().unwrap().remove(&file) {
         l.closed.store(true, Ordering::Release);
         if let Some(s) = l.source.lock().unwrap().take() {
@@ -4024,6 +4034,7 @@ fn new_files() -> Files {
         queries: Mutex::default(),
         cancels: Mutex::default(),
         plugins: Default::default(),
+        live_checks: Default::default(),
     }
 }
 

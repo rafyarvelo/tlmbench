@@ -613,9 +613,287 @@ pub fn run_check(env: &dyn Env, k: &Check, t_first: i64, recipes: &[Recipe]) -> 
     out
 }
 
+/// A check that follows a live recording (S5.3-06): each call looks only at the samples that arrived since the last
+/// one, with the warm-up a rolling window or a filter needs before them (filters run forward, as live derived channels
+/// do), and keeps what it found so far: When's scope, the violations and each one's worst value. For element-wise and
+/// windowed expressions the outcome is the one a whole run gives; a summary (one number), a running total, or a window
+/// that a gap left short runs whole, as before.
+#[derive(Debug, Default)]
+pub struct LiveCheck {
+    /// What the state was found for (the row, the recipes, the labels and limits, the recording's start); a change
+    /// starts again.
+    key: String,
+    plan: Option<LivePlan>,
+    /// Samples looked at.
+    done: usize,
+    /// When's closed scope (seconds from the start) and the run that is still open: its first and last true samples.
+    scope: Vec<(f64, f64)>,
+    open: Option<(f64, f64)>,
+    in_scope: usize,
+    runs: Vec<LiveRun>,
+    cur: Option<LiveRun>,
+}
+
+#[derive(Debug)]
+struct LivePlan {
+    expect: Expr,
+    when: Option<Expr>,
+    /// A comparison's left side (its worst value is kept) and whether larger is worse.
+    lhs: Option<(Expr, bool)>,
+    /// The row runs whole each time.
+    whole: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LiveRun {
+    a: f64,
+    b: f64,
+    /// The worst value in it so far, and when; and the worst of the samples after its last violation (they count only
+    /// if the run goes on past them, as a whole run's span does).
+    worst: Option<(f64, f64)>,
+    tail: Option<(f64, f64)>,
+}
+
+/// Samples `r` of `e` alone: element by element, or after its warm-up. `None` when it needs the whole recording, is
+/// one number, or a gap left a window short.
+fn live_range(e: &Expr, env: &dyn Env, r: Range<usize>) -> std::result::Result<Option<Series>, String> {
+    let got = if tlmbench_expr::is_stateless(e) {
+        tlmbench_expr::eval_range(e, env, r).map(Some)
+    } else {
+        match tlmbench_expr::warm_rows_live(e, env.hz().unwrap_or(1.0)) {
+            Some(warm) => tlmbench_expr::eval_warm_live(e, env, r, warm),
+            None => return Ok(None),
+        }
+    };
+    match got {
+        Ok(Some(tlmbench_expr::Val::Ser(s))) => Ok(Some(s)),
+        Ok(_) => Ok(None),
+        Err(e) => Err(e.msg),
+    }
+}
+
+impl LiveCheck {
+    /// The row's outcome on `env` (a live recording as it is now), looking only at what is new since the last call.
+    /// `key` names what the state depends on besides the row (recipes, labels and limits); `t_first` is the
+    /// recording's first sample time.
+    pub fn advance(&mut self, env: &dyn Env, k: &Check, t_first: i64, recipes: &[Recipe], key: &str) -> Outcome {
+        let key = format!("{}\u{0}{key}\u{0}{t_first}\u{0}{:?}", serde_json::to_string(k).unwrap_or_default(), recipes);
+        let n = env.samples().unwrap_or(0);
+        if key != self.key || n < self.done {
+            *self = LiveCheck { key, ..LiveCheck::default() };
+        }
+        if self.plan.is_none() {
+            self.plan = Some(Self::plan(env, k, recipes));
+        }
+        let plan = self.plan.as_ref().expect("planned");
+        if plan.whole {
+            return run_check(env, k, t_first, recipes);
+        }
+        match self.step(env, k, n) {
+            Ok(true) => self.outcome(env, k, t_first),
+            // a window fell short, or the row needs the whole recording after all: run it whole this time
+            Ok(false) => run_check(env, k, t_first, recipes),
+            Err(_) => {
+                self.plan.as_mut().expect("planned").whole = true;
+                run_check(env, k, t_first, recipes)
+            }
+        }
+    }
+
+    fn plan(env: &dyn Env, k: &Check, recipes: &[Recipe]) -> LivePlan {
+        let whole = |e: Expr| LivePlan { expect: e, when: None, lhs: None, whole: true };
+        if !k.enabled || k.expect.trim().is_empty() {
+            return whole(Expr::Num(0.0));
+        }
+        let Ok(expect) = prepare(&k.expect, recipes, env) else { return whole(Expr::Num(0.0)) };
+        let when = match k.when.as_deref().filter(|w| !w.trim().is_empty()) {
+            None => None,
+            Some(w) => match prepare(w, recipes, env) {
+                Ok(e) => Some(e),
+                Err(_) => return whole(expect),
+            },
+        };
+        let mark = k.kind == Kind::Rule;
+        let lhs = match &expect {
+            Expr::Bin { op: op @ (BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge), a, .. } => {
+                Some((a.as_ref().clone(), matches!(op, BinOp::Lt | BinOp::Le) != mark))
+            }
+            _ => None,
+        };
+        let hz = env.hz().unwrap_or(1.0);
+        let follows = |e: &Expr| tlmbench_expr::is_stateless(e) || tlmbench_expr::warm_rows_live(e, hz).is_some();
+        let ok = follows(&expect) && when.as_ref().is_none_or(follows) && lhs.as_ref().is_none_or(|(l, _)| follows(l));
+        LivePlan { expect, when, lhs, whole: !ok }
+    }
+
+    /// Looks at samples `done..n`; false when they can't be looked at alone this time.
+    fn step(&mut self, env: &dyn Env, k: &Check, n: usize) -> std::result::Result<bool, String> {
+        let (a, plan) = (self.done, self.plan.as_ref().expect("planned"));
+        if n <= a {
+            return Ok(true);
+        }
+        let dt = 1.0 / env.hz().filter(|h| *h > 0.0).unwrap_or(1.0);
+        let mark = k.kind == Kind::Rule;
+        // When first: the scope of the new samples is then known
+        let mut scope = self.scope.clone();
+        let mut open = self.open;
+        if let Some(w) = &plan.when {
+            let Some(s) = live_range(w, env, a..n)? else { return Ok(false) };
+            for i in 0..s.len() {
+                let t = s.time(i);
+                if truthy(s.v[i]) {
+                    open = Some((open.map_or(t, |o| o.0), t));
+                } else if let Some((first, last)) = open.take() {
+                    let (x, y) = (first + k.settle - dt / 2.0, last + dt / 2.0);
+                    if y > x {
+                        scope.push((x, y));
+                    }
+                }
+            }
+        }
+        let mut mask = scope.clone();
+        if let Some((first, _)) = open {
+            mask.push((first + k.settle - dt / 2.0, f64::INFINITY));
+        }
+        let masked = Masked { inner: env, scope: &mask };
+        let env: &dyn Env = if plan.when.is_some() { &masked } else { env };
+        let Some(s) = live_range(&plan.expect, env, a..n)? else { return Ok(false) };
+        let lhs = match &plan.lhs {
+            Some((l, _)) => match live_range(l, env, a..n)? {
+                Some(v) => Some(v),
+                None => return Ok(false),
+            },
+            None => None,
+        };
+        let up = plan.lhs.as_ref().is_some_and(|(_, up)| *up);
+        let better = |v: f64, w: Option<(f64, f64)>| !v.is_nan() && w.is_none_or(|(x, _)| if up { v > x } else { v < x });
+        let missing_fails = k.missing == Missing::Fail && !mark;
+        let scoped = plan.when.is_some();
+        let in_scope_at = |t: f64| !scoped || mask.iter().any(|&(x, y)| x <= t && t < y);
+        let (mut in_scope, mut runs, mut cur) = (self.in_scope, std::mem::take(&mut self.runs), self.cur.take());
+        for i in 0..s.len() {
+            let (t, v) = (s.time(i), s.v[i]);
+            let l = lhs.as_ref().map_or(f64::NAN, |x| x.v[i]);
+            let counted = !(v.is_nan() && !(missing_fails && in_scope_at(t)));
+            let hit = counted && (v.is_nan() || truthy(v) == mark);
+            if counted {
+                in_scope += 1;
+            }
+            if hit {
+                match &mut cur {
+                    Some(r) if t - r.b <= JOIN_SECS + 1e-9 => {
+                        // the samples between its last violation and this one are inside it now
+                        if let Some((x, xt)) = r.tail.take()
+                            && better(x, r.worst)
+                        {
+                            r.worst = Some((x, xt));
+                        }
+                        r.b = t;
+                        if better(l, r.worst) {
+                            r.worst = Some((l, t));
+                        }
+                    }
+                    c => {
+                        if let Some(done) = c.take() {
+                            runs.push(done);
+                        }
+                        *c = Some(LiveRun { a: t, b: t, worst: (!l.is_nan()).then_some((l, t)), tail: None });
+                    }
+                }
+            } else if let Some(r) = &mut cur
+                && better(l, r.tail)
+            {
+                r.tail = Some((l, t));
+            }
+        }
+        (self.scope, self.open, self.in_scope, self.runs, self.cur, self.done) = (scope, open, in_scope, runs, cur, n);
+        Ok(true)
+    }
+
+    /// The outcome of what has been seen, as [`run_check`] would give it on the same samples.
+    fn outcome(&self, env: &dyn Env, k: &Check, t_first: i64) -> Outcome {
+        let plan = self.plan.as_ref().expect("planned");
+        let mark = k.kind == Kind::Rule;
+        let mut out = Outcome { name: k.name.clone(), verdict: if mark { Verdict::Mark } else { Verdict::Pass }, ..Outcome::default() };
+        for e in std::iter::once(&plan.expect).chain(&plan.when) {
+            for n in e.names() {
+                let first = n.split('|').next().unwrap_or(n).trim().to_string();
+                if !out.channels.contains(&first) {
+                    out.channels.push(first);
+                }
+            }
+        }
+        let dt = 1.0 / env.hz().filter(|h| *h > 0.0).unwrap_or(1.0);
+        let na = |mut out: Outcome, msg: &str| {
+            out.verdict = Verdict::Na;
+            out.message = msg.into();
+            out
+        };
+        let mut scope = self.scope.clone();
+        if let Some((first, last)) = self.open {
+            let (x, y) = (first + k.settle - dt / 2.0, last + dt / 2.0);
+            if y > x {
+                scope.push((x, y));
+            }
+        }
+        if plan.when.is_some() {
+            if scope.is_empty() {
+                return na(out, "its When never held");
+            }
+            out.scope_secs = Some(scope.iter().map(|(a, b)| b - a).sum());
+        }
+        if self.in_scope == 0 {
+            return na(out, if plan.when.is_some() { "its When never held" } else { "no samples" });
+        }
+        out.scope_secs.get_or_insert(self.in_scope as f64 * dt);
+        let kept: Vec<LiveRun> =
+            self.runs.iter().chain(&self.cur).filter(|r| r.b - r.a + dt + 1e-6 >= k.grace).copied().collect();
+        if kept.is_empty() {
+            return out;
+        }
+        out.verdict = if mark { Verdict::Mark } else if k.severity == Severity::Warn { Verdict::Warn } else { Verdict::Fail };
+        out.count = kept.len();
+        out.secs = kept.iter().map(|r| r.b - r.a + dt).sum();
+        let keep = if mark { KEEP_RULE } else { KEEP_CHECK };
+        out.runs = kept
+            .iter()
+            .take(keep)
+            .map(|r| Span { start: ns_of(t_first, r.a), end: ns_of(t_first, if mark { r.b } else { r.b + dt }) })
+            .collect();
+        if let Some((_, up)) = &plan.lhs {
+            let mut w: Option<(f64, f64)> = None;
+            for (v, t) in kept.iter().filter_map(|r| r.worst) {
+                if w.is_none_or(|(x, _)| if *up { v > x } else { v < x }) {
+                    w = Some((v, t));
+                }
+            }
+            if let Some((v, t)) = w {
+                out.worst = Some(v);
+                out.worst_t = Some(ns_of(t_first, t));
+            }
+        }
+        out
+    }
+}
+
+/// The live state of a set's rows (S5.3-06): kept by the caller between runs on one live recording.
+#[derive(Debug, Default)]
+pub struct LiveSet {
+    rows: Vec<LiveCheck>,
+}
+
 /// Runs every row of `set` on a recording and rolls the results up.
 pub fn run_set(env: &dyn Env, set: &CheckSet, t_first: i64, recipes: &[Recipe]) -> SetResult {
     let outcomes: Vec<Outcome> = set.checks.iter().map(|k| run_check(env, k, t_first, recipes)).collect();
+    SetResult { set: set.name.clone(), rollup: rollup(set, &outcomes), outcomes }
+}
+
+/// [`run_set`] on a live recording, each row following it with its [`LiveCheck`] in `state`; `key` names what else
+/// the rows depend on (the labels and limits).
+pub fn run_set_live(env: &dyn Env, set: &CheckSet, t_first: i64, recipes: &[Recipe], state: &mut LiveSet, key: &str) -> SetResult {
+    state.rows.resize_with(set.checks.len(), LiveCheck::default);
+    let outcomes: Vec<Outcome> =
+        set.checks.iter().zip(&mut state.rows).map(|(k, live)| live.advance(env, k, t_first, recipes, key)).collect();
     SetResult { set: set.name.clone(), rollup: rollup(set, &outcomes), outcomes }
 }
 
@@ -823,12 +1101,14 @@ impl Store {
 
 impl Store {
     /// Runs `set` on a recording that is still growing (a live snapshot): not cached, since the recording's contents
-    /// are different the next time. The app asks every couple of seconds; each run reads the whole recording so far.
-    pub fn run_checks_live(&self, live: &Opened, set: &CheckSet, recipes: &[Recipe]) -> SetResult {
+    /// are different the next time. The app asks every couple of seconds; `state` keeps what earlier runs found, so
+    /// each run looks only at the samples that arrived since (S5.3-06).
+    pub fn run_checks_live(&self, live: &Opened, set: &CheckSet, recipes: &[Recipe], state: &mut LiveSet) -> SetResult {
         let rec = live.recording();
         let shared = self.expr_env.read().unwrap().clone();
+        let key = String::from_utf8_lossy(&shared.digest()).into_owned();
         let env = RecEnv::new(rec).with_labels(shared.labels).with_limits(shared.limits);
-        run_set(&env, set, rec.info().t_first.unwrap_or(0), recipes)
+        run_set_live(&env, set, rec.info().t_first.unwrap_or(0), recipes, state, &key)
     }
 }
 

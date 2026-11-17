@@ -281,3 +281,6 @@ removed Nov 15; git history keeps them.
   - Events filters and layouts (S5.2-16): a saved layout keeps its tab's hidden categories and "Charts follow these
     filters" (`events` in the layout JSON, only when not the defaults); changing them marks the layout tab unsaved. The
     follow switch is the prototype's link toggle in the chip row.
+  - Live checks (S5.3-06): incremental. A live check's filters run forward (causal), as live derived channels' do, so a
+    filtered check on a live source can differ from the same check on the saved file by the filter's lag. A summary
+    check (one number) on a live source still reads the whole recording at each run.

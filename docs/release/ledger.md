@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 318 · **Partial** 11 · **Missing** 5 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
+Counts: **Done** 319 · **Partial** 10 · **Missing** 5 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -120,7 +120,7 @@ where each step stands, and nothing else records either.
 | S5.3-03 | roadmap 5.3 | Severity and roll-up. | Done | `tlmbench-store::checks::groups_and_sets_take_their_worst_result`, `t_checks` | |
 | S5.3-04 | roadmap 5.3 | Checks run in the same pass as the pyramid on first open and in idle time after. | Done | `crates/store/src/checks.rs`, `t_checks` | Owner decision 3 (Nov 11): the design absorbs it: checks run as a pass of their own after open. Note for the design doc: change the text to say so (docs/follow-ups.md asks the same). |
 | S5.3-05 | roadmap 5.3 | Results cached by file contents and set version. | Done | `tlmbench::check::results_are_cached_and_follow_the_set` | |
-| S5.3-06 | roadmap 5.3 | Incremental on live data. | Partial | `t_trigger` (checks run again and again on a live file) | Each run re-reads the whole recording about every 2 s, uncached; the cost grows with the session. R2.5 |
+| S5.3-06 | roadmap 5.3 | Incremental on live data. | Done | `tlmbench-store::checks::a_live_check_follows_a_growing_recording_and_reads_only_what_is_new`, `crates/store/src/checks.rs` (`LiveCheck`, `run_set_live`) | Nov 17: each live run looks only at the samples since the last (with the warm-up a rolling window or a filter needs; filters run forward live, as live derived channels do) and keeps When's scope, the violations and each one's worst value; a row's outcome equals a whole run's at every step of a growing recording, and the samples read stay near the recording's length. A summary (one number), a running total or a window a gap left short still runs whole each time. The app keeps the state per live source and set, dropped with the source. R2.5 |
 | S5.3-07 | roadmap 5.3 | Check failed events; rule events regenerated when data, rules or limits change. | Done | `tlmbench-store::checks::results_make_read_only_events`, `tlmbench-store::derived::recipes_that_name_a_label_see_the_stores_labels_and_are_rebuilt_when_they_change`, `t_rules` | |
 | S5.3-08 | roadmap 5.3 | CLI: `tlmbench check <folder> --set <name>` with JUnit, CSV, JSON and HTML reports. | Done | `tlmbench::check::a_folder_run_reports_and_exits_by_result`, `tlmbench::check::exit_codes_follow_the_worst_thing_that_happened` | The HTML report's links are D-check-07 |
 | S5.3-09 | roadmap 5.3 | UI: the Rules & checks rail panel and its one editor (Lists and ƒ, live preview on the file in front). | Done | `t_checks`, `t_rules` | |

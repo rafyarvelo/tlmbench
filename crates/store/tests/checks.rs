@@ -426,3 +426,101 @@ fn a_set_keeps_its_own_light_detail_in_its_toml() {
     assert_eq!(from_toml("schema = 1\nname = \"B\"\n").unwrap().detail, None);
     assert!(!to_toml(&from_toml("schema = 1\nname = \"B\"\n").unwrap()).contains("detail"));
 }
+
+/// The synthetic recording as a live source sees it: its first `n` samples, counting what is read.
+struct Grow {
+    rec: Rec,
+    n: std::cell::Cell<usize>,
+    read: std::cell::Cell<usize>,
+}
+
+impl Env for Grow {
+    fn series(&self, n: &str) -> Option<Series> {
+        self.read(n, 0..self.n.get())
+    }
+    fn read(&self, n: &str, r: Range<usize>) -> Option<Series> {
+        let r = r.start.min(self.n.get())..r.end.min(self.n.get());
+        self.read.set(self.read.get() + r.len());
+        self.rec.read(n, r)
+    }
+    fn samples(&self) -> Option<usize> {
+        Some(self.n.get())
+    }
+    fn hz(&self) -> Option<f64> {
+        Some(HZ)
+    }
+    fn label(&self, c: &str, t: &str) -> Option<f64> {
+        self.rec.label(c, t)
+    }
+    fn limits(&self, c: &str, alarm: bool) -> Option<(Option<f64>, Option<f64>)> {
+        self.rec.limits(c, alarm)
+    }
+}
+
+/// Live checks look only at what is new (S5.3-06): at every step of a recording that grows, each row's outcome is
+/// the one a whole run gives on the same samples, and for element-wise and windowed rows the samples read stay near
+/// the recording's length instead of growing with every run.
+#[test]
+fn a_live_check_follows_a_growing_recording_and_reads_only_what_is_new() {
+    let mut grace = check("temp", "temp < 70");
+    grace.grace = 2.0;
+    let mut scoped = check("scoped", "rpm < 2500");
+    scoped.when = Some("mode == 'Mission'".into());
+    scoped.settle = 1.5;
+    let mut warn = check("warned", "past_warn(temp) == 0");
+    warn.severity = Severity::Warn;
+    let mut gaps = check("sat", "sat > 11");
+    gaps.missing = Missing::Fail;
+    let mut rule = check("high", "temp > 70");
+    rule.kind = Kind::Rule;
+    let mut armed = check("armed rpm", "rpm < 5200");
+    armed.when = Some("armed > 0".into());
+    let rows = vec![
+        check("rpm", "rpm < 5000"),
+        grace,
+        scoped,
+        warn,
+        gaps,
+        rule,
+        armed,
+        check("smooth", "rolling_mean(temp, 50) < 66"),
+        check("summary", "max(temp) < 70"),
+        check("never", "idle > 0"),
+    ];
+    let all = set(rows.clone(), &[]);
+    let g = Grow { rec: rec(), n: std::cell::Cell::new(0), read: std::cell::Cell::new(0) };
+    let mut state = LiveSet::default();
+    let t0 = 1_000_000_000_000;
+    let mut n = 0;
+    for step in [1, 40, 333, 777, 1000, 1001, 1500, 2007, 2300, 2900, 3001, 4100, 5000, 5555, 6000] {
+        n = step;
+        g.n.set(n);
+        let live = run_set_live(&g, &all, t0, &[], &mut state, "");
+        let whole = run_set(&g, &all, t0, &[]);
+        for (a, b) in live.outcomes.iter().zip(&whole.outcomes) {
+            assert_eq!(a, b, "{} at {n} samples", a.name);
+        }
+        assert_eq!(live.rollup, whole.rollup);
+    }
+    assert_eq!(n, N);
+
+    // reads: element-wise and windowed rows look at each sample about once (plus warm-ups), not at every run
+    let follow = set(rows[..8].to_vec(), &[]);
+    let g = Grow { rec: rec(), n: std::cell::Cell::new(0), read: std::cell::Cell::new(0) };
+    let mut state = LiveSet::default();
+    let steps = 60;
+    for k in 1..=steps {
+        g.n.set(N * k / steps);
+        run_set_live(&g, &follow, t0, &[], &mut state, "");
+    }
+    let per_row = g.read.get() / 8;
+    assert!(per_row < 4 * N, "read {per_row} samples a row over {steps} runs (a whole run each time reads ~{})", N * steps / 2);
+
+    // a changed row, or labels and limits, start again from the beginning
+    let mut changed = follow.clone();
+    changed.checks[0].expect = "rpm < 4000".into();
+    let live = run_set_live(&g, &changed, t0, &[], &mut state, "");
+    assert_eq!(live.outcomes[0], run_check(&g, &changed.checks[0], t0, &[]));
+    let again = run_set_live(&g, &changed, t0, &[], &mut state, "limits changed");
+    assert_eq!(again.outcomes, run_set(&g, &changed, t0, &[]).outcomes);
+}
