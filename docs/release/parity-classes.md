@@ -85,3 +85,27 @@ kind of event, nothing said twice); to approve as App is better, or to port.
   app's are one at the panel's width; the editor's height follows the app's extra Line width and Style rows.
 - **Item counts where the app has more features** (view menu Checks, pane menu, explorer menu separators): what the extra
   item does is in the ledger; the count isn't a difference to fix.
+
+## Re-run Nov 17 (Opus run): every scene classified
+
+`just app-parity` on Nov 17, after the Sonnet run and this run's fixes: **280 differences in 31 scenes** (the `events` and
+`channel-editor` scenes are new). Every remaining difference is in a class above:
+
+| Scene | What is left | Class |
+| --- | --- | --- |
+| `main` | icon buttons' font size, the tab's and chips' widths (file names), the range's decimals (P10 decided), Explorer heading and filter mapping, channel tick hit area, pane borders, the overview picker's width (follows its text) | Noise |
+| `more-menu` | 11 items against 8: the trim the owner decided (P3) keeps Open recording, the view toggles and Window | Decided (P3) |
+| `tab-menu` | Export file…, Move to new window | App is better (B10) |
+| `alignment` | the file's name and slot number | App is better (B12). The select's 30 px **fixed Nov 17** (24 px, as the prototype's sidebar controls) |
+| `new-tab-menu`, `explorer-menu` (counts), `settings`, `start` (rows) | the prototype's folder has shared layouts and more files; Settings has the app's extra sections | Noise; B15 |
+| `explorer-menu` | "Recipes…" | **Fixed Nov 17**: "Recipes and profiles…" (P12; the profiles tab exists since S5.1-12) |
+| `pane-menu`, `view-menu` | the app's extra items (Checks view, more pane actions) | Noise (more features) |
+| `add-pane-menu` | the prototype's Chart + values | **Fixed Nov 17**: Chart and values is in the menu |
+| `folder-menu` | Refresh and more items | App is better (B11) |
+| `channel-hover` | the plotted name's weight (600 against 500) | **Fixed Nov 17** (500); the rest is the tick's hit area (Noise) |
+| `pane-hover` | the chip's × waits for the chip's hover in the app; the view button's opacity | Noise (the app's calm rule; D-ui-10) |
+| `table`, `table-columns`, `table-autofit`, `table-filter` | row counts and values follow the data; the bar's Go to A and B (B16); the filter row inside the header cell; the strip shows because the scene typed a filter; buttons are the app's 28 px `.tbtn` everywhere | Noise; B16 |
+| `connect`, `import`, `descriptor` | see S4.1-21 (Done), S4.3-12 and P5 | Noise; P5 still open (S4.3-12) |
+| `events`, `channel-editor` | P13, P14 fixed; the top row waits on the owner (above) | Owner |
+| `drag-*` | panes' few pixels of size | Noise |
+| `tooltip`, `axis-dialog` | icon button font size; the dialog's height by a few pixels | Noise |

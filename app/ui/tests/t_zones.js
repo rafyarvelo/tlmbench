@@ -44,6 +44,11 @@ run('zones', async ({ p, check, wait, until, paneCount, visible, text }) => {
   await p.click('#addPaneKinds');
   await p.click('.addkinds [data-addkind="table"]');
   check('Add pane ▾ → Table adds a table pane', (await paneCount()) === n + 2 && (await p.$$('#stack [data-table]')).length >= 1);
+  await p.click('#addPaneKinds');
+  const kinds = await p.$$eval('.addkinds [data-addkind]', (b) => b.map((x) => x.dataset.addkind));
+  check('its kinds are the five of the prototype, Chart and values among them', kinds.join() === 'chart,table,both,cv,values', kinds);
+  await p.click('.addkinds [data-addkind="cv"]');
+  check('Chart and values adds that pane', (await paneCount()) === n + 3 && (await p.evaluate(() => window.__tlmApp.modes().at(-1))) === 'cv', await p.evaluate(() => window.__tlmApp.modes()));
 
   // duplicate beside
   await p.hover('#stack [data-pane="0"] .phead');

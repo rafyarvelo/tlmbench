@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 321 · **Partial** 9 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
+Counts: **Done** 323 · **Partial** 7 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (378 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -38,7 +38,7 @@ where each step stands, and nothing else records either.
 | S4.1-16 | roadmap 4.1 | Explorer selects several files to Open (a tab each) or Close together. | Done | `t_filesel` | |
 | S4.1-17 | roadmap 4.1 | The status bar shows the core's memory (and the chunk store's share) and CPU load. | Done | `t_shell`, `tlmbench-store::sys::the_os_answers` | |
 | S4.1-18 | roadmap 4.1 | Core: Draw every sample (a request flag that skips reduction up to a budget). | Done | `tlmbench-core::m4::raw_max_draws_every_sample_up_to_it`, `t_markers` | |
-| S4.1-19 | roadmap 4.1, Done when | The harness's main, menu, hover and dialog scenes show no differences outside the accepted list. | Partial | `just app-parity` (Nov 11, this review: 212 differences in 23 scenes; main 56, table 17, import 11) | Most are scene state or the app having more items; the real ones are ranked in `docs/parity-audit.md`. R3.1 to R3.3 |
+| S4.1-19 | roadmap 4.1, Done when | The harness's main, menu, hover and dialog scenes show no differences outside the accepted list. | Done | `just app-parity` (Nov 17: 280 differences in 31 scenes, each classified in `docs/release/parity-classes.md`, "Re-run Nov 17"), `t_zones`, `t_exmenus` | Nov 17: what is left is Noise, an approved App is better row (B10 to B16) or decided (P3); four small ports were made in the pass (Chart and values in Add pane, "Recipes and profiles…", the Alignment select's size, the plotted channel's weight). Open elsewhere: the Events panel's top row (owner) and the import dialog's sections (S4.3-12). R3.1 to R3.3 |
 | S4.1-20 | roadmap 4.1, Done when | The suite passes. | Done | `just proto-test`, `t_shell` (all 89 app tests passed, see the top) | |
 | S4.1-21 | roadmap 4.1, Done when | The Connect dialog scene matches the prototype's layout. | Done | `just app-parity` (connect: 5 differences, Nov 17) | Nov 17: Reconnect, Save recordings to and Host and Port side by side, as the prototype's. Left are noise: the prototype's "Shown for reference" box and its preview make it taller, and its descriptor is a list where the app's is a file with Choose…, so the field is narrower. R3.2 |
 | S4.2-01 | roadmap 4.2 | Core: sort (several columns) and filter over the whole column, with progress, returning a row-id list the table pages through. | Done | `tlmbench-core::table::multi_column_sort`, `tlmbench-core::table::more_than_one_block_and_progress_and_cancel`, `tlmbench-app::query_rows_follow_the_sorted_list` | |
@@ -59,7 +59,7 @@ where each step stands, and nothing else records either.
 | S4.2-16 | roadmap 4.2, budget | A sort of 10M rows under 2 s on the M1, with progress. | Done | `cargo test --release -p tlmbench-core --lib -- --ignored --nocapture` (Nov 11, M1, this review: 10M rows by one key in 0.39 s, by two keys in 1.05 s; half filtered then sorted in 0.22 s), `tlmbench-core::table::sort_of_10m_rows`, `tlmbench-core::table::more_than_one_block_and_progress_and_cancel` |  |
 | S4.2-17 | roadmap 4.2, budget | Table scrolling stays at 60 fps. | Unverified | none | Never measured. R6 |
 | S4.2-18 | roadmap 4.2, Done when | `t_tables` covers each item. | Done | `t_tables`, `t_tablequery`, `t_tablefilter`, `t_tablecols`, `t_tablerows`, `t_tablelock` | |
-| S4.2-19 | roadmap 4.2, Done when | The prototype's table scenes match in the harness. | Partial | `just app-parity` (table 17, table-columns 8, table-autofit 5, table-filter 3) | R3.3 |
+| S4.2-19 | roadmap 4.2, Done when | The prototype's table scenes match in the harness. | Done | `just app-parity` (Nov 17: table 18, table-columns 8, table-autofit 5, table-filter 3; classified in `parity-classes.md`, "Re-run Nov 17") | Nov 17: every table difference is the scene's data, the app's 28 px buttons, the filter row inside the header (Noise) or Go to A and B (B16). R3.3 |
 | S4.2-20 | roadmap 4.2, Done when | The CLI can sort and filter for headless tests. | Done | `tlmbench::cache_query::rows_filtered_and_sorted` | |
 | S4.3-01 | roadmap 4.3 | CSV import dialog on a first open: time column and unit, rate, every column's name, unit, type and category. | Done | `t_import` | |
 | S4.3-02 | roadmap 4.3 | Several headers grouped in one dialog; where the files go (own tabs, one tab, this tab, Explorer only). | Done | `t_import` | |

@@ -449,7 +449,7 @@
       { label: `Import all ${csvFiles.length} file${csvFiles.length === 1 ? '' : 's'}…`, data: { ex: 'import-all' }, disabled: !csvFiles.length, run: () => actions.importAll(csvFiles) },
       { sep: true },
       // recipes and Share are not in a browser tab (D-brow-05: recipes come after v1, a tab writes nothing)
-      ...(ui.browserOnly ? [] : [{ label: 'Recipes…', data: { ex: 'recipes-f' }, run: actions.recipesOpen }, { label: 'Share…', data: { ex: 'share' }, disabled: !ui.folder, run: actions.shareOpen }, { sep: true } as const]),
+      ...(ui.browserOnly ? [] : [{ label: 'Recipes and profiles…', data: { ex: 'recipes-f' }, run: actions.recipesOpen }, { label: 'Share…', data: { ex: 'share' }, disabled: !ui.folder, run: actions.shareOpen }, { sep: true } as const]),
       { label: 'Expand all folders', data: { ex: 'expand' }, disabled: !ui.folder, run: () => (setSetting('exExpanded', allDirs(ui.folder)), setSetting('exFilesShut', [])) },
       { label: 'Collapse all folders', data: { ex: 'collapse' }, disabled: !ui.folder, run: collapseAll },
       { sep: true },
@@ -471,7 +471,7 @@
       { label: 'Open them in a new table', data: { ex: 'new-table' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans, 'table') },
       { sep: true },
       { label: `Show files that can't be opened${hidden ? ` (${hidden} hidden)` : ''}`, checked: settings.exShowAll, data: { ex: 'showall' }, run: () => setSetting('exShowAll', !settings.exShowAll) },
-      ...(ui.browserOnly ? [] : [{ sep: true } as const, { label: 'Recipes…', data: { ex: 'recipes' }, run: actions.recipesOpen }]),
+      ...(ui.browserOnly ? [] : [{ sep: true } as const, { label: 'Recipes and profiles…', data: { ex: 'recipes' }, run: actions.recipesOpen }]),
     ]}
   />
 {/if}
@@ -1027,7 +1027,7 @@
     background: transparent;
   }
   .chan.on .nm {
-    font-weight: 600;
+    font-weight: 500;
   }
   .chan.any .box,
   .chan.on .box {

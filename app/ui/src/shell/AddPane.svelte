@@ -7,7 +7,7 @@
   import { ui, viewLocked } from '../ui.svelte';
 
   let menu = $state<HTMLElement | null>(null);
-  const KINDS: [PaneMode, string][] = [['chart', 'Chart'], ['table', 'Table'], ['both', 'Chart and table'], ['values', 'Values']];
+  const KINDS: [PaneMode, string][] = [['chart', 'Chart'], ['table', 'Table'], ['both', 'Chart and table'], ['cv', 'Chart and values'], ['values', 'Values']];
   function add(mode: PaneMode) {
     menu = null;
     addPaneBelow(stack.panes.length - 1);

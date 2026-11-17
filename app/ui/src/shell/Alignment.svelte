@@ -145,6 +145,13 @@
 </div>
 
 <style>
+  /* sidebar controls at the panel's size, as the prototype's (24 px, 12 px) */
+  .sel {
+    height: 24px;
+    min-height: 24px;
+    padding: 0 6px;
+    font-size: 12px;
+  }
   .align {
     display: flex;
     flex-direction: column;
