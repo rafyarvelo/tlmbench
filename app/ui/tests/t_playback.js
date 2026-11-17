@@ -24,7 +24,7 @@ run(
     check('the name follows the recording', (await p.inputValue('#lvName')) === 'flight.tlm playback', await p.inputValue('#lvName'));
     check('the preview names the channels it decodes', await until(() => /accel_x/.test(document.getElementById('lvPreview')?.textContent ?? '') && /Decodes as/.test(document.getElementById('lvPreview').textContent)), await text('#lvPreview'));
     check('speed, start and loop are the playback\'s own fields', (await p.inputValue('#lvSpeed')) === '2' && (await p.inputValue('#lvStart')) === '0' && (await p.isChecked('#lvLoop')));
-    check('recording is on and says where', (await p.isChecked('#lvRecord')) && /Recordings folder/.test(await text('.lvwhere')), await text('.lvwhere'));
+    check('recording is on and says where', (await p.isChecked('#lvRecord')) && /Recordings folder/.test(await p.getAttribute('#lvRecordTo', 'placeholder')), await p.getAttribute('#lvRecordTo', 'placeholder'));
     await p.fill('#lvName', 'Bench demo');
     await p.selectOption('#lvSpeed', '5');
     await p.fill('#lvStart', '12.5');
@@ -129,7 +129,7 @@ run(
     await p.click(CONNECT);
     await p.fill('#lvRecording', REC);
     await p.check('#lvRecord');
-    check('the dialog names that folder', /\/Volumes\/bench\/sessions/.test(await text('.lvwhere')), await text('.lvwhere'));
+    check('the dialog names that folder', (await p.inputValue('#lvRecordTo')) === '/Volumes/bench/sessions', await p.inputValue('#lvRecordTo'));
     await p.click('#lvConnect');
     await until(async () => true);
     await wait(500);

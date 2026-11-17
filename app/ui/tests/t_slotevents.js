@@ -44,6 +44,8 @@ run(
     const mine = async () => (await evs()).filter((e) => !e.startsWith('Roll small'));
     check("both files' events show, labelled with their file", await until(() => [...document.querySelectorAll('#eventsPanel .ev .evname')].some((x) => x.textContent === 'Fix')), await evs());
     check('in time order on the tab', (await mine()).join() === 'Takeoff@flight,Fix@gps', await evs());
+    // the alignment lands a moment after the file joins: the events follow it
+    await until(() => window.__tlmApp.eventList().find((e) => e.name === 'Fix')?.start === '1767225613000000000');
     const fix = (await list()).find((e) => e.name === 'Fix');
     check("file 2's event is read through its map (3 s in its clock, 13 s on the tab)", BigInt(fix.start) === T0 + 13n * S && fix.duration === '1000000000', fix);
     check('and knows its file', fix.slot === 2 && fix.file === 'gps', fix);

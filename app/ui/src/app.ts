@@ -2396,7 +2396,8 @@ const wsBase = new Map<number, string>();
 
 function markDirty(): void {
   const t = frontTab();
-  if (!t?.ws) return;
+  // a layout tab that is still opening has no saved state to differ from yet
+  if (!t?.ws || !wsBase.has(t.key)) return;
   const dirty = wsSnapshot() !== wsBase.get(t.key);
   if (!!t.dirty !== dirty) t.dirty = dirty;
 }
@@ -2564,9 +2565,9 @@ async function openLayout(ws: Workspace, shared?: string, picked = false): Promi
   const key = nextTab++;
   const at = (s: number) => f.first + BigInt(Math.round(s * 1e9));
   const view = shared && ws.view && ws.view[1] > ws.view[0] ? { t0: at(ws.view[0]), t1: at(ws.view[1]) } : {};
-  // the layout's Events filters, else the tab it opens from keeps its own (S5.2-16)
-  const evFilter = ws.events ? { hidden: [...ws.events.hidden], follow: ws.events.follow, files: [] } : cur.evFilter;
-  tabData.set(key, { ...cur, panes, sel: 0, history: [], future: [], play: null, live: null, ...view, ...(evFilter ? { evFilter } : {}) });
+  // the layout's Events filters (S5.2-16): a layout saved without any opens with the defaults, as Revert would give
+  const evFilter = { hidden: [...(ws.events?.hidden ?? [])], follow: ws.events?.follow ?? settings.evChartsFollow, files: [] as string[] };
+  tabData.set(key, { ...cur, panes, sel: 0, history: [], future: [], play: null, live: null, ...view, evFilter });
   tabs.list.push({ key, path: f.info.path, name: ws.name, ws: ws.name, shared });
   await showTab(key);
   wsBase.set(key, wsSnapshot());
@@ -4172,9 +4173,9 @@ async function groupApply(f: OpenFile, order: Member[], before?: { id: number; f
     // a tab is named for its files ("flight-1 + flight-2", "flight-1 + 2 more"; owner, Nov 16), its tooltip listing each
     t.path = f.info.path;
     // a packet file's types in one tab: the tab is the file's, its tooltip lists the types (S4.3-08)
-    const oneFile = order.every((m) => m.path === order[0].path);
+    const oneFile = order.every((m) => m.part && m.path === order[0].path);
     if (!t.compare) t.name = order.length > 1 ? (oneFile ? nameOf(order[0].path) : groupTabName(order.map((m) => m.path))) : tabName(f.info.path, f.info.part);
-    t.tip = order.length > 1 ? order.map((m) => m.name || m.path).join('\n') : undefined;
+    t.tip = order.length > 1 ? order.map((m) => (m.part ? m.name || m.path : m.path)).join('\n') : undefined;
   }
   if (state.file === f) {
     stack.panes.forEach((p) => remapPane(p, to));
