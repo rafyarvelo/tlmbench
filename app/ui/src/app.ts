@@ -27,7 +27,7 @@ import { COMMANDS, matches, menuLabel } from './commands';
 import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, REMEMBERED, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS, stopCats } from './play.svelte';
-import { catColor, catName, events, marked, newId, onMarksChange, setAuto, setFileEvents, setMine, type TlmEvent } from './events.svelte';
+import { catColor, catName, events, marked, newId, onFiltersChange, onMarksChange, setAuto, setFileEvents, setMine, type TlmEvent } from './events.svelte';
 import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, newSet, type SetResult, setsFor } from './checks.svelte';
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, lineOf, type Limits, limitsOf, openChannelEditor, twinIn } from './display.svelte';
 import {
@@ -3379,10 +3379,8 @@ async function loadEvents(): Promise<void> {
   }
 }
 
-onMarksChange(() => {
-  scheduleDraw();
-  scheduleSessionSave();
-});
+onMarksChange(() => scheduleDraw());
+onFiltersChange(() => scheduleSessionSave());
 
 /** The tooltip over an event marker: name, category, start and duration (design: Events). */
 let evTip: HTMLElement | null = null;

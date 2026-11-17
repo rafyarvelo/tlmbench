@@ -94,7 +94,16 @@ export function marked(on = settings.eventsOn): TlmEvent[] {
 // What charts and the overview mark follows the list and the panel's chips: draw again when either changes.
 let redraw = () => {};
 export const onMarksChange = (f: () => void): void => void (redraw = f);
+/** The tab's filters (the chips and "Charts follow") changed: the session keeps them (S5.2-16). Not called for the first read. */
+let filtersChanged = () => {};
+export const onFiltersChange = (f: () => void): void => void (filtersChanged = f);
 $effect.root(() => {
+  let first = true;
+  $effect(() => {
+    void JSON.stringify([events.hidden, events.follow]);
+    if (first) first = false;
+    else filtersChanged();
+  });
   $effect(() => {
     void JSON.stringify([events.list, events.hidden, events.follow]);
     redraw();
