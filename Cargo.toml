@@ -64,6 +64,11 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
+# Test binaries carry no debug info at all: the Windows linker's program database (PDB) has a size limit, and the
+# store, decode and app test binaries went over it (LNK1140, CI Nov 17). Panics still name their functions.
+[profile.test]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
