@@ -67,6 +67,7 @@
     {#each settings.workspaces as w (w.name)}
       <div class="lyrow">
         <button class="lyitem" class:cur={here(w.name)} data-lopen={w.name} data-tip="{w.name}: {openWs(w.name) ? 'open in a tab, click to show it' : 'click to open it in a new tab'}. Double-click to rename." disabled={!ui.file && !openWs(w.name)} onclick={() => show(w.name)} ondblclick={() => ask('rename', w.name)}>{@html ICON.layout}<span class="nm">{w.name}</span><span class="hint">{openWs(w.name) ? 'open' : `${w.panes.length} ${w.panes.length === 1 ? 'pane' : 'panes'}`}</span></button>
+        <button class="lydel" data-lypin={w.name} aria-pressed={settings.pins.some((p) => p.kind === 'layout' && p.name === w.name)} aria-label="Pin {w.name} to the top bar" data-tip={settings.pins.some((p) => p.kind === 'layout' && p.name === w.name) ? 'Unpin from the top bar' : 'Pin to the top bar'} onclick={() => actions.togglePin('layout', w.name)}>{@html ICON.pin}</button>
         <button class="lydel" data-lydel={w.name} aria-label="Delete layout {w.name}" data-tip="Delete this layout (you can undo)" onclick={() => actions.deleteWs(w.name)}>{@html ICON.trash}</button>
       </div>
     {:else}

@@ -81,6 +81,7 @@
                 <label class="chk"><input type="checkbox" data-auto checked={r.automatic} onchange={(e) => actions.recipeAuto(r.name, e.currentTarget.checked)} />Any file with these channels</label>
                 <span class="spacer"></span>
                 <button class="linkbtn" data-edit onclick={() => (actions.recipesClose(), actions.recipeEdit(r.name))}>Edit</button>
+                <button class="linkbtn" data-pin aria-pressed={settings.pins.some((p) => p.kind === 'recipe' && p.name === r.name)} onclick={() => actions.togglePin('recipe', r.name)}>{settings.pins.some((p) => p.kind === 'recipe' && p.name === r.name) ? 'Unpin' : 'Pin to the top bar'}</button>
                 <button class="linkbtn" data-dup onclick={() => actions.recipeDuplicate(r.name)}>Duplicate</button>
                 <button class="linkbtn" data-del onclick={() => actions.recipeDelete(r.name)}>Delete</button>
               </div>

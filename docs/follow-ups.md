@@ -239,3 +239,7 @@ removed Nov 15; git history keeps them.
   - Widget text (S5.4-05): changes at most ten times a second; the last value always lands.
   - Widget editor (D-ui-59): New SVG widget and New code widget add a working example to the list.
   - "Already open" warning (S4.3-11): the import dialog says when a file in it is open in a tab and will open again.
+- Icons and pins (D-gauge-06, Nov 17, owner's decision): Settings › Icons keeps SVGs of your own (`currentColor`; shared to
+  `.tlmbench/icons/`, the folder's read back and listed after yours). An event category and a pin can use one. A layout (Layouts
+  panel) or a recipe (Recipes manager) pinned to the top bar is one click: the layout opens, the recipe joins the file in front.
+  At most eight pins; Settings › Icons lists them with their icon and Unpin.

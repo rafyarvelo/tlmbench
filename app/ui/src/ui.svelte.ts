@@ -297,6 +297,10 @@ export const actions = {
   deriveDuplicate: (_name: string) => {},
   deriveSaveAsNew: () => {},
   openWs: (_name: string) => {},
+  /** Pins a layout or recipe to the top bar, or takes it off (at most 8). */
+  togglePin: (_kind: 'layout' | 'recipe', _name: string) => {},
+  /** A pinned recipe's click: it joins the file in front. */
+  runPin: (_kind: 'layout' | 'recipe', _name: string) => {},
   newWs: (_name: string): string | null => null,
   /** Shared views: list the folder's again, open one, share tab `key`'s layout under a name, export it to a file. */
   loadShared: () => {},

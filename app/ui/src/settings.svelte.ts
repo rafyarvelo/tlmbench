@@ -30,6 +30,20 @@ export interface EventCategory {
   color: string;
   /** Its events are marked on charts (the panel's chips decide too). */
   chart: boolean;
+  /** The name of one of the icons (Settings › Icons) shown beside it (D-gauge-06). */
+  icon?: string;
+}
+
+/** An icon of your own: an SVG that uses `currentColor`, so it follows the theme. */
+export interface UserIcon {
+  name: string;
+  svg: string;
+}
+/** A layout or recipe pinned to the top bar: one click opens the layout, or adds the recipe to the file in front. */
+export interface Pin {
+  kind: 'layout' | 'recipe';
+  name: string;
+  icon?: string;
 }
 
 export const DEFAULT_CATEGORIES: EventCategory[] = [
@@ -207,6 +221,9 @@ export interface Settings {
   customWidgets: CustomWidget[];
   trustedWidgetSources: string[];
   /** The report of each set's last folder run: the folder, when, its files and each file's result (S5.3-15). */
+  /** Your icons, and what is pinned to the top bar (at most 8). */
+  userIcons: UserIcon[];
+  pins: Pin[];
   folderReports: Record<string, { folder: string; at: number; files: string[]; rows: Record<string, unknown> }>;
   /** Play pauses at an event: 'off', 'any', or 'cat:<id>' for one category's events. */
   stopAt: string;
@@ -321,6 +338,8 @@ export const DEFAULTS: Settings = {
   limits: {},
   customWidgets: [],
   trustedWidgetSources: [],
+  userIcons: [],
+  pins: [],
   folderReports: {},
   valueMaps: {},
   stopAt: 'off',
@@ -485,7 +504,7 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 /** What the app remembers as it is used, not set on Settings: recent files, each file's panes, channel display and gap
  * factors, the sidebars, the export dialogs' choices, sessions, windows, saved connections. Reset app… resets these only
  * with "Things the app remembers" ticked (sheet R3). */
-export const REMEMBERED: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'recentInfo', 'importWhere', 'exportData', 'exportImage', 'exportHtml', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'folderReports', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
+export const REMEMBERED: (keyof Settings)[] = ['linkView', 'linkCursors', 'catOverride', 'tipsSeen', 'recent', 'recentInfo', 'importWhere', 'exportData', 'exportImage', 'exportHtml', 'fileRecipes', 'fileRecipesOff', 'filePrefix', 'chdisp', 'limits', 'customWidgets', 'folderReports', 'userIcons', 'pins', 'trustedWidgetSources', 'trustedPluginFolders', 'valueMaps', 'eventCats', 'checkAttach', 'leftWidth', 'measureWidth', 'panelsClosed', 'panelLayout', 'layouts', 'workspaces', 'gapFactors', 'leftPanel', 'measureOpen', 'settingsAll', 'folder', 'exExpanded', 'sessions', 'windows', 'recordTo', 'savedConnections', 'liveForm', 'liveTrigger'];
 
 /** Every setting back to its default, but `keep` (Reset app…, which asks about layouts and widgets on their own). */
 export function resetAllSettings(keep: (keyof Settings)[] = []): void {

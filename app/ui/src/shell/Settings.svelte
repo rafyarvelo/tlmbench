@@ -5,7 +5,8 @@
   import { resetTips } from '../tips';
   import { type EventCategory, movePanel, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
-  import { ICON } from '../icons';
+  import { ICON, iconList, userIcon } from '../icons';
+  import { sanitizeSvg } from '../widgets';
   import { invoke } from '@tauri-apps/api/core';
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
   import { actions, ui } from '../ui.svelte';
@@ -126,6 +127,23 @@
   function editCat(i: number, patch: Partial<EventCategory>): void {
     setSetting('eventCats', settings.eventCats.map((c, k) => (k === i ? { ...c, ...patch } : c)));
   }
+  // ---- icons and pins (D-gauge-06)
+  let iconName = $state('');
+  let iconSvg = $state('');
+  let iconErr = $state('');
+  function addIcon(): void {
+    const name = iconName.trim();
+    if (!name) return void (iconErr = 'Give the icon a name.');
+    if (settings.userIcons.some((i) => i.name === name)) return void (iconErr = `There is already an icon called ${name}.`);
+    if (!/^\s*<svg[\s>]/i.test(iconSvg) || /Not a valid SVG/.test(sanitizeSvg(iconSvg))) return void (iconErr = 'That is not an SVG.');
+    setSetting('userIcons', [...settings.userIcons, { name, svg: iconSvg.trim() }]);
+    iconName = iconSvg = iconErr = '';
+  }
+  function delIcon(name: string): void {
+    setSetting('userIcons', settings.userIcons.filter((i) => i.name !== name));
+    setSetting('eventCats', settings.eventCats.map((c) => (c.icon === name ? { ...c, icon: undefined } : c)));
+    setSetting('pins', settings.pins.map((p) => (p.icon === name ? { ...p, icon: undefined } : p)));
+  }
   function delCat(i: number): void {
     setSetting('eventCats', settings.eventCats.filter((_, k) => k !== i));
   }
@@ -232,11 +250,38 @@
       <div class="urow evcatrow" data-evcatrow={c.id}>
         <input type="color" class="catcol" aria-label="Colour of {c.name}" value={c.color} onchange={(e) => editCat(i, { color: e.currentTarget.value })} />
         <input class="sel catname" aria-label="Name of the category" value={c.name} spellcheck="false" onchange={(e) => editCat(i, { name: e.currentTarget.value.trim() || c.name })} />
+        {#if iconList().length}<select class="sel caticon" data-caticon aria-label="Icon of {c.name}" value={c.icon ?? ''} onchange={(e) => editCat(i, { icon: e.currentTarget.value || undefined })}><option value="">No icon</option>{#each iconList() as ic (ic.name)}<option value={ic.name}>{ic.name}</option>{/each}</select>{/if}
         <label class="catchart" data-tip="Mark this category's events on charts"><input type="checkbox" checked={c.chart} onchange={(e) => editCat(i, { chart: e.currentTarget.checked })} />Charts</label>
         <button class="tbtn" data-catdel={c.id} aria-label="Delete {c.name}" data-tip="Delete it; its events become Uncategorized" onclick={() => delCat(i)}>{@html ICON.trash}</button>
       </div>
     {/each}
     <div class="urow"><span class="muted">Charts mark an event when its category is on and the Events panel shows it.</span><button class="tbtn" id="catAdd" onclick={addCat}>{@html ICON.plus}Add</button></div>
+  </section>
+  <section id="iconSet">
+    <h3>Icons</h3>
+    {#each settings.userIcons as ic (ic.name)}
+      <div class="urow" data-icon={ic.name}><span class="icprev">{@html userIcon(ic.name, 18)}</span><span class="icname">{ic.name}</span><button class="tbtn" data-icondel={ic.name} aria-label="Delete {ic.name}" onclick={() => delIcon(ic.name)}>{@html ICON.trash}</button></div>
+    {/each}
+    {#each cfg.icons.filter((i) => !settings.userIcons.some((u) => u.name === i.name)) as ic (ic.name)}
+      <div class="urow" data-icon={ic.name}><span class="icprev">{@html userIcon(ic.name, 18)}</span><span class="icname">{ic.name}</span><span class="muted">shared in the folder</span></div>
+    {/each}
+    <div class="urow icform">
+      <input class="sel" id="iconName" placeholder="Name" aria-label="Icon name" spellcheck="false" bind:value={iconName} oninput={() => (iconErr = '')} />
+      <textarea class="sel" id="iconSvg" rows="2" placeholder="&lt;svg viewBox=&quot;0 0 24 24&quot; stroke=&quot;currentColor&quot;…&gt;" aria-label="Icon SVG" spellcheck="false" bind:value={iconSvg} oninput={() => (iconErr = '')}></textarea>
+      <button class="tbtn" id="iconAdd" onclick={addIcon}>{@html ICON.plus}Add</button>
+    </div>
+    {#if iconErr}<div class="urow"><span style="color: var(--danger)" id="iconErr">{iconErr}</span></div>{/if}
+    <div class="urow"><span class="muted">An SVG that uses currentColor follows the theme. Icons go on event categories and on what you pin to the top bar; Share writes them to .tlmbench/icons/.</span></div>
+    {#if settings.pins.length}
+      <h3>Pinned to the top bar</h3>
+      {#each settings.pins as pn (pn.kind + pn.name)}
+        <div class="urow" data-pin={pn.name}>
+          <span>{pn.kind === 'layout' ? 'Layout' : 'Recipe'} · {pn.name}</span>
+          <select class="sel" data-pinicon aria-label="Icon of {pn.name}" value={pn.icon ?? ''} onchange={(e) => setSetting('pins', settings.pins.map((x) => (x === pn ? { ...x, icon: e.currentTarget.value || undefined } : x)))}><option value="">Default icon</option>{#each iconList() as ic (ic.name)}<option value={ic.name}>{ic.name}</option>{/each}</select>
+          <button class="tbtn" data-unpin={pn.name} aria-label="Unpin {pn.name}" onclick={() => actions.togglePin(pn.kind, pn.name)}>{@html ICON.close}</button>
+        </div>
+      {/each}
+    {/if}
   </section>
   {#if !ui.browserOnly}
   <section id="sharedSet">

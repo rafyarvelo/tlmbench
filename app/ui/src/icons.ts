@@ -56,6 +56,7 @@ export const ICON = {
   events: s('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
   checks: s('<path d="M9 11l2.5 2.5L16 9"/><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   layout: s('<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 11h17M12 11v8.5"/>', 'fill="none" stroke="currentColor" stroke-width="2"'),
+  pin: s('<path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
   edit: s('<path d="M4 20h4L19 9l-4-4L4 16z"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
   plus: s('<path d="M12 5v14M5 12h14"/>', 'fill="none" stroke="currentColor" stroke-width="2.2"'),
   /** Explorer's add-the-shown-channels */
@@ -70,3 +71,16 @@ export const ICON = {
   trash: s('<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
   open: s('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M12 11v6M9 14l3 3 3-3"/>', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"'),
 };
+
+import { cfg } from './share.svelte';
+import { settings } from './settings.svelte';
+import { sanitizeSvg } from './widgets';
+
+/** The icons you can pick: yours, then the folder's that you don't have by name. */
+export const iconList = (): { name: string; svg: string }[] => [...settings.userIcons, ...cfg.icons.filter((i) => !settings.userIcons.some((u) => u.name === i.name))];
+
+/** An icon by name as markup sized for a button or a chip (the SVG made safe), or '' for none. */
+export function userIcon(name: string | undefined, size = 14): string {
+  const found = name ? iconList().find((i) => i.name === name) : undefined;
+  return found ? sanitizeSvg(found.svg).replace('<svg', `<svg width="${size}" height="${size}"`) : '';
+}

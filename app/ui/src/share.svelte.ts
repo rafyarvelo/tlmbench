@@ -64,6 +64,8 @@ export const cfg = $state({
   /** The folder's event categories (they win for shared rules and events) and widgets. */
   categories: [] as { id: string; name: string; color: string; show_on_charts: boolean }[],
   widgets: [] as CustomWidget[],
+  /** The folder's icons (`.tlmbench/icons/`): yours win a name. */
+  icons: [] as { name: string; svg: string }[],
   /** False when the open folder looks read-only: Share offers Export file… from the start (sheet A6). */
   writable: true,
 });

@@ -2,7 +2,7 @@
      tab's ⌄ menu saves its layout (Save as… turns a file tab into a workspace tab), reverts or deletes it, and closes
      tabs. -->
 <script lang="ts">
-  import { ICON } from '../icons';
+  import { ICON, userIcon } from '../icons';
   import { type Mode, PANELS, setSetting, settings, toggleAllPanels } from '../settings.svelte';
   import { play, playActions } from '../play.svelte';
   import { moveTab, tabs } from '../tabs.svelte';
@@ -250,6 +250,13 @@
     >{/if}
   </div>
   {#if tabsOver}<button class="tb tscroll" id="tabsRight" aria-label="Scroll tabs right" disabled={tabsAt >= tabsMax - 1} onclick={() => tabsEl?.scrollBy({ left: 200, behavior: 'smooth' })}>›</button>{/if}
+  {#if settings.pins.length && !ui.viewer}
+    <div class="pins" id="pinStrip" role="group" aria-label="Pinned">
+      {#each settings.pins as pn (pn.kind + pn.name)}
+        <button class="tb" data-pin={pn.name} aria-label={pn.name} data-tip="{pn.kind === 'layout' ? 'Open the layout' : 'Add the recipe to this file'} {pn.name}" onclick={() => actions.runPin(pn.kind, pn.name)}>{#if pn.icon && userIcon(pn.icon)}{@html userIcon(pn.icon, 16)}{:else}{@html pn.kind === 'layout' ? ICON.layout : ICON.file}{/if}</button>
+      {/each}
+    </div>
+  {/if}
   <div class="rangebar">
     <button class="num rangebtn" id="rangeTxt" aria-haspopup="menu" aria-expanded={!!timeMenu} data-tip="Time format: click to change how times read" onclick={(e) => (timeMenu = timeMenu ? null : (e.currentTarget as HTMLElement))}>{ui.range}</button>
     <span class="muted" id="spanTxt">{ui.span}</span>
@@ -477,6 +484,12 @@
 </header>
 
 <style>
+  .pins {
+    display: flex;
+    flex: none;
+    gap: 2px;
+    margin-left: 4px;
+  }
   .toolbar {
     position: relative;
     display: flex;

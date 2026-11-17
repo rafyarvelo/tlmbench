@@ -4,8 +4,8 @@
 <script lang="ts">
   import { duration, readoutTime } from '../axes';
   import { checks } from '../checks.svelte';
-  import { catColor, catName, events, listed, type TlmEvent } from '../events.svelte';
-  import { ICON } from '../icons';
+  import { catColor, catName, catOf, events, listed, type TlmEvent } from '../events.svelte';
+  import { ICON, userIcon } from '../icons';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { movePanel, setPanelOpen, settings, sideOf } from '../settings.svelte';
   import { actions, ui } from '../ui.svelte';
@@ -113,7 +113,7 @@
             <button class="evcat all" data-evcatnone aria-pressed={cats.every((c) => events.hidden.includes(c.id))} onclick={() => (events.hidden = cats.map((c) => c.id))}>None</button>
           </span>
           {#each cats as c (c.id)}
-            <button class="evcat" data-evcat={c.id} aria-pressed={!events.hidden.includes(c.id)} style="--c: {catColor(c.id)}" onclick={(e) => chipClick(c.id, e)} ondblclick={() => chipDouble(c.id)}><i></i>{catName(c.id)} <small>{c.n}</small></button>
+            <button class="evcat" data-evcat={c.id} aria-pressed={!events.hidden.includes(c.id)} style="--c: {catColor(c.id)}" onclick={(e) => chipClick(c.id, e)} ondblclick={() => chipDouble(c.id)}><i></i>{#if catOf(c.id)?.icon && userIcon(catOf(c.id)?.icon)}<span class="catic">{@html userIcon(catOf(c.id)?.icon, 12)}</span>{/if}{catName(c.id)} <small>{c.n}</small></button>
           {/each}
         </div>
       {/if}

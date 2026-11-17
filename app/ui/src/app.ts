@@ -2710,7 +2710,7 @@ function ownConfig(): Record<string, unknown> {
   return {
     categories: settings.eventCats.map((c) => ({ id: c.id, name: c.name, color: c.color, show_on_charts: c.chart })),
     widgets: settings.customWidgets.filter((w) => !w.shared).map((w) => ({ id: w.id, name: w.name, icon: w.icon ?? null, svg: w.svg ?? null, angle: w.angle ?? null, code: w.code ?? null, by: w.by ?? null })),
-    icons: [],
+    icons: settings.userIcons.map((i) => ({ name: i.name, svg: i.svg })),
     views: settings.workspaces.map((w) => ({ file: viewFile(w.name), view: withRecipes(plain(w)) })),
     recordings,
   };
@@ -2720,9 +2720,10 @@ function ownConfig(): Record<string, unknown> {
  * read besides yours, and its categories and widgets are used where yours don't say otherwise. */
 async function configUse(): Promise<void> {
   try {
-    const r = await invoke<{ dir: string | null; from: { categories: typeof cfg.categories; widgets: Record<string, unknown>[] }; recipes: string[]; checks: string[]; problems: Problem[]; writable: boolean }>('config_use', { folder: settings.folder || null });
+    const r = await invoke<{ dir: string | null; from: { categories: typeof cfg.categories; widgets: Record<string, unknown>[]; icons?: { name: string; svg: string }[] }; recipes: string[]; checks: string[]; problems: Problem[]; writable: boolean }>('config_use', { folder: settings.folder || null });
     Object.assign(cfg, { dir: r.dir, recipes: r.recipes, checks: r.checks, problems: r.problems, categories: r.from.categories, writable: r.writable !== false });
     cfg.widgets = r.from.widgets.map((w) => widgetFrom(w, r.dir ?? ''));
+    cfg.icons = r.from.icons ?? [];
     await Promise.all([refreshRecipes(), loadCheckSets()]);
     if (state.file) void loadEvents();
     // plugins the folder shares wait for your OK (Settings › Plugins)
@@ -5618,6 +5619,20 @@ Object.assign(actions, {
   renameWs,
   openWithLayout,
   openWs: (name: string) => void openWs(name),
+  togglePin: (kind: 'layout' | 'recipe', name: string) => {
+    const has = settings.pins.some((p) => p.kind === kind && p.name === name);
+    if (!has && settings.pins.length >= 8) return void note('Eight things are pinned already: unpin one in Settings › Icons first.');
+    setSetting('pins', has ? settings.pins.filter((p) => !(p.kind === kind && p.name === name)) : [...settings.pins, { kind, name }]);
+  },
+  runPin: (kind: 'layout' | 'recipe', name: string) => {
+    if (kind === 'layout') return void openWs(name);
+    const f = state.file;
+    if (!f) return void note('Open a recording first: a recipe is added to the file in front.');
+    const path = f.info.path;
+    setSetting('fileRecipes', { ...settings.fileRecipes, [path]: [...new Set([...(settings.fileRecipes[path] ?? []), name])] });
+    if (settings.fileRecipesOff[path]?.includes(name)) setSetting('fileRecipesOff', { ...settings.fileRecipesOff, [path]: settings.fileRecipesOff[path].filter((n) => n !== name) });
+    void reapplyAll().then(() => note(`Added ${name} to ${nameOf(path)}.`));
+  },
   newWs,
   loadShared: () => void loadShared().catch((e) => note(`Couldn't read the folder's shared views: ${e}`)),
   openShared: (file: string) => void openShared(file),
