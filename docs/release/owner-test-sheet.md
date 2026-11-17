@@ -26,7 +26,7 @@ In the terminal commands below, replace `<file>` with `~/tlmbench-testdata/fligh
 
 ```
 Date:
-App: release build from commit (agent fills in): the Nov 16, 2026 build (`git log -1` when built), `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). Everything you confirmed fixed or good is removed: what is here is still open.
+App: release build from commit (agent fills in): `e484d77`, built Nov 17, 2026 (evening): `target/release/bundle/macos/TelemetryBench.app` or `target/release/tlmbench-app` (CLI: `target/release/tlmbench`). New: sections X and W. Everything you confirmed fixed or good is removed: what is here is still open.
 Mac / macOS version:
 Display (scale, one or two monitors):
 Opened as: (the built app / an installed copy)
