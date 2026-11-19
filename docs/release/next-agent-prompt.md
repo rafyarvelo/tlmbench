@@ -38,6 +38,13 @@ push is in the CI row.
   is a design change: ask the owner, don't decide. Recommendation: keep it, but make its effect visible (the setting's
   hint says what it hides, and its effects are subtle on a single file at rest); the alternative is to make quiet the
   default (the prototype's default is on) and drop the switch from Basic.
+- **W4 (Reconnect): the owner found Ctrl-C on the test sender "unrecoverable".** The likely cause was the test sender: it
+  restarted its clock at 0, so after a reconnect every frame read as earlier than the last and the live view held at the
+  last time (time going backwards is held, not reordered). The sender in `~/tlmbench-testdata/nov17/live/` now keeps
+  the time of day and has `--drop 15`; the owner re-tests. If it still fails, find out what the strip showed. Open
+  question either way: a real device that resets its clock when its link drops gives the same picture. Recommendation:
+  on a reconnect, a recording whose time goes backwards starts a new part (`source-1-2.tlm`, as a rotated tailed file
+  does) rather than holding; ask the owner.
 
 ## Your rows
 
