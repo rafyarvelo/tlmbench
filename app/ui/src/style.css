@@ -991,6 +991,11 @@ input[role='switch']:checked::after {
 .quiet .tgrip:not(:hover, :focus-visible)::before {
   opacity: 0;
 }
+/* a pane's header keeps its view and ⋯ only: axis, events, duplicate, split and close are in ⋯ (the prototype's quiet
+   .phead rule; W3, Nov 22) */
+.quiet .phead :is(.pact-axis, .pact-ev, .pact-dup, .pact-split, .pact-close) {
+  display: none !important;
+}
 
 /* the overview's header: what it shows, its range, and the switch for showing it on top */
 /* as the prototype's #ovCh: 24 px, monospace */

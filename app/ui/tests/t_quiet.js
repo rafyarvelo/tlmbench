@@ -51,6 +51,22 @@ run(
     await p.hover(rowB);
     check('quiet: hovering the file shows it', (await numB()) === 'visible', await numB());
 
+    // W3 (Nov 22): a pane's header keeps its view and ⋯ only; the rest is in ⋯
+    await p.evaluate(() => window.__tlmApp.setPanes([{ channels: [0, 1] }]));
+    await until(() => document.querySelectorAll('#stack .chip').length === 2);
+    await p.hover('#stack [data-pane="0"] .phead');
+    const acts = () => p.evaluate(() => ['[data-paxis]', '[data-pevents]', '[data-pdup]', '[data-psplit]', '[data-pclose]', '[data-vmenu]', '[data-pmenu]'].map((q) => { const e = document.querySelector('#stack [data-pane="0"] ' + q); return !!e && getComputedStyle(e).display !== 'none'; }));
+    const a1 = await acts();
+    check('quiet: a hovered pane shows only its view and ⋯', a1.slice(0, 5).every((x) => !x) && a1[5] && a1[6], a1);
+    await p.click('#stack [data-pane="0"] [data-pmenu]');
+    const items = await p.$$eval('.panemenu .mi', (b) => b.map((x) => x.textContent));
+    check('quiet: and ⋯ has what the header gave up', ['Event markers in this pane', 'Axis and scale…', 'Close pane', 'Duplicate', 'Split right'].every((t) => items.includes(t)), items);
+    await p.keyboard.press('Escape');
+    await p.evaluate(() => window.__tlmSettings.set('quietUI', false));
+    await p.hover('#stack [data-pane="0"] .phead');
+    check('off: the header shows its actions on hover', (await acts()).filter(Boolean).length >= 6, await acts());
+    await p.evaluate(() => window.__tlmSettings.set('quietUI', true));
+
     // grips: a table pane
     await p.evaluate(() => window.__tlmApp.setPanes([{ channels: [0, 1], mode: 'table' }]));
     const g = await until(() => !!document.querySelector('.tgrip'), 3000);

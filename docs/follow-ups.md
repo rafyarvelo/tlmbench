@@ -311,3 +311,7 @@ removed Nov 15; git history keeps them.
 - One Undo (X4, owner: "Undo should be consistent across the UI"): channels moved into a category are steps of the same
   ⌘Z history as pane edits (per file in front), so ⌘Z steps back through them one by one and ⇧⌘Z redoes; the toast's
   Undo does the same as ⌘Z when the move is the last step.
+- Quiet interface (W3): also the prototype's `.phead` rule: a pane's header keeps its view menu and ⋯; axis, event
+  markers, duplicate, split and close are in ⋯ (they already were). The prototype's other quiet rules are the app's
+  defaults with the setting off (the Explorer header in one row, a channel's unit on hover, Settings hints behind ⓘ, an
+  inactive tab's ×). The setting stays off by default (the prototype's is on): the owner's call if that should change.
