@@ -276,6 +276,12 @@ export function undoable(undo: () => void, redo: () => void): () => void {
   };
 }
 
+/** A toast's Undo for the edit just made: ⌘Z while that edit is still the last step (so ⇧⌘Z can redo it), else `fallback`. */
+function stepBack(fallback: () => void): () => void {
+  const s = past[past.length - 1];
+  return () => (past[past.length - 1] === s ? void undoLayout() : fallback());
+}
+
 const rowOf = (i: number) => rows().find((r) => r.includes(i)) ?? [i];
 const copy = (panes: Pane[]): Pane[] => panes.map((p) => ({ ...p, channels: [...p.channels] }));
 
@@ -397,11 +403,14 @@ function closeExcept(keep: (i: number) => boolean, what: string): void {
     stack.panes = kept;
     stack.sel = newSel;
   });
-  note(`Closed ${n} pane${n === 1 ? '' : 's'} (${what}).`, () =>
-    edit(() => {
-      stack.panes = before;
-      stack.sel = sel;
-    }),
+  note(
+    `Closed ${n} pane${n === 1 ? '' : 's'} (${what}).`,
+    stepBack(() =>
+      edit(() => {
+        stack.panes = before;
+        stack.sel = sel;
+      }),
+    ),
   );
 }
 
@@ -509,7 +518,7 @@ export function clearChannels(): void {
   const before = copy(stack.panes);
   if (!before.some((p) => p.channels.length)) return;
   edit(() => stack.panes.forEach((p) => (p.channels = [])));
-  note('Removed every channel from the panes.', () => edit(() => (stack.panes = before)));
+  note('Removed every channel from the panes.', stepBack(() => edit(() => (stack.panes = before))));
 }
 
 /** Closes every pane, with Undo. */
@@ -521,11 +530,14 @@ export function clearPanes(): void {
     stack.panes = [];
     stack.sel = 0;
   });
-  note(`Removed ${before.length === 1 ? 'the pane' : `all ${before.length} panes`}.`, () =>
-    edit(() => {
-      stack.panes = before;
-      stack.sel = sel;
-    }),
+  note(
+    `Removed ${before.length === 1 ? 'the pane' : `all ${before.length} panes`}.`,
+    stepBack(() =>
+      edit(() => {
+        stack.panes = before;
+        stack.sel = sel;
+      }),
+    ),
   );
 }
 

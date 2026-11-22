@@ -26,6 +26,19 @@ run('undo', async ({ p, check, until }) => {
   await p.keyboard.press('ControlOrMeta+z');
   check('⌘Z brings the pane back with its channels', await until((s) => JSON.stringify(window.__tlmApp.panes()) === s, start), await panes());
 
+  // the toast's Undo is the same step as ⌘Z: ⇧⌘Z then closes the pane again (X4, one Undo everywhere)
+  await p.hover('#stack [data-pane="2"] .phead');
+  await p.click('#stack [data-pane="2"] [data-pmenu]');
+  await p.locator('.menu .mi', { hasText: /^Close pane$/ }).click();
+  await until((k) => window.__tlmApp.panes().length === k - 1, n);
+  await p.click('#wsNote button.tbtn');
+  check('the toast\'s Undo brings it back', await until((s) => JSON.stringify(window.__tlmApp.panes()) === s, start), await panes());
+  await p.mouse.click(700, 880);
+  await p.keyboard.press('ControlOrMeta+Shift+z');
+  check('and ⇧⌘Z closes it again, as after ⌘Z', await until((k) => window.__tlmApp.panes().length === k - 1, n), await panes());
+  await p.keyboard.press('ControlOrMeta+z');
+  await until((s) => JSON.stringify(window.__tlmApp.panes()) === s, start);
+
   // a text field keeps its own undo
   await p.fill('#explorer input[type=search]', 'acc');
   const before = JSON.stringify(await panes());
