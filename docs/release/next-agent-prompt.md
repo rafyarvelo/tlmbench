@@ -5,8 +5,8 @@ repository, agree with it which files each of you touches before you edit.
 This prompt is only a hand-off. **Where each step stands is the status table in `docs/release/release-plan.md`; what is
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
-Written Nov 22 after the owner's-test-notes run. What it built is in the status table's "Owner's test notes run" row; the
-CI result of its push is in the CI row.
+Written Nov 22 after the owner's-test-notes run. What it built is in the status table's "Owner's test notes run" row; CI
+is green on `0e60834` (run 45057964460) after one Linux test-wait fix (the CI row).
 
 ## First
 
