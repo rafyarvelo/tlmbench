@@ -324,3 +324,9 @@ removed Nov 15; git history keeps them.
   wrap is not one), the source starts its next part (`source-N-2.tlm`…), which the app follows as after a rotation, so
   the chart keeps drawing. A smaller step back stays in the part, held at the latest time. Tailed files and replays keep
   their times as written.
+- The Report tab (S5.3-15, owner Nov 17, built Nov 22): Rules & checks › Run on folder… opens a Report tab in the tab
+  strip, one per set, on the open folder (no file is in front while it is). It has the set's grid (files × groups) and
+  its pass rates and trends: sort by check, group or pass rate (worst first), filter by group, and a trend per check in
+  date order, a summary check's value as a line (else its worst; else the verdicts), each point a file that opens on a
+  click. Run again runs it; the report is kept with the set (settings, as before) and the tab with the folder's session.
+  The tab menu shows only Close. The prototype's dialog is gone.

@@ -1643,9 +1643,12 @@ function freeLayers(): void {
 
 /** Brings tab `key` to the front, as it was left. */
 async function showTab(key: number): Promise<void> {
+  const rt = tabs.list.find((t) => t.key === key);
+  if (rt?.report) return showReport(rt);
   const d = tabData.get(key);
   if (!d || (key === tabs.active && state.file)) return;
   stashTab();
+  ui.report = null;
   tabs.active = key;
   freeLayers();
   Object.assign(state, {
@@ -2182,16 +2185,19 @@ function scheduleSessionSave(): void {
 /** The session of these tabs (their files, each file's view and cursors, workspaces and aligned groups); `front` is the
  *  one in front. */
 function sessionOf(kept: TabInfo[], front: TabInfo | undefined): Session {
-  const active = front?.path ?? null;
-  const files = [...new Set(kept.map((t) => t.path))];
+  const active = front?.report ? null : (front?.path ?? null);
+  const files = [...new Set(kept.filter((t) => !t.report).map((t) => t.path))];
   const session: Session = { files, active: active && files.includes(active) ? active : null };
+  const reports = kept.flatMap((t, at) => (t.report ? [{ set: t.report, at }] : []));
+  if (reports.length) session.reports = reports;
+  if (front?.report) session.activeReport = front.report;
   const ws = kept.flatMap((t, at) => (t.ws ? [{ path: t.path, name: t.ws, at, ...(t.shared ? { shared: t.shared } : {}) }] : []));
   if (ws.length) session.ws = ws;
   if (front?.ws) session.activeWs = front.ws;
   // each file tab's time range and cursors
   const views: NonNullable<Session['views']> = {};
   for (const t of kept) {
-    if (t.ws) continue;
+    if (t.ws || t.report) continue;
     const d = t.key === tabs.active ? state : tabData.get(t.key);
     if (!d || !d.t1) continue;
     views[t.path] = { t0: String(d.t0), t1: String(d.t1), ...(d.A != null ? { A: String(d.A) } : {}), ...(d.B != null ? { B: String(d.B) } : {}) };
@@ -2199,7 +2205,7 @@ function sessionOf(kept: TabInfo[], front: TabInfo | undefined): Session {
   if (Object.keys(views).length) session.views = views;
   const evf: NonNullable<Session['events']> = {};
   for (const t of kept) {
-    if (t.ws) continue;
+    if (t.ws || t.report) continue;
     const f = t.key === tabs.active ? { hidden: [...events.hidden], follow: events.follow, files: [...events.hiddenFiles] } : tabData.get(t.key)?.evFilter;
     if (f && (f.hidden.length || f.files?.length || f.follow !== settings.evChartsFollow)) evf[t.path] = { hidden: [...f.hidden], follow: f.follow, ...(f.files?.length ? { files: [...f.files] } : {}) };
   }
@@ -2323,7 +2329,7 @@ function followIncomingTabs(): void {
 async function restoreSession(s: Session | undefined, front: string | null = null): Promise<void> {
   sessionBusy = true;
   try {
-    const { files = [], active = null, ws, activeWs, views, events: evf } = s ?? {};
+    const { files = [], active = null, ws, activeWs, views, events: evf, reports, activeReport } = s ?? {};
     const at = (path: string) => {
       const v = views?.[path];
       if (state.file?.info.path === path && evf?.[path]) {
@@ -2352,8 +2358,16 @@ async function restoreSession(s: Session | undefined, front: string | null = nul
       const k = tabs.list.findIndex((t) => t.ws === w.name && t.shared === w.shared);
       if (k >= 0 && k !== w.at) tabs.list.splice(w.at, 0, ...tabs.list.splice(k, 1));
     }
+    for (const r of reports ?? []) {
+      if (!checks.sets.some((x) => x.name === r.set)) continue;
+      const key = addReportTab(r.set);
+      const k = tabs.list.findIndex((t) => t.key === key);
+      if (k >= 0 && k !== r.at) tabs.list.splice(r.at, 0, ...tabs.list.splice(k, 1));
+    }
     const wsFront = !front && activeWs ? tabs.list.find((t) => t.ws === activeWs) : null;
+    const repFront = !front && activeReport ? tabs.list.find((t) => t.report === activeReport) : null;
     if (wsFront) await showTab(wsFront.key);
+    else if (repFront) await showTab(repFront.key);
     else if (front ?? active) await openPath((front ?? active)!);
   } finally {
     sessionBusy = false;
@@ -2980,6 +2994,7 @@ async function closeAll(): Promise<void> {
 
 /** No tab: the window as at launch. */
 function emptyWindow(): void {
+  ui.report = null;
   closePlay();
   freeLayers();
   Object.assign(state, { file: null, building: null, A: null, B: null, history: [], future: [] });
@@ -3773,7 +3788,7 @@ function saveFolderReport(set: string, folder: string): void {
     rows[path] = r.res
       ? {
           first: r.first,
-          res: { set: r.res.set, rollup: plain(r.res.rollup), outcomes: r.res.outcomes.map((o) => ({ verdict: o.verdict, count: o.count, secs: o.secs, runs: [], channels: [], message: '' })) },
+          res: { set: r.res.set, rollup: plain(r.res.rollup), outcomes: r.res.outcomes.map((o) => ({ verdict: o.verdict, count: o.count, secs: o.secs, ...(o.value != null ? { value: o.value } : {}), ...(o.worst != null ? { worst: o.worst } : {}), runs: [], channels: [], message: '' })) },
         }
       : { error: r.error ?? 'error' };
   }
@@ -3805,6 +3820,59 @@ async function checkFolderCsv(): Promise<void> {
   } catch (e) {
     note(`Couldn't write the results: ${e}`);
   }
+}
+
+// ---------- The Report tab (S5.3-15, owner Nov 17): a folder run of one set, a tab of its own in the strip ----------
+
+const reportName = (set: string) => `Report · ${set}`;
+
+/** A Report tab for `set` at the end of the strip (not shown); its key. One per set. */
+function addReportTab(set: string): number {
+  const had = tabs.list.find((t) => t.report === set);
+  if (had) return had.key;
+  const key = nextTab++;
+  tabs.list.push({ key, path: ui.folder?.path ?? settings.folder, name: reportName(set), report: set, tip: `The folder report of ${set}` });
+  return key;
+}
+
+/** Opens the Report tab of `set` (the one last run, else the first set), or brings it to the front. */
+async function openReport(set?: string): Promise<void> {
+  const name = set ?? (folderRun.set && checks.sets.some((s) => s.name === folderRun.set) ? folderRun.set : checks.sets[0]?.name);
+  if (!name) return void note('Make a check set first: a report runs one set on every recording in the folder.');
+  await showTab(addReportTab(name));
+}
+
+/** Brings a Report tab to the front: no file is in front, the report fills the centre with what was kept from its last run. */
+async function showReport(t: TabInfo): Promise<void> {
+  if (tabs.active === t.key && ui.report) return;
+  stashTab();
+  tabs.active = t.key;
+  live.on = false;
+  emptyWindow();
+  $('empty').hidden = true;
+  ui.report = { set: t.report! };
+  showReportSet(t.report!);
+  saveSession();
+}
+
+/** The report shown is set `set`'s: its kept rows, unless a run of it is going. */
+function showReportSet(set: string): void {
+  if (folderRun.busy && folderRun.ran !== set) return;
+  if (folderRun.ran === set) return void (folderRun.set = set);
+  Object.assign(folderRun, { set, rows: {}, ran: '', at: 0, files: [], done: 0 });
+  checkFolderLoad(set);
+}
+
+/** The Report tab in front reports another set (its name follows). */
+function reportSet(set: string): void {
+  const t = tabs.list.find((x) => x.key === tabs.active && x.report);
+  if (!t || t.report === set) return;
+  const other = tabs.list.find((x) => x.report === set);
+  if (other) return void showTab(other.key);
+  Object.assign(t, { report: set, name: reportName(set), tip: `The folder report of ${set}` });
+  ui.report = { set };
+  showReportSet(set);
+  saveSession();
 }
 
 /** A grid cell: open that file and go to its first violation in that group. */
@@ -5696,6 +5764,8 @@ Object.assign(actions, {
   checkEditor,
   filterRule,
   checkFolderLoad,
+  openReport: (set?: string) => void openReport(set),
+  reportSet,
   checkRun: () => scheduleChecks(0),
   checkFolderRun: (set: string) => void checkFolderRun(set),
   checkFolderCsv: () => void checkFolderCsv(),

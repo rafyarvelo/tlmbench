@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 329 · **Partial** 5 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (382 rows).
+Counts: **Done** 330 · **Partial** 4 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (382 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -129,7 +129,7 @@ where each step stands, and nothing else records either.
 | S5.3-12 | roadmap 5.3 | + From limits. | Unverified | `app/ui/src/shell/CheckEditor.svelte:342` | No test presses it; "Check against limits…" in a sets menu is not built. Test in R3.3 |
 | S5.3-13 | roadmap 5.3 | The Checks pane view. | Done | `t_checks` | |
 | S5.3-14 | roadmap 5.3 | Save as rule from a table filter. | Done | `t_tablefilter` | Nov 17. Save as rule in the table's filter strip (`filterrule.ts`). R2.5 |
-| S5.3-15 | roadmap 5.3 | Folder run and the Report tab with trends. | Partial | `t_checkfolder` | Nov 17: sub-folders run; the report is kept with the set (settings) and comes back without running. Still a dialog tab, not a separate Report tab as the design says; a cell opens the earliest violation of its group. R3.3 Owner, Nov 17: the separate Report tab is v1 (R3.3): a tab in the tab strip, saved with the set, reopened and re-run. |
+| S5.3-15 | roadmap 5.3 | Folder run and the Report tab with trends. | Done | `t_checkfolder` (Nov 22) | Built Nov 22 as the owner decided Nov 17 (v1): Run on folder… opens a Report tab in the strip (one per set, on the open folder) with the grid and the pass rates; sorted and filtered by group, a trend per check in date order (a summary value as a line, else the verdicts; a point opens its file), Run again, CSV; kept with the set (settings) and in the folder's session, back as it was without running; a cell opens the earliest violation of its group. Owner pass: sheet Y8. R3.3 |
 | S5.3-16 | roadmap 5.3, Done when | `t_checks`, `t_checksel` and `t_rules` from the prototype are ported. | Done | `t_checks`, `t_rules`, `t_checkfolder`, `proto:t_checksel` | |
 | S5.3-17 | roadmap 5.3, Done when | A folder check of 20 files runs from the CLI. | Done | `tlmbench::check::twenty_files_run_in_parallel_and_report_in_name_order` | |
 | S5.3-18 | roadmap 5.3, Done when | The CLI's results match the app's. | Unverified | `crates/store/src/checks.rs` (both call it) | No test runs one set through both and compares. Add one through the daemon in R2.5 |

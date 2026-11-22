@@ -92,6 +92,8 @@ export const ui = $state({
   canBack: false,
   /** The start page is open over the panes (it is also what shows with no file). */
   start: false,
+  /** A Report tab is in front: the set it reports (S5.3-15); no file is then. */
+  report: null as null | { set: string },
   /** What a values pane's tiles are read at: the pointer, cursor A or the end of the view. */
   valuesAt: '',
   /** The time widgets and tiles read at (ns): the pointer, the playhead, cursor A or the end of the view; null with no file. */
@@ -226,6 +228,9 @@ export const actions = {
   checkFolderRun: (_set: string) => {},
   checkFolderCsv: () => {},
   checkOpenCell: (_path: string, _group: string) => {},
+  /** Opens (or brings to the front) the Report tab of a set run on the folder; the set reported can change there. */
+  openReport: (_set?: string) => {},
+  reportSet: (_set: string) => {},
   /** The Recipes manager: open, close, edit / duplicate / delete a recipe, automatic on or off, Export… and Import… text. */
   /** Share…: the dialog that writes what you pick to the folder's .tlmbench/ (or takes the folder's), and Export…. */
   shareOpen: () => {},

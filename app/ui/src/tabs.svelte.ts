@@ -22,6 +22,8 @@ export interface TabInfo {
   tip?: string;
   /** Its panes differ from the layout as saved. */
   dirty?: boolean;
+  /** A folder report's tab (S5.3-15): the check set it reports; `path` is the folder. */
+  report?: string;
 }
 
 export const tabs = $state({

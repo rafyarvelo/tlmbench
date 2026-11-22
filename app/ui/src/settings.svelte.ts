@@ -136,6 +136,9 @@ export interface Session {
   active: string | null;
   ws?: { path: string; name: string; at: number; shared?: string }[];
   activeWs?: string;
+  /** Report tabs (S5.3-15): the set each reports, where it was among the tabs; the one in front. */
+  reports?: { set: string; at: number }[];
+  activeReport?: string;
   views?: Record<string, { t0: string; t1: string; A?: string; B?: string }>;
   /** Each file tab's Events panel filters: the categories hidden and whether charts follow them (S5.2-16). */
   events?: Record<string, { hidden: string[]; follow: boolean; /** Files whose events are hidden, in a tab of several. */ files?: string[] }>;

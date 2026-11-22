@@ -23,7 +23,7 @@
   import ExportDialog from './shell/ExportDialog.svelte';
   import HtmlExportDialog from './shell/HtmlExportDialog.svelte';
   import CheckEditor from './shell/CheckEditor.svelte';
-  import FolderRun from './shell/FolderRun.svelte';
+  import Report from './shell/Report.svelte';
   import Checks from './shell/Checks.svelte';
   import Events from './shell/Events.svelte';
   import Layouts from './shell/Layouts.svelte';
@@ -149,7 +149,6 @@
 <WidgetTrust />
 <SlotPicker />
 <CheckEditor />
-<FolderRun />
 {/if}
 
 <div class="app" id="app" class:focus={ui.focus} class:quiet={settings.quietUI} class:nohints={!settings.showHints}>
@@ -197,6 +196,7 @@
         <div id="ovBottom" class="ovslot"></div>
         <canvas id="gl" class="layer"></canvas>
         <canvas id="overlay" class="layer"></canvas>
+        {#if ui.report && !__VIEWER__}<Report />{/if}
         <div id="empty" class="empty">{#if ui.folder && !ui.start}<NoFile />{:else}<StartPage />{/if}</div>
         {#if ui.start && ui.file}<StartPage overlay />{/if}
       </main>

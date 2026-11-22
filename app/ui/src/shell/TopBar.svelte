@@ -218,7 +218,7 @@
           dragTab = null;
         }}
       >
-        {@html t.ws ? ICON.layout : ICON.file}<span class="nm">{t.name}</span><CheckBadge path={t.path} />{#if t.live}<span class="livedot" data-live-tab aria-label="live"></span>{/if}{#if t.dirty}<span class="dirty" data-dirty aria-label="unsaved changes" data-tip="Unsaved changes: Save layout (⌘S) or Revert changes in the tab menu"></span>{/if}
+        {@html t.report ? ICON.checks : t.ws ? ICON.layout : ICON.file}<span class="nm">{t.name}</span><CheckBadge path={t.path} />{#if t.live}<span class="livedot" data-live-tab aria-label="live"></span>{/if}{#if t.dirty}<span class="dirty" data-dirty aria-label="unsaved changes" data-tip="Unsaved changes: Save layout (⌘S) or Revert changes in the tab menu"></span>{/if}
         <span
           class="tm"
           role="button"
@@ -338,7 +338,8 @@
           {@const sharedBy = menuTab.shared ? ui.shared.find((v) => v.file === menuTab.shared)?.ws?.by : undefined}
           <div class="tmhead"><b class="tmname" id="tmName">{menuTab.name}</b><button class="tmx" id="tmClose" aria-label="Close tab" data-tip="Close this tab" onclick={() => tabAct(actions.closeTab)}>{@html ICON.close}</button></div>
           <div class="tmstat" id="wsStatus">
-            {#if menuTab.live}<span class="dot live"></span><span>Live session. Its panes live with the tab.</span>
+            {#if menuTab.report}{@html ICON.checks}<span>The folder report of {menuTab.report}, kept with the set. Run again from the tab.</span>
+            {:else if menuTab.live}<span class="dot live"></span><span>Live session. Its panes live with the tab.</span>
             {:else if menuTab.shared}
               {#if menuTab.dirty}<span class="dot warn"></span><span>Unsaved changes. Shared views are read-only here: Save as makes your own copy.</span>
               {:else}{@html ICON.folder}<span>Shared in this folder{sharedBy ? ` by ${sharedBy}` : ''} · .tlmbench/views/{menuTab.shared}</span>{/if}
@@ -348,15 +349,15 @@
             {:else if ui.browserOnly}{@html ICON.file}<span>The panes this file opened with.</span>
             {:else}{@html ICON.file}<span>The panes this file opened with. Save as keeps them as a layout.</span>{/if}
           </div>
-          {#if !menuTab.live}<div class="tmfiles" id="tabFiles"><span>This tab shows</span>{#if menuTab.key === tabs.active && ui.slots.length > 1}{#each ui.slots as r (r.slot)}<span class="fchip" data-tip={r.path}>{r.slot} · {r.name}</span>{/each}{:else}<span class="fchip" data-tip={menuTab.path}>1 · {(menuTab.path.split(/[\\/]/).pop() ?? menuTab.path) + (menuTab.part ? ` · ${menuTab.part}` : '')}</span>{/if}</div>{/if}
+          {#if !menuTab.live && !menuTab.report}<div class="tmfiles" id="tabFiles"><span>This tab shows</span>{#if menuTab.key === tabs.active && ui.slots.length > 1}{#each ui.slots as r (r.slot)}<span class="fchip" data-tip={r.path}>{r.slot} · {r.name}</span>{/each}{:else}<span class="fchip" data-tip={menuTab.path}>1 · {(menuTab.path.split(/[\\/]/).pop() ?? menuTab.path) + (menuTab.part ? ` · ${menuTab.part}` : '')}</span>{/if}</div>{/if}
           <div class="msep"></div>
         {/if}
         <!-- a viewer saves nothing, shares nothing and has one window: those items are left out, not disabled; a browser tab keeps no layouts and has one window either -->
         {#if !ui.viewer && !ui.browserOnly}
-        {#if !menuTab?.live && !menuTab?.shared}
+        {#if !(menuTab?.live || menuTab?.report) && !menuTab?.shared}
           <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab?.ws || !menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
         {/if}
-        {#if !menuTab?.live}
+        {#if !(menuTab?.live || menuTab?.report)}
           <button
             class="mi"
             role="menuitem"
@@ -365,14 +366,14 @@
             ><span class="nm">Save as…</span>{#if menuTab?.shared}<span class="hint">your copy</span>{/if}</button
           >
         {/if}
-        {#if !menuTab?.live}
+        {#if !(menuTab?.live || menuTab?.report)}
           <button class="mi" role="menuitem" data-ws="revert" disabled={!menuTab?.ws || !menuTab.dirty} onclick={() => tabAct(actions.revertWs)}><span class="nm">Revert changes</span></button>
         {/if}
-        {#if !menuTab?.live && !cfg.writable}
+        {#if !(menuTab?.live || menuTab?.report) && !cfg.writable}
           <button class="mi" role="menuitem" data-ws="share" data-tip="This folder is read-only, so the layout can't be shared into it. Export file… writes it where you choose." onclick={() => tabAct(actions.exportWs)}
             ><span class="nm">Export file…</span><span class="hint">Folder is read-only</span></button
           >
-        {:else if !menuTab?.live}
+        {:else if !(menuTab?.live || menuTab?.report)}
           <button
             class="mi"
             role="menuitem"
@@ -386,7 +387,7 @@
           <button class="mi" role="menuitem" data-ws="rename" onclick={() => (startNaming(menuTab!.ws!), (tabMenu!.naming = 'rename'))}><span class="nm">Rename…</span></button>
           <button class="mi" role="menuitem" data-ws="delete" onclick={() => tabAct(() => actions.deleteWs(menuTab!.ws!))}><span class="nm">Delete layout</span></button>
         {/if}
-        {#if !menuTab?.live}<div class="msep"></div>{/if}
+        {#if !(menuTab?.live || menuTab?.report)}<div class="msep"></div>{/if}
         <button class="mi" role="menuitem" data-ws="newwin" onclick={() => tabAct((k) => actions.moveToWindow(k))}><span class="nm">Move to new window</span></button>
         {/if}
         {#if menuTab?.live}<button class="mi" role="menuitem" data-ws="showwin" data-tip="The source keeps recording once and shows in both windows" onclick={() => tabAct((k) => actions.moveToWindow(k, true))}><span class="nm">Show in new window</span></button>{/if}
