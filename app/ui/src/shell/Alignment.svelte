@@ -42,7 +42,9 @@
     const v = raw as AlignMethod;
     actions.alignSet(slot.slot, v, { seconds: v === 'manual' ? a.offset : undefined, channel: v === 'xcorr' || v === 'timesrc' ? a.channel : undefined });
   }
-  /** The residuals as a small plot: time across, residual up (ms), a line at zero. */
+  /** The residuals as a small plot: time across, residual up (ms), a line at zero, and their range as two numbers (audit,
+   *  owner Nov 17). */
+  const ms = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v) < 10 ? Math.abs(v).toFixed(2) : Math.abs(v).toFixed(0)}`;
   const plot = $derived.by(() => {
     const r = a.residuals;
     if (r.length < 2) return null;
@@ -50,7 +52,8 @@
     const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
     const worst = Math.max(...r.map((p) => Math.abs(p[1])), 0.001);
     const pts = r.map((p) => [4 + ((p[0] - x0) / Math.max(1e-9, x1 - x0)) * 212, 20 - (p[1] / worst) * 16] as const);
-    return { pts, worst };
+    const ys = r.map((p) => p[1]);
+    return { pts, worst, hi: Math.max(...ys), lo: Math.min(...ys) };
   });
 </script>
 
@@ -109,6 +112,7 @@
           <line x1="4" x2="216" y1="20" y2="20" class="zero" />
           {#each plot.pts as p, i (i)}<circle cx={p[0]} cy={p[1]} r="2" />{/each}
         </svg>
+        <span class="rng" data-resrange data-tip="The residuals' range: how far the points sit from the fit, highest and lowest"><span class="num">{ms(plot.hi)}</span><span class="num">{ms(plot.lo)} ms</span></span>
       {/if}
     </div>
   {/if}
@@ -211,7 +215,23 @@
     color: var(--accent);
   }
   .fit .zero {
-    stroke: var(--grid);
+    stroke: var(--fg-muted);
+    stroke-dasharray: 2 2;
+    stroke-width: 1;
+    opacity: 0.6;
+  }
+  .rng {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 40px;
+    color: var(--fg-muted);
+    font-size: 11px;
+    text-align: right;
+  }
+  .rng .num {
+    font-family: var(--font-data);
   }
   .fit circle {
     fill: currentColor;

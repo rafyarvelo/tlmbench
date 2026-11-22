@@ -240,11 +240,13 @@ place and leave the same way; menus open from their trigger.
 
 - *Feedback kinds* (live, `app-live.png`): a healthy source's state word, "Streaming", is red in the Explorer and on its card,
   the colour of errors elsewhere; only the LIVE badge needs red (recording). Recommendation: the word in the accent colour,
-  the badge stays red.
+  the badge stays red. **Owner, Nov 17: as recommended. Built Nov 22 (`t_livecsv`).**
 - *Wayfinding* (Alignment, `app-slots.png`): the fit's residuals are dots with no axis or scale (known since step 5.6), so
   "Fit 97%" can't be read against anything. Recommendation: a zero line and the residual range as two numbers (R3.3 polish,
-  or post-v1).
+  or post-v1). **Owner, Nov 17: as recommended, v1. Built Nov 22: a dashed zero line, the highest and lowest residual in
+  ms beside the plot (`t_slots`).**
 - *Simplicity* (Explorer header): seven unlabelled icons in a row; each has a tooltip. Recommendation: keep, since the
-  owner's convention is icons with tooltips that retire, and a label row would not fit a 300 px sidebar.
+  owner's convention is icons with tooltips that retire, and a label row would not fit a 300 px sidebar. **Owner, Nov 17:
+  keep.**
 - The Events panel's top row (App's "Marker at A · Range A–B" against the prototype's "+ Event · Share… · Categories"):
   App is better or Port (`parity-classes.md`).

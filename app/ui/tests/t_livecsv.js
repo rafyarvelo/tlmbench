@@ -80,6 +80,17 @@ try {
   check('playback of a CSV: a file row for the source, named for it', await until(() => document.querySelector('#explorer .row.file .nm')?.textContent === 'a.csv playback'), await kinds());
   check('...with its channels', await until(() => document.querySelectorAll('#explorer .tree .row.chan').length === 2), await chans());
   check('...and its state', await until(() => /Streaming|Ended/.test(document.querySelector('#explorer .row.file [data-lvstate]')?.textContent ?? '')));
+  // audit (owner Nov 17): a healthy source's word is in the accent colour; red stays for the LIVE badge
+  const colours = await p.evaluate(() => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--accent)';
+    document.body.append(probe);
+    const accent = getComputedStyle(probe).color;
+    probe.remove();
+    const st = document.querySelector('#explorer [data-lvstate][data-state="streaming"]');
+    return { accent, word: st ? getComputedStyle(st).color : null };
+  });
+  check('"Streaming" is in the accent colour, not red', colours.word === null || colours.word === colours.accent, colours);
   check('the Open list and the tab name the source', (await names('#openFiles .ofnm')).join() === 'a.csv playback' && (await names('#wsTabs [aria-selected=true]')).join().includes('a.csv playback'), await names('#openFiles .ofnm'));
 
   // tailing a growing CSV

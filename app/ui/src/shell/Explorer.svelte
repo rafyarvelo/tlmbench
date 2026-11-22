@@ -858,8 +858,9 @@
     width: 12px;
     height: 12px;
   }
+  /* a healthy source in the accent colour: red is for the LIVE badge (recording) and errors (audit, owner Nov 17) */
   .lvst[data-state='streaming'] {
-    color: var(--danger);
+    color: var(--accent);
   }
   .lvst[data-state='paused'] {
     color: var(--warn);

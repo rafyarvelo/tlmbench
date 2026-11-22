@@ -369,8 +369,9 @@
     color: var(--fg-muted);
     font-size: 11.5px;
   }
+  /* a healthy source in the accent colour: red is for the LIVE badge (recording) and errors (audit, owner Nov 17) */
   .lvcs[data-state='streaming'] {
-    color: var(--danger);
+    color: var(--accent);
   }
   .lvcs[data-state='paused'],
   .lvcs[data-state='reconnecting'] {

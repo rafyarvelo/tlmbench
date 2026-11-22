@@ -61,10 +61,12 @@ run(
     await p.mouse.move(c.x, c.y);
     check('the pointer readout gives both clocks over the shifted file\'s channel', await until(() => /gps own clock/.test(document.getElementById('hoverTxt')?.textContent ?? '')), await text('#hoverTxt'));
     await p.mouse.move(5, 5);
-    await fake(() => (window.__tlmFake.alignResults.xcorr = { knots: [['0', '-3330000000']], residuals: [['1000000000', 0.4], ['5000000000', -0.3], ['9000000000', 0.2]], quality: 0.97, note: 'Matched on accel_x: −3.33 s, r = 0.97', channel: 'accel_x' }));
+    await fake(() => (window.__tlmFake.alignResults.xcorr = { knots: [['0', '-3330000000']], residuals: [['1000000000', 400000], ['5000000000', -300000], ['9000000000', 200000]], quality: 0.97, note: 'Matched on accel_x: −3.33 s, r = 0.97', channel: 'accel_x' }));
     await p.selectOption('[data-falign="2"]', 'xcorr');
     check('Cross-correlation names the channel, offset and r', await until(() => /Matched on accel_x: −3\.33 s, r = 0\.97/.test(document.querySelector('.align .anote')?.textContent ?? '')));
     check('it shows the fit', /97%/.test(await text('[data-quality]')) && (await p.$$('.fit circle')).length === 3);
+    const range = (await text('[data-resrange]')).replace(/\s+/g, ' ').trim();
+    check("with a line at zero and the residuals' range as two numbers (audit, Nov 17)", !!(await p.$('.fit .zero')) && range === '+0.40 −0.30 ms', range);
     check('and a result to keep or undo', await visible('[data-preview]'));
     await p.click('[data-undo]');
     check('Undo puts the map back', (await until(() => !document.querySelector('[data-preview]'))) && JSON.stringify((await calls('groupMaps')).at(-1).knots) === JSON.stringify(after), (await calls('groupMaps')).at(-1));
