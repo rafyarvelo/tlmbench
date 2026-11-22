@@ -86,15 +86,21 @@ run(
     const runs = await fake(() => window.__tlmFake.checkRuns.map((r) => r.path));
     check("every file's sets ran on that file", runs.includes(A) && runs.includes(B), runs);
     await p.click('[data-rail="checks"]');
-    check('the Checks panel picks a file', await until(() => !!document.querySelector('[data-ckfile]')));
-    const opts = await p.$$eval('[data-ckfile] option', (o) => o.map((x) => x.textContent));
-    check('one option per file', opts.join() === '1 · flight,2 · gps', opts);
+    // W2 (owner Nov 22): a row per file folding to its sets, the primary open, so every file's results show at once
+    check('the Checks panel has a row per file', await until(() => document.querySelectorAll('#checksPanel [data-cfile]').length === 2));
+    const fileRows = await p.$$eval('#checksPanel [data-cfile] .cfhead', (b) => b.map((x) => [x.querySelector('.csn').textContent, x.getAttribute('aria-expanded')]));
+    check('named by slot and file, the primary open', JSON.stringify(fileRows) === '[["flight","true"],["gps","false"]]', fileRows);
+    check('each with its count', (await p.$$('#checksPanel [data-cfile] [data-cfsum]')).length === 2);
     const fails = (await list()).filter((e) => e.name === 'Roll small');
     check("both files' failing checks are events, each labelled", fails.length === 2 && fails.map((e) => e.file).sort().join() === 'flight,gps', fails);
     const r2 = (await p.evaluate(() => window.__tlmApp.checkRuns()))[B]?.Limits?.outcomes?.[0]?.runs?.[0];
     check("file 2's violation is on the tab's timeline (4 s in its clock, 14 s on the tab)", r2 && BigInt(r2.start) === T0 + 14n * S, r2);
-    await p.selectOption('[data-ckfile]', B);
-    check('picking file 2 shows its results', await until(() => !!document.querySelector('[data-cset="Limits"]')));
+    await p.click(`#checksPanel [data-cfile="${B}"] .cfhead`);
+    check("opening file 2 shows its results under it, file 1's still open", (await until((b) => !!document.querySelector(`#checksPanel [data-cfile="${b}"] [data-cset="Limits"]`), B)) && (await p.$$('#checksPanel [data-cset="Limits"]')).length === 2);
+    await p.click(`#checksPanel [data-cfile="${B}"] [data-cset="Limits"] .cshead`);
+    check('folding a set folds it in that file only', !!(await p.$(`#checksPanel [data-cfile="${A}"] [data-cset="Limits"] .cgrp`)) && !(await p.$(`#checksPanel [data-cfile="${B}"] [data-cset="Limits"] .cgrp`)));
+    await p.click(`#checksPanel [data-cfile="${A}"] .cfhead`);
+    check('the primary folds too', await until((a) => !document.querySelector(`#checksPanel [data-cfile="${a}"] [data-cset]`), A));
 
     // the session keeps a hidden file
     await p.click('[data-rail="events"]');

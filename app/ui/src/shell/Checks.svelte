@@ -16,14 +16,16 @@
   const closed = $derived(settings.panelsClosed.includes('checks'));
   const other = $derived(sideOf('checks') === 'left' ? 'right' : 'left');
   const layout = $derived(tabs.list.find((t) => t.key === tabs.active)?.ws ?? null);
-  // in a tab of several files the panel shows one file's results at a time (S5.6-12)
-  const cur = $derived(ui.slots.length > 1 ? (ui.slots.find((s) => s.key === checks.file) ?? ui.slots[0]) : null);
-  const cpath = $derived(cur ? cur.path : ui.path);
-  const ckey = $derived(cur ? cur.key : ui.path);
-  const applied = $derived(cpath ? setsFor(cpath, layout) : []);
-  const idle = $derived(checks.sets.filter((s) => !applied.includes(s)));
-  const results = $derived(checks.runs[ckey] ?? {});
-  const sum = $derived(ckey ? summary(ckey) : null);
+  // in a tab of several files every file's results show at once, a row per file folding to its sets, the primary open
+  // (W2, owner Nov 22); `checks.file` is the file last opened there (the Checks pane view follows it)
+  const multi = $derived(ui.slots.length > 1);
+  const fileOpen = (k: string, n: number) => (n === 0) !== checks.closed.includes(`f:${k}`);
+  const fileSum = (k: string) => summary(k);
+  const sum = $derived.by(() => {
+    if (!multi) return ui.path ? summary(ui.path) : null;
+    const all = ui.slots.map((sl) => summary(sl.key)).filter((x) => !!x);
+    return all.length ? all.reduce((a, b) => ({ ...a, failed: a.failed + b.failed, warned: a.warned + b.warned, passed: a.passed + b.passed })) : null;
+  });
   const span = $derived(Math.max(1, Number(BigInt(ui.view.t1) - BigInt(ui.view.t0))));
   const at = (ns: string) => readoutTime(BigInt(ns), span);
   const secs = (s: number) => duration(s * 1e9);
@@ -63,18 +65,16 @@
     return t.join(' · ');
   };
 
-  function go(set: string, i: number, o: Outcome | undefined, n: number) {
+  function go(k: string, o: Outcome | undefined, n: number) {
     if (!o?.runs.length) return;
-    const k = key(set, i);
     const m = (n + o.runs.length) % o.runs.length;
     at_[k] = m;
     actions.checkShow(o.runs[m].start, o.runs[m].end);
   }
-  function pick(set: string, i: number, o: Outcome | undefined) {
-    const k = key(set, i);
+  function pick(k: string, o: Outcome | undefined) {
     if (checks.sel === k) return void (checks.sel = null);
     checks.sel = k;
-    go(set, i, o, 0);
+    go(k, o, 0);
   }
   /** The channel numbers of the open file a row reads. */
   const chans = (o: Outcome | undefined) => (o?.channels ?? []).map((n) => ui.channels.findIndex((c) => c.name === n)).filter((i) => i >= 0);
@@ -93,7 +93,7 @@
       ],
     };
   }
-  function rowMenu(e: MouseEvent, set: string, i: number, o: Outcome | undefined) {
+  function rowMenu(e: MouseEvent, set: string, i: number, kk: string, o: Outcome | undefined) {
     e.preventDefault();
     const chs = chans(o);
     const n = chs.length;
@@ -102,18 +102,18 @@
       label: 'Check',
       items: [
         { label: 'Edit this check', run: () => actions.checkEditor(set, i) },
-        { label: checks.sel === key(set, i) ? 'Deselect' : 'Select', run: () => (checks.sel = checks.sel === key(set, i) ? null : key(set, i)) },
+        { label: checks.sel === kk ? 'Deselect' : 'Select', run: () => (checks.sel = checks.sel === kk ? null : kk) },
         { sep: true },
         { label: `Open its ${n} channel${n === 1 ? '' : 's'} in a new chart`, disabled: !n, run: () => newPaneWith(chs) },
         { label: `Add its ${n} channel${n === 1 ? '' : 's'} to the selected pane`, disabled: !n || !stack.panes.length, run: () => addChannels(chs) },
       ],
     };
   }
-  function attach(set: string) {
+  function attach(cpath: string, set: string) {
     const A = settings.checkAttach;
     setSetting('checkAttach', { ...A, files: { ...A.files, [cpath]: [...new Set([...(A.files[cpath] ?? []), set])] } });
   }
-  function detach(set: string) {
+  function detach(cpath: string, set: string) {
     const A = settings.checkAttach;
     setSetting('checkAttach', { ...A, files: { ...A.files, [cpath]: (A.files[cpath] ?? []).filter((n) => n !== set) } });
   }
@@ -126,6 +126,79 @@
 </script>
 
 <svelte:window onkeydown={esc} />
+
+{#snippet fileBody(cpath: string, ckey: string, pre: string)}
+  {@const applied = setsFor(cpath, layout)}
+  {@const idle = checks.sets.filter((s) => !applied.includes(s))}
+  {@const results = checks.runs[ckey] ?? {}}
+  {#if checks.running && !Object.keys(results).length}<p class="cknote" data-cprog>Checking…</p>{/if}
+  {#each applied as s (s.name)}
+    {@const r = results[s.name]}
+    {@const open = !checks.closed.includes(pre + s.name)}
+    <div class="cset" data-cset={s.name}>
+      <div class="csethd">
+        <button class="cshead" aria-expanded={open} onclick={() => toggle(pre + s.name)}><span class="chv" class:shut={!open}>{@html ICON.chev}</span><span class="csn">{s.name}</span></button>
+        {#if r}<span class="cv {r.rollup.verdict}" data-cv>{ICONCH[r.rollup.verdict]} <small>{setText(r.rollup)}</small></span>{/if}
+        <button class="cedit" data-cedit={s.name} aria-label="Edit {s.name}" data-tip="Edit this set" onclick={() => actions.checkEditor(s.name)}>{@html ICON.edit}</button>
+      </div>
+      {#if open && r}
+        {@const folded = cantCount(s, r)}
+        {#each r.rollup.groups.filter((g) => !unrunnable(g) || checks.closed.includes(`?${pre}${s.name}`)) as g (g.name)}
+          {@const gk = `${pre}${s.name}/${g.name}`}
+          {@const gopen = g.info ? checks.closed.includes('+' + gk) : !checks.closed.includes(gk)}
+          <button class="cgrp" data-cgrp={g.name} aria-expanded={gopen} onclick={() => toggle(g.info ? '+' + gk : gk)}>
+            <span class="chv" class:shut={!gopen}>{@html ICON.chev}</span><span class="cv {g.verdict}">{ICONCH[g.verdict]}</span><span class="cgn">{g.name}</span>
+            {#if g.info}<span class="muted">info only</span>{/if}
+            <span class="muted cgs">{groupText(g, s.check.filter((k) => k.group === g.name).length)}</span>
+          </button>
+          {#if gopen}
+            {#each s.check as k, i (i)}
+              {#if k.group === g.name}
+                {@const o = r.outcomes[i]}
+                {@const kk = pre + key(s.name, i)}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <div class="crow" class:sel={checks.sel === kk} class:off={!k.enabled} role="button" tabindex="0" aria-pressed={checks.sel === kk} data-tip={tip(k, o)} onclick={() => pick(kk, o)} ondblclick={() => actions.checkEditor(s.name, i)} oncontextmenu={(e) => rowMenu(e, s.name, i, kk, o)} onkeydown={(e) => e.key === 'Enter' && pick(kk, o)}>
+                  <span class="cv {o?.verdict ?? 'na'}">{k.kind === 'rule' && o?.verdict !== 'off' ? '⚑' : ICONCH[o?.verdict ?? 'na']}</span>
+                  <span class="ckn">{k.name}</span>
+                  <span class="ckd muted">{o ? outcomeText(o, at, secs) : ''}</span>
+                  <span class="ckacts">
+                    {#if o?.runs.length}
+                      <button class="cstep" data-cprev aria-label="Previous violation" data-tip="Previous" onclick={(e) => (e.stopPropagation(), go(kk, o, (at_[kk] ?? 0) - 1))}>▲</button>
+                      <button class="cstep" data-cnext aria-label="Next violation" data-tip="Next" onclick={(e) => (e.stopPropagation(), go(kk, o, (at_[kk] ?? -1) + 1))}>▼</button>
+                    {/if}
+                    {#if o?.channels.length}<button class="cstep" data-cchan aria-label="Open its channels" data-tip="Open its channels" onclick={(e) => (e.stopPropagation(), chanMenu(e, o))}>{@html ICON.vchart}</button>{/if}
+                  </span>
+                </div>
+                {#if k.kind === 'check' && o && (o.verdict === 'cant' || o.verdict === 'err' || o.verdict === 'na') && o.message}<div class="cmsg muted">{o.message}</div>{/if}
+              {/if}
+            {/each}
+          {/if}
+        {/each}
+        {#if folded}
+          <button class="cgrp cfold" data-cfold={s.name} aria-expanded={checks.closed.includes(`?${pre}${s.name}`)} onclick={() => toggle(`?${pre}${s.name}`)}>
+            <span class="cv cant">{ICONCH.cant}</span><span class="muted">{folded} {folded === 1 ? "check can't" : "checks can't"} run here</span>
+          </button>
+        {/if}
+      {/if}
+    </div>
+  {/each}
+  {#if idle.length}
+    <div class="cother">
+      <div class="muted cotitle">Not running on this file</div>
+      {#each idle as s (s.name)}
+        <div class="coset" data-cother={s.name}><span class="csn">{s.name}</span><button class="linkbtn" data-cattach={s.name} onclick={() => attach(cpath, s.name)}>Run here</button><button class="cedit show" data-cedit={s.name} aria-label="Edit {s.name}" onclick={() => actions.checkEditor(s.name)}>{@html ICON.edit}</button></div>
+      {/each}
+    </div>
+  {/if}
+  {#if applied.some((s) => !s.runs_on_any_file && (settings.checkAttach.files[cpath] ?? []).includes(s.name))}
+    <div class="cother">
+      {#each applied.filter((s) => !s.runs_on_any_file && (settings.checkAttach.files[cpath] ?? []).includes(s.name)) as s (s.name)}
+        <div class="coset"><span class="muted">{s.name} runs on this file</span><button class="linkbtn" data-cdetach={s.name} onclick={() => detach(cpath, s.name)}>Stop</button></div>
+      {/each}
+    </div>
+  {/if}
+{/snippet}
+
 
 <div class="ckin" id="checksPanel">
   <div class="phd" role="presentation" draggable="true" ondragstart={(e) => startPanelDrag(e, 'checks')} ondragend={endPanelDrag}>
@@ -151,78 +224,19 @@
           <p><b>Rule</b>: {KIND_HELP.rule.replace(/^A rule /, '')}</p>
         </div>
       {/if}
-      {#if cur}
-        <label class="ckfile"><span>Results for</span>
-          <select class="sel" data-ckfile aria-label="Which file's results" value={cur.key} onchange={(e) => (checks.file = e.currentTarget.value)}>
-            {#each ui.slots as s (s.key)}<option value={s.key}>{s.slot} · {s.name}</option>{/each}
-          </select>
-        </label>
-      {/if}
-      {#if ui.path && checks.running && !Object.keys(results).length}<p class="cknote" data-cprog>Checking…</p>{/if}
-      {#each applied as s (s.name)}
-        {@const r = results[s.name]}
-        {@const open = !checks.closed.includes(s.name)}
-        <div class="cset" data-cset={s.name}>
-          <div class="csethd">
-            <button class="cshead" aria-expanded={open} onclick={() => toggle(s.name)}><span class="chv" class:shut={!open}>{@html ICON.chev}</span><span class="csn">{s.name}</span></button>
-            {#if r}<span class="cv {r.rollup.verdict}" data-cv>{ICONCH[r.rollup.verdict]} <small>{setText(r.rollup)}</small></span>{/if}
-            <button class="cedit" data-cedit={s.name} aria-label="Edit {s.name}" data-tip="Edit this set" onclick={() => actions.checkEditor(s.name)}>{@html ICON.edit}</button>
+      {#if ui.path && multi}
+        {#each ui.slots as sl, n (sl.key)}
+          {@const fo = fileOpen(sl.key, n)}
+          {@const fs = fileSum(sl.key)}
+          <div class="cfile" data-cfile={sl.key}>
+            <button class="cfhead" aria-expanded={fo} onclick={() => (toggle(`f:${sl.key}`), fileOpen(sl.key, n) && (checks.file = sl.key))}
+              ><span class="chv" class:shut={!fo}>{@html ICON.chev}</span><span class="cfslot num">{sl.slot}</span><span class="csn">{sl.name}</span>{#if fs}<span class="cbadge" class:bad={fs.failed > 0} data-cfsum>{fs.failed ? `✗ ${fs.failed}` : fs.warned ? `! ${fs.warned}` : `✓ ${fs.passed}`}</span>{/if}</button
+            >
+            {#if fo}<div class="cfbody">{@render fileBody(sl.path, sl.key, `${sl.key}|`)}</div>{/if}
           </div>
-          {#if open && r}
-            {@const folded = cantCount(s, r)}
-            {#each r.rollup.groups.filter((g) => !unrunnable(g) || checks.closed.includes(`?${s.name}`)) as g (g.name)}
-              {@const gk = `${s.name}/${g.name}`}
-              {@const gopen = g.info ? checks.closed.includes('+' + gk) : !checks.closed.includes(gk)}
-              <button class="cgrp" data-cgrp={g.name} aria-expanded={gopen} onclick={() => toggle(g.info ? '+' + gk : gk)}>
-                <span class="chv" class:shut={!gopen}>{@html ICON.chev}</span><span class="cv {g.verdict}">{ICONCH[g.verdict]}</span><span class="cgn">{g.name}</span>
-                {#if g.info}<span class="muted">info only</span>{/if}
-                <span class="muted cgs">{groupText(g, s.check.filter((k) => k.group === g.name).length)}</span>
-              </button>
-              {#if gopen}
-                {#each s.check as k, i (i)}
-                  {#if k.group === g.name}
-                    {@const o = r.outcomes[i]}
-                    {@const kk = key(s.name, i)}
-                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                    <div class="crow" class:sel={checks.sel === kk} class:off={!k.enabled} role="button" tabindex="0" aria-pressed={checks.sel === kk} data-tip={tip(k, o)} onclick={() => pick(s.name, i, o)} ondblclick={() => actions.checkEditor(s.name, i)} oncontextmenu={(e) => rowMenu(e, s.name, i, o)} onkeydown={(e) => e.key === 'Enter' && pick(s.name, i, o)}>
-                      <span class="cv {o?.verdict ?? 'na'}">{k.kind === 'rule' && o?.verdict !== 'off' ? '⚑' : ICONCH[o?.verdict ?? 'na']}</span>
-                      <span class="ckn">{k.name}</span>
-                      <span class="ckd muted">{o ? outcomeText(o, at, secs) : ''}</span>
-                      <span class="ckacts">
-                        {#if o?.runs.length}
-                          <button class="cstep" data-cprev aria-label="Previous violation" data-tip="Previous" onclick={(e) => (e.stopPropagation(), go(s.name, i, o, (at_[kk] ?? 0) - 1))}>▲</button>
-                          <button class="cstep" data-cnext aria-label="Next violation" data-tip="Next" onclick={(e) => (e.stopPropagation(), go(s.name, i, o, (at_[kk] ?? -1) + 1))}>▼</button>
-                        {/if}
-                        {#if o?.channels.length}<button class="cstep" data-cchan aria-label="Open its channels" data-tip="Open its channels" onclick={(e) => (e.stopPropagation(), chanMenu(e, o))}>{@html ICON.vchart}</button>{/if}
-                      </span>
-                    </div>
-                    {#if k.kind === 'check' && o && (o.verdict === 'cant' || o.verdict === 'err' || o.verdict === 'na') && o.message}<div class="cmsg muted">{o.message}</div>{/if}
-                  {/if}
-                {/each}
-              {/if}
-            {/each}
-            {#if folded}
-              <button class="cgrp cfold" data-cfold={s.name} aria-expanded={checks.closed.includes(`?${s.name}`)} onclick={() => toggle(`?${s.name}`)}>
-                <span class="cv cant">{ICONCH.cant}</span><span class="muted">{folded} {folded === 1 ? "check can't" : "checks can't"} run here</span>
-              </button>
-            {/if}
-          {/if}
-        </div>
-      {/each}
-      {#if ui.path && idle.length}
-        <div class="cother">
-          <div class="muted cotitle">Not running on this file</div>
-          {#each idle as s (s.name)}
-            <div class="coset" data-cother={s.name}><span class="csn">{s.name}</span><button class="linkbtn" data-cattach={s.name} onclick={() => attach(s.name)}>Run here</button><button class="cedit show" data-cedit={s.name} aria-label="Edit {s.name}" onclick={() => actions.checkEditor(s.name)}>{@html ICON.edit}</button></div>
-          {/each}
-        </div>
-      {/if}
-      {#if ui.path && applied.some((s) => !s.runs_on_any_file && (settings.checkAttach.files[cpath] ?? []).includes(s.name))}
-        <div class="cother">
-          {#each applied.filter((s) => !s.runs_on_any_file && (settings.checkAttach.files[cpath] ?? []).includes(s.name)) as s (s.name)}
-            <div class="coset"><span class="muted">{s.name} runs on this file</span><button class="linkbtn" data-cdetach={s.name} onclick={() => detach(s.name)}>Stop</button></div>
-          {/each}
-        </div>
+        {/each}
+      {:else if ui.path}
+        {@render fileBody(ui.path, ui.path, '')}
       {/if}
     </div>
   {/if}
@@ -257,17 +271,33 @@
     height: 11px;
     margin-right: 4px;
   }
-  .ckfile {
+  /* a tab of several files: a row per file folding to its sets (W2) */
+  .cfhead {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin: 4px 12px;
-    color: var(--fg-muted);
-    font-size: 11.5px;
+    width: 100%;
+    min-height: 30px;
+    padding: 0 12px;
+    border: 0;
+    background: transparent;
+    color: var(--fg);
+    font: 13px var(--font-ui);
+    text-align: left;
+    cursor: pointer;
   }
-  .ckfile select {
-    flex: 1;
-    min-width: 0;
+  .cfhead:hover {
+    background: var(--raised);
+  }
+  .cfslot {
+    color: var(--fg-muted);
+    font-size: 11px;
+  }
+  .cfhead .cbadge {
+    margin-left: auto;
+  }
+  .cfbody {
+    padding-left: 10px;
   }
   .cknote {
     margin: 4px 12px;
