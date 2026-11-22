@@ -308,3 +308,6 @@ removed Nov 15; git history keeps them.
   menu in the Layouts panel has Open, Pin or Unpin, and for yours Rename and Delete; a pinned button's right-click has
   Open and Unpin; a pinned layout keeps its pin icon showing in the list. Settings › Icons' SVG box is full width,
   five lines, resizable, with a preview.
+- One Undo (X4, owner: "Undo should be consistent across the UI"): channels moved into a category are steps of the same
+  ⌘Z history as pane edits (per file in front), so ⌘Z steps back through them one by one and ⇧⌘Z redoes; the toast's
+  Undo does the same as ⌘Z when the move is the last step.

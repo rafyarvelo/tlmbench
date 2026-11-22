@@ -224,21 +224,31 @@ function edit(f: () => void, viewOnly = false): void {
 }
 
 /** Undo and redo for the layout (panes, their channels and views): ⌘Z and ⇧⌘Z, as any Mac app (owner, Nov 14). A step
- * belongs to the file in front; another file's history is dropped. */
-type Step = { path: string; panes: Pane[]; sel: number };
+ * belongs to the file in front; another file's history is dropped. Other edits of the file in front (channels moved
+ * into a category) join the same history as steps with their own undo and redo (owner, X4 Nov 22: one Undo everywhere). */
+type Snap = { path: string; panes: Pane[]; sel: number };
+type Act = { path: string; undo: () => void; redo: () => void };
+type Step = Snap | Act;
 const past: Step[] = [];
 const future: Step[] = [];
-const snap = (): Step => ({ path: ui.path, panes: $state.snapshot(stack.panes) as Pane[], sel: stack.sel });
-function remember(): void {
+const snap = (): Snap => ({ path: ui.path, panes: $state.snapshot(stack.panes) as Pane[], sel: stack.sel });
+function push(s: Step): void {
   if (past.length && past[past.length - 1].path !== ui.path) past.length = 0;
-  past.push(snap());
+  past.push(s);
   if (past.length > 100) past.shift();
   future.length = 0;
 }
+const remember = (): void => push(snap());
 function restore(from: Step[], to: Step[]): boolean {
   while (from.length && from[from.length - 1].path !== ui.path) from.pop();
   const s = from.pop();
   if (!s) return false;
+  if ('undo' in s) {
+    if (from === past) s.undo();
+    else s.redo();
+    to.push(s);
+    return true;
+  }
   to.push(snap());
   stack.panes.splice(0, stack.panes.length, ...s.panes);
   stack.sel = Math.min(s.sel, Math.max(0, stack.panes.length - 1));
@@ -246,10 +256,25 @@ function restore(from: Step[], to: Step[]): boolean {
   changed();
   return true;
 }
-/** Takes back the last layout change; false when there is none. */
+/** Takes back the last change; false when there is none. */
 export const undoLayout = (): boolean => restore(past, future);
 /** Does again what Undo took back; false when there is nothing. */
 export const redoLayout = (): boolean => restore(future, past);
+/**
+ * Adds an edit that isn't the panes' (it is already done) to the Undo history of the file in front. Returns what a
+ * toast's Undo runs: the same as ⌘Z when it is the last step, else that step alone, taken out of the history.
+ */
+export function undoable(undo: () => void, redo: () => void): () => void {
+  const s: Act = { path: ui.path, undo, redo };
+  push(s);
+  return () => {
+    if (past[past.length - 1] === s) return void undoLayout();
+    const k = past.indexOf(s);
+    if (k < 0) return;
+    past.splice(k, 1);
+    s.undo();
+  };
+}
 
 const rowOf = (i: number) => rows().find((r) => r.includes(i)) ?? [i];
 const copy = (panes: Pane[]): Pane[] => panes.map((p) => ({ ...p, channels: [...p.channels] }));

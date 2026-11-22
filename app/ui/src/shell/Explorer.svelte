@@ -11,7 +11,7 @@
   import { chBase, chCss, chName, chUnit } from '../display.svelte';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
-  import { addChannels, newPaneWith, note, panesOf, removeChannels, stack, toggleChannel } from '../stack.svelte';
+  import { addChannels, newPaneWith, note, panesOf, removeChannels, stack, toggleChannel, undoable } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui, viewLocked } from '../ui.svelte';
   import Alignment from './Alignment.svelte';
@@ -44,17 +44,26 @@
   }
   /** A drop of channels on a category row moves them into it (kept per file, by channel name; Undo puts them back). */
   let catOver = $state<string | null>(null);
+  /** Sets these channels' categories (undefined: back to the file's own), leaving the others as they are now. */
+  function setCats(m: Record<string, string | undefined>) {
+    const out = { ...settings.catOverride };
+    for (const [k, v] of Object.entries(m)) if (v == null) delete out[k];
+    else out[k] = v;
+    setSetting('catOverride', out);
+  }
   function dropOnCat(e: DragEvent, cat: string) {
     catOver = null;
     const raw = e.dataTransfer?.getData('application/x-tlm-channels');
     if (!raw) return;
     e.preventDefault();
     const chs = (JSON.parse(raw) as number[]).filter((ch) => ui.channels[ch]);
-    const was = settings.catOverride;
-    const next = { ...was };
-    for (const ch of chs) next[overrideKey(ui.path, ui.channels[ch].name)] = cat;
-    setSetting('catOverride', next);
-    note(`Moved ${chs.length === 1 ? ui.channels[chs[0]].name : `${chs.length} channels`} to ${cat}.`, () => setSetting('catOverride', was));
+    const keys = chs.map((ch) => overrideKey(ui.path, ui.channels[ch].name));
+    const before = Object.fromEntries(keys.map((k) => [k, settings.catOverride[k] as string | undefined]));
+    const after = Object.fromEntries(keys.map((k) => [k, cat]));
+    setCats(after);
+    // one step in the Undo history (⌘Z steps back through moves one by one, as with panes)
+    const back = undoable(() => setCats(before), () => setCats(after));
+    note(`Moved ${chs.length === 1 ? ui.channels[chs[0]].name : `${chs.length} channels`} to ${cat}.`, back);
   }
   /** Files picked together (Cmd/Ctrl-click, Shift-click a range) to open or close at once. */
   let pickedFiles = $state<string[]>([]);
