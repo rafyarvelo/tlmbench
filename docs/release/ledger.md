@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 331 · **Partial** 4 · **Missing** 4 · **Diverged** 1 · **Unverified** 25 · **Owner pass** 17 (382 rows).
+Counts: **Done** 332 · **Partial** 3 · **Missing** 4 · **Diverged** 1 · **Unverified** 25 · **Owner pass** 17 (382 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -72,7 +72,7 @@ where each step stands, and nothing else records either.
 | S4.3-09 | roadmap 4.3 | Import a folder (Import all); the data rate on imported files. | Done | `t_import` | |
 | S4.3-10 | roadmap 4.3, Done when | Every Gate 4 format opens in the app through its dialog or descriptor. | Unverified | `just gate4 app` (not run in this review: it drives the release window; last passed Nov 8 per `docs/design.md`) | Re-run in R6 |
 | S4.3-11 | roadmap 4.3, Done when | `t_descriptor` and the import tests from the prototype are ported. | Done | `t_import`, `t_profileextras`, `t_descriptor` | Nov 17. The Panes choice (Opens as, from the profile) and the already-open warning are built and ported; the "as one table" case is in `t_import`. R2.5 |
-| S4.3-12 | roadmap 4.3, Done when | The harness's import and descriptor scenes match. | Partial | `just app-parity` (import 11, descriptor 4, Nov 17) | Differences are the field widths of "Where the files go" and the prototype's extra sections (Derived channels, Categories by prefix; P5 in `parity-classes.md`); the app folds profile extras into "Also for files with this header". Not closed. R3.2 |
+| S4.3-12 | roadmap 4.3, Done when | The harness's import and descriptor scenes match. | Done | `just app-parity` (import 11, descriptor 4, Nov 17) | Nov 22, owner: **App is better** (P5): the app's "Also for files with this header" covers the prototype's Derived channels and Categories by prefix and applies to the next file with the header; not ported. The field widths of "Where the files go" are Noise (`parity-classes.md`). R3.2 |
 | S4.4-01 | roadmap 4.4 | The ⋯ menu's Export group; Export data… (five formats; view, cursors or whole; panes or every channel; wide or long; as recorded or resampled) through the `convert` writers. | Done | `t_export`, `tlmbench-export::csv_and_parquet_read_back_exactly`, `tlmbench-export::hdf5_and_mat_read_back_exactly` | |
 | S4.4-02 | roadmap 4.4 | Save the view as an image (PNG, SVG). | Done | `t_image` | Panes scrolled out of the stack aren't drawn |
 | S4.4-03 | roadmap 4.4 | The Layouts sidebar; the `.tlmbench` entry at the top of Explorer. | Done | `t_layouts` | |

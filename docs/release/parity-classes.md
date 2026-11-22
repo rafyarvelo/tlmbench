@@ -106,7 +106,7 @@ ledger A-12).**
 | `channel-hover` | the plotted name's weight (600 against 500) | **Fixed Nov 17** (500); the rest is the tick's hit area (Noise) |
 | `pane-hover` | the chip's × waits for the chip's hover in the app; the view button's opacity | Noise (the app's calm rule; D-ui-10) |
 | `table`, `table-columns`, `table-autofit`, `table-filter` | row counts and values follow the data; the bar's Go to A and B (B16); the filter row inside the header cell; the strip shows because the scene typed a filter; buttons are the app's 28 px `.tbtn` everywhere | Noise; B16 |
-| `connect`, `import`, `descriptor` | see S4.1-21 (Done), S4.3-12 and P5 | Noise; P5 still open (S4.3-12) |
+| `connect`, `import`, `descriptor` | see S4.1-21 (Done), S4.3-12 and P5 | Noise; P5 decided Nov 22: App is better (S4.3-12) |
 | `events`, `channel-editor` | P13, P14 fixed; the top row waits on the owner (above) | Owner |
 | `drag-*` | panes' few pixels of size | Noise |
 | `tooltip`, `axis-dialog` | icon button font size; the dialog's height by a few pixels | Noise |
