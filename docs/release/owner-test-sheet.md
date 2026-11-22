@@ -415,6 +415,76 @@ Notes:
 
 ---
 
+## Y. Built Nov 22 (your test notes and the decisions of Nov 17 and 22): nothing here has been seen in a real window
+
+### Y1. The two blockers: a chip to a pane's edge, and closing one of two side by side
+Do: a pane of two channels: drag one chip to the pane's own left edge, then (another time) its right edge; then hold
+Option while dropping. Then a layout of one chart on top, two side by side, one at the bottom: close the left one of the
+pair (⋯ › Close pane), Undo, close the right one; also drag the only chip of one of the pair onto the bottom chart.
+Expect: the channel moves to a new pane on that side and leaves the old one (with Option it stays in both). The other
+pane of the pair stays in its row and widens across it; nothing moves up a row.
+Result:
+Notes:
+
+### Y2. Your widgets, reworked (X3)
+Do: Gauges pane › a widget's ⋯ › Your widgets ▸ › New or edit widgets… (or Settings › Widgets › Edit…). Add an SVG and a
+code widget, rename one, add an input and a parameter to the code widget, switch its kind and back, Duplicate, Delete,
+Edit as JSON and back, Save. Then a widget in use › ⋯ › Edit this widget….
+Expect: a list on the left and a form on the right, the dialog scrolling when it is long, the preview following the form
+(a code widget runs in it); the ⋯ menu short, your widgets under "Your widgets ▸"; a renamed widget stays in its pane.
+Result:
+Notes:
+
+### Y3. Pins and icons (X1)
+Do: Settings › Icons: paste an SVG (the box is wide and can be made taller). Layouts panel: right-click a layout of yours
+and a shared one › Pin to the top bar; right-click a pinned button in the top bar › Unpin.
+Expect: a preview as you paste; a pinned layout keeps its pin showing in the list; a shared layout pins and its button
+opens it; Unpin from either right-click menu.
+Result:
+Notes:
+
+### Y4. One Undo (X4)
+Do: drag three channels onto categories one after another, close a pane in between; press ⌘Z four times, then ⇧⌘Z.
+Close a pane and use the note's Undo, then ⇧⌘Z.
+Expect: ⌘Z steps back through the moves and the pane one at a time; ⇧⌘Z redoes; the note's Undo is the same step as ⌘Z.
+Result:
+Notes:
+
+### Y5. Quiet interface (W3)
+Do: Settings › Quiet interface on, then point at a pane's header; compare with the prototype.
+Expect: as the prototype: the header shows only the view menu and ⋯ (close, split, duplicate, events and axis are in ⋯);
+chips without empty value gaps; no counts in the Explorer. Off by default, as before: say if it should be on.
+Result:
+Notes:
+
+### Y6. Rules & checks as a tree of files (W2)
+Do: a tab of two files (right-click › Add to this tab) with a set that runs on both; open Rules & checks.
+Expect: a row per file (slot, name, its ✗ or ✓ count), the first file open, the second folded; open both to compare;
+folding a set folds it in that file only. A read-only event (from the file, a rule or a check) shows its source as a tag
+on hover in the Events panel, its tooltip saying why it can't be edited (X2).
+Result:
+Notes:
+
+### Y7. A device that resets its clock (W4)
+Do: connect the TCP test sender with Reconnect on; stop it and start it again so its time starts over at 0 (the sender as
+it was before the fix).
+Expect: the strip goes RECONNECTING then LIVE; the chart keeps drawing from the new start instead of freezing, the
+fields still shown; the session folder has `source-1.tlm` and `source-1-2.tlm`.
+Result:
+Notes:
+
+### Y8. The Report tab, canvas traces, the audit items (S5.3-15, S5.4-06)
+Do: Rules & checks › Run on folder… › Run. Switch to a file tab and back; quit and reopen the app. Open Pass rates and
+trends, sort by pass rate, click a trend point. Then a Gauges pane with a sparkline and an XY dot, in light and dark.
+Then a live source's card, and a two-file tab's Alignment with a fit.
+Expect: the report is a tab in the strip (its menu only Close), back as it was without running, after a restart too;
+a point opens its file. The sparkline and XY trail crisp on a Retina screen and in both themes. "Streaming" in blue (the
+LIVE badge red); the residuals with a dashed zero line and their range in ms.
+Result:
+Notes:
+
+---
+
 ## Other things I noticed
 
 ```
@@ -448,6 +518,7 @@ Where (screen, tab, setting): main screen
 How often (always / sometimes / once): always
 Severity (blocker / annoying / cosmetic): blocker
 ```
+(Agent, Nov 22: fixed, ledger D-ui-65: dropped on its own pane's edge the chip was copied. Check it in Y1.)
 
 ```
 What I did: Had a layout with 1 chart as the top row, then 2 charts side by side as the second row, and another chart on the bottom. After removing 1 chart in the middle row, the pane moved up instead of growing horizontally
@@ -457,6 +528,7 @@ Where (screen, tab, setting): main screen
 How often (always / sometimes / once): always
 Severity (blocker / annoying / cosmetic): blocker
 ```
+(Agent, Nov 22: fixed, ledger D-ui-66: closing a pane now keeps every other pane in its row and column. Check it in Y1.)
 
 ## Anything you want built or changed (new ideas)
 
