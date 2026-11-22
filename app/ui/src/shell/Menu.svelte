@@ -35,6 +35,7 @@
 
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte';
+  import { keyName } from '../commands';
   import { ICON } from '../icons';
 
   let {
@@ -153,7 +154,7 @@
           }}
           >{#if it.icon}{@html it.icon}{/if}<span class="nm">{it.label}{#if it.note}{" "}<small class="mnote">{it.note}</small>{/if}</span>{#if it.meta}<span
               class="meta">{it.meta}</span
-            >{/if}{#if it.kbd}<kbd>{it.kbd}</kbd>{/if}{#if it.checked}<span class="ck">{@html ICON.check}</span>{/if}</button
+            >{/if}{#if it.kbd}<kbd>{keyName(it.kbd)}</kbd>{/if}{#if it.checked}<span class="ck">{@html ICON.check}</span>{/if}</button
         >
       {/if}
     {/each}

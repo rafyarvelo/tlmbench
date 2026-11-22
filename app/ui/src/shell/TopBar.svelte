@@ -2,6 +2,7 @@
      tab's ⌄ menu saves its layout (Save as… turns a file tab into a workspace tab), reverts or deletes it, and closes
      tabs. -->
 <script lang="ts">
+  import { keyName } from '../commands';
   import { ICON, userIcon } from '../icons';
   import { type Mode, PANELS, type Pin, setSetting, settings, toggleAllPanels } from '../settings.svelte';
   import { play, playActions } from '../play.svelte';
@@ -355,7 +356,7 @@
         <!-- a viewer saves nothing, shares nothing and has one window: those items are left out, not disabled; a browser tab keeps no layouts and has one window either -->
         {#if !ui.viewer && !ui.browserOnly}
         {#if !(menuTab?.live || menuTab?.report) && !menuTab?.shared}
-          <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab?.ws || !menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>⌘S</kbd></button>
+          <button class="mi" role="menuitem" data-ws="save" disabled={!menuTab?.ws || !menuTab.dirty} onclick={() => tabAct(actions.saveWs)}><span class="nm">Save layout</span><kbd>{keyName('⌘S')}</kbd></button>
         {/if}
         {#if !(menuTab?.live || menuTab?.report)}
           <button

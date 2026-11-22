@@ -2,6 +2,7 @@
      explanation and choices, and each explanation behind an ⓘ. Changes apply and save at once. -->
 <script lang="ts">
   import { TIME_FORMATS } from '../axes';
+  import { keyName } from '../commands';
   import { resetTips } from '../tips';
   import { type EventCategory, movePanel, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
@@ -42,8 +43,8 @@
     { key: 'clickMode', section: 'Files', basic: true, label: 'Clicking a row', hint: 'Select first: one click selects a file or channel, double-click (or Enter) opens a file, the checkbox plots a channel. Act at once: one click opens or plots.', options: [['select', 'Select first'], ['act', 'Act at once']] },
     { key: 'tableClickSort', section: 'Files', label: 'Click a column header to sort', hint: "Off: a click selects the column (Shift-click a range, Ctrl/Cmd-click to add) and sorting is in each header's ▾ menu." },
     { key: 'dropNewView', section: 'Files', label: 'New pane from a dragged channel', hint: "Dropping a channel where a new pane goes makes a chart. Same view keeps the view of the pane it came from, so a channel dragged out of a table makes another table.", options: [['chart', 'Chart'], ['same', 'Same view as where it came from']] },
-    { key: 'leftPanel', section: 'Display', basic: true, label: 'Left sidebar', hint: 'What it shows, picked from the rail. Ctrl+B.', options: [['explorer', 'Explorer'], ['events', 'Events'], ['layouts', 'Layouts'], ['measure', 'Measure'], ['settings', 'Settings'], ['', 'Hidden']] },
-    { key: 'measureOpen', section: 'Display', basic: true, label: 'Right sidebar', hint: 'Cursor values and stats, unless you moved other panels there. Ctrl+Alt+B. With Measure on it, it also opens by itself when both cursors are placed (see below).' },
+    { key: 'leftPanel', section: 'Display', basic: true, label: 'Left sidebar', hint: 'What it shows, picked from the rail. ⌘B.', options: [['explorer', 'Explorer'], ['events', 'Events'], ['layouts', 'Layouts'], ['measure', 'Measure'], ['settings', 'Settings'], ['', 'Hidden']] },
+    { key: 'measureOpen', section: 'Display', basic: true, label: 'Right sidebar', hint: 'Cursor values and stats, unless you moved other panels there. ⌥⌘B. With Measure on it, it also opens by itself when both cursors are placed (see below).' },
     { key: 'showHints', section: 'Display', label: 'Show tips and extra controls', hint: 'How-to notes in the panels.' },
     { key: 'quietUI', section: 'Display', basic: true, label: 'Quiet interface', hint: 'Hides badges and readouts until they matter: the panes a channel is in, counts, chip values while you point at a plot, file numbers in the folder until you point at a file, resize grips until you hover them. A pane’s header keeps its view and ⋯; close, split, duplicate, events and axis are in ⋯.' },
     { key: 'codeWidgets', section: 'Display', label: 'Run code widgets', hint: 'Off: a widget made of code stays a plain value card and never asks to run. For a machine that must not run any shared code.' },
@@ -226,7 +227,7 @@
         {#if r.options}
           <div class="row">
             <span>{r.label}{#if r.hint}<button class="info" aria-label="About {r.label}" aria-expanded={!!open[r.key]} onclick={() => (open[r.key] = !open[r.key])}>ⓘ</button>{/if}
-              {#if r.hint && open[r.key]}<span class="hint">{r.hint}</span>{/if}</span>
+              {#if r.hint && open[r.key]}<span class="hint">{keyName(r.hint)}</span>{/if}</span>
             <select class="sel" data-set={r.key} aria-label={r.label} value={settings[r.key]} onchange={(e) => setSetting(r.key, e.currentTarget.value as never)}>
               {#each r.options as [v, l] (v)}<option value={v}>{l}</option>{/each}
             </select>
@@ -235,7 +236,7 @@
           <label class="switch">
             <input type="checkbox" role="switch" data-set={r.key} checked={!!settings[r.key]} onchange={(e) => setSetting(r.key, e.currentTarget.checked as never)} />
             <span>{r.label}{#if r.hint}<button class="info" aria-label="About {r.label}" aria-expanded={!!open[r.key]} onclick={(e) => { e.preventDefault(); open[r.key] = !open[r.key]; }}>ⓘ</button>{/if}
-              {#if r.hint && open[r.key]}<span class="hint">{r.hint}</span>{/if}</span>
+              {#if r.hint && open[r.key]}<span class="hint">{keyName(r.hint)}</span>{/if}</span>
           </label>
         {/if}
       {/each}

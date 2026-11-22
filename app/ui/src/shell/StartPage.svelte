@@ -2,6 +2,7 @@
      recent sessions and recordings beside live sources and layouts. It is what shows with no file open; the logo in the
      rail opens it over the tabs, and Esc or any open closes it. -->
 <script lang="ts">
+  import { keyName } from '../commands';
   import { ICON } from '../icons';
   import { live, liveActions } from '../live.svelte';
   import { setSetting, settings } from '../settings.svelte';
@@ -66,7 +67,7 @@
       {#if ui.canFolder}
         <button class="card" data-start="folder" onclick={go(actions.openFolder)}>{@html ICON.folder}<span class="tx"><b>Open folder…</b><span>A folder of runs: CSV, Parquet, or binary logs with a descriptor</span></span></button>
       {/if}
-      <button class="card" data-start="open" onclick={go(actions.open)}>{@html ICON.file}<span class="tx"><b>Open recording… <kbd>⌘O</kbd></b><span>One file, in its own tab with a starter layout</span></span></button>
+      <button class="card" data-start="open" onclick={go(actions.open)}>{@html ICON.file}<span class="tx"><b>Open recording… <kbd>{keyName('⌘O')}</kbd></b><span>One file, in its own tab with a starter layout</span></span></button>
       {#if !ui.browserOnly}
         <button class="card live" data-start="live" onclick={go(() => liveActions.openConnect(false))}>{@html ICON.live}<span class="tx"><b>Connect live source…</b><span>Serial, UDP, TCP, or tail a file being written. Try file playback.</span></span></button>
       {/if}

@@ -66,6 +66,23 @@ export const COMMANDS: Command[] = [
   { id: 'tipsAgain', menu: 'Help', label: 'Show the tips again' },
 ];
 
+const MAC = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
+
+/**
+ * Shortcuts as people read them on their platform. The app writes them the Mac way (⌘S, ⌥⌘B, ⌘⇧N, ⌥←); on Windows and
+ * Linux each becomes Ctrl+S, Ctrl+Alt+B, Ctrl+Shift+N, Alt+←. Tooltips, menus and hints all pass through here.
+ */
+export function keyName(text: string, mac = MAC): string {
+  if (mac) return text;
+  return text.replace(/([⌃⌥⇧⌘]+)([A-Za-z0-9]+|\S)/g, (_, mods: string, k: string) => {
+    const m: string[] = [];
+    if (mods.includes('⌘') || mods.includes('⌃')) m.push('Ctrl');
+    if (mods.includes('⌥')) m.push('Alt');
+    if (mods.includes('⇧')) m.push('Shift');
+    return [...m, k].join('+');
+  });
+}
+
 /** The label as the menu shows it: a single-key shortcut goes in brackets after it. */
 export const menuLabel = (c: Command): string => (c.key ? `${c.label} (${c.key})` : c.label);
 

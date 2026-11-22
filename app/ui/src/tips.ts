@@ -2,6 +2,7 @@
 // and for 1.5 s after one has shown). Short (the default) shows the first sentence and the shortcut, and a tip
 // retires after three showings; Full shows everything every time; Off shows none. Settings → Tooltips.
 
+import { keyName } from './commands';
 import { saveSettings, settings } from './settings.svelte';
 
 const DELAY = 700;
@@ -38,7 +39,7 @@ function show(target: HTMLElement): void {
   }
   el ??= Object.assign(document.createElement('div'), { className: 'tip', role: 'tooltip', hidden: true });
   if (!el.isConnected) document.body.append(el);
-  el.textContent = text;
+  el.textContent = keyName(text);
   el.hidden = false;
   const r = target.getBoundingClientRect();
   const w = el.offsetWidth;
