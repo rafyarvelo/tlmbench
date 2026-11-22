@@ -6,13 +6,15 @@
 
 use std::sync::{Arc, RwLock};
 
+use tlmbench_core::mask::Mask;
 use tlmbench_core::pyramid::Stats;
+use tlmbench_core::table::{Col, Filter, Rows, SortKey};
 use tlmbench_core::timemap::TimeMap;
 use tlmbench_core::{RecordingInfo, Timestamp, Viewport};
 
 use crate::widgets::{Frame, WidgetOut, WidgetReq};
 use crate::xy::{Xy, XyReq};
-use crate::{Opened, Precision, Request, Status, View};
+use crate::{HeldCols, Opened, Precision, Request, Status, View};
 
 /// One file of a group.
 #[derive(Debug)]
@@ -271,19 +273,24 @@ impl Group {
         head.map(|(index, t)| Frame { index, t, widgets: out })
     }
 
-    /// An XY plot of channels of one file (pairing is by sample, so they share their times); `None` when the
-    /// channels are in different files.
+    /// An XY plot of any channels of the tab, paired on the shared timeline at the X channel's samples: a Y channel
+    /// of another file is held between its samples (its last at or before each, NaN before its first), so two files
+    /// at different rates pair without resampling the X file. `None` for a channel out of range.
     pub fn xy_points(&self, q: &XyReq) -> Option<Xy> {
         let (sx, lx) = self.route(q.x)?;
+        let slot = &self.slots[sx];
+        // another file's Y channels go past the X file's own, at `own + k` for `foreign[k]`
+        let mut foreign: Vec<usize> = Vec::new();
         let mut ys = Vec::with_capacity(q.ys.len());
         for &y in &q.ys {
             let (s, l) = self.route(y)?;
-            if s != sx {
-                return None;
-            }
-            ys.push(l);
+            ys.push(if s == sx {
+                l
+            } else {
+                foreign.push(y);
+                slot.count + foreign.len() - 1
+            });
         }
-        let slot = &self.slots[sx];
         let m = slot.map();
         let sub = XyReq {
             x: lx,
@@ -294,12 +301,49 @@ impl Group {
             grid: q.grid,
             max_points: q.max_points,
         };
-        let mut r = slot.opened.xy_points(&sub);
+        let held = |c: usize, own: &[Timestamp]| {
+            let shared: Vec<Timestamp> = own.iter().map(|&t| m.apply(t)).collect();
+            self.held_column(foreign[c - slot.count], &shared)
+        };
+        let mut r = slot.opened.xy_points_with(&sub, (!foreign.is_empty()).then_some(&held as HeldCols));
         for s in &mut r.series {
-            s.channel += slot.first;
+            s.channel = if s.channel < slot.count { s.channel + slot.first } else { foreign[s.channel - slot.count] };
             s.t.iter_mut().for_each(|t| *t = m.apply(*t));
         }
         Some(r)
+    }
+
+    /// The primary's rows in the shared span (the primary's clock is the timeline) that pass `filters`, in `sort`
+    /// order, by any file's columns: another file's column is read held at the rows' times, as the table shows it
+    /// (see [`Opened::select_rows`]).
+    pub fn select_rows(
+        &self,
+        span: (Timestamp, Timestamp),
+        filters: Vec<(Col, Filter)>,
+        sort: Vec<SortKey>,
+        progress: &(dyn Fn(f64) -> bool + Sync),
+    ) -> Option<(usize, Rows)> {
+        let held = |c: usize, own: &[Timestamp]| self.held_at_primary(c, own);
+        self.primary().select_rows_with(span, filters, sort, Some(&held), progress)
+    }
+
+    /// Apply to charts by any file's columns: the primary's rows the filters don't pass, as a mask of the primary
+    /// (see [`Opened::filter_mask`]).
+    pub fn filter_mask(
+        &self,
+        span: (Timestamp, Timestamp),
+        filters: Vec<(Col, Filter)>,
+        progress: &(dyn Fn(f64) -> bool + Sync),
+    ) -> Option<Mask> {
+        let held = |c: usize, own: &[Timestamp]| self.held_at_primary(c, own);
+        self.primary().filter_mask(span, filters, Some(&held), progress)
+    }
+
+    /// Another file's column at the primary's own times.
+    fn held_at_primary(&self, channel: usize, own: &[Timestamp]) -> Vec<f64> {
+        let m = self.slots[0].map();
+        let shared: Vec<Timestamp> = own.iter().map(|&t| m.apply(t)).collect();
+        self.held_column(channel, &shared)
     }
 
     /// A column of another file read at the rows' shared times: each row shows the file's last sample at or before

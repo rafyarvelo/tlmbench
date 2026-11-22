@@ -127,6 +127,13 @@
     const info = { path: p.path, format: 'tlm', samples: p.samples, time: { kind: 'rate', hz: p.rate }, channels: o.r.chans, skipped: [] };
     return { id, info, range: [String(lo), String(hi)], status: { state: 'built' }, slots };
   }
+  // a cell of a table's row `i`: in a tab of several files another file's channel holds its last sample, as the core's does
+  function cellValue(file, r, ch, i) {
+    const o = fake.open.get(file);
+    const route = o?.group ? groupRoute(o, ch) : null;
+    if (!route || route.m === o.group.members[0]) return valueAt(r, ch, i);
+    return valueAt(route.r, route.local, Math.min(route.r.samples - 1, Math.floor((i * route.r.rate) / r.rate)));
+  }
   function groupRoute(o, ch) {
     let first = 0;
     for (let i = 0; i < o.group.members.length; i++) {
@@ -977,7 +984,7 @@
           const i = ids.first + id;
           v.setBigInt64(32 + 8 * k, timeAt(r, i), true);
           v.setBigUint64(32 + 8 * n + 8 * k, BigInt(i), true);
-          chans.forEach((ch, c) => v.setFloat64(32 + 16 * n + 8 * n * c + 8 * k, valueAt(r, ch, i), true));
+          chans.forEach((ch, c) => v.setFloat64(32 + 16 * n + 8 * n * c + 8 * k, cellValue(file, r, ch, i), true));
         });
         return buf;
       }
@@ -1028,7 +1035,7 @@
       if (!r) throw 'that file is not open';
       fake.maskCalls.push({ owner, filters });
       const preds = filters.map((f) => [f.col, parseFilter(f.expr).test]);
-      const val = (col, i) => (col === 't' ? Number(timeAt(r, i)) : valueAt(r, Number(col.slice(1)), i));
+      const val = (col, i) => (col === 't' ? Number(timeAt(r, i)) : cellValue(file, r, Number(col.slice(1)), i));
       let kept = 0;
       const runs = [];
       for (let i = 0; i < r.samples; i++) {
@@ -1059,7 +1066,7 @@
       const lower = (t) => Math.max(0, Math.min(r.samples, Math.ceil(Number(BigInt(t) - (r.t0 ?? T0)) / Number(dtNs(r)))));
       const a = lower(span.t0);
       const b = Math.max(a, lower(span.t1));
-      const val = (col, i) => (col === 't' ? Number(timeAt(r, i)) : valueAt(r, Number(col.slice(1)), i));
+      const val = (col, i) => (col === 't' ? Number(timeAt(r, i)) : cellValue(file, r, Number(col.slice(1)), i));
       const preds = filters.map((f) => [f.col, parseFilter(f.expr).test]);
       let ids = [];
       for (let i = a; i < b; i++) if (preds.every(([c, t]) => t(val(c, i)))) ids.push(i - a);

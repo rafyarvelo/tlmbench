@@ -614,8 +614,9 @@ fn held(d: &Ds, c: usize, a: usize, b: usize) -> Vec<f64> {
     (a..b).map(|i| raw.get(i).unwrap_or(f64::NAN)).collect()
 }
 
-/// An XY plot (see the app's `xy_points`): Y channels against an X channel of one file over a span, the pairs reduced
-/// to a grid of cells. Samples are paired by index, so the channels share their times.
+/// An XY plot (see the app's `xy_points`): Y channels against an X channel over a span, the pairs reduced to a grid
+/// of cells. Pairs follow the X file's samples: a Y channel of the same file by index, one of another file held at
+/// each sample's shared time (its last sample at or before it; one the export doesn't hold is missing).
 /// Little-endian: `TLMX`, u32 series, u32 flags (bit 0 sampled, bit 1 has a range), u32 0, f64 x0, x1, y0, y1; then per
 /// series u32 channel, u32 n, and n x i64 time, n x f64 x, n x f64 y (NaN pairs break the line).
 fn xy_points(st: &State, a: &Value) -> Result<Reply, String> {
@@ -631,12 +632,20 @@ fn xy_points(st: &State, a: &Value) -> Result<Reply, String> {
         ask["ys"].as_array().into_iter().flatten().filter_map(Value::as_u64).map(|y| y as usize).filter(|&y| y < total)
     {
         let (s, l) = route(&sl, y).ok_or("no such channel")?;
-        if s != sx {
-            return Err("An XY plot pairs channels of one file".into());
-        }
-        ys.push((y, l));
+        ys.push((y, s, l));
     }
     let (d, m) = (sl[sx].ds, &sl[sx].map);
+    let ycol = |s: usize, l: usize, a: usize, b: usize| -> Vec<f64> {
+        if s == sx {
+            return held(d, l, a, b);
+        }
+        let o = &sl[s];
+        let at = |t: i64| o.ds.lower_bound(o.map.inverse(m.apply(t)).saturating_add(1)).checked_sub(1);
+        d.read_times(a, b)
+            .into_iter()
+            .map(|t| at(t).and_then(|i| o.ds.cols[l].raw.get(i)).unwrap_or(f64::NAN))
+            .collect()
+    };
     let rect: Option<[f64; 4]> = ask["rect"]
         .as_array()
         .filter(|r| r.len() == 4)
@@ -644,7 +653,7 @@ fn xy_points(st: &State, a: &Value) -> Result<Reply, String> {
     let grid = (ask["grid"][0].as_u64().unwrap_or(1).max(1) as f64, ask["grid"][1].as_u64().unwrap_or(1).max(1) as f64);
     let max_points = ask["maxPoints"].as_u64().unwrap_or(100_000) as usize;
     let (lo, hi) = (d.lower_bound(m.inverse(t0)), d.lower_bound(m.inverse(t1)));
-    let mut series: Vec<XySeries> = ys.iter().map(|&(c, _)| (c, Vec::new(), Vec::new(), Vec::new())).collect();
+    let mut series: Vec<XySeries> = ys.iter().map(|&(c, _, _)| (c, Vec::new(), Vec::new(), Vec::new())).collect();
     let (mut range, mut sampled) = (None::<[f64; 4]>, false);
     if hi > lo {
         // pass 1: the range of the pairs
@@ -653,8 +662,8 @@ fn xy_points(st: &State, a: &Value) -> Result<Reply, String> {
         while s0 < hi {
             let b = (s0 + XY_SLICE).min(hi);
             let xs = held(d, lx, s0, b);
-            for &(_, yl) in &ys {
-                for (&xv, &yv) in xs.iter().zip(&held(d, yl, s0, b)) {
+            for &(_, ysl, yl) in &ys {
+                for (&xv, &yv) in xs.iter().zip(&ycol(ysl, yl, s0, b)) {
                     if xv.is_finite() && yv.is_finite() {
                         r = [r[0].min(xv), r[1].max(xv), r[2].min(yv), r[3].max(yv)];
                     }
@@ -673,14 +682,14 @@ fn xy_points(st: &State, a: &Value) -> Result<Reply, String> {
             };
             let inside =
                 |xv: f64, yv: f64| rect.is_none() || (xv >= rc[0] && xv <= rc[1] && yv >= rc[2] && yv <= rc[3]);
-            for (s, &(_, yl)) in series.iter_mut().zip(&ys) {
+            for (s, &(_, ysl, yl)) in series.iter_mut().zip(&ys) {
                 let mut last: Option<(i64, i64)> = None;
                 let mut was_in = false;
                 let mut pending: Option<(i64, f64, f64)> = None;
                 let mut s0 = lo;
                 while s0 < hi {
                     let b = (s0 + XY_SLICE).min(hi);
-                    let (xs, yv, ts) = (held(d, lx, s0, b), held(d, yl, s0, b), d.read_times(s0, b));
+                    let (xs, yv, ts) = (held(d, lx, s0, b), ycol(ysl, yl, s0, b), d.read_times(s0, b));
                     for k in 0..xs.len() {
                         let (xk, yk) = (xs[k], yv[k]);
                         let t = m.apply(ts[k]);
@@ -1127,6 +1136,27 @@ mod tests {
         assert!(st.groups.is_empty() && st.files.iter().all(Option::is_some));
         dispatch(&mut st, "close", &json!({ "file": 1 }), &[]).unwrap();
         assert!(st.files[1].is_none() && st.files[0].is_some());
+    }
+
+    #[test]
+    fn xy_pairs_two_files_on_the_shared_timeline() {
+        // x is file 1's channel, y file 2's (10 s later, raw held from its 20 s to 30 s): pairs at file 1's samples
+        let (st, g) = two_files();
+        let xy = |t0_s: i64, t1_s: i64| {
+            let a = json!({ "file": g, "span": { "t0": (t0_s * 1_000_000_000).to_string(), "t1": (t1_s * 1_000_000_000).to_string() },
+                "ask": { "x": 0, "ys": [1], "grid": [200, 200], "maxPoints": 100000 } });
+            let Reply::Bytes(b) = xy_points(&st, &a).unwrap() else { unreachable!() };
+            b
+        };
+        let f = |b: &[u8], k: usize| f64::from_le_bytes(b[16 + 8 * k..24 + 8 * k].try_into().unwrap());
+        let b = xy(30, 40);
+        assert_eq!(u32::from_le_bytes(b[48..52].try_into().unwrap()), 1, "the series is file 2's channel");
+        let (xmin, xmax, _) = brute(30_000, 40_000);
+        let (ymin, ymax, _) = brute(20_000, 30_000);
+        assert_eq!([f(&b, 0), f(&b, 1), f(&b, 2), f(&b, 3)], [xmin, xmax, ymin, ymax]);
+        // where file 2 holds nothing there are no pairs
+        let none = xy(45, 50);
+        assert_eq!(u32::from_le_bytes(none[8..12].try_into().unwrap()) >> 1 & 1, 0);
     }
 
     #[test]

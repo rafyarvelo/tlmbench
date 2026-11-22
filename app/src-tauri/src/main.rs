@@ -2050,13 +2050,12 @@ struct ColSpec {
     desc: bool,
 }
 
-/// Sorting and filtering read the first file's samples: a column of another file in the tab can't be used for them
-/// (it shows, held between its samples, but has no row of its own).
-fn own_col(o: &StoreOpened, c: Col) -> Result<Col, String> {
+/// A column the table's file can sort and filter by: its own, or (in a tab of several files) any file's, held
+/// between that file's samples at the rows' times.
+fn own_col(o: &StoreOpened, g: Option<&Group>, c: Col) -> Result<Col, String> {
+    let n = g.map_or_else(|| o.recording().info().channels.len(), |g| g.info().channels.len());
     match c {
-        Col::Channel(n) if n >= o.recording().info().channels.len() => {
-            Err("Sort and filter work on the columns of file 1; other files' columns show beside them".into())
-        }
+        Col::Channel(k) if k >= n => Err(format!("no column {k}")),
         c => Ok(c),
     }
 }
@@ -2098,16 +2097,17 @@ async fn table_query<R: tauri::Runtime>(
     files: State<'_, Files>,
 ) -> Result<QueryDone, String> {
     let o = files.get(file)?;
+    let g = files.group(file);
     let (t0, t1) = (parse_time(&span.t0)?, parse_time(&span.t1)?);
     let mut fs = Vec::new();
     for f in &filters {
         if let Some(p) = Filter::parse(&f.expr)? {
-            fs.push((own_col(&o, col_of(&f.col)?)?, p));
+            fs.push((own_col(&o, g.as_deref(), col_of(&f.col)?)?, p));
         }
     }
     let sort = sort
         .iter()
-        .map(|k| Ok(SortKey { col: own_col(&o, col_of(&k.col)?)?, descending: k.desc }))
+        .map(|k| Ok(SortKey { col: own_col(&o, g.as_deref(), col_of(&k.col)?)?, descending: k.desc }))
         .collect::<Result<Vec<_>, String>>()?;
     let stop = Arc::new(AtomicBool::new(false));
     files.cancels.lock().unwrap().insert(token, stop.clone());
@@ -2127,7 +2127,11 @@ async fn table_query<R: tauri::Runtime>(
         };
         let total = o.recording().lower_bound(t1).saturating_sub(o.recording().lower_bound(t0)) as u64;
         let filtered = !fs.is_empty();
-        o.select_rows((t0, t1), fs, sort, &report).map(|(first, rows)| {
+        let got = match &g {
+            Some(g) => g.select_rows((t0, t1), fs, sort, &report),
+            None => o.select_rows((t0, t1), fs, sort, &report),
+        };
+        got.map(|(first, rows)| {
             let hits = if filtered { match_runs(o.recording(), first, &rows.ids) } else { Vec::new() };
             (total, first, rows, hits)
         })
@@ -2255,10 +2259,11 @@ async fn table_mask<R: tauri::Runtime>(
     files: State<'_, Files>,
 ) -> Result<QueryDone, String> {
     let o = files.get(file)?;
+    let g = files.group(file);
     let mut fs = Vec::new();
     for f in &filters {
         if let Some(p) = Filter::parse(&f.expr)? {
-            fs.push((own_col(&o, col_of(&f.col)?)?, p));
+            fs.push((own_col(&o, g.as_deref(), col_of(&f.col)?)?, p));
         }
     }
     if fs.is_empty() {
@@ -2275,7 +2280,10 @@ async fn table_mask<R: tauri::Runtime>(
             let _ = app.emit("table-progress", serde_json::json!({ "token": token, "done": done }));
             !stop.load(Ordering::Relaxed)
         };
-        o2.filter_mask((t0, t1), fs, &report)
+        match &g {
+            Some(g) => g.filter_mask((t0, t1), fs, &report),
+            None => o2.filter_mask((t0, t1), fs, None, &report),
+        }
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -2548,7 +2556,7 @@ async fn xy_points(file: u32, span: Span, ask: XyAsk, files: State<'_, Files>) -
             max_points: ask.max_points.unwrap_or(100_000) as usize,
         };
         let r = match &g {
-            Some(g) => g.xy_points(&q).ok_or_else(|| "An XY plot pairs channels of one file".to_string())?,
+            Some(g) => g.xy_points(&q).ok_or_else(|| "no such channel".to_string())?,
             None => o.xy_points(&q),
         };
         let mut out = Vec::with_capacity(48 + r.series.iter().map(|s| 8 + 24 * s.x.len()).sum::<usize>());

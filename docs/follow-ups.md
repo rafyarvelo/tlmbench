@@ -334,3 +334,14 @@ removed Nov 15; git history keeps them.
   track) draw on a canvas under the widget's SVG; text, grid, marks and the dot stay SVG, and dials stay SVG. The
   canvas is sized in device pixels and reads the theme's colours at each draw. Code widgets and SVG widgets of your own
   are unchanged.
+
+## Tables and XY across files (Nov 22, second run)
+
+- A table in a tab of several files sorts, filters, steps through matches and applies to charts by any file's column
+  (S5.6-13). Its rows are still the primary's samples; another file's column is read at each row's time, held from that
+  file's last sample at or before it (blank before its first), as the table shows it. A filter on such a column passes
+  or fails the primary's rows; Apply to charts leaves the primary's rows out.
+- An XY plot pairs channels of different files on the shared timeline (S5.6-13): the pairs follow the X channel's file's
+  samples, and a Y channel of another file is held at each of them, so nothing is resampled and the X file's rate
+  decides how many points there are. Before another file's first sample there are no pairs. The HTML viewer pairs the
+  same way.

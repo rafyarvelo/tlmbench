@@ -39,6 +39,25 @@ run(
     check('the other file\'s cells that repeat the one above are dimmed', await until(() => document.querySelectorAll('#stack .trw > span.held').length > 0), await p.$$eval('#stack .tth', (h) => h.map((x) => x.dataset.col)));
     check('the first file\'s cells are not', !(await p.$('#stack .trw > span.held:nth-child(3)')));
     check('and the status line says how they show', /held between their samples, dimmed when unchanged/.test(await text('#stack [data-tstat]')), await text('#stack [data-tstat]'));
+
+    // sort and filter by the other file's column (S5.6-13): the core reads it held at the rows' times
+    const col8 = () => p.$$eval('#stack .trw', (rs) => rs.slice(0, 40).map((r) => Number((r.children[3]?.textContent ?? '').replace('\u2212', '-').replace(/[^0-9.eE+-]/g, ''))));
+    await p.click('#stack [data-colmenu="c8"]');
+    await p.click('.colmenu [data-hm="desc"]');
+    check('a sort by gps\'s column goes to the core', await until(() => window.__tlmFake.queriesRun.at(-1)?.sort?.[0]?.col === 'c8'), await p.evaluate(() => window.__tlmFake.queriesRun.at(-1)));
+    await until(() => !/Sorting/.test(document.querySelector('#stack [data-tstat]')?.textContent ?? ''));
+    const sorted = await col8();
+    check('and the rows come back in the order of its held values', sorted.length > 5 && sorted.every((v, k) => k === 0 || v <= sorted[k - 1]), sorted);
+    await p.fill('#stack [data-filter="c8"]', '> 0');
+    check('a filter on it narrows the rows', await until(() => window.__tlmFake.queriesRun.at(-1)?.filters?.[0]?.col === 'c8' && /of [0-9,]+ rows in view/.test(document.querySelector('#stack [data-tstat]')?.textContent ?? '')), await text('#stack [data-tstat]'));
+    const kept = await col8();
+    check('every row left passes on the held value', kept.length > 0 && kept.every((v) => v > 0), kept);
+    await p.fill('#stack [data-filter="c8"]', '');
+
+    // XY across the two files (S5.6-13): flight's channel against gps's, which the core pairs on the shared timeline
+    await p.click('#stack [data-pane="0"] [data-vmenu]');
+    await p.click('.menu [data-vm="xy"]');
+    check('an XY pane of both files asks for the pair', await until(() => { const a = window.__tlmFake.xyAsks.at(-1)?.ask; return a?.x === 0 && JSON.stringify(a.ys) === '[8]'; }), await p.evaluate(() => window.__tlmFake.xyAsks.at(-1)));
     await p.click('#stack [data-pane="0"] [data-vmenu]');
     await p.click('.menu [data-vm="chart"]');
 

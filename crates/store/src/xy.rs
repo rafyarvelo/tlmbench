@@ -7,7 +7,7 @@
 use serde::Serialize;
 use tlmbench_core::Timestamp;
 
-use crate::Opened;
+use crate::{HeldCols, Opened};
 
 /// Samples read at a time.
 const SLICE: usize = 1 << 18;
@@ -48,6 +48,12 @@ pub struct Xy {
 
 impl Opened {
     pub fn xy_points(&self, q: &XyReq) -> Xy {
+        self.xy_points_with(q, None)
+    }
+
+    /// [`Opened::xy_points`] with channels past the file's own read by `held` at this file's sample times (another
+    /// file's, held between its samples): the pairs follow this file's samples.
+    pub fn xy_points_with(&self, q: &XyReq, held: Option<HeldCols>) -> Xy {
         let (lo, hi) = (self.rec.lower_bound(q.t0), self.rec.lower_bound(q.t1));
         let mut out = Xy {
             series: q.ys.iter().map(|&c| XySeries { channel: c, ..Default::default() }).collect(),
@@ -57,9 +63,14 @@ impl Opened {
             return out;
         }
         let mask = self.mask.read().unwrap().clone();
+        let own = self.rec.info().channels.len();
         let read = |c: usize, a: usize, b: usize| {
-            let (scale, offset) = self.rec.scale_offset(c);
-            let mut v = self.rec.read(c, a, b).to_f64(scale, offset);
+            let mut v = if c >= own {
+                held.map_or_else(|| vec![f64::NAN; b - a], |h| h(c, &self.rec.read_times(a, b)))
+            } else {
+                let (scale, offset) = self.rec.scale_offset(c);
+                self.rec.read(c, a, b).to_f64(scale, offset)
+            };
             if !mask.is_empty() {
                 for (k, x) in v.iter_mut().enumerate() {
                     if mask.hides(a + k) {

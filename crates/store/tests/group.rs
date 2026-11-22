@@ -184,3 +184,67 @@ fn a_recipe_reads_another_files_channel_through_its_time_map() {
     let diff = d.opened.unwrap().recording().read(0, 3000, 17_000).to_f64(1.0, 0.0);
     assert!(diff.iter().any(|x| x.abs() > 0.1), "a different map gives a different channel (and its own cache entry)");
 }
+
+/// A file of one f32 channel at `rate_hz` with these values.
+fn write_values(path: &Path, name: &str, rate_hz: f64, values: &[f32]) {
+    let mut d = descriptor(name);
+    d.time = TimeSpec::Rate { rate_hz, t0_ns: 0 };
+    let mut f = fs::File::create(path).unwrap();
+    reference::write_header(&mut f, &d).unwrap();
+    f.write_all(&values.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>()).unwrap();
+}
+
+#[test]
+fn tables_sort_and_filter_and_xy_pairs_by_another_files_held_column() {
+    use tlmbench_core::table::{Col, Filter, SortKey};
+    use tlmbench_store::xy::XyReq;
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pb) = (dir.path().join("a.tlm"), dir.path().join("b.tlm"));
+    // a: 100 samples at 1 kHz (0..99 ms), its value the ms; b: 10 at 100 Hz, falling 9..0, placed 20 ms later
+    write_values(&pa, "a", 1000.0, &(0..100).map(|i| i as f32).collect::<Vec<_>>());
+    write_values(&pb, "b", 100.0, &(0..10).map(|i| (9 - i) as f32).collect::<Vec<_>>());
+    let store = Store::new(Some(&dir.path().join("cache")));
+    let a = Arc::new(store.open(&pa, None).unwrap());
+    let b = Arc::new(store.open(&pb, None).unwrap());
+    let g = Group::new(vec![(a, TimeMap::identity()), (b, TimeMap::offset(20_000_000))], vec![1, 2]);
+    let all = (0, 100_000_000);
+    let go = |_: f64| true;
+    // the held value of b at a's row r (ms): NaN before 20 ms, then 9 - (r - 20) / 10
+    let held = |r: u32| if r < 20 { f64::NAN } else { f64::from(9 - (r as i32 - 20) / 10) };
+
+    // a filter on b's column keeps a's rows where b's held value passes
+    let f = |t: &str| Filter::parse(t).unwrap().unwrap();
+    let (first, rows) = g.select_rows(all, vec![(Col::Channel(1), f(">= 8"))], Vec::new(), &go).unwrap();
+    assert_eq!(first, 0);
+    assert_eq!(rows.ids, (20..40).collect::<Vec<u32>>());
+
+    // a sort by b's column: ascending puts the lowest held value first and the rows before b's start (blank) last
+    let by = SortKey { col: Col::Channel(1), descending: false };
+    let (_, rows) = g.select_rows(all, Vec::new(), vec![by], &go).unwrap();
+    assert_eq!(rows.ids.len(), 100);
+    let keys: Vec<f64> = rows.ids.iter().map(|&r| held(r)).collect();
+    assert_eq!(keys[0], 2.0);
+    assert!(keys[..80].is_sorted(), "{keys:?}");
+    assert!(keys[80..].iter().all(|k| k.is_nan()));
+
+    // Apply to charts by b's column hides a's other rows
+    let mask = g.filter_mask(all, vec![(Col::Channel(1), f("<= 2"))], &go).unwrap();
+    assert_eq!(mask.excluded(), 90);
+
+    // XY of a against b: paired at a's samples on the shared timeline, b held, nothing before b starts
+    let q = XyReq { x: 0, ys: vec![1], t0: 0, t1: 100_000_000, rect: None, grid: (10_000, 10_000), max_points: 0 };
+    let r = g.xy_points(&q).unwrap();
+    assert_eq!(r.series.len(), 1);
+    let s = &r.series[0];
+    assert_eq!(s.channel, 1);
+    assert_eq!(r.range, Some([20.0, 99.0, 2.0, 9.0]));
+    assert_eq!(s.x.first(), Some(&20.0));
+    for (x, y) in s.x.iter().zip(&s.y) {
+        assert_eq!(*y, held(*x as u32), "at {x}");
+    }
+    // the other way round (X from b) pairs at b's samples, a held at each
+    let r = g.xy_points(&XyReq { x: 1, ys: vec![0], ..q }).unwrap();
+    assert_eq!(r.series[0].channel, 0);
+    assert_eq!(r.series[0].x, (0..8).map(|i| f64::from(9 - i)).collect::<Vec<_>>());
+    assert_eq!(r.series[0].y, (0..8).map(|i| f64::from(20 + 10 * i)).collect::<Vec<_>>());
+}

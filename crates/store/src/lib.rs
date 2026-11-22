@@ -85,6 +85,10 @@ use tlmbench_decode::OpenOptions;
 use tlmbench_decode::profile::ImportProfile;
 
 pub use crate::adjust::Adjust;
+
+/// Columns a query reads from outside the file (another file of its tab): `(column, the rows' own times)` to the
+/// values at those rows, held between that file's samples.
+pub type HeldCols<'a> = &'a (dyn Fn(usize, &[Timestamp]) -> Vec<f64> + Sync);
 pub use crate::derived::{Derived, ExprEnv, Foreign, RecEnv};
 use crate::pyr::Loaded;
 pub use crate::recipes::{Library, PREVIEW_SAMPLES, Preview, check, check_cross};
@@ -836,15 +840,32 @@ impl Opened {
     /// `progress(done)` goes 0..=1 and returns false to cancel (the result is then `None`).
     pub fn select_rows(
         &self,
-        (t0, t1): (Timestamp, Timestamp),
+        span: (Timestamp, Timestamp),
         filters: Vec<(Col, Filter)>,
         sort: Vec<SortKey>,
         progress: &(dyn Fn(f64) -> bool + Sync),
     ) -> Option<(usize, Rows)> {
+        self.select_rows_with(span, filters, sort, None, progress)
+    }
+
+    /// [`Opened::select_rows`] with columns past the file's own read by `held` (another file's, at the rows' times).
+    pub fn select_rows_with(
+        &self,
+        (t0, t1): (Timestamp, Timestamp),
+        filters: Vec<(Col, Filter)>,
+        sort: Vec<SortKey>,
+        held: Option<HeldCols>,
+        progress: &(dyn Fn(f64) -> bool + Sync),
+    ) -> Option<(usize, Rows)> {
         let first = self.rec.lower_bound(t0);
         let count = self.rec.lower_bound(t1).max(first) - first;
+        let own = self.rec.info().channels.len();
         let read = |col: Col, r: std::ops::Range<usize>| match col {
             Col::Time => self.rec.read_times(r.start, r.end).into_iter().map(|t| t as f64).collect(),
+            Col::Channel(c) if c >= own => match held {
+                Some(h) => h(c, &self.rec.read_times(r.start, r.end)),
+                None => vec![f64::NAN; r.len()],
+            },
             Col::Channel(c) => {
                 let (scale, offset) = self.rec.scale_offset(c);
                 self.rec.read(c, r.start, r.end).to_f64(scale, offset)
@@ -872,14 +893,15 @@ impl Opened {
     }
 
     /// The rows with times in `[t0, t1)` that pass `filters`, as a mask of the others in the file (for Apply to
-    /// charts); `None` when cancelled. Rows outside the span stay.
+    /// charts); `None` when cancelled. Rows outside the span stay. Columns past the file's own are read by `held`.
     pub fn filter_mask(
         &self,
         (t0, t1): (Timestamp, Timestamp),
         filters: Vec<(Col, Filter)>,
+        held: Option<HeldCols>,
         progress: &(dyn Fn(f64) -> bool + Sync),
     ) -> Option<Mask> {
-        let (first, rows) = self.select_rows((t0, t1), filters, Vec::new(), progress)?;
+        let (first, rows) = self.select_rows_with((t0, t1), filters, Vec::new(), held, progress)?;
         let count = self.rec.lower_bound(t1).max(first) - first;
         Some(Mask::from_kept(first, count, &rows.ids))
     }
