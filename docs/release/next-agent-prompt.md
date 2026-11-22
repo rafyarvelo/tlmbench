@@ -35,6 +35,12 @@ Expected: a new pane with the channel, the channel gone from where it was (a cop
 tooltip says). Fix first, with a test that drops at both edges; check `t_edgedrop`, `t_dnd` and the parity `drag-edge*`
 scenes, and the real window (WKWebView drag differs from Chromium's).
 
+**Second blocker (same section):** a layout of one chart on top, two charts side by side in the second row and one at
+the bottom: closing one of the two side-by-side charts moves the other up into the top row instead of letting it widen
+to fill its own row. Always. Expected: the remaining pane keeps its row and grows across it. Look at how removing a pane
+handles `beside` (the pane after a removed one inherits its row; `stack.svelte.ts` and the pane-close paths), add a test
+for closing either of the pair, and check it in the real window.
+
 **Failed or needing work:**
 - **X3 (code widgets): FAIL, "this code widget dialog currently sucks and needs major rework".** In the Gauges pane's widget
   dialog the "Your widgets" button is nearly cut off; after adding a widget it becomes unreachable (the dialog doesn't

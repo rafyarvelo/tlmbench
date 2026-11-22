@@ -449,6 +449,14 @@ How often (always / sometimes / once): always
 Severity (blocker / annoying / cosmetic): blocker
 ```
 
+```
+What I did: Had a layout with 1 chart as the top row, then 2 charts side by side as the second row, and another chart on the bottom. After removing 1 chart in the middle row, the pane moved up instead of growing horizontally
+What I expected: The pane to grow horizontally in its row
+What happened instead: The pane moved up a row
+Where (screen, tab, setting): main screen
+How often (always / sometimes / once): always
+Severity (blocker / annoying / cosmetic): blocker
+```
 
 ## Anything you want built or changed (new ideas)
 
