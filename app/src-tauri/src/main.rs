@@ -3868,7 +3868,8 @@ fn launch() -> Launch {
     match env("TLMBENCH_GATE") {
         Some(file) => Launch { file: Some(file), gate: Some("1"), gate_mode: None, gate_seconds: None },
         None => Launch {
-            file: std::env::args().nth(1).filter(|a| !a.starts_with('-')),
+            // the first file named on the command line (a relative one from the working folder)
+            file: install::file_args(std::env::args(), &std::env::current_dir().unwrap_or_default()).into_iter().next(),
             gate: None,
             gate_mode: None,
             gate_seconds: None,
@@ -4022,7 +4023,9 @@ macro_rules! commands {
             plugins_reveal,
             daemon::browser_access,
             menu::menu_set,
-            menu::menu_state
+            menu::menu_state,
+            install::opened_take,
+            install::cli_install
         ]
     };
 }
@@ -4050,6 +4053,7 @@ fn new_files() -> Files {
 }
 
 mod daemon;
+mod install;
 mod menu;
 mod plugins;
 
@@ -4058,7 +4062,14 @@ fn main() {
         return daemon::run(args);
     }
     let clients = Arc::new(daemon::Clients::default());
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Windows and Linux: a second launch (a file double-clicked while the app runs) hands its files to this one and
+    // quits; macOS sends them as the Opened event below
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+        install::deliver(app, install::file_args(argv, Path::new(&cwd)));
+    }));
+    builder
         .register_uri_scheme_protocol("tlmwidget", widget_host)
         .plugin(tauri_plugin_dialog::init())
         .on_window_event(|w, ev| {
@@ -4069,6 +4080,7 @@ fn main() {
             }
         })
         .manage(new_files())
+        .manage(install::Opening::default())
         .manage(menu::MenuState::default())
         .on_menu_event(|app, ev| menu::clicked(app, ev.id().as_ref()))
         .manage(daemon::Browser::new(clients.clone()))
@@ -4085,8 +4097,17 @@ fn main() {
         })
         .channel_interceptor(daemon::interceptor(clients))
         .invoke_handler(commands!())
-        .run(tauri::generate_context!())
-        .expect("TelemetryBench failed to start");
+        .build(tauri::generate_context!())
+        .expect("TelemetryBench failed to start")
+        .run(|_app, _ev| {
+            // macOS: files double-clicked or dropped on the Dock icon, at launch or while the app runs
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _ev {
+                let paths =
+                    urls.into_iter().filter_map(|u| u.to_file_path().ok()).map(|p| p.to_string_lossy().into_owned());
+                install::deliver(_app, paths.collect());
+            }
+        });
 }
 
 #[cfg(test)]

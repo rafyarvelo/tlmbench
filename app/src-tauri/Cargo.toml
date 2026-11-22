@@ -34,5 +34,14 @@ tauri-plugin-opener = "2"
 # Explorer watches its folder for new and removed files (design UI, D-ui-02)
 notify = { version = "8.2.2", default-features = false, features = ["macos_fsevent"] }
 
+# Windows and Linux: a second launch hands its files to the running app (file associations, R4)
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+tauri-plugin-single-instance = "2.5.5"
+
+# Windows: Install command-line tool… puts the app's folder on the user's PATH
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+
 [lints]
 workspace = true

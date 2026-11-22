@@ -64,6 +64,7 @@ export const COMMANDS: Command[] = [
   { id: 'perf', menu: 'Window', label: 'Show performance details', check: true },
 
   { id: 'tipsAgain', menu: 'Help', label: 'Show the tips again' },
+  { id: 'installCli', menu: 'Help', label: 'Install command-line tool…', sep: true },
 ];
 
 const MAC = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);

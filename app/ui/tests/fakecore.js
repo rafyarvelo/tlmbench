@@ -430,6 +430,10 @@
     otherWindowView(view) {
       emit('view-linked', { from: 'win-2', view });
     },
+    /** The OS asked the running app to open files (a double-click on a .tlm, a second launch): the event the core sends. */
+    osOpen(paths) {
+      emit('open-paths', paths);
+    },
     /** A file appeared in the watched folder: the core tells the UI. */
     folderChanged(path) {
       emit('folder-changed', { path: path ?? fake.watched });
@@ -1248,6 +1252,17 @@
     config_export({ out, own }) {
       fake.cfgCalls.push({ cmd: 'export', out, own });
       return ['recipes/power.toml', 'categories.toml'];
+    },
+    // what the OS asked the app to open while it started (file associations), and Install command-line tool…
+    opened_take() {
+      const p = fake.osAsked ?? [];
+      fake.osAsked = [];
+      return p;
+    },
+    cli_install() {
+      fake.cliInstalls = (fake.cliInstalls ?? 0) + 1;
+      if (fake.cliError) throw fake.cliError;
+      return fake.cliResult ?? { at: '/Users/me/.local/bin/tlmbench', onPath: false, pathLine: 'export PATH="$HOME/.local/bin:$PATH"', profile: '~/.zprofile' };
     },
     config_gitignore({ folder, lines }) {
       fake.cfgCalls.push({ cmd: 'gitignore', folder, lines });

@@ -370,6 +370,7 @@ pub fn core(clients: Arc<Clients>) -> tauri::App<tauri::test::MockRuntime> {
     context.config_mut().identifier = "io.github.rafyarvelo.tlmbench".into();
     tauri::test::mock_builder()
         .manage(new_files())
+        .manage(crate::install::Opening::default())
         .manage(Browser::new(clients.clone()))
         .on_window_event(|w, ev| {
             if let tauri::WindowEvent::Destroyed = ev

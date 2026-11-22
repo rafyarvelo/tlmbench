@@ -5637,10 +5637,24 @@ const RUN: Record<string, () => void> = {
   panels: toggleAllPanels,
   perf: () => setSetting('showPerf', !settings.showPerf),
   tipsAgain: () => (setSetting('tipsSeen', {}), note('Tips will show again.')),
+  installCli: () => void installCli(),
 };
+
+/** Help › Install command-line tool…: the `tlmbench` beside the app, where a terminal finds it (R4). */
+async function installCli(): Promise<void> {
+  try {
+    const r = await invoke<{ at: string; onPath: boolean; pathLine: string | null; profile: string | null }>('cli_install');
+    if (r.onPath) return void note(`Installed: a new terminal runs tlmbench (${r.at}).`);
+    const line = r.pathLine ?? '';
+    note(`Installed as ${r.at}. Its folder isn't on your PATH yet: add this line to ${r.profile}, then open a new terminal: ${line}`, () => void navigator.clipboard.writeText(line), 'Copy the line');
+  } catch (e) {
+    note(`Couldn't install the command-line tool: ${String(e).replace(/^Error:\s*/, '')}`);
+  }
+}
 /** When a command can run; none listed: always. */
 const ENABLED: Record<string, () => boolean> = {
   saveLayout: () => tabs.active >= 0,
+  installCli: () => !ui.viewer && !ui.browserOnly,
   exportData: () => !!state.file && !ui.viewer,
   exportHtml: () => !!state.file && !ui.viewer,
   saveImage: () => !!state.file && stack.panes.length > 0,
@@ -6247,6 +6261,13 @@ else if (launch.gate === '1' && launch.file) {
   else if (handoff?.session) await restoreSession(handoff.session);
   ui.note = '';
   if (settings.showStart && !launch.file && tabs.list.length) ui.start = true;
+  // files the OS asks this app to open (a double-click on a .tlm, Open With, a second launch): those asked for while
+  // it started, then each as it comes (R4)
+  if (WINDOW === 'main' && !ui.viewer && !ui.browserOnly) {
+    void listen<string[]>('open-paths', (e) => void openWithImport(e.payload));
+    const asked = await invoke<string[]>('opened_take').catch(() => [] as string[]);
+    if (asked.length) await openWithImport(asked);
+  }
 }
 
 // A viewer (an HTML export): open the export's files and show the layout it was exported with.
