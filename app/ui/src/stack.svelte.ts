@@ -334,12 +334,39 @@ export function renamePane(i: number, raw: string): void {
 }
 
 /** Closes the panes `keep` leaves out, with Undo in the note under the top bar. */
+/**
+ * The panes `keep` keeps, with their flags redone so each stays in its own row and column: the first one left in a row
+ * starts it, the first one left in a column goes beside the one before, the rest stay under it. (A pane after a closed
+ * one never moves up a row.)
+ */
+export function prune(arr: Pane[], keep: (p: Pane, i: number) => boolean): Pane[] {
+  let row = -1;
+  let col = -1;
+  const at = arr.map((p, i) => {
+    if (i === 0 || (!p.beside && !p.under)) (row++, (col = 0));
+    else if (!p.under) col++;
+    return { row, col };
+  });
+  const out: Pane[] = [];
+  let last: { row: number; col: number } | null = null;
+  arr.forEach((p, i) => {
+    if (!keep(p, i)) return;
+    const { row, col } = at[i];
+    if (!last || last.row !== row) Object.assign(p, { beside: undefined, under: undefined });
+    else if (last.col !== col) Object.assign(p, { beside: true, under: undefined });
+    else Object.assign(p, { beside: undefined, under: true });
+    last = at[i];
+    out.push(p);
+  });
+  return out;
+}
+
 function closeExcept(keep: (i: number) => boolean, what: string): void {
   const before = copy(stack.panes);
   const sel = stack.sel;
-  const kept = stack.panes.filter((_, i) => keep(i));
-  const n = stack.panes.length - kept.length;
+  const n = stack.panes.filter((_, i) => !keep(i)).length;
   if (!n) return;
+  const kept = prune(stack.panes.slice(), (_, i) => keep(i));
   const newSel = Math.max(0, kept.indexOf(stack.panes[sel]));
   edit(() => {
     stack.panes = kept;
@@ -372,9 +399,7 @@ function leave(arr: Pane[], ch: number, from: number): Pane[] {
   if (!src) return arr;
   src.channels = src.channels.filter((c) => c !== ch);
   if (src.channels.length) return arr;
-  const next = arr[from + 1];
-  if (next?.under && !src.under) Object.assign(next, { under: undefined, beside: src.beside });
-  return arr.filter((_, k) => k !== from);
+  return prune(arr, (_, k) => k !== from);
 }
 
 /** Moves (or, with `copy`, copies) channel `ch` from pane `from` to pane `to`, before channel `before` there (the end when null). */
@@ -431,7 +456,9 @@ export function newPaneBeside(chs: number[], to: number, side: 'left' | 'right',
   if (!stack.panes[to]) return newPaneWith(chs, mode, out);
   edit(() => {
     const target = stack.panes[to];
-    const arr = out && out.from !== to ? leave(stack.panes.slice(), out.ch, out.from) : stack.panes.slice();
+    // a chip moved to its own pane's edge leaves that pane too (it keeps its other channels)
+    if (out && out.from === to && target.channels.length === 1 && target.channels[0] === out.ch) return;
+    const arr = out ? leave(stack.panes.slice(), out.ch, out.from) : stack.panes.slice();
     to = arr.indexOf(target);
     if (to < 0) return;
     const made: Pane = { channels: [...chs], ...(mode && mode !== 'chart' ? { mode } : {}) };
@@ -501,18 +528,13 @@ export function dropPane(from: number, to: number, zone: Zone, copy = false): vo
     const target = stack.panes[to];
     if (zone === 'middle') {
       for (const ch of src.channels) if (!target.channels.includes(ch)) target.channels.push(ch);
-      if (!copy) stack.panes.splice(from, 1);
+      if (!copy) stack.panes = prune(stack.panes.slice(), (_, k) => k !== from);
       stack.sel = stack.panes.indexOf(target);
       return;
     }
     const moved: Pane = { ...src, channels: [...src.channels], beside: undefined, under: undefined };
-    const arr = stack.panes.slice();
-    if (!copy) {
-      // panes under a column's top pane keep their column: the next one takes over the top's place
-      const next = arr[from + 1];
-      if (next?.under && !src.under) Object.assign(next, { under: undefined, beside: src.beside });
-      arr.splice(from, 1);
-    }
+    // the panes left keep their rows and columns
+    const arr = copy ? stack.panes.slice() : prune(stack.panes.slice(), (_, k) => k !== from);
     const at = arr.indexOf(target);
     const rowStart = () => {
       let k = at;
@@ -548,9 +570,11 @@ export function dropPane(from: number, to: number, zone: Zone, copy = false): vo
 export function movePane(from: number, to: number): void {
   if (from === to || from + 1 === to) return;
   edit(() => {
-    const [p] = stack.panes.splice(from, 1);
+    const p = stack.panes[from];
+    const arr = prune(stack.panes.slice(), (_, k) => k !== from);
     const at = to > from ? to - 1 : to;
-    stack.panes.splice(at, 0, { ...p, beside: undefined, under: undefined });
+    arr.splice(at, 0, { ...p, beside: undefined, under: undefined });
+    stack.panes = arr;
     stack.sel = at;
   });
 }

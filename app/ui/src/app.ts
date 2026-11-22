@@ -6074,8 +6074,8 @@ export const gateApi = {
   /** Adds a file to the tab in front, on its timeline (what the import dialog's "This tab" does). */
   addToTab: (path: string) => addToTab(path),
   /** Replaces the panes of the tab in front (channel numbers each) and selects the first. */
-  setPanes: (ps: { channels: number[]; mode?: Pane['mode'] }[]) => {
-    stack.panes = ps.map((p) => ({ channels: [...p.channels], ...(p.mode ? { mode: p.mode } : {}) }));
+  setPanes: (ps: { channels: number[]; mode?: Pane['mode']; beside?: boolean; under?: boolean }[]) => {
+    stack.panes = ps.map((p) => ({ channels: [...p.channels], ...(p.mode ? { mode: p.mode } : {}), ...(p.beside ? { beside: true } : {}), ...(p.under ? { under: true } : {}) }));
     stack.sel = 0;
     normalize();
     renderPanes();
