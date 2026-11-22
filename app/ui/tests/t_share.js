@@ -133,6 +133,22 @@ run(
     await p.keyboard.press('Escape');
     await fake((d) => (window.__tlmFake.readOnly = window.__tlmFake.readOnly.filter((x) => x !== d)), DIR);
 
+    // a git repository: Share offers to keep the recordings out of git (D-cfg-06), on by default
+    await fake(() => {
+      window.__tlmFake.cfgGit = true;
+      window.__tlmFake.cfgRows = [{ kind: 'recipes', key: 'recipes/power.toml', name: 'Power', state: 'new', detail: null }];
+    });
+    await openShare();
+    await until(() => !!document.querySelector('#shareIgnore'));
+    check('a git folder offers the .gitignore line, ticked', await p.isChecked('#shareIgnore'));
+    await p.click('#shareGo');
+    await poll(async () => (await calls('gitignore')).length === 1);
+    const gi = (await calls('gitignore'))[0];
+    check('Share adds the recording patterns to the folder\'s .gitignore', gi.folder === DIR && gi.lines.includes('*.tlm'), gi);
+    check('and says so', await until(() => /added .*\.tlm.* to \.gitignore/.test(document.querySelector('#shareDone')?.textContent ?? '')), await text('#shareDone').catch(() => ''));
+    await p.keyboard.press('Escape');
+    await fake(() => (window.__tlmFake.cfgGit = false));
+
     // a pair of files opens with the alignment it was left with
     await p.click(`#explorer .row.file[data-path="${B}"]`);
     await p.click('#explorer .row.file.sel', { button: 'right' });

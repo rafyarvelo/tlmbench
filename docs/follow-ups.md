@@ -347,3 +347,5 @@ removed Nov 15; git history keeps them.
   same way.
 - A layout's rename and delete are steps of the one ⌘Z history (R3.4). They belong to no file, so they stay when the tab
   in front changes; undoing a delete puts the layout back, its tabs stay closed.
+- End jumps back to the live edge of a live tab (the prototype's key). Shortcuts are written the Mac way in the source and
+  read as Ctrl+, Alt+ and Shift+ on Windows and Linux (tooltips, menus, hints).

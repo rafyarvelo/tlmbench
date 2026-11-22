@@ -250,3 +250,35 @@ place and leave the same way; menus open from their trigger.
   keep.**
 - The Events panel's top row (App's "Marker at A · Range A–B" against the prototype's "+ Event · Share… · Categories"):
   App is better or Port (`parity-classes.md`).
+
+## Nov 22, 2026: R3.4, what the audit can't see (Opus; by reading the code against the prototype)
+
+The whole-app apple-design audit, with motion and reduced motion, is the Nov 17 section above. This pass covers the rest of
+R3.4: keyboard coverage, every tooltip and empty state, and the copy.
+
+**Keyboard, against the prototype's handlers** (each `keydown` in `prototype/plotter.html`, listed with its keys, then
+found in `app/ui/src`): modes B, P, C; F; Esc (cursors, menus, focus mode, the start page, a selection); Backspace and
+⌥← / ⌥→; ← → pan; + − ↑ ↓ zoom; L; T; E; A and B over a plot or a table row; Space; ⌘B and ⌥⌘B; ⌘.; ⌘D and ⇧⌘D;
+⇧⌘N; ⌘S; Ctrl+PageUp / PageDown and with Shift; Delete, Enter and Space on a tab; ⌘A, Enter and Esc in Explorer; ↑ ↓
+PageUp PageDown Home End in a table; ↑ ↓ on the height grips; Enter and Space on a value tile, a start-page card and the
+time range; Enter on a check row; the expression fields' ↑ ↓ Enter Tab Esc; Esc in a search field (the browser's own).
+**One was missing: End, back to the live edge** (the strip's Jump to live). Added (`t_live`). The app adds ⌘O, ⇧⌘O,
+⌘Z, ⇧⌘Z and ⌘Y, ⌘, (Settings) and ⌘C in a table.
+
+**Tooltips** (163 `data-tip`s read): plain and in sentence case. One fault: shortcuts were spelled three ways (⌘S, ⌥←,
+Ctrl+B), and the Mac's symbols showed on Windows and Linux. The app now writes them the Mac way and `keyName`
+(`commands.ts`) turns them into Ctrl+, Alt+ and Shift+ elsewhere, for tooltips, menus, the start page and Settings' hints
+(`t_keynames`). The longest tips (Share's, Clear cache's, the XY Fit's) say what happens to data and stay; Short mode shows
+their first sentence.
+
+**Empty states:** every panel says what to do when it has nothing: Explorer (no folder, no file, only open files shown),
+Events (none, none matching, browser tabs), Rules & checks (no sets, no file), Layouts (none, nothing shared), Measure (how
+to place cursors), an empty pane, a Gauges or Values pane, the table, XY (one channel; nothing in view), the spectrum (no
+channel; too few samples), the Report (no folder), recipes, plugins, sessions and saved connections. One rewording:
+Measure's "A and B also place them at the pointer" now says "or press A and B with the pointer over a chart".
+
+**Copy:** a search for title case in labels, buttons and notes found only names (the Light tier, the Measure panel).
+Nothing else changed.
+
+**Undo:** a layout's rename and delete are steps of the one ⌘Z history now (they undid only from their note). They belong
+to no file, so they stay in the history when the tab in front changes (`t_layouts`).

@@ -1556,7 +1556,7 @@ async function refreshMeasure(): Promise<void> {
   const pick = `<select class="sel" data-mch aria-label="Channel for the stats">${chans.map((ch) => `<option value="${ch}"${ch === measureCh ? ' selected' : ''}>${esc(f.info.channels[ch].name)}</option>`).join('')}</select>`;
   ui.statsTitle = `Stats · ${both ? 'between cursors' : 'visible range'}`;
   fillMeasure(
-    (state.A == null && state.B == null ? `<p class="mnote howto">Place cursors A and B: press C, then click a chart twice. A and B also place them at the pointer.</p>` : '') +
+    (state.A == null && state.B == null ? `<p class="mnote howto">Place cursors A and B: press C, then click a chart twice, or press A and B with the pointer over a chart.</p>` : '') +
       `<div class="mtiles">${tile('A', state.A != null ? readoutTime(state.A, span) : '—')}${tile('B', state.B != null ? readoutTime(state.B, span) : '—')}${tile('Δt', dt != null ? duration(dt) : '—', true)}${tile('1 / Δt', dt ? frequency(1e9 / Math.abs(dt)) : '—')}</div>` +
       `<table class="mtab"><thead><tr><th>Channel</th><th>A</th><th>B</th><th>Δ</th></tr></thead><tbody>${rowsHtml}</tbody></table>`,
     (chans.length ? `<div class="mpick">${pick}</div>` : '') + statsBody,
