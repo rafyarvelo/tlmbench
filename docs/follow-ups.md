@@ -319,3 +319,8 @@ removed Nov 15; git history keeps them.
   shared ones can't be edited or deleted in the Events panel, since they are made again from the data. Their row shows
   the source as a tag (File, Rule, Check, Shared) on hover, its tooltip saying why and what to change instead; a rule's
   or check's row keeps its pencil, which opens the rule.
+- Live time (W4, owner Nov 22, as recommended): a live chart's X axis stays the source's time column, so live matches the
+  saved recording. When a socket source's time goes back by more than a second (a device reset its clock; a counter's
+  wrap is not one), the source starts its next part (`source-N-2.tlm`…), which the app follows as after a rotation, so
+  the chart keeps drawing. A smaller step back stays in the part, held at the latest time. Tailed files and replays keep
+  their times as written.

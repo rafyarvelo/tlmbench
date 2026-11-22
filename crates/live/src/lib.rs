@@ -10,8 +10,9 @@
 //!   descriptor in its header), checks the descriptor's sequence field for lost or repeated frames, and publishes how
 //!   many records are on disk. Readers of the growing file see that many.
 //!
-//! A source's recording comes in parts: one file, unless a tailed file is truncated or replaced (log rotation), when
-//! the source continues in `source-N-2.tlm` and so on, its times as written. The ingest thread queues each part's
+//! A source's recording comes in parts: one file, unless a tailed file is truncated or replaced (log rotation), or a
+//! socket's time goes back by more than a second (the device reset its clock: owner, W4 Nov 22), when the source
+//! continues in `source-N-2.tlm` and so on, its times as written. The ingest thread queues each part's
 //! descriptor in order with the records, so the writer starts each file at the right record.
 //!
 //! A live session is a folder, `session-<start>/`, with a `source-N.tlm` per source and a `session.json`. Sessions go
@@ -257,6 +258,7 @@ impl Source {
         let stop = Arc::new(AtomicBool::new(false));
         // a socket's single part is known now: its file exists from the start
         let mut writer_state = Writer::new(base, consumer, parts.clone());
+        writer_state.watch = first.is_some();
         if let Some(d) = &first {
             writer_state.open(d)?;
         }
@@ -325,6 +327,7 @@ impl Source {
             let (producer, consumer) = rtrb::RingBuffer::<u8>::new(ring_bytes);
             let (counters, parts) = (Arc::new(Counters::default()), Arc::new(Parts::default()));
             let mut w = Writer::new(&base_for(k), consumer, parts.clone());
+            w.watch = true;
             w.open(&plan.record)?;
             let writer = {
                 let counters = counters.clone();
@@ -722,13 +725,30 @@ struct Writer {
     file: Option<File>,
     rs: usize,
     seq: Option<SeqCheck>,
+    /// The time field, watched for a reset (a jump back of more than a second starts the next part).
+    clock: Option<TimeWatch>,
+    /// Whether to watch the clock (sockets: a file's time is read as written).
+    watch: bool,
+    /// The part being written's descriptor (the next part after a clock reset has the same).
+    descriptor: Option<Descriptor>,
     /// Records taken from the ring so far.
     taken: u64,
 }
 
 impl Writer {
     fn new(base: &Path, consumer: rtrb::Consumer<u8>, parts: Arc<Parts>) -> Writer {
-        Writer { base: base.to_owned(), consumer, parts, file: None, rs: 1, seq: None, taken: 0 }
+        Writer {
+            base: base.to_owned(),
+            consumer,
+            parts,
+            file: None,
+            rs: 1,
+            seq: None,
+            clock: None,
+            watch: false,
+            descriptor: None,
+            taken: 0,
+        }
     }
 
     /// Creates the next part's file (`<base>.tlm`, then `<base>-2.tlm`…) and writes its header.
@@ -747,6 +767,8 @@ impl Writer {
         reference::write_header(&mut file, d)?;
         files.push(path);
         (self.file, self.rs, self.seq) = (Some(file), d.record_size as usize, SeqCheck::new(d));
+        self.clock = if self.watch { TimeWatch::new(d) } else { None };
+        self.descriptor = Some(d.clone());
         Ok(())
     }
 
@@ -774,6 +796,24 @@ impl Writer {
                 continue;
             }
             let rs = self.rs;
+            // a clock that jumps back: the records before it go to this part, the rest start the next
+            if let Some(w) = &mut self.clock {
+                // a look only: the chunk goes uncommitted, read again below
+                let reset = {
+                    let peek = self.consumer.read_chunk(take).expect("available: checked against slots");
+                    let (a, b) = peek.as_slices();
+                    w.first_reset(a, b, rs)
+                };
+                match reset {
+                    Some(0) => {
+                        let d = self.descriptor.clone().expect("records come after their part");
+                        self.open(&d)?;
+                        continue;
+                    }
+                    Some(k) => take = k * rs,
+                    None => {}
+                }
+            }
             let file = self.file.as_mut().expect("records come after their part");
             let chunk = self.consumer.read_chunk(take).expect("available: checked against slots");
             let (a, b) = chunk.as_slices();
@@ -847,6 +887,111 @@ impl SeqCheck {
             c.seq_missing.fetch_add(jump, Ordering::Relaxed);
         }
         self.expect = Some(v.wrapping_add(1) & self.mask);
+    }
+}
+
+/// Watches a socket source's time field for a device that reset its clock: a jump back of more than a second (a counter's
+/// wrap is not one). A smaller step back is kept, held at the latest time as a file's is.
+#[derive(Debug)]
+struct TimeWatch {
+    offset: usize,
+    dtype: DType,
+    bits: Option<(u32, u32)>,
+    big: bool,
+    /// Nanoseconds per raw unit.
+    ns: f64,
+    /// A counter's range: a drop of more than half of it is a wrap.
+    range: Option<i64>,
+    last: Option<f64>,
+}
+
+impl TimeWatch {
+    const RESET_NS: f64 = 1e9;
+
+    fn new(d: &Descriptor) -> Option<TimeWatch> {
+        let (name, ns, range) = match &d.time {
+            TimeSpec::Field { field, unit, .. } => (field, unit.ns() as f64, None),
+            TimeSpec::Counter { field, clock_hz, wraps_at, .. } => {
+                let f = d.fields.iter().find(|f| &f.name == field)?;
+                (field, 1e9 / clock_hz, Some(tlmbench_decode::descriptor::counter_range(f, *wraps_at)?))
+            }
+            _ => return None,
+        };
+        let f = d.fields.iter().find(|f| &f.name == name)?;
+        Some(TimeWatch {
+            offset: f.offset as usize,
+            dtype: f.dtype,
+            bits: f.bits.map(|b| (b.shift, b.width)),
+            big: d.endian == Endian::Big,
+            ns,
+            range,
+            last: None,
+        })
+    }
+
+    /// The raw time of a record, as a number.
+    fn raw(&self, record: &[u8]) -> f64 {
+        let n = self.dtype.size() as usize;
+        let mut b = [0u8; 8];
+        b[..n].copy_from_slice(&record[self.offset..self.offset + n]);
+        if self.big {
+            b[..n].reverse();
+        }
+        let sign = |v: u64, bits: u32| ((v << (64 - bits)) as i64 >> (64 - bits)) as f64;
+        let u = u64::from_le_bytes(b);
+        let v = match self.dtype {
+            DType::F32 => f32::from_le_bytes(b[..4].try_into().expect("4 bytes")) as f64,
+            DType::F64 => f64::from_le_bytes(b),
+            DType::I8 | DType::I16 | DType::I32 | DType::I64 => sign(u, self.dtype.bits()),
+            _ => u as f64,
+        };
+        match self.bits {
+            Some((shift, width)) if !self.dtype.is_float() => ((u >> shift) & ((1u64 << width) - 1)) as f64,
+            _ => v,
+        }
+    }
+
+    /// Whether this record's time is a reset; otherwise it becomes the latest.
+    fn is_reset(&mut self, record: &[u8]) -> bool {
+        let t = self.raw(record);
+        if let Some(l) = self.last
+            && t < l
+        {
+            let drop = l - t;
+            let wrap = self.range.is_some_and(|r| drop > r as f64 / 2.0);
+            if !wrap && drop * self.ns > Self::RESET_NS {
+                return true;
+            }
+            if !wrap {
+                return false; // held at the latest
+            }
+        }
+        self.last = Some(t);
+        false
+    }
+
+    /// The first record (of the whole records in `a` then `b`) whose time is a reset. The next part starts its watch
+    /// afresh.
+    fn first_reset(&mut self, a: &[u8], b: &[u8], rs: usize) -> Option<usize> {
+        let n = (a.len() + b.len()) / rs;
+        let mut rec = vec![0u8; rs];
+        for i in 0..n {
+            let at = i * rs;
+            let r: &[u8] = if at + rs <= a.len() {
+                &a[at..at + rs]
+            } else if at >= a.len() {
+                &b[at - a.len()..at - a.len() + rs]
+            } else {
+                let head = a.len() - at;
+                rec[..head].copy_from_slice(&a[at..]);
+                rec[head..].copy_from_slice(&b[..rs - head]);
+                &rec
+            };
+            if self.is_reset(r) {
+                return Some(i);
+            }
+        }
+        None
     }
 }
 
@@ -1101,6 +1246,50 @@ mod tests {
         let h = src.wait();
         sender.join().unwrap();
         assert_eq!((h.records_written, h.reconnects, h.ended), (10, 0, true));
+    }
+
+    /// A device that resets its clock (owner, W4 Nov 22): when a socket's time goes back by more than a second the
+    /// source starts its next part, so a live chart keeps drawing; a smaller step back stays in the part (held).
+    #[test]
+    fn a_clock_reset_starts_the_next_part() {
+        let mut d = desc();
+        d.sequence = None;
+        d.fields[0].name = "t".into();
+        d.time = TimeSpec::Field { field: "t".into(), unit: tlmbench_decode::descriptor::TimeUnit::Ms, t0_ns: 0 };
+        let ms = |r: std::ops::Range<u32>| records(r);
+        // first link: 0..2000 ms, then back half a second (1500..2500: kept); second link: the clock starts over at 0
+        let (first, second) = ([ms(0..2000), ms(1500..2500)].concat(), ms(0..1000));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let sent = (first.clone(), second.clone());
+        let sender = thread::spawn(move || {
+            for bytes in [sent.0, sent.1] {
+                let (mut s, _) = listener.accept().unwrap();
+                for part in bytes.chunks(777) {
+                    s.write_all(part).unwrap();
+                }
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = Session::create(dir.path()).unwrap();
+        let opts = Options { reconnect: true, ..Options::default() };
+        let src = session.add_source(Endpoint::Tcp(addr.to_string()), Some(&d), &opts).unwrap();
+        let t = Instant::now();
+        while src.health().records_written < 4000 {
+            assert!(t.elapsed() < Duration::from_secs(10), "{:?}", src.health());
+            thread::sleep(Duration::from_millis(5));
+        }
+        sender.join().unwrap();
+        let h = src.stop();
+        assert_eq!(h.files.len(), 2, "{h:?}");
+        let part = |p: &Path| {
+            let bytes = std::fs::read(p).unwrap();
+            let (start, _) = reference::read_header(&bytes).unwrap();
+            bytes[start..].to_vec()
+        };
+        assert_eq!(part(&h.files[0]), first, "the step back of half a second stays in the first part");
+        assert_eq!(part(&h.files[1]), second, "the reset starts the second");
+        assert!(h.files[1].file_name().unwrap().to_str().unwrap().ends_with("-2.tlm"));
     }
 
     #[test]
