@@ -330,3 +330,7 @@ removed Nov 15; git history keeps them.
   date order, a summary check's value as a line (else its worst; else the verdicts), each point a file that opens on a
   click. Run again runs it; the report is kept with the set (settings, as before) and the tab with the folder's session.
   The tab menu shows only Close. The prototype's dialog is gone.
+- Traces on canvas (S5.4-06, owner Nov 17, built Nov 22): the sparkline and the XY dot's trail and cloud (and so the GPS
+  track) draw on a canvas under the widget's SVG; text, grid, marks and the dot stay SVG, and dials stay SVG. The
+  canvas is sized in device pixels and reads the theme's colours at each draw. Code widgets and SVG widgets of your own
+  are unchanged.

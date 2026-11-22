@@ -2,6 +2,7 @@
      so a frame that moves a needle touches one attribute. Geometry is in a 120 × 96 box, as the prototype's. -->
 <script lang="ts">
   import { arcPath, type Ctx, type Extra, flagBits, fr, gNum, niceStep, polar, stateColor, stateSegs } from '../gauges';
+  import { type Stroke, traceCanvas } from '../tracecanvas';
 
   let { type, x, r = null, members = [], e }: { type: string; x: Ctx; r?: Ctx | null; members?: Ctx[]; e: Extra } = $props();
 
@@ -18,25 +19,16 @@
   // ring
   const RC = 2 * Math.PI * 36;
 
-  // spark
-  const spark = $derived.by(() => {
+  // spark: its line on a canvas under the SVG (S5.4-06)
+  const spark = $derived.by((): Stroke[] => {
     const t = e.trace;
-    if (t.length < 2) return '';
+    if (t.length < 2) return [];
     let mn = Infinity;
     let mx = -Infinity;
     for (const [, y] of t) if (y != null) [mn, mx] = [Math.min(mn, y), Math.max(mx, y)];
     const sp = mx - mn || 1;
-    let pen = false;
-    let s = '';
-    for (const [fx, y] of t) {
-      if (y == null) {
-        pen = false;
-        continue;
-      }
-      s += `${pen ? 'L' : 'M'}${pt(6 + 108 * fx)} ${pt(86 - (34 * (y - mn)) / sp)}`;
-      pen = true;
-    }
-    return s;
+    const pts = t.map(([fx, y]): [number, number] => (y == null ? [NaN, NaN] : [6 + 108 * fx, 86 - (34 * (y - mn)) / sp]));
+    return [{ pts, color: x.col, width: 1.4 }];
   });
 
   // compass
@@ -97,20 +89,14 @@
     R = Math.max(st, Math.ceil((R || 1) / st) * st);
     return { S, OX, OY, R, span: 0, map: ([a, b]: [number, number]): [number, number] => [OX + S / 2 + ((a / R) * S) / 2, OY + S / 2 - ((b / R) * S) / 2] };
   });
-  const path = (pts: [number, number][]) => {
-    let s = '';
-    let pen = false;
-    for (const p of pts) {
-      if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) {
-        pen = false;
-        continue;
-      }
-      const [a, b] = geom.map(p);
-      s += `${pen ? 'L' : 'M'}${pt(a)} ${pt(b)}`;
-      pen = true;
-    }
-    return s;
-  };
+  /** The cloud of the view and the trail (the GPS track when the pair is longitude/latitude), on a canvas (S5.4-06). */
+  const xyStrokes = $derived.by((): Stroke[] => {
+    const at = (pts: [number, number][]) => pts.map((p): [number, number] => (Number.isFinite(p[0]) && Number.isFinite(p[1]) ? geom.map(p) : [NaN, NaN]));
+    return [
+      { pts: at(e.xy.view), color: 'var(--fg-muted)', width: 0.7, alpha: 0.45 },
+      { pts: at(e.xy.trail), color: x.col, width: 1.8, alpha: 0.8 },
+    ];
+  });
   const dot = $derived(e.xy.now && Number.isFinite(e.xy.now[0]) && Number.isFinite(e.xy.now[1]) ? geom.map(e.xy.now) : null);
 
   const segs = $derived(stateSegs(e.trace, 1));
@@ -178,11 +164,13 @@
     <text x="36" y="52" text-anchor="end" class="gval">{x.txt}</text><text x="36" y="64" text-anchor="end" class="gunit">{x.unit}</text>
   </svg>
 {:else if type === 'spark'}
-  <svg viewBox="0 0 120 96" class="gsvg" data-widget="spark">
-    <text x="8" y="34" class="gval big">{x.txt}</text><text x="8" y="47" class="gunit">{x.unit}</text>
-    <path d={spark} stroke={x.col} stroke-width="1.4" fill="none" />
-    {#if e.tFrac != null}<path d="M{6 + 108 * e.tFrac} 50V90" stroke="var(--fg-muted)" stroke-dasharray="2 2" />{/if}
-  </svg>
+  <div class="gtrace">
+    <canvas class="gcv" data-trace="spark" aria-hidden="true" use:traceCanvas={spark}></canvas>
+    <svg viewBox="0 0 120 96" class="gsvg" data-widget="spark">
+      <text x="8" y="34" class="gval big">{x.txt}</text><text x="8" y="47" class="gunit">{x.unit}</text>
+      {#if e.tFrac != null}<path d="M{6 + 108 * e.tFrac} 50V90" stroke="var(--fg-muted)" stroke-dasharray="2 2" />{/if}
+    </svg>
+  </div>
 {:else if type === 'state'}
   {@const col = x.lvl ? (x.lvl === 'ok' ? 'var(--good)' : x.lvl === 'warn' ? 'var(--warn)' : 'var(--danger)') : x.ok && x.v ? 'var(--good)' : 'var(--fg-muted)'}
   <svg viewBox="0 0 120 96" class="gsvg" data-widget="state">
@@ -276,6 +264,8 @@
     <text x="6" y="84" class="gtk">{e.t0}</text><text x="114" y="84" text-anchor="end" class="gtk">{e.t1}</text>
   </svg>
 {:else if type === 'xy' && r}
+  <div class="gtrace">
+  <canvas class="gcv" data-trace="xy" aria-hidden="true" use:traceCanvas={xyStrokes}></canvas>
   <svg viewBox="0 0 120 96" class="gsvg" data-widget="xy">
     {#if e.xy.geo}
       <rect x={geom.OX} y={geom.OY} width={geom.S} height={geom.S} rx="6" fill="none" stroke="var(--grid)" /><text x={geom.OX + geom.S} y={geom.OY + geom.S + 9} text-anchor="end" class="gtk">{((geom.span * 111320) / 1000).toFixed(geom.span * 111.32 < 1 ? 2 : 1)} km across</text>
@@ -283,9 +273,25 @@
       <circle cx={geom.OX + geom.S / 2} cy={geom.OY + geom.S / 2} r={geom.S / 2} fill="none" stroke="var(--grid)" /><circle cx={geom.OX + geom.S / 2} cy={geom.OY + geom.S / 2} r={geom.S / 4} fill="none" stroke="var(--grid)" stroke-dasharray="2 2" />
       <path d="M{geom.OX} {geom.OY + geom.S / 2}H{geom.OX + geom.S}M{geom.OX + geom.S / 2} {geom.OY}V{geom.OY + geom.S}" stroke="var(--grid)" stroke-width=".8" /><text x={geom.OX + geom.S + 2} y={geom.OY + 8} class="gtk">{gNum(geom.R, 2)}</text>
     {/if}
-    <path d={path(e.xy.view)} stroke="var(--fg-muted)" stroke-width=".7" opacity=".45" fill="none" />
-    <path d={path(e.xy.trail)} stroke={x.col} stroke-width="1.8" opacity=".8" fill="none" />
     {#if dot}<circle cx={dot[0].toFixed(1)} cy={dot[1].toFixed(1)} r="3.6" fill={x.col} stroke="var(--surface)" stroke-width="1.2" class="gdot" />{/if}
     {#if !e.xy.geo}<text x={geom.OX + geom.S / 2} y="94" text-anchor="middle" class="gtk">{x.short} {e.xy.now ? gNum(e.xy.now[0], 2) : '—'} · {r.short} {e.xy.now ? gNum(e.xy.now[1], 2) : '—'} {x.unit}</text>{/if}
   </svg>
+  </div>
 {/if}
+
+<style>
+  /* a widget whose traces are on a canvas (S5.4-06): the canvas under, the SVG (text, grid, dot) over it */
+  .gtrace {
+    position: relative;
+  }
+  .gcv {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .gtrace > :global(.gsvg) {
+    position: relative;
+  }
+</style>

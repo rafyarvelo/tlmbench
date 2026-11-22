@@ -5,7 +5,7 @@ roadmap's steps 4.1 to 5.10 (`S<step>-NN`), each Accepted or Modified design dec
 text) that no roadmap row covers (`D-<section>-NN`), each accepted difference (`A-NN`), and what only a real window
 shows (`X-win-NN`). IDs are stable: later steps cite them and never renumber. `ci/ledger_check.py` checks this file.
 
-Counts: **Done** 330 · **Partial** 4 · **Missing** 4 · **Diverged** 2 · **Unverified** 25 · **Owner pass** 17 (382 rows).
+Counts: **Done** 331 · **Partial** 4 · **Missing** 4 · **Diverged** 1 · **Unverified** 25 · **Owner pass** 17 (382 rows).
 
 How to read the evidence. A row added or moved after R1 says the date its evidence was run. Otherwise a test named here was run in the review and passed on Nov 11, 2026 (macOS, M1): the Rust
 tests with `cargo nextest run --workspace --no-fail-fast` (269 passed, 1 skipped), the app's UI tests one at a time
@@ -138,7 +138,7 @@ where each step stands, and nothing else records either.
 | S5.4-03 | roadmap 5.4 | Pairs and groups by name, sizes S/M/L/2×2, min/max marks, the widget ⋯ menu. | Done | `t_gauges` | Dragging a widget's title (prototype) is not built: R3.3 |
 | S5.4-04 | roadmap 5.4 | Core: one call per frame returning every widget's value, min/max in view and state-run starts. | Done | `tlmbench-store::store::a_widget_frame_answers_value_min_max_and_run_start_in_one_call` | |
 | S5.4-05 | roadmap 5.4 | Typed updates (build and update per widget, text at most 10 times a second). | Done | `t_gauges` | Nov 17. A widget's text changes at most ten times a second, the last value always landing. R3.3 |
-| S5.4-06 | roadmap 5.4 | Traces on canvas. | Diverged | `app/ui/src/shell/Widget.svelte` (sparklines, trails and timelines are SVG; only XY and Spectrum panes use a canvas) | An Accepted decision ("trace-heavy widgets draw on canvas"). Owner decision 4 in review.md; else R3.3 Owner, Nov 17: build canvas for the sparkline, XY trail and cloud and the GPS track, as the Accepted decision says; dials stay SVG. |
+| S5.4-06 | roadmap 5.4 | Traces on canvas. | Done | `t_canvaswidgets` (Nov 22), `app/ui/src/tracecanvas.ts` | Built Nov 22 as the owner decided Nov 17 (the design's Accepted decision): the sparkline and the XY dot's trail and cloud (the GPS track when the pair is longitude/latitude) draw on a canvas under the widget's SVG, which keeps text, grid and the dot; dials stay SVG; the widget API is unchanged. HiDPI (device pixels), theme colours read at each draw (a theme change redraws), nothing animates. XY and Spectrum panes were canvas already. |
 | S5.4-07 | roadmap 5.4 | XY plot: core pairing by time onto a pixel grid. | Done | `tlmbench-store::store::xy_points_pair_by_time_reduce_on_a_grid_and_follow_the_zoom` | Both channels must be in one file |
 | S5.4-08 | roadmap 5.4 | XY: X channel picker, time colouring, 1:1 with the latitude correction, Alt-drag back to time, local zoom. | Done | `t_xy` | |
 | S5.4-09 | roadmap 5.4 | Declarative SVG widgets (sanitised, live preview). | Done | `t_widgets` | |
