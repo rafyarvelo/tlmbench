@@ -89,6 +89,8 @@ CI result of its push is in the CI row.
   - Run cargo workspace-wide only (`-p` builds another feature set and fills the disk); clean `target/debug` when done.
   - A `git add` with a path that no longer exists (a file you `git mv`ed) aborts an `&&` chain: the commit then holds only
     what was staged before. Check `git show --stat HEAD` after a multi-file commit.
+  - Browser-only tests run against `app/browser/dist`, built by `just viewer`: rebuild it after UI changes or a local
+    pass proves nothing (CI builds it fresh). A wait whose result isn't checked hides a slow boot as a later failure.
   - The parity scenes `drag-edge*` report a 2 px and 6 px size gap in the drop label box; known noise, not behaviour.
 
 ## Report when you stop
