@@ -483,6 +483,37 @@ LIVE badge red); the residuals with a dashed zero line and their range in ms.
 Result:
 Notes:
 
+## Z. Built Nov 22, second run (S5.6-13, the rest of R3.4, R4's first part): new since section Y
+
+### Z1. Tables and XY across two files (S5.6-13)
+Do: a tab of two files at different rates (right-click › Add to this tab). A table pane with a channel of each: sort by
+the second file's column, then filter it (`> 0`), step through the matches, Apply to charts. Then an XY pane: the first
+file's channel on X, the second's as Y; and the other way round.
+Expect: the rows (the first file's samples) in the order of the second file's held values; the filter keeps the rows
+where its held value passes, and the charts leave the others out. XY draws a line paired on the shared timeline, nothing
+before the second file starts; no "one file" message.
+Result:
+Notes:
+
+### Z2. Undo a layout's rename and delete; End; shortcuts (R3.4)
+Do: rename one of your layouts, ⌘Z, ⇧⌘Z; delete it (its tab closes), ⌘Z. In a live tab, scroll back, then press End.
+Point at a few buttons with a shortcut in their tooltip.
+Expect: ⌘Z renames it back and brings the deleted one back (its tab stays closed); End follows live again. Tooltips and
+menus show ⌘ ⌥ ⇧ on the Mac (Ctrl+, Alt+ on Windows).
+Result:
+Notes:
+
+### Z3. The installed app (R4; from a .dmg the release workflow builds, or `just bundle-mac`)
+Do: open the .dmg, drag TelemetryBench to Applications, open it. Double-click a `.tlm` in Finder, with the app closed and
+again while it runs; right-click a `.csv` › Open With. Help › Install command-line tool…, then in a new terminal run
+`tlmbench --version`.
+Expect: the app opens the file (in front, in a tab of its own) both times; TelemetryBench is offered for CSV without
+taking it over. Install says where `tlmbench` went (`~/.local/bin`) and, if that folder isn't on PATH, the line to add to
+`~/.zprofile` with Copy the line. An unsigned build needs right-click › Open the first time; a signed one opens with no
+Gatekeeper warning.
+Result:
+Notes:
+
 ---
 
 ## Other things I noticed

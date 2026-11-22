@@ -5,43 +5,49 @@ repository, agree with it which files each of you touches before you edit.
 This prompt is only a hand-off. **Where each step stands is the status table in `docs/release/release-plan.md`; what is
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
-Written Nov 22 after the owner's-test-notes run. What it built is in the status table's "Owner's test notes run" row; CI
-is green on `0e60834` (run 45057964460) after one Linux test-wait fix (the CI row).
+Written Nov 22 after the second Nov 22 run (S5.6-13, the rest of R3.4, R4's first part). What it built is in the
+status table's "Second Nov 22 run" and "R4" rows; the CI result is in the CI row.
 
 ## First
 
 1. Read `CLAUDE.md` (its hard requirements bind you), then `docs/release/release-plan.md` (the status table) and
-   `docs/release/owner-test-sheet.md` (section Y is what the owner hasn't tried yet; fill in anything they wrote).
+   `docs/release/owner-test-sheet.md` (sections Y and Z are what the owner hasn't tried yet; fill in anything they wrote).
 2. Skim the memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/`, above all the
-   owner-decisions files (newest: `owner-decisions-nov22.md`).
+   owner-decisions files (newest: `owner-decisions-nov22b.md`).
 3. Run the open-rows script: `python3 ci/ledger_check.py`, then list rows that aren't Done or Owner pass.
-4. Ledger counts at the hand-off: Done 331, Partial 4, Missing 4, Diverged 1, Unverified 25, Owner pass 17 (382 rows).
+4. Ledger counts at the hand-off: Done 339, Partial 5, Missing 2, Diverged 1, Unverified 24, Owner pass 17 (388 rows).
 
-## Built Nov 22 (all pushed): wait for the owner's sheet before changing them
+## The UI is frozen (Nov 22)
 
-- The owner's two blockers (D-ui-65, D-ui-66), X3 Your widgets as a list and a form (the owner chose the layout), X1 pins,
-  X4 one Undo, W3 quiet pane headers, W2 results as a tree of files, X2 read-only events tagged, W4 a clock reset starts
-  the source's next part (D-live-13), S5.3-15 the Report tab, S5.4-06 canvas traces, the two Nov 17 audit items.
-- **Not checked in a real window by the agent**, the WKWebView drag above all (the blockers): the owner's sheet Y1 to Y8.
-  If the owner reports a failure there, that comes first.
+R3.4 is done: from here only bug fixes, the owner's sheet results and R4's own items touch `app/ui/src`. A new idea or an
+audit finding that isn't a bug goes to `docs/post-v1.md`.
+
+## Built Nov 22 (both runs, all pushed): wait for the owner's sheet before changing them
+
+- First run: the two blockers (D-ui-65, D-ui-66), X1 to X4, W2 to W4, the Report tab, canvas traces. Sheet section Y.
+- Second run: S5.6-13 (tables and XY across files), R3.4 (End, shortcuts per platform, layout undo, the review), files
+  opened from the OS and Install command-line tool… (D-ui-71, D-ui-72). Sheet section Z.
+- **Nothing in Y or Z was seen in a real window by an agent**, the WKWebView drag above all (Y1). If the owner reports a
+  failure there, that comes first.
 
 ## Open questions for the owner (ask, with a recommendation; don't decide)
 
-- **Quiet interface's default** (W3): the prototype's is on, the app's off. Recommendation: keep it off until the owner
-  has tried Y5, then ask.
-- **S4.3-12** (the import dialog's extra sections, parity P5): the prototype's Derived channels and Categories by prefix
-  sections against the app's "Also for files with this header". Recommendation: App is better (the profile section covers
-  both and applies to the next file with the header); ask before porting.
+- **Quiet interface's default** (W3): asked Nov 22; the owner chose to decide after trying Y5. Ask again once Y5 has a
+  result (recommendation then: whatever their Y5 note says; otherwise keep it off).
+- **R4's dry run**: it needs the owner's signing secrets (listed in `docs/development.md`, Releases) and PyPI's trusted
+  publisher for `release.yml`, and it bills a full matrix build. Ask before starting it (`workflow_dispatch`, or a tag
+  `v0.1.0-rc.1`), recommending the hand-started run first (it publishes nothing).
 
 ## Your rows
 
-- **S5.6-13** (Missing): tables sort and filter by another file's columns, and XY across files (`group.rs` `xy_points`
-  refuses two files). Core first (a held column for sort keys; XY by pairing on the shared timeline).
-- **The rest of R3.4:** keyboard coverage against the prototype's list, every tooltip and empty state, the copy review
-  (plain, short, sentence case). Then the UI freezes. Undo: a layout's rename and delete still undo only from their note
-  (they aren't a file's edits); say so in the review or add them to the history.
+- **R4, the rest:** the dry run once the owner agrees, then fix what it finds (it has never run: expect paths in the
+  bundles, the NSIS install folder, the deb's package name and the AppImage's layout to need a look); D-cli-02 and
+  D-ui-72 are Done after it. The notarised `.dmg` on a clean Mac (Gatekeeper) is the owner's to check. `just bundle-mac`
+  builds the macOS bundles locally (an agent's run of it was refused by the permission check on Nov 22: ask first).
+  The Windows code in `app/src-tauri/src/install.rs` (PATH through the registry) is compiled only by CI's Windows job.
 - **D-gauge-04** waits for R6's measurement; **D-live-09** is the owner's (review decision 5).
-- Then R4 (packaging and release automation, Opus), per the plan.
+- Then R5 (real-window passes with the owner) and R6, per the plan. The manual PDF (R7) joins the bundle's resources
+  when it exists; the licence (decision 1: Apache-2.0, CC BY 4.0) lands with R7's LICENSE.
 
 ## What is decided, and what you must not decide
 
@@ -92,6 +98,11 @@ is green on `0e60834` (run 45057964460) after one Linux test-wait fix (the CI ro
   - Browser-only tests run against `app/browser/dist`, built by `just viewer`: rebuild it after UI changes or a local
     pass proves nothing (CI builds it fresh). A wait whose result isn't checked hides a slow boot as a later failure.
   - The parity scenes `drag-edge*` report a 2 px and 6 px size gap in the drop label box; known noise, not behaviour.
+- **Lessons (Nov 22, second run):**
+  - `maturin develop` refuses to run when both `VIRTUAL_ENV` and `CONDA_PREFIX` are set: `unset CONDA_PREFIX` first.
+  - The fake core (`app/ui/tests/fakecore.js`) already has a field for most names (`opened` is the list of opens):
+    grep before adding one, or a test breaks far from your change.
+  - A test step that moved the pointer (⌘Z after a click on `#stack`) hides hover-only buttons: hover again first.
 
 ## Report when you stop
 
