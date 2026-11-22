@@ -85,6 +85,7 @@ fn bundled_cli() -> Result<PathBuf, String> {
     cli.ok_or_else(|| "This build has no command-line tool beside the app (a development build): build it with `cargo build --release -p tlmbench`.".into())
 }
 
+#[cfg(unix)]
 fn on_path(dir: &Path) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d == dir))
 }
