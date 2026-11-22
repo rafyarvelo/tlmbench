@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "mainBinaryName": "tlmbench-app",
+  "bundle": {
+    "active": true,
+    "publisher": "TelemetryBench",
+    "category": "DeveloperTool",
+    "shortDescription": "A desktop workbench for telemetry recordings",
+    "longDescription": "Open, plot, check and export telemetry recordings of any size, read-only next to the data.",
+    "externalBin": ["binaries/tlmbench"],
+    "resources": {
+      "../../plugins/README.md": "plugins/README.md",
+      "../../plugins/cargo-generate.toml": "plugins/cargo-generate.toml",
+      "../../plugins/template-decoder/": "plugins/template-decoder/",
+      "../../plugins/template-estimator/": "plugins/template-estimator/",
+      "../../plugins/template-payload/": "plugins/template-payload/",
+      "../../examples/recordings/.tlmbench/": "examples/.tlmbench/"
+    },
+    "fileAssociations": [
+      { "ext": ["tlm"], "name": "TelemetryBench recording", "description": "TelemetryBench recording", "role": "Editor", "mimeType": "application/x-tlmbench" },
+      { "ext": ["csv", "tsv"], "name": "Delimited text", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["parquet"], "name": "Parquet", "role": "Viewer", "rank": "Alternate" }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.plist"
+    },
+    "windows": {
+      "nsis": { "installMode": "currentUser" }
+    },
+    "linux": {
+      "deb": { "section": "science" }
+    }
+  }
+}

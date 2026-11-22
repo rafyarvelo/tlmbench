@@ -2,7 +2,8 @@ name: Python wheels
 
 # One abi3 wheel per platform (Linux manylinux 2_28, macOS universal2, Windows x64) and an sdist. Every run builds them and
 # installs each wheel into a clean virtual environment, where the package's own tests run against the installed package
-# (not the source tree). A tag `py-v<version>` also publishes to PyPI through trusted publishing (no token is stored).
+# (not the source tree). A tag `py-v<version>` also publishes to PyPI through trusted publishing (no token is stored), and so
+# does the release workflow for a final tag `v<version>` (it calls this one).
 
 on:
   push:
@@ -19,6 +20,12 @@ on:
       - "python/**"
       - ".github/workflows/python.yml"
   workflow_dispatch:
+  # the release workflow builds the wheels with the rest, and publishes them for a final tag
+  workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        default: false
 
 concurrency:
   group: python-${{ github.ref }}
@@ -94,7 +101,7 @@ jobs:
 
   publish:
     name: publish to PyPI
-    if: startsWith(github.ref, 'refs/tags/py-v')
+    if: startsWith(github.ref, 'refs/tags/py-v') || inputs.publish
     needs: [wheel, sdist]
     runs-on: ubuntu-24.04
     environment: pypi

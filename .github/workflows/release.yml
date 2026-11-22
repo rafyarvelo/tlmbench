@@ -1,0 +1,389 @@
+name: Release
+
+# A tag v<version> builds every artefact of a release and attaches them to a draft GitHub Release for the owner to read
+# and publish: the app's installers (macOS universal .dmg, Windows NSIS and MSI plus a portable zip, Linux AppImage and
+# .deb), the CLI archives (also Linux arm64) and its Docker image, the Python wheels (published to PyPI for a final tag, not a candidate),
+# the browser-only site, SHA256SUMS and a build-provenance attestation for each file. Every installer is installed on a
+# runner of its OS and smoke-tested from where it was installed (tools/smoke.mjs), never from the build tree.
+#
+# A tag v1.0.0-rc.N is a dry run of 1.0.0: the same build, a draft marked as a pre-release, nothing published to PyPI.
+# Run it by hand (workflow_dispatch) to build and test everything and publish nothing at all.
+#
+# Signing uses repository secrets the owner adds (an agent never sees them); without them the build is unsigned and the
+# smoke tests still run. macOS: APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+# APPLE_ID, APPLE_PASSWORD (an app-specific password), APPLE_TEAM_ID: tauri signs with the hardened runtime and
+# notarises with notarytool. Windows: WINDOWS_CERTIFICATE (base64 .pfx) and WINDOWS_CERTIFICATE_PASSWORD.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      final: ${{ steps.v.outputs.final }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then python3 tools/check_versions.py --tag "$GITHUB_REF_NAME"; else python3 tools/check_versions.py; fi
+          v=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          # a final release: a tag with no -rc
+          if [ "$GITHUB_REF_TYPE" = tag ] && [[ "$GITHUB_REF_NAME" != *-rc.* ]]; then echo "final=true" >> "$GITHUB_OUTPUT"; else echo "final=false" >> "$GITHUB_OUTPUT"; fi
+
+  # The app with the CLI beside it, per platform
+  app:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: universal-apple-darwin
+            bundles: app,dmg
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+    runs-on: ${{ matrix.os }}
+    env:
+      # a secret can't be tested in a step's `if`; whether it is set can
+      HAS_WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pinned versions
+        run: grep -E '^[A-Z_]+=' ci/versions.env >> "$GITHUB_ENV"
+      - run: rustup toolchain install
+      - if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config file libssl-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev patchelf
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: app/ui
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just@${{ env.JUST_VERSION }},tauri-cli@${{ env.TAURI_CLI_VERSION }}
+      - name: The viewer (the CLI and the app embed it)
+        run: just viewer
+      - name: The CLI, where the bundle takes it from (binaries/tlmbench-<target>)
+        run: |
+          mkdir -p app/src-tauri/binaries
+          if [ "${{ matrix.target }}" = universal-apple-darwin ]; then
+            for t in aarch64-apple-darwin x86_64-apple-darwin; do cargo build --release --locked -p tlmbench --target $t; done
+            lipo -create -output app/src-tauri/binaries/tlmbench-universal-apple-darwin \
+              target/aarch64-apple-darwin/release/tlmbench target/x86_64-apple-darwin/release/tlmbench
+          else
+            cargo build --release --locked -p tlmbench --target ${{ matrix.target }}
+            ext=""; [ "$RUNNER_OS" = Windows ] && ext=".exe"
+            cp "target/${{ matrix.target }}/release/tlmbench$ext" "app/src-tauri/binaries/tlmbench-${{ matrix.target }}$ext"
+          fi
+      - name: Windows signing certificate
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_CERTIFICATE == 'true'
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfx = "$env:RUNNER_TEMP\cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $c = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force)
+          "TAURI_WINDOWS_THUMBPRINT=$($c.Thumbprint)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Remove-Item $pfx
+      - name: Build the bundles
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cd app/src-tauri
+          extra=()
+          if [ -n "${TAURI_WINDOWS_THUMBPRINT:-}" ]; then
+            printf '{"bundle":{"windows":{"certificateThumbprint":"%s","digestAlgorithm":"sha256","timestampUrl":"http://timestamp.digicert.com"}}}' "$TAURI_WINDOWS_THUMBPRINT" > "$RUNNER_TEMP/sign.json"
+            extra=(--config "$RUNNER_TEMP/sign.json")
+          fi
+          # unsigned without the secrets: tauri skips signing when APPLE_SIGNING_IDENTITY is empty
+          [ -z "$APPLE_SIGNING_IDENTITY" ] && unset APPLE_SIGNING_IDENTITY APPLE_CERTIFICATE APPLE_ID
+          cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config tauri.release.conf.json "${extra[@]}"
+      - name: Gather the artefacts
+        run: |
+          v=${{ needs.version.outputs.version }}
+          out="$RUNNER_TEMP/out"; mkdir -p "$out"
+          b="target/${{ matrix.target }}/release/bundle"
+          case "$RUNNER_OS" in
+            macOS)
+              cp "$b"/dmg/*.dmg "$out/TelemetryBench-$v-macos-universal.dmg" ;;
+            Windows)
+              cp "$b"/nsis/*-setup.exe "$out/TelemetryBench-$v-windows-x64-setup.exe"
+              cp "$b"/msi/*.msi "$out/TelemetryBench-$v-windows-x64.msi"
+              # the portable zip: the app, the CLI and the resources, run from where it is unpacked
+              p="$RUNNER_TEMP/TelemetryBench-$v-windows-x64-portable"; mkdir -p "$p"
+              cp target/${{ matrix.target }}/release/tlmbench-app.exe "$p/TelemetryBench.exe"
+              cp app/src-tauri/binaries/tlmbench-${{ matrix.target }}.exe "$p/tlmbench.exe"
+              cp -r plugins/template-decoder plugins/template-estimator plugins/template-payload "$p/"
+              (cd "$RUNNER_TEMP" && 7z a -tzip "$out/TelemetryBench-$v-windows-x64-portable.zip" "TelemetryBench-$v-windows-x64-portable" > /dev/null) ;;
+            Linux)
+              cp "$b"/appimage/*.AppImage "$out/TelemetryBench-$v-linux-x86_64.AppImage"
+              cp "$b"/deb/*.deb "$out/TelemetryBench-$v-linux-amd64.deb" ;;
+          esac
+          ls -la "$out"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-${{ runner.os }}
+          path: ${{ runner.temp }}/out/*
+
+  # Each installer installed on a clean runner of its OS, and the smoke test run from the installed files
+  smoke:
+    needs: [version, app]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-${{ runner.os }}
+          path: pkg
+      - name: Install, smoke-test, uninstall
+        run: |
+          v=${{ needs.version.outputs.version }}
+          case "$RUNNER_OS" in
+            macOS)
+              mnt=$(hdiutil attach -nobrowse -readonly pkg/*.dmg | tail -1 | cut -f3-)
+              cp -R "$mnt/TelemetryBench.app" /Applications/
+              hdiutil detach "$mnt"
+              # a signed and notarised build passes Gatekeeper (an unsigned dry run is reported, not failed)
+              spctl --assess --type execute -v /Applications/TelemetryBench.app || echo "::warning::Gatekeeper rejects the app (unsigned build?)"
+              node tools/smoke.mjs --app /Applications/TelemetryBench.app/Contents/MacOS/tlmbench-app \
+                --cli /Applications/TelemetryBench.app/Contents/MacOS/tlmbench --version "$v"
+              rm -rf /Applications/TelemetryBench.app ;;
+            Windows)
+              ./pkg/*-setup.exe //S
+              dir="$LOCALAPPDATA/TelemetryBench"
+              node tools/smoke.mjs --app "$dir/tlmbench-app.exe" --cli "$dir/tlmbench.exe" --version "$v"
+              "$dir/uninstall.exe" //S
+              # the portable zip runs from where it is unpacked
+              7z x -o"$RUNNER_TEMP/portable" pkg/*-portable.zip > /dev/null
+              p=$(ls -d "$RUNNER_TEMP"/portable/*/)
+              node tools/smoke.mjs --app "$p/TelemetryBench.exe" --cli "$p/tlmbench.exe" --version "$v" ;;
+            Linux)
+              sudo apt-get update
+              sudo apt-get install -y ./pkg/*.deb xvfb
+              xvfb-run -a node tools/smoke.mjs --app /usr/bin/tlmbench-app --cli /usr/bin/tlmbench --version "$v"
+              sudo apt-get remove -y "$(dpkg-deb -f pkg/*.deb Package)"
+              # the AppImage carries the same app (it needs FUSE to mount itself; extract it instead)
+              chmod +x pkg/*.AppImage
+              (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE"/pkg/*.AppImage --appimage-extract > /dev/null)
+              xvfb-run -a node tools/smoke.mjs --app "$RUNNER_TEMP/squashfs-root/usr/bin/tlmbench-app" \
+                --cli "$RUNNER_TEMP/squashfs-root/usr/bin/tlmbench" --version "$v" ;;
+          esac
+
+  # The command-line tool alone, as an archive per platform (Linux arm64 too: no app there)
+  cli:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, target: aarch64-apple-darwin, name: macos-arm64 }
+          - { os: macos-15, target: x86_64-apple-darwin, name: macos-x86_64 }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, name: windows-x64 }
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, name: linux-x86_64 }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, name: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pinned versions
+        run: grep -E '^[A-Z_]+=' ci/versions.env >> "$GITHUB_ENV"
+      - run: rustup toolchain install && rustup target add ${{ matrix.target }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: app/ui
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just@${{ env.JUST_VERSION }}
+      - run: just viewer
+      - run: cargo build --release --locked -p tlmbench --target ${{ matrix.target }}
+      - name: Archive
+        run: |
+          v=${{ needs.version.outputs.version }}
+          d="tlmbench-$v-${{ matrix.name }}"; mkdir -p "$RUNNER_TEMP/$d" "$RUNNER_TEMP/out"
+          ext=""; [ "$RUNNER_OS" = Windows ] && ext=".exe"
+          cp "target/${{ matrix.target }}/release/tlmbench$ext" "$RUNNER_TEMP/$d/"
+          "$RUNNER_TEMP/$d/tlmbench$ext" --version | grep -q "$v"
+          cp README.md "$RUNNER_TEMP/$d/"
+          [ -f LICENSE ] && cp LICENSE "$RUNNER_TEMP/$d/"
+          cd "$RUNNER_TEMP"
+          if [ "$RUNNER_OS" = Windows ]; then 7z a -tzip "out/$d.zip" "$d" > /dev/null; else tar czf "out/$d.tar.gz" "$d"; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cli-${{ matrix.name }}
+          path: ${{ runner.temp }}/out/*
+
+  # The CLI as a small image for CI (design: CLI), from the Linux archives above; pushed for a tag
+  docker:
+    needs: [version, cli]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: cli-linux-*
+          path: archives
+          merge-multiple: true
+      - name: The binaries by Docker's architecture names
+        run: |
+          v=${{ needs.version.outputs.version }}
+          for a in x86_64:amd64 arm64:arm64; do
+            mkdir -p cli/dist/${a#*:}
+            tar xzf archives/tlmbench-$v-linux-${a%%:*}.tar.gz -C "$RUNNER_TEMP"
+            cp "$RUNNER_TEMP/tlmbench-$v-linux-${a%%:*}/tlmbench" cli/dist/${a#*:}/
+          done
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: github.ref_type == 'tag'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: tags
+        run: |
+          img="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/tlmbench"
+          t="$img:${{ needs.version.outputs.version }}"
+          [ "$GITHUB_REF_TYPE" = tag ] && t="$img:${GITHUB_REF_NAME#v}"
+          [ "${{ needs.version.outputs.final }}" = true ] && t="$t,$img:latest"
+          echo "tags=$t" >> "$GITHUB_OUTPUT"
+          echo "one=${t%%,*}" >> "$GITHUB_OUTPUT"
+      - name: Build and check it answers
+        uses: docker/build-push-action@v7
+        with:
+          context: cli
+          file: cli/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: ${{ steps.tags.outputs.one }}
+      - run: docker run --rm "${{ steps.tags.outputs.one }}" --version | grep -q "${{ needs.version.outputs.version }}"
+      - uses: docker/build-push-action@v7
+        if: github.ref_type == 'tag'
+        with:
+          context: cli
+          file: cli/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+
+  # Browser-only mode as a static site (published with the manual on GitHub Pages, R7)
+  site:
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pinned versions
+        run: grep -E '^[A-Z_]+=' ci/versions.env >> "$GITHUB_ENV"
+      - run: rustup toolchain install
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: app/ui
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just@${{ env.JUST_VERSION }}
+      - run: just viewer
+      - run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          cd app/browser/dist && zip -qr "$RUNNER_TEMP/out/tlmbench-${{ needs.version.outputs.version }}-browser-site.zip" .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: ${{ runner.temp }}/out/*
+
+  # The Python wheels: the same workflow as every push (built, installed into a clean environment and tested)
+  wheels:
+    needs: version
+    uses: ./.github/workflows/python.yml
+    with:
+      publish: ${{ needs.version.outputs.final == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+
+  # A draft release with every file, its checksum and an attestation; nothing for a hand-started dry run
+  release:
+    if: github.ref_type == 'tag'
+    needs: [version, app, smoke, cli, docker, site, wheels]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: files
+          merge-multiple: true
+      - name: Checksums
+        run: cd files && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: files/*
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${{ needs.version.outputs.version }}
+          notes="$RUNNER_TEMP/notes.md"
+          # the CHANGELOG's entry for this version, else a line saying where it is
+          if [ -f CHANGELOG.md ]; then awk -v v="$v" '$0 ~ "^## \\[?"v"\\]?" {on=1; next} /^## / && on {exit} on' CHANGELOG.md > "$notes"; fi
+          [ -s "$notes" ] || echo "TelemetryBench $v." > "$notes"
+          pre=(); [ "${{ needs.version.outputs.final }}" = true ] || pre=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" files/* --draft "${pre[@]}" --title "TelemetryBench $v" --notes-file "$notes"

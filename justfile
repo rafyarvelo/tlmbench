@@ -36,6 +36,22 @@ viewer:
 browser-site: viewer
     @echo "app/browser/dist is ready: serve it from any static host"
 
+# Every file that carries the version says the workspace's (`just versions --tag v1.0.0`). The release's version in one place (R4)
+versions *args:
+    python3 tools/check_versions.py {{args}}
+
+# `just smoke /Applications/TelemetryBench.app/Contents/MacOS 1.0.0`: the folder holding tlmbench-app and tlmbench.
+# The package smoke test (R4) against an installed app
+smoke dir version:
+    node tools/smoke.mjs --app "{{dir}}/tlmbench-app" --cli "{{dir}}/tlmbench" --version {{version}}
+
+# The CLI beside the app, then the .app and .dmg in target/release/bundle, as the release builds them (unsigned here
+# unless the signing variables are set). The macOS bundles, built as the release does
+bundle-mac: viewer
+    cargo build --release --locked -p tlmbench
+    mkdir -p app/src-tauri/binaries && cp target/release/tlmbench "app/src-tauri/binaries/tlmbench-$(rustc -vV | sed -n 's/^host: //p')"
+    cd app/src-tauri && cargo tauri build --bundles app,dmg --config tauri.release.conf.json
+
 # Gate 5, the v1 release: a folder check, and an HTML export of a 2 h flight within the 250 MB budget that opens in
 # under 2 s from a static host (needs `just viewer` before the build, and Playwright's Chromium)
 gate5:

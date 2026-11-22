@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The hardened runtime's exceptions the app needs (R4). The WASM plugin runtime (wasmtime) compiles plugins to machine
+     code in memory; native plugins are libraries the app loads that Apple didn't sign for it. Nothing else is relaxed.
+     The app isn't sandboxed (it reads recordings wherever they are), so it needs no file or network entitlements. -->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

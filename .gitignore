@@ -35,3 +35,7 @@ app/ui/tests/out/
 /python/tlmbench/_core*.so
 __pycache__/
 /app/browser/
+
+# the CLI the release bundle ships beside the app (release.yml puts it there)
+app/src-tauri/binaries/
+cli/dist/

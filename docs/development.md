@@ -102,7 +102,7 @@ instead of quietly succeeding.
 
 ## CI (GitHub Actions)
 
-`.github/workflows/ci.yml` has three jobs:
+`.github/workflows/ci.yml` has three jobs (releases: see Releases below):
 
 - **CI image**: builds `ci/Dockerfile` for amd64 and arm64 and pushes it to GHCR, tagged by a hash of its inputs, so
   it rebuilds only when a pinned version or the Dockerfile changes.
@@ -113,6 +113,36 @@ instead of quietly succeeding.
 When a Linux job fails and you need a shell in the same environment, open the repo in GitHub Codespaces: it builds
 `.devcontainer/` from the same Dockerfile, with the fixture folder mounted read-only at `/data/ro`. Or build it locally
 (`docker build -f ci/Dockerfile -t tlmbench-ci .`, about 6 GB) and remove it afterwards.
+
+## Releases
+
+`.github/workflows/release.yml` runs on a tag `v<version>` (a final release) or `v<version>-rc.N` (a dry run of it, a
+pre-release), and by hand (Actions › Release › Run workflow), which builds and tests everything and publishes nothing.
+
+- **version**: `tools/check_versions.py` (also `just versions`): the workspace version in `Cargo.toml` is the one
+  version; `tauri.conf.json`, `python/pyproject.toml`, `python/Cargo.toml` and the WASM crates must say the same, and
+  the tag must name it.
+- **app** (macOS universal, Windows, Linux): `just viewer`, the CLI built for the target and put in
+  `app/src-tauri/binaries/tlmbench-<target>` (the bundle ships it beside the app), then `cargo tauri build` with
+  `tauri.release.conf.json` merged over `tauri.conf.json`: bundles on, the CLI, the plugin templates and the example
+  `.tlmbench/` as resources, `.tlm` registered (CSV, TSV and Parquet offered in Open With), the hardened runtime with
+  `entitlements.plist` (the WASM runtime's JIT, native plugins). The base config keeps bundling off, so a development
+  build and CI need none of this. `just bundle-mac` builds the same `.app` and `.dmg` on a Mac.
+- **smoke**: each installer installed on a clean runner of its OS, then `tools/smoke.mjs` (also `just smoke`) from the
+  installed files: `tlmbench --version`, a recording opened in a read-only folder through the app's daemon and read
+  back, nothing written next to it. Then it is uninstalled.
+- **cli** (macOS arm64 and x86_64, Windows, Linux x86_64 and arm64): an archive each; **docker**: the Linux binaries as
+  `ghcr.io/<owner>/tlmbench` (`cli/Dockerfile`); **site**: browser-only mode as a zip; **wheels**: `python.yml`,
+  published to PyPI for a final tag.
+- **release** (tags only): every file, `SHA256SUMS`, a build-provenance attestation for each, and a draft GitHub
+  Release with the CHANGELOG's entry. The owner reads it and publishes it.
+
+Signing needs repository secrets only the owner holds: `APPLE_CERTIFICATE` (a base64 Developer ID Application `.p12`),
+`APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password) and
+`APPLE_TEAM_ID` (tauri signs and notarises), and `WINDOWS_CERTIFICATE` (a base64 `.pfx`) with
+`WINDOWS_CERTIFICATE_PASSWORD`. Without them the build is unsigned and the smoke tests still run (the macOS one reports
+Gatekeeper's verdict). PyPI's trusted publisher must name `release.yml` (the workflow a tag starts) as well as
+`python.yml`, with the `pypi` environment.
 
 ## Large test recordings
 
