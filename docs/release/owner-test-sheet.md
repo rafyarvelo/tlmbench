@@ -321,34 +321,34 @@ Notes:
 Do: Settings › Icons: add an SVG. Pin a layout (Layouts panel, right-click › Pin to toolbar) and a recipe (Recipes manager).
 Expect: a "Pinned" strip in the top bar only once something is pinned; one click opens the layout or adds the recipe to the
 file in front; the icon follows the theme (light and dark).
-Result:
+Result: Adding an SVG as an icon works, but the edit box is tiny and not resizeable. Also it didn't work for shared layouts and the context menu didn't allow the user to easily unpin the layout without having to go through the settings.
 Notes:
 
 ### X2. Events from the file (D-ui-12)
 Do: open a CSV with a text column (a mode or state); in the import dialog tick its Events box. In the descriptor form, the
 same box on a field.
 Expect: an event at each change of that column, named by the new value, read-only, in the Events panel (group by file).
-Result:
-Notes:
+Result: Works as expected.
+Notes: What is a read-only event? How does that work?
 
 ### X3. A code widget's inputs and settings (S5.4-10, D-ui-59)
 Do: Gauges pane › a code widget › its menu › "Inputs and settings…". Settings › widgets › New code widget.
 Expect: a channel picker per role and the widget's parameters; the widget redraws with them; New code widget adds a working
 example.
-Result:
-Notes:
+Result: The "Your widgets" button is nearly cutoff in the Gauges dialog. After adding a new widget it becomes unreachable because the dialog has no scroll option. There is seemingly no way to edit the widget?
+Notes: This Code widget dialog currently sucks and needs major rework, FAIL
 
 ### X4. Explorer: channels onto a category, several categories (D-ui-09)
 Do: drag channels onto a category row; Cmd/Ctrl-click and Shift-click category rows, then Enter.
 Expect: the channels move into that category (Undo puts them back); Enter plots the picked categories' channels.
-Result:
-Notes:
+Result: This works, but Undo only works for the most recent channel that was dragged. For moving channels between panes undo works for several moves
+Notes: Undo should be consistent across the UI
 
 ### X5. Connect: Preview a frame on a real source (S5.5-02)
 Do: Connect › UDP, TCP or serial with a descriptor › Preview a frame.
 Expect: it reads for one second only when clicked, then shows the latest frame's values and the frames a second.
-Result:
-Notes:
+Result: Works as expected
+Notes: Nominal behavior.
 
 ### X6. Import dialog: "Also for files with this header", and the Recipes manager's Import profiles tab (S5.1-10, S5.1-12)
 Do: import a CSV; open "Also for files with this header" (check sets, recipes, starter layout, prefix rule). Then Recipes
@@ -395,7 +395,7 @@ Notes: "Results for" has a dropdown box for the files, and the "rules and checks
 Do: Settings › Quiet interface on. Open two files in one tab and a table pane.
 Expect: chips have no empty gap where the value goes until you point at a plot; the folder listing's slot numbers show
 only when you point at a file; a table's resize grip shows only when you hover it. Calm, nothing popping under the pointer.
-Result: I didn't really see anything change? UI looks fine, I'm not sure what this setting does.
+Result: I didn't really see anything change? UI looks fine, I'm not sure what this setting does. UPDATE - after checking with the prototype the setting makes sense in the prototype but it doesn't work right in the app
 Notes: Consider deleting?
 
 ### W4. Reconnect (D-live-11)
@@ -403,8 +403,8 @@ Do: connect a TCP source (a logger, or `nc -l 9000 < frames.bin` with a descript
 the sender. Try "Save recordings to" with another folder.
 Expect: the strip says RECONNECTING while the sender is down and LIVE again when it is back, recording into the same file;
 Stop works while reconnecting; the session folder lands where you chose.
-Result:
-Notes:
+Result: Works as expected
+Notes: What happens if time goes "backwards", like if a system resets it's timer? Shouldn't a reconnect still show the fields after it's been parsed? I'm not sure if it makes sense for the time axis of charts in live mode to come from the source's time if that's what they're doing now... shoudn't the X axis just be a history buffer of samples? Let's discuss this, don't make the decision on your own.
 
 ### W5. Payload plugins in the browser (D-ingest-09)
 Do: in browser-only mode (`just browser-site`, served), add `plugins/template-payload/.../my_payload.wasm` in Settings ›
@@ -439,6 +439,16 @@ How often (always / sometimes / once): always
 Severity (blocker / annoying / cosmetic): cosmetic
 ```
 (Agent, Nov 16: fixed, ledger D-ui-55; you confirmed it in V3.)
+
+```
+What I did: Clicked on a chart pane with two channels, dragged a channel and dropped beside to right and to the left.
+What I expected: A new pane to be created the channel that was dragged, and the channel removed from the original pane.
+What happened instead: The channel was "copied" from the original pane instead of "moved"
+Where (screen, tab, setting): main screen
+How often (always / sometimes / once): always
+Severity (blocker / annoying / cosmetic): blocker
+```
+
 
 ## Anything you want built or changed (new ideas)
 

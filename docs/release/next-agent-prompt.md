@@ -5,13 +5,13 @@ repository, agree with it which files each of you touches before you edit.
 This prompt is only a hand-off. **Where each step stands is the status table in `docs/release/release-plan.md`; what is
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
-Written Nov 17 (night) after the Opus run. What it built is in the status table's "Opus run" row; the CI result of its
+Written Nov 17 (night) after the Opus run; the owner's test notes added Nov 22. What it built is in the status table's "Opus run" row; the CI result of its
 push is in the CI row.
 
 ## First
 
 1. Read `CLAUDE.md` (its hard requirements bind you), then `docs/release/release-plan.md` (the status table) and
-   `docs/release/owner-test-sheet.md` (sections W and X are new and untested).
+   `docs/release/owner-test-sheet.md` (the owner's results in sections W and X, and "Other things I noticed").
 2. Skim the memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/`, above all
    `owner-decisions-nov16.md` and `owner-decisions-nov17.md`, and any newer owner-decisions file.
 3. Run the open-rows script: `python3 ci/ledger_check.py`, then list rows that aren't Done or Owner pass.
@@ -27,24 +27,42 @@ push is in the CI row.
 - **Audit items (`ui-audits.md`, Nov 17):** "Streaming" in the accent colour (the LIVE badge stays red); a zero line and
   the residual range on the Alignment's residuals; the Explorer header's icons stay as they are.
 
-## The owner's test notes (Nov 17 night, release build `e484d77`; sheet section W)
+## The owner's test notes (Nov 17 to 22, release build `e484d77`; sheet sections W and X): handle these first
 
-- **W1 (packet types in one tab): passed.** W4, W5 and all of section X are not tested yet.
-- **W2 (every file of a tab): passed.** The owner asks whether Rules & checks' "Results for" dropdown should be a tree of
-  every file, so all files' results show at once, and is open to discussion. Ask, with a recommendation (mine: a tree with
-  a row per file, each folding to its sets, the primary open, since a dropdown hides failures in the other files).
-- **W3 (Quiet interface): the owner saw no change and asks whether to delete the setting.** The design lists Quiet
-  interface among its settings ("Each of these is a setting (Clicking a row, Tooltips, Quiet interface)"), so deleting it
-  is a design change: ask the owner, don't decide. Recommendation: keep it, but make its effect visible (the setting's
-  hint says what it hides, and its effects are subtle on a single file at rest); the alternative is to make quiet the
-  default (the prototype's default is on) and drop the switch from Basic.
-- **W4 (Reconnect): the owner found Ctrl-C on the test sender "unrecoverable".** The likely cause was the test sender: it
-  restarted its clock at 0, so after a reconnect every frame read as earlier than the last and the live view held at the
-  last time (time going backwards is held, not reordered). The sender in `~/tlmbench-testdata/nov17/live/` now keeps
-  the time of day and has `--drop 15`; the owner re-tests. If it still fails, find out what the strip showed. Open
-  question either way: a real device that resets its clock when its link drops gives the same picture. Recommendation:
-  on a reconnect, a recording whose time goes backwards starts a new part (`source-1-2.tlm`, as a rotated tailed file
-  does) rather than holding; ask the owner.
+**Blocker (sheet, "Other things I noticed"):** dragging a chip from a pane of two channels and dropping it at the pane's
+left or right edge copies the channel into the new pane instead of moving it (it stays in the original pane). Always.
+Expected: a new pane with the channel, the channel gone from where it was (a copy only with Option/Alt, as the chip's
+tooltip says). Fix first, with a test that drops at both edges; check `t_edgedrop`, `t_dnd` and the parity `drag-edge*`
+scenes, and the real window (WKWebView drag differs from Chromium's).
+
+**Failed or needing work:**
+- **X3 (code widgets): FAIL, "this code widget dialog currently sucks and needs major rework".** In the Gauges pane's widget
+  dialog the "Your widgets" button is nearly cut off; after adding a widget it becomes unreachable (the dialog doesn't
+  scroll); there is no way to edit a widget. Rework it (scrolling, edit, a clear list of your widgets); ask the owner
+  about the layout before building if it changes the design.
+- **X1 (icons and pins):** adding an SVG works, but the paste box is tiny and can't be resized; pinning doesn't work for
+  shared layouts; the layout's right-click menu has no Unpin (only Settings does). Fix all three.
+- **X4 (drag onto a category):** works, but Undo only reverses the most recent channel dragged, where moving channels
+  between panes undoes several moves. The owner: "Undo should be consistent across the UI": category moves join the same
+  undo history (⌘Z steps back through them one by one).
+- **W3 (Quiet interface):** the owner compared with the prototype: the setting makes sense there but doesn't work right in
+  the app. Compare both side by side (`prototype/plotter.html`, `.app.quiet` rules around line 206) and port what the
+  prototype's quiet mode does that the app's doesn't. Keep the setting.
+
+**Questions to discuss with the owner (don't decide):**
+- **W2:** Rules & checks' "Results for" dropdown, or a tree of every file so all results show at once. Recommendation: a
+  tree, a row per file folding to its sets, the primary open.
+- **X2:** "What is a read-only event? How does that work?" Events made by the file (a marked column), by rules and by checks
+  can't be edited or deleted in the Events panel, since they are recomputed from the data; only events you add can.
+  Answer the owner and consider saying so in the panel (a tooltip or the row's tag).
+- **W4 (Reconnect passed with the fixed sender):** the owner asks what should happen when a device's time goes backwards
+  (a reset timer), whether a reconnect should still show the fields, and whether a live chart's X axis should come from the
+  source's time at all or be a history buffer of samples. A design discussion: explain how it works now (live charts use
+  the recording's time column; time going backwards is held at the last time, so a reset device freezes the view), give
+  the options (keep source time and start a new part on a reset; arrival time for live; a sample-count axis) with a
+  recommendation, and let the owner decide.
+
+**Passed:** W1, W2, W4 (with the fixed sender), X2, X5. Not tested: W5, X6, X7, X8.
 
 ## Your rows
 
