@@ -40,6 +40,16 @@ audit finding that isn't a bug goes to `docs/post-v1.md`.
 
 ## Your rows
 
+- **First, before anything else in the plan: the full apple-design audit** (owner, Nov 22). The last whole-app audit was
+  Nov 17; everything built Nov 22 (Your widgets editor, the Report tab, pins, the results tree, quiet pane headers,
+  Install command-line tool…, the shortcut names) has never been audited. Load the `anthropic-skills:apple-design`
+  skill (if it isn't available, do the pass by hand against its headings and say so) and run it on the whole app, dark
+  and light, with motion and reduced motion: screenshots from `node app/ui/tests/shots.js <out-folder>` (never with no
+  argument) and the parity scenes (`just app-parity`), plus the relevant Svelte and CSS. Follow the plan's "Rules for the
+  audits": the prototype and CLAUDE.md's conventions win over the skill; findings ranked, each with its screenshot, in a
+  dated section of `docs/release/ui-audits.md`, and a line in the status table. The UI is frozen, so fix only what is a
+  bug (cite the finding, add a test); anything that would change the design is a question for the owner with a
+  recommendation; the rest goes to `docs/post-v1.md`. Then continue with the rows below.
 - **R4, the rest:** the dry run once the owner agrees, then fix what it finds (it has never run: expect paths in the
   bundles, the NSIS install folder, the deb's package name and the AppImage's layout to need a look); D-cli-02 and
   D-ui-72 are Done after it. The notarised `.dmg` on a clean Mac (Gatekeeper) is the owner's to check. `just bundle-mac`

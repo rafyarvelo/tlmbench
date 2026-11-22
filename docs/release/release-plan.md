@@ -235,6 +235,7 @@ relevant Svelte and CSS at these points, where the UI is about to settle:
 | R3.0, moved before the rest of R2 (Nov 15) | The whole app, against the prototype, in the classification pass | It turns "looks wrong" into ranked items for R3.1 to R3.4, and names where the app is better so parity doesn't undo it |
 | End of each R3 sub-step | That sub-step's area only | Catch regressions while the code is fresh |
 | R3.4, before the UI freeze | The whole app, with motion and reduced motion | The last chance for anything that isn't a bug fix |
+| After the Nov 22 runs, before R4's dry run (owner, Nov 22) | The whole app, dark and light, with motion and reduced motion | The Nov 17 audit predates the Nov 22 UI work; the last whole-app pass after the freeze (findings are bug fixes or post-v1) |
 | R5, on each OS's installed build | Fonts, high-DPI, the native window (WKWebView, WebView2, WebKitGTK) | Headless screenshots don't show these |
 
 Rules for the audits:
