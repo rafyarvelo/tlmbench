@@ -84,6 +84,13 @@
     }
   }
   const editing = $derived(events.list.find((e) => e.id === events.editing));
+  /** Events the panel can't edit or delete, since they come from the data (X2, owner Nov 22): their tag and why. */
+  const RO: Record<string, [string, string]> = {
+    file: ['File', 'Made from a column of the file, so it can’t be edited here. It changes when the file does.'],
+    rule: ['Rule', 'Made by a rule from the data, so it can’t be edited here. Change the rule instead (the pencil).'],
+    check: ['Check', 'Made where a check fails, so it can’t be edited here. Change the check instead (the pencil).'],
+    shared: ['Shared', 'Shared in the folder’s .tlmbench/, so it can’t be edited here.'],
+  };
 </script>
 
 <div class="evin" id="eventsPanel">
@@ -137,6 +144,7 @@
           <button class="ev" class:revealed={events.reveal === e.id} data-ev={e.id} style="--c: {catColor(e.category)}" data-tip="{catName(e.category)}{e.source === 'user' ? (e.by ? ` · added by ${e.by}` : ' · added by you') : e.source === 'shared' ? ` · shared${e.by ? ` by ${e.by}` : ''}` : e.source === 'rule' ? ' · from a rule' : e.source === 'check' ? ' · a check failed' : ''}" onclick={() => actions.eventShow(e.id)}>
             <i></i><span class="evname">{e.name}</span>{#if e.file && ui.slots.length > 1}<span class="evfilelbl" data-evfilelbl>{e.file}</span>{/if}<span class="evwhen num">{when(e)}<small>{lasts(e)}</small></span>
           </button>
+          {#if RO[e.source]}<span class="evro" data-evro={e.source} tabindex="-1" data-tip={RO[e.source][1]}>{RO[e.source][0]}</span>{/if}
           {#if ui.browserOnly}
             <!-- events are not edited in a browser tab -->
           {:else if e.source === 'user'}
@@ -370,6 +378,22 @@
     background: transparent;
     color: var(--fg-muted);
     opacity: 0;
+  }
+  /* a read-only event's source, on hover or focus, its tooltip saying why it can't be edited */
+  .evro {
+    flex: none;
+    margin-left: 4px;
+    padding: 0 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg-muted);
+    font-size: 11px;
+    line-height: 16px;
+    visibility: hidden;
+  }
+  .evitem:hover .evro,
+  .evitem:focus-within .evro {
+    visibility: visible;
   }
   .evitem:hover .evedit,
   .evitem.editing .evedit,

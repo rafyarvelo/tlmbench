@@ -315,3 +315,7 @@ removed Nov 15; git history keeps them.
   markers, duplicate, split and close are in ⋯ (they already were). The prototype's other quiet rules are the app's
   defaults with the setting off (the Explorer header in one row, a channel's unit on hover, Settings hints behind ⓘ, an
   inactive tab's ×). The setting stays off by default (the prototype's is on): the owner's call if that should change.
+- Read-only events (X2, owner Nov 22): events made from the data (a file's column, a rule, a check) and the folder's
+  shared ones can't be edited or deleted in the Events panel, since they are made again from the data. Their row shows
+  the source as a tag (File, Rule, Check, Shared) on hover, its tooltip saying why and what to change instead; a rule's
+  or check's row keeps its pencil, which opens the rule.
