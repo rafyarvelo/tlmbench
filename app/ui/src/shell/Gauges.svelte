@@ -332,7 +332,7 @@
   const setParam = (name: string, v: string) => inputsFor && setWidget(i, inputsFor.name, { params: { ...(inputCfg?.params ?? {}), [name]: v } });
 
   // ---------- the widget's menu ----------
-  let menu = $state<null | { ch: number; anchor: HTMLElement }>(null);
+  let menu = $state<null | { ch: number; anchor: HTMLElement; yours?: boolean }>(null);
   const SIZES: [WidgetCfg['size'] | undefined, string][] = [
     ['S', 'Small'],
     [undefined, 'Medium'],
@@ -356,7 +356,10 @@
       out.push({ label: `Automatic (${typeName(autoWidget(c))})`, checked: !cfg.type, run: () => set({ type: undefined }) });
       for (const t of TYPES.filter((x) => !MULTI[x.type])) out.push({ label: t.name, checked: !!cfg.type && L.type === t.type, data: { wt: t.type }, run: () => set({ type: t.type }) });
       // your own and shared widgets keep saying where they came from (a shared one may run code)
-      for (const w of customs.values()) out.push({ label: w.name, note: w.shared ? `Shared in ${w.shared}` : 'Your widget', checked: cfg.type === w.id, data: { wt: w.id }, icon: w.icon ? sanitizeSvg(w.icon) : undefined, run: () => set({ type: w.id }) });
+      // your own and the folder's widgets fold into one ▸ list, so the menu stays short (X3, Nov 22); the one in use shows here
+      const mine = customs.get(cfg.type ?? '');
+      if (mine) out.push({ label: mine.name, note: mine.shared ? `Shared in ${mine.shared}` : 'Your widget', checked: true, data: { wt: mine.id }, icon: mine.icon ? sanitizeSvg(mine.icon) : undefined, run: () => {} });
+      out.push({ label: customs.size ? 'Your widgets ▸' : 'Make a widget…', data: { wt: 'yourlist' }, keep: !!customs.size, run: () => (customs.size ? (menu = menu && { ...menu, yours: true }) : openWidgetEditor()) });
       const tg = targetOf(c, chans);
       const xy = xyPartner(c, chans);
       const sib = chans.filter((o) => o.ch !== ch && !paired.has(o.ch) && groupKey(o.name) === groupKey(c.name) && o.unit === c.unit);
@@ -383,7 +386,17 @@
     });
     const code = customs.get(cfg.type ?? '');
     if (code?.code && (code.inputs?.length || code.params?.length)) out.push({ label: 'Inputs and settings…', data: { wt: 'inputs' }, run: () => (inputsFor = { ch, name: c.name, spec: code }) });
-    out.push({ label: 'Your widgets…', data: { wt: 'yours' }, run: openWidgetEditor });
+    if (code) out.push({ label: 'Edit this widget…', data: { wt: 'editw' }, run: () => openWidgetEditor(code.id) });
+    return out;
+  }
+  /** The ▸ list: every widget of your own and the folder's, then the editor. */
+  function yours(ch: number): MenuItem[] {
+    const c = gchan(ch);
+    const cfg = cfgOf(ch);
+    const out: MenuItem[] = [{ label: '‹ Back', data: { wt: 'back' }, keep: true, run: () => (menu = menu && { ...menu, yours: false }) }, { heading: `${c.name} · your widgets` }];
+    for (const w of customs.values()) out.push({ label: w.name, note: w.shared ? `Shared in ${w.shared}` : undefined, checked: cfg.type === w.id, data: { wt: w.id }, icon: w.icon ? sanitizeSvg(w.icon) : undefined, run: () => setWidget(i, c.name, { type: w.id }) });
+    out.push({ sep: true });
+    out.push({ label: 'New or edit widgets…', data: { wt: 'yours' }, run: () => openWidgetEditor() });
     return out;
   }
 </script>
@@ -458,7 +471,7 @@
 
 {#if menu}
   <!-- read through ?. : the menu's props are read once more while it closes, after `menu` is null -->
-  <Menu class="widgetmenu chmenu" label="Widget for {menu ? chName(menu.ch) : ''}" anchor={menu?.anchor} onclose={() => (menu = null)} items={menu ? items(menu.ch) : []} />
+  <Menu class="widgetmenu chmenu" label="Widget for {menu ? chName(menu.ch) : ''}" anchor={menu?.anchor} onclose={() => (menu = null)} items={menu ? (menu.yours ? yours(menu.ch) : items(menu.ch)) : []} />
 {/if}
 
 <style>

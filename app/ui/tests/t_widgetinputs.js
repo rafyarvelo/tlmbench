@@ -25,6 +25,7 @@ run(
     await p.hover(card);
     await p.click(`${card} [data-gwt]`);
     check('a widget without inputs has no Inputs entry', !(await p.$('.widgetmenu [data-wt="inputs"]')));
+    await p.click('.widgetmenu [data-wt="yourlist"]');
     await p.click('.widgetmenu [data-wt="cw_tilt"]');
     await until(() => !!document.querySelector(`${card} iframe`));
     await p.hover(card);

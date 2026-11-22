@@ -26,6 +26,7 @@ run(
     const card = (n) => `#stack [data-gw="${n}"]`;
     await p.hover(card('current_a'));
     await p.click(`${card('current_a')} [data-gwt]`);
+    await p.click('.widgetmenu [data-wt="yourlist"]');
     check('a shared widget says where it came from', /Shared in \.tlmbench\/widgets\/level-bar/.test(await p.$eval('.widgetmenu', (e) => e.textContent)));
     await p.click('.widgetmenu [data-wt="sw_levelbar"]');
     check('it waits for your OK and shows the value meanwhile', await until(() => !!document.querySelector('#stack [data-gw="current_a"] [data-trustw]') && /A/.test(document.querySelector('#stack [data-gw="current_a"]').innerText) && /Run\?/.test(document.querySelector('#stack [data-gw="current_a"]').innerText)), await text(card('current_a')));
