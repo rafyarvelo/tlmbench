@@ -3,8 +3,9 @@
      new one. New empty layout… and Save current as… ask for a name here; sharing, reverting and saving are in a tab's ⌄ menu. -->
 <script lang="ts">
   import { ICON } from '../icons';
+  import Menu, { type MenuItem } from './Menu.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
-  import { movePanel, setPanelOpen, settings, sideOf } from '../settings.svelte';
+  import { movePanel, type Pin, setPanelOpen, settings, sideOf } from '../settings.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, ui } from '../ui.svelte';
 
@@ -37,6 +38,23 @@
     if (t) actions.showTab(t.key);
     else actions.openWs(ws);
   };
+  const pinned = (kind: Pin['kind'], name: string) => settings.pins.some((p) => p.kind === kind && p.name === name);
+  /** A layout's right-click menu (X1, Nov 22): open, pin or unpin, and for yours rename and delete. */
+  let ctx = $state<null | { at: { x: number; y: number }; kind: 'layout' | 'shared'; name: string }>(null);
+  const ctxAt = (e: MouseEvent, kind: 'layout' | 'shared', name: string) => (e.preventDefault(), (ctx = { at: { x: e.clientX, y: e.clientY }, kind, name }));
+  function ctxItems(c: NonNullable<typeof ctx>): MenuItem[] {
+    const pin: MenuItem = pinned(c.kind, c.name)
+      ? { label: 'Unpin from the top bar', data: { lym: 'unpin' }, run: () => actions.togglePin(c.kind, c.name) }
+      : { label: 'Pin to the top bar', data: { lym: 'pin' }, run: () => actions.togglePin(c.kind, c.name) };
+    if (c.kind === 'shared') return [{ label: openShared(c.name) ? 'Show its tab' : 'Open in a new tab', data: { lym: 'open' }, run: () => showShared(c.name) }, pin];
+    return [
+      { label: openWs(c.name) ? 'Show its tab' : 'Open in a new tab', data: { lym: 'open' }, disabled: !ui.file && !openWs(c.name), run: () => show(c.name) },
+      pin,
+      { sep: true },
+      { label: 'Rename…', data: { lym: 'rename' }, run: () => ask('rename', c.name) },
+      { label: 'Delete', data: { lym: 'delete' }, run: () => actions.deleteWs(c.name) },
+    ];
+  }
   const showShared = (file: string) => {
     const t = tabs.list.find((t) => t.shared === file);
     if (t) actions.showTab(t.key);
@@ -65,9 +83,9 @@
     {/if}
     <div class="lygrp">Your layouts · this computer</div>
     {#each settings.workspaces as w (w.name)}
-      <div class="lyrow">
+      <div class="lyrow" role="presentation" oncontextmenu={(e) => ctxAt(e, 'layout', w.name)}>
         <button class="lyitem" class:cur={here(w.name)} data-lopen={w.name} data-tip="{w.name}: {openWs(w.name) ? 'open in a tab, click to show it' : 'click to open it in a new tab'}. Double-click to rename." disabled={!ui.file && !openWs(w.name)} onclick={() => show(w.name)} ondblclick={() => ask('rename', w.name)}>{@html ICON.layout}<span class="nm">{w.name}</span><span class="hint">{openWs(w.name) ? 'open' : `${w.panes.length} ${w.panes.length === 1 ? 'pane' : 'panes'}`}</span></button>
-        <button class="lydel" data-lypin={w.name} aria-pressed={settings.pins.some((p) => p.kind === 'layout' && p.name === w.name)} aria-label="Pin {w.name} to the top bar" data-tip={settings.pins.some((p) => p.kind === 'layout' && p.name === w.name) ? 'Unpin from the top bar' : 'Pin to the top bar'} onclick={() => actions.togglePin('layout', w.name)}>{@html ICON.pin}</button>
+        <button class="lydel" data-lypin={w.name} aria-pressed={pinned('layout', w.name)} aria-label="{pinned('layout', w.name) ? 'Unpin' : 'Pin'} {w.name}" data-tip={pinned('layout', w.name) ? 'Unpin from the top bar' : 'Pin to the top bar'} onclick={() => actions.togglePin('layout', w.name)}>{@html ICON.pin}</button>
         <button class="lydel" data-lydel={w.name} aria-label="Delete layout {w.name}" data-tip="Delete this layout (you can undo)" onclick={() => actions.deleteWs(w.name)}>{@html ICON.trash}</button>
       </div>
     {:else}
@@ -75,10 +93,14 @@
     {/each}
     <div class="lygrp">Shared in this folder · .tlmbench/</div>
     {#each ui.shared as v (v.file)}
-      <button class="lyitem" class:cur={front?.shared === v.file} data-lshared={v.file} disabled={!v.ws} data-tip={v.error ? `${v.file} can't be read: ${v.error}` : `${v.file}: opens its file with the layout and time range it was shared with`} onclick={() => showShared(v.file)}>{@html ICON.folder}<span class="nm">{v.ws?.name ?? v.file}</span><span class="hint">{v.error ? "can't be read" : openShared(v.file) ? 'open' : v.ws?.by ? `by ${v.ws.by}` : ''}</span></button>
+      <div class="lyrow" role="presentation" oncontextmenu={(e) => v.ws && ctxAt(e, 'shared', v.file)}>
+        <button class="lyitem" class:cur={front?.shared === v.file} data-lshared={v.file} disabled={!v.ws} data-tip={v.error ? `${v.file} can't be read: ${v.error}` : `${v.file}: opens its file with the layout and time range it was shared with`} onclick={() => showShared(v.file)}>{@html ICON.folder}<span class="nm">{v.ws?.name ?? v.file}</span><span class="hint">{v.error ? "can't be read" : openShared(v.file) ? 'open' : v.ws?.by ? `by ${v.ws.by}` : ''}</span></button>
+        {#if v.ws}<button class="lydel" data-lypin={v.file} aria-pressed={pinned('shared', v.file)} aria-label="{pinned('shared', v.file) ? 'Unpin' : 'Pin'} {v.ws.name}" data-tip={pinned('shared', v.file) ? 'Unpin from the top bar' : 'Pin to the top bar'} onclick={() => actions.togglePin('shared', v.file)}>{@html ICON.pin}</button>{/if}
+      </div>
     {:else}
       <p class="lynote">{settings.folder ? 'Nothing shared here yet.' : 'Open a folder to see the views shared in it.'}</p>
     {/each}
+    {#if ctx}<Menu class="lymenu" label="Layout {ctx.name}" at={ctx.at} items={ctxItems(ctx)} onclose={() => (ctx = null)} />{/if}
     <p class="lynote">A layout says which channels sit in which panes, by name, so it works on any recording that has them. It opens on the file in front. Save, share and revert from a tab's ⌄ menu.</p>
   {/if}
 </div>
@@ -184,8 +206,12 @@
     height: 13px;
   }
   .lyrow:hover .lydel,
-  .lydel:focus-visible {
+  .lydel:focus-visible,
+  .lydel[aria-pressed='true'] {
     visibility: visible;
+  }
+  .lydel[aria-pressed='true'] {
+    color: var(--accent);
   }
   .lydel:hover {
     background: var(--raised);

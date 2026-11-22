@@ -6,6 +6,7 @@
   import { type EventCategory, movePanel, resetUiLayout, type Settings, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { ICON, iconList, userIcon } from '../icons';
+  import { openWidgetEditor } from '../customwidgets.svelte';
   import { sanitizeSvg } from '../widgets';
   import { invoke } from '@tauri-apps/api/core';
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
@@ -265,18 +266,19 @@
     {#each cfg.icons.filter((i) => !settings.userIcons.some((u) => u.name === i.name)) as ic (ic.name)}
       <div class="urow" data-icon={ic.name}><span class="icprev">{@html userIcon(ic.name, 18)}</span><span class="icname">{ic.name}</span><span class="muted">shared in the folder</span></div>
     {/each}
-    <div class="urow icform">
-      <input class="sel" id="iconName" placeholder="Name" aria-label="Icon name" spellcheck="false" bind:value={iconName} oninput={() => (iconErr = '')} />
-      <textarea class="sel" id="iconSvg" rows="2" placeholder="&lt;svg viewBox=&quot;0 0 24 24&quot; stroke=&quot;currentColor&quot;…&gt;" aria-label="Icon SVG" spellcheck="false" bind:value={iconSvg} oninput={() => (iconErr = '')}></textarea>
-      <button class="tbtn" id="iconAdd" onclick={addIcon}>{@html ICON.plus}Add</button>
+    <div class="icform">
+      <div class="urow"><input class="sel" id="iconName" placeholder="Name" aria-label="Icon name" spellcheck="false" bind:value={iconName} oninput={() => (iconErr = '')} /><span class="icprev" data-iconprev aria-hidden="true">{#if /^\s*<svg[\s>]/i.test(iconSvg)}{@html sanitizeSvg(iconSvg).replace('<svg', '<svg width="18" height="18"')}{/if}</span><button class="tbtn" id="iconAdd" onclick={addIcon}>{@html ICON.plus}Add</button></div>
+      <textarea class="sel ictxt" id="iconSvg" rows="5" placeholder="Paste an SVG: &lt;svg viewBox=&quot;0 0 24 24&quot; stroke=&quot;currentColor&quot;…&gt;" aria-label="Icon SVG" spellcheck="false" bind:value={iconSvg} oninput={() => (iconErr = '')}></textarea>
     </div>
     {#if iconErr}<div class="urow"><span style="color: var(--danger)" id="iconErr">{iconErr}</span></div>{/if}
     <div class="urow"><span class="muted">An SVG that uses currentColor follows the theme. Icons go on event categories and on what you pin to the top bar; Share writes them to .tlmbench/icons/.</span></div>
+    <h3>Widgets</h3>
+    <div class="urow"><span>Your widgets<br /><small class="muted">Gauges drawn as an SVG or by code, for any channel. Share writes them to .tlmbench/widgets/.</small></span><button class="tbtn" id="setWidgets" onclick={() => openWidgetEditor()}>Edit…</button></div>
     {#if settings.pins.length}
       <h3>Pinned to the top bar</h3>
       {#each settings.pins as pn (pn.kind + pn.name)}
         <div class="urow" data-pin={pn.name}>
-          <span>{pn.kind === 'layout' ? 'Layout' : 'Recipe'} · {pn.name}</span>
+          <span>{pn.kind === 'layout' ? 'Layout' : pn.kind === 'shared' ? 'Shared layout' : 'Recipe'} · {pn.kind === 'shared' ? (ui.shared.find((v) => v.file === pn.name)?.ws?.name ?? pn.name) : pn.name}</span>
           <select class="sel" data-pinicon aria-label="Icon of {pn.name}" value={pn.icon ?? ''} onchange={(e) => setSetting('pins', settings.pins.map((x) => (x === pn ? { ...x, icon: e.currentTarget.value || undefined } : x)))}><option value="">Default icon</option>{#each iconList() as ic (ic.name)}<option value={ic.name}>{ic.name}</option>{/each}</select>
           <button class="tbtn" data-unpin={pn.name} aria-label="Unpin {pn.name}" onclick={() => actions.togglePin(pn.kind, pn.name)}>{@html ICON.close}</button>
         </div>
@@ -432,6 +434,27 @@
   .uctl {
     display: flex;
     gap: 6px;
+  }
+  .icform {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .icform #iconName {
+    flex: 1;
+  }
+  .ictxt {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 72px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--raised);
+    color: var(--fg);
+    font-family: var(--font-data);
+    font-size: 11.5px;
+    resize: vertical;
   }
   .urow {
     display: flex;

@@ -24,7 +24,7 @@ import { groupChannels, overrideKey } from './groups';
 import Menu, { type MenuItem } from './shell/Menu.svelte';
 import { bindTips, flash } from './tips';
 import { COMMANDS, matches, menuLabel } from './commands';
-import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, REMEMBERED, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
+import { toggleAllPanels, applyTheme, DEFAULT_DETAIL, type ConnectForm, type Pin, type TriggerForm, type StarterPanes, shownTheme, type Mode, onSetting, REMEMBERED, resetAllSettings, saveSettings, type Session, setSetting, settings, WINDOW, type WindowSaved } from './settings.svelte';
 import { type ConnectArgs, type Health, live, liveActions, type SourceCard, type TriggerStatus } from './live.svelte';
 import { play, playActions, SPEEDS, stopCats } from './play.svelte';
 import { catColor, catName, events, marked, newId, onFiltersChange, onMarksChange, setAuto, setFileEvents, setMine, type TlmEvent } from './events.svelte';
@@ -5885,13 +5885,17 @@ Object.assign(actions, {
   renameWs,
   openWithLayout,
   openWs: (name: string) => void openWs(name),
-  togglePin: (kind: 'layout' | 'recipe', name: string) => {
+  togglePin: (kind: Pin['kind'], name: string) => {
     const has = settings.pins.some((p) => p.kind === kind && p.name === name);
-    if (!has && settings.pins.length >= 8) return void note('Eight things are pinned already: unpin one in Settings › Icons first.');
+    if (!has && settings.pins.length >= 8) return void note('Eight things are pinned already: unpin one first (right-click it in the top bar).');
     setSetting('pins', has ? settings.pins.filter((p) => !(p.kind === kind && p.name === name)) : [...settings.pins, { kind, name }]);
   },
-  runPin: (kind: 'layout' | 'recipe', name: string) => {
-    if (kind === 'layout') return void openWs(name);
+  runPin: (kind: Pin['kind'], name: string) => {
+    if (kind === 'shared') return void openShared(name);
+    if (kind === 'layout') {
+      const open = tabs.list.find((t) => t.ws === name && !t.shared);
+      return void (open ? showTab(open.key) : openWs(name));
+    }
     const f = state.file;
     if (!f) return void note('Open a recording first: a recipe is added to the file in front.');
     const path = f.info.path;

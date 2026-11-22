@@ -293,3 +293,18 @@ removed Nov 15; git history keeps them.
     Worker: the page's core lists the plugin's work, the plugin decodes it, the core reads the file with the result.
     The plugin is found by its name among the plugins added to the browser (or the trusted folder's). A file with several
     packet types still opens a tab per type in a browser tab.
+
+## The owner's test notes (Nov 22)
+
+- Closing a pane (D-ui-66): every other pane keeps its row and column. One of two side by side widens across its row; a
+  column's next pane takes a closed top's place. A chip dropped on its own pane's edge moves to a new pane (D-ui-65).
+- Your widgets (X3, owner's choice of layout Nov 22): the editor is a list of your widgets (and the folder's, read-only:
+  Duplicate makes one yours) beside a form for the one picked: name, kind (SVG or code, switchable), icon, the SVG with
+  its needle angle or the code with its inputs and parameters as rows, and a live preview (a code widget runs in the
+  preview's sandbox). "Edit as JSON" shows the whole list as text. A widget keeps its id when renamed, so panes keep it.
+  The Gauges ⋯ menu folds your widgets into "Your widgets ▸" (the one in use stays in the main list) and has "Edit this
+  widget…"; Settings › Widgets › Edit… opens the editor.
+- Pins (X1): a layout shared in the folder pins as well as yours (`kind = "shared"`, by its file). A layout's right-click
+  menu in the Layouts panel has Open, Pin or Unpin, and for yours Rename and Delete; a pinned button's right-click has
+  Open and Unpin; a pinned layout keeps its pin icon showing in the list. Settings › Icons' SVG box is full width,
+  five lines, resizable, with a preview.

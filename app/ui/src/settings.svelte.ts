@@ -41,7 +41,8 @@ export interface UserIcon {
 }
 /** A layout or recipe pinned to the top bar: one click opens the layout, or adds the recipe to the file in front. */
 export interface Pin {
-  kind: 'layout' | 'recipe';
+  /** a layout of yours (by name), one shared in the folder (by its file in .tlmbench/views/), or a recipe */
+  kind: 'layout' | 'shared' | 'recipe';
   name: string;
   icon?: string;
 }

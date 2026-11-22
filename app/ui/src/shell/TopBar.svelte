@@ -3,7 +3,7 @@
      tabs. -->
 <script lang="ts">
   import { ICON, userIcon } from '../icons';
-  import { type Mode, PANELS, setSetting, settings, toggleAllPanels } from '../settings.svelte';
+  import { type Mode, PANELS, type Pin, setSetting, settings, toggleAllPanels } from '../settings.svelte';
   import { play, playActions } from '../play.svelte';
   import { moveTab, tabs } from '../tabs.svelte';
   import { TIME_FORMATS } from '../axes';
@@ -13,6 +13,13 @@
   import CheckBadge from './CheckBadge.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
   import { slotsUsed, type Workspace } from '../workspaces';
+  /** A pin's name as people read it: a shared layout by its layout's name. */
+  const pinName = (pn: Pin) => (pn.kind === 'shared' ? (ui.shared.find((v) => v.file === pn.name)?.ws?.name ?? pn.name.replace(/\.tlmview\.json$/, '')) : pn.name);
+  let pinMenu = $state<null | { at: { x: number; y: number }; pin: Pin }>(null);
+  const pinItems = ({ kind, name }: Pin): MenuItem[] => [
+    { label: kind === 'recipe' ? 'Add to this file' : 'Open', data: { pm: 'run' }, run: () => actions.runPin(kind, name) },
+    { label: 'Unpin from the top bar', data: { pm: 'unpin' }, run: () => actions.togglePin(kind, name) },
+  ];
 
   /** Files a layout names that the tab in front doesn't have yet (its `accel_x·2` needs file 2). */
   const have = $derived(Math.max(1, ui.slots.length));
@@ -253,9 +260,10 @@
   {#if settings.pins.length && !ui.viewer}
     <div class="pins" id="pinStrip" role="group" aria-label="Pinned">
       {#each settings.pins as pn (pn.kind + pn.name)}
-        <button class="tb" data-pin={pn.name} aria-label={pn.name} data-tip="{pn.kind === 'layout' ? 'Open the layout' : 'Add the recipe to this file'} {pn.name}" onclick={() => actions.runPin(pn.kind, pn.name)}>{#if pn.icon && userIcon(pn.icon)}{@html userIcon(pn.icon, 16)}{:else}{@html pn.kind === 'layout' ? ICON.layout : ICON.file}{/if}</button>
+        <button class="tb" data-pin={pn.name} aria-label={pinName(pn)} data-tip="{pn.kind === 'recipe' ? 'Add the recipe to this file' : pn.kind === 'shared' ? 'Open the shared layout' : 'Open the layout'} {pinName(pn)}. Right-click to unpin." onclick={() => actions.runPin(pn.kind, pn.name)} oncontextmenu={(e) => (e.preventDefault(), (pinMenu = { at: { x: e.clientX, y: e.clientY }, pin: pn }))}>{#if pn.icon && userIcon(pn.icon)}{@html userIcon(pn.icon, 16)}{:else}{@html pn.kind === 'recipe' ? ICON.file : ICON.layout}{/if}</button>
       {/each}
     </div>
+    {#if pinMenu}<Menu class="pinmenu" label="Pinned {pinName(pinMenu.pin)}" at={pinMenu.at} items={pinItems(pinMenu.pin)} onclose={() => (pinMenu = null)} />{/if}
   {/if}
   <div class="rangebar">
     <button class="num rangebtn" id="rangeTxt" aria-haspopup="menu" aria-expanded={!!timeMenu} data-tip="Time format: click to change how times read" onclick={(e) => (timeMenu = timeMenu ? null : (e.currentTarget as HTMLElement))}>{ui.range}</button>

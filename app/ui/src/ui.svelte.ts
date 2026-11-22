@@ -4,7 +4,7 @@ import type { FileTime } from './axes';
 import type { Check, CheckSet, Outcome } from './checks.svelte';
 import type { TlmEvent } from './events.svelte';
 import type { Workspace } from './workspaces';
-import { setSetting, settings } from './settings.svelte';
+import { type Pin, setSetting, settings } from './settings.svelte';
 
 /** A listed folder or recording (the app's `list_folder`). */
 export interface FolderEntry {
@@ -302,9 +302,9 @@ export const actions = {
   deriveSaveAsNew: () => {},
   openWs: (_name: string) => {},
   /** Pins a layout or recipe to the top bar, or takes it off (at most 8). */
-  togglePin: (_kind: 'layout' | 'recipe', _name: string) => {},
+  togglePin: (_kind: Pin['kind'], _name: string) => {},
   /** A pinned recipe's click: it joins the file in front. */
-  runPin: (_kind: 'layout' | 'recipe', _name: string) => {},
+  runPin: (_kind: Pin['kind'], _name: string) => {},
   newWs: (_name: string): string | null => null,
   /** Shared views: list the folder's again, open one, share tab `key`'s layout under a name, export it to a file. */
   loadShared: () => {},
