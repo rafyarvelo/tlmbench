@@ -84,7 +84,8 @@ try {
     await (await chooser).setFiles({ name, mimeType: 'application/wasm', buffer: readFileSync(path) });
   };
   await p.goto(url, { waitUntil: 'domcontentloaded' });
-  await until(() => !!window.__tlmApp && typeof window.__tlmBrowserOnly?.add === 'function');
+  // the page's core can take a while to start on a loaded runner: wait for it, and say so if it never does
+  check('the page and its core start', await until(() => !!window.__tlmApp && typeof window.__tlmBrowserOnly?.add === 'function', null, 90000));
   await p.click('[data-rail="settings"]');
   check('Settings › Plugins is there, with Add plugin… and no Open folder', await until(() => !!document.querySelector('#pluginSet #pluginsAdd')) && !(await p.$('#pluginsOpen')) && /Native plugins need the app/.test(await p.$eval('#pluginSet', (e) => e.textContent)));
 

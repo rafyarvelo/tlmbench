@@ -105,7 +105,9 @@ try {
   const values = (file, t) =>
     p.evaluate(([file, t]) => window.__TAURI_INTERNALS__.invoke('values_at', { file, channels: [0, 1, 2], t }).catch((e) => String(e)), [file, t]);
   await p.goto(url, { waitUntil: 'domcontentloaded' });
-  await until(() => !!window.__tlmApp && typeof window.__tlmBrowserOnly?.add === 'function');
+  // the page's core (WASM) can take a while to start on a loaded runner: wait for it, and say so if it never does, rather
+  // than dropping the file before anything listens (CI, Nov 22: the drop was lost and the next check failed instead)
+  check('the page and its core start', await until(() => !!window.__tlmApp && typeof window.__tlmBrowserOnly?.add === 'function', null, 90000));
 
   // without the plugin: it says to add it
   await drop('bench.ppk', file);
