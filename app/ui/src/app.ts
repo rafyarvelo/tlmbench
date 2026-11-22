@@ -58,6 +58,7 @@ import {
   rightPad,
   setAxis,
   stack,
+  undoable,
   undoLayout,
   units,
 } from './stack.svelte';
@@ -2476,7 +2477,8 @@ function revertWs(key: number): void {
   });
 }
 
-/** Rename…: layout `from` becomes `raw`; its open tabs follow. A copy shared in a folder keeps its name until the next Share…. */
+/** Rename…: layout `from` becomes `raw`; its open tabs follow. A copy shared in a folder keeps its name until the next
+ * Share…. A step of the Undo history (⌘Z), whichever file is in front. */
 function renameWs(from: string, raw: string): string | null {
   const to = raw.trim();
   const at = settings.workspaces.findIndex((w) => w.name === from);
@@ -2484,13 +2486,21 @@ function renameWs(from: string, raw: string): string | null {
   if (to === from) return null;
   const err = nameError(to, from);
   if (err) return err;
+  setWsName(from, to);
+  const back = undoable(() => setWsName(to, from), () => setWsName(from, to), true);
+  note(`Renamed layout "${from}" to "${to}".`, back);
+  return null;
+}
+
+/** Layout `from` is called `to` now, and its open tabs with it (for Rename and its undo and redo). */
+function setWsName(from: string, to: string): void {
+  const at = settings.workspaces.findIndex((w) => w.name === from);
+  if (at < 0 || (to !== from && findWs(to))) return;
   settings.workspaces[at] = { ...settings.workspaces[at], name: to };
   for (const t of tabs.list) if (t.ws === from && !t.shared) Object.assign(t, { ws: to, name: to });
   saveSettings();
   mirrorConfig();
   saveSession();
-  note(`Renamed layout "${from}" to "${to}".`, () => void renameWs(to, from));
-  return null;
 }
 
 /** Open with layout ▸: shows `path`, then layout `name` (yours or the folder's shared one) on it, in a tab of its own. */
@@ -2501,15 +2511,26 @@ async function openWithLayout(path: string, name: string, shared?: string): Prom
   if (state.file && ui.path === path) await openLayout(ws);
 }
 
-/** Deletes one of your layouts and closes its tabs, with Undo. */
+/** Deletes one of your layouts and closes its tabs. A step of the Undo history (⌘Z), whichever file is in front:
+ * undo puts the layout back where it was; its tabs stay closed. */
 function deleteWs(name: string): void {
   const at = settings.workspaces.findIndex((w) => w.name === name);
   if (at < 0) return;
-  const [gone] = settings.workspaces.splice(at, 1);
+  const gone = settings.workspaces[at];
+  dropWs(name);
+  const back = undoable(() => storeWs(gone, at), () => dropWs(name), true);
+  note(`Deleted layout "${name}".`, back);
+}
+
+/** Takes layout `name` out of yours and closes its tabs (for Delete and its redo). */
+function dropWs(name: string): void {
+  const at = settings.workspaces.findIndex((w) => w.name === name);
+  if (at < 0) return;
+  settings.workspaces.splice(at, 1);
   saveSettings();
+  mirrorConfig();
   void (async () => {
     for (const t of tabs.list.filter((t) => t.ws === name && !t.shared)) await closeTab(t.key);
-    note(`Deleted layout "${name}".`, () => storeWs(gone, at));
   })();
 }
 

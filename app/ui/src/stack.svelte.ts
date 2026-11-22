@@ -225,22 +225,26 @@ function edit(f: () => void, viewOnly = false): void {
 
 /** Undo and redo for the layout (panes, their channels and views): ⌘Z and ⇧⌘Z, as any Mac app (owner, Nov 14). A step
  * belongs to the file in front; another file's history is dropped. Other edits of the file in front (channels moved
- * into a category) join the same history as steps with their own undo and redo (owner, X4 Nov 22: one Undo everywhere). */
+ * into a category) join the same history as steps with their own undo and redo (owner, X4 Nov 22: one Undo everywhere).
+ * An edit of no file (a layout renamed or deleted) is a step of every file's history: it stays when the file changes. */
 type Snap = { path: string; panes: Pane[]; sel: number };
 type Act = { path: string; undo: () => void; redo: () => void };
 type Step = Snap | Act;
 const past: Step[] = [];
 const future: Step[] = [];
 const snap = (): Snap => ({ path: ui.path, panes: $state.snapshot(stack.panes) as Pane[], sel: stack.sel });
+/** Steps of no one file (`path` ANY) are kept when the file in front changes. */
+const ANY = '\u0000any';
+const here = (s: Step): boolean => s.path === ui.path || s.path === ANY;
 function push(s: Step): void {
-  if (past.length && past[past.length - 1].path !== ui.path) past.length = 0;
+  if (past.some((p) => !here(p))) past.splice(0, past.length, ...past.filter(here));
   past.push(s);
   if (past.length > 100) past.shift();
   future.length = 0;
 }
 const remember = (): void => push(snap());
 function restore(from: Step[], to: Step[]): boolean {
-  while (from.length && from[from.length - 1].path !== ui.path) from.pop();
+  while (from.length && !here(from[from.length - 1])) from.pop();
   const s = from.pop();
   if (!s) return false;
   if ('undo' in s) {
@@ -262,10 +266,11 @@ export const undoLayout = (): boolean => restore(past, future);
 export const redoLayout = (): boolean => restore(future, past);
 /**
  * Adds an edit that isn't the panes' (it is already done) to the Undo history of the file in front. Returns what a
- * toast's Undo runs: the same as ⌘Z when it is the last step, else that step alone, taken out of the history.
+ * toast's Undo runs: the same as ⌘Z when it is the last step, else that step alone, taken out of the history. With
+ * `anyFile` the edit is no file's (a layout's): it stays in the history whichever file is in front.
  */
-export function undoable(undo: () => void, redo: () => void): () => void {
-  const s: Act = { path: ui.path, undo, redo };
+export function undoable(undo: () => void, redo: () => void, anyFile = false): () => void {
+  const s: Act = { path: anyFile ? ANY : ui.path, undo, redo };
   push(s);
   return () => {
     if (past[past.length - 1] === s) return void undoLayout();

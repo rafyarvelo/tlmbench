@@ -335,7 +335,7 @@ removed Nov 15; git history keeps them.
   canvas is sized in device pixels and reads the theme's colours at each draw. Code widgets and SVG widgets of your own
   are unchanged.
 
-## Tables and XY across files (Nov 22, second run)
+## Tables and XY across files, R3.4 (Nov 22, second run)
 
 - A table in a tab of several files sorts, filters, steps through matches and applies to charts by any file's column
   (S5.6-13). Its rows are still the primary's samples; another file's column is read at each row's time, held from that
@@ -345,3 +345,5 @@ removed Nov 15; git history keeps them.
   samples, and a Y channel of another file is held at each of them, so nothing is resampled and the X file's rate
   decides how many points there are. Before another file's first sample there are no pairs. The HTML viewer pairs the
   same way.
+- A layout's rename and delete are steps of the one ⌘Z history (R3.4). They belong to no file, so they stay when the tab
+  in front changes; undoing a delete puts the layout back, its tabs stay closed.

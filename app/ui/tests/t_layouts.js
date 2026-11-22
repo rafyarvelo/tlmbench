@@ -84,8 +84,21 @@ run(
     await p.fill('#lyName', 'Landing');
     await p.press('#lyName', 'Enter');
     check('and the tab and the list follow again', await until(() => [...document.querySelectorAll('#wsTabs .nm')].some((n) => n.textContent === 'Landing') && !!document.querySelector('[data-lopen="Landing"]')));
+    // a rename is a step of the Undo history (R3.4): ⌘Z takes it back, ⇧⌘Z does it again
+    await p.click('#stack');
+    await p.keyboard.press('ControlOrMeta+z');
+    check('⌘Z takes back the rename', await until(() => !!document.querySelector('[data-lopen="Cruise"]') && !document.querySelector('[data-lopen="Landing"]') && [...document.querySelectorAll('#wsTabs .nm')].some((n) => n.textContent === 'Cruise')));
+    await p.keyboard.press('ControlOrMeta+Shift+z');
+    check('⇧⌘Z renames it again', await until(() => !!document.querySelector('[data-lopen="Landing"]') && !document.querySelector('[data-lopen="Cruise"]')));
+    await p.hover('[data-lopen="Landing"]');
     await p.click('[data-lydel="Landing"]');
     await until(() => !document.querySelector('[data-lopen="Landing"]'));
+    // and so is a delete, though it closed the layout's tab (another file's tab is in front now)
+    await p.click('#stack');
+    await p.keyboard.press('ControlOrMeta+z');
+    check('⌘Z brings a deleted layout back, its tab closed', await until(() => !!document.querySelector('[data-lopen="Landing"]')) && (await settingsLS()).workspaces.some((w) => w.name === 'Landing') && !(await p.evaluate(() => [...document.querySelectorAll('#wsTabs .nm')].some((n) => n.textContent === 'Landing'))));
+    await p.keyboard.press('ControlOrMeta+Shift+z');
+    check('⇧⌘Z deletes it again', await until(() => !document.querySelector('[data-lopen="Landing"]')) && !(await settingsLS()).workspaces.some((w) => w.name === 'Landing'));
     await p.click('[data-lshared="review.tlmview.json"]');
     await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'Flight review');
 
