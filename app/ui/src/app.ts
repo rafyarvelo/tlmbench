@@ -5732,6 +5732,8 @@ window.addEventListener('keydown', (e) => {
   if (e.altKey && e.key === 'ArrowRight') return forward();
   if (e.key === 'Escape') return clearCursors();
   if (!state.file) return;
+  // End: back to the live edge of a live tab (the prototype's key; the strip's Jump to live)
+  if (e.key === 'End' && live.on && !live.following && !(e.target as HTMLElement).closest('input, select, textarea, [role="grid"], .tscroll')) return liveActions.jump();
   // A and B over a table row place the cursors at that row's time
   const row = (k === 'a' || k === 'b') && state.file ? document.querySelector<HTMLElement>('[data-row][data-t]:hover') : null;
   if (row) return placeCursor(k === 'a' ? 'A' : 'B', BigInt(row.dataset.t!));

@@ -72,6 +72,13 @@ run('live', async ({ p, check, text, visible, fake, plotAt, until, settingsLS, w
   check('scrubbing back says how far', /^−\d+\.\d+ s/.test(await text('#lvAt')), await text('#lvAt'));
   await p.click('#lvFollow');
   check('Jump to live follows again', (await text('#lvFollow')) === 'Following' && (await until(() => !document.getElementById('lvAt'))));
+  // End is Jump to live from the keyboard (R3.4, the prototype's key)
+  await p.mouse.move(c.x, c.y);
+  await p.mouse.wheel(0, -300);
+  await until(() => document.getElementById('lvFollow')?.textContent === 'Jump to live');
+  await p.click('#lvRec');
+  await p.keyboard.press('End');
+  check('End jumps to live', await until(() => document.getElementById('lvFollow')?.textContent === 'Following'), await text('#lvFollow'));
 
   // Sources: stream health and the recording; Stop
   await p.click('#lvSrcBtn');
