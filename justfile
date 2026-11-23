@@ -77,11 +77,12 @@ setup *steps:
 ui:
     [ -d app/ui/dist ] || (cd app/ui && npm run build)
 
-# rustfmt, clippy (warnings are errors) and the UI's type check
+# rustfmt, clippy (warnings are errors), the UI's type check, and THIRD_PARTY_LICENSES.md up to date
 lint: ui
     if [ -f Cargo.toml ]; then cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings; \
     else echo "lint: no Cargo workspace yet, skipping"; fi
     cd app/ui && npm run -s typecheck
+    python3 tools/third_party.py --check
     # the crates outside the workspace (their own targets): the viewer's core and the Parquet reader for WASM, and the Python extension
     cd crates/web && cargo fmt --check && cargo clippy --target wasm32-unknown-unknown -- -D warnings
     cd crates/web-parquet && cargo fmt --check && cargo clippy --target wasm32-unknown-unknown -- -D warnings
