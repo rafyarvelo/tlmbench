@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TelemetryBench</title>
+<style>
+  :root { --bg: #f6f8fa; --fg: #1b1f24; --muted: #57606a; --card: #fff; --line: #d8dde3; --link: #0a63c9; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111418; --fg: #e3e6ea; --muted: #9aa4af; --card: #1a1f25; --line: #30363d; --link: #58a6ff; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1rem 4rem; }
+  h1 { font-size: 26px; margin: 0 0 .25rem; } p { margin: .5rem 0; color: var(--muted); }
+  .cards { display: grid; gap: 12px; margin: 2rem 0; }
+  a.card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; color: var(--fg); text-decoration: none; }
+  a.card:hover { border-color: var(--link); } a.card b { display: block; font-size: 15px; } a.card span { color: var(--muted); font-size: 13px; }
+  a { color: var(--link); } small { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>TelemetryBench</h1>
+  <p>A desktop workbench for telemetry: open recordings of any size, read them, check them and share what you found. Nothing is written next to your data.</p>
+  <div class="cards">
+    <a class="card" href="manual/"><b>User Manual</b><span>Every part of the app, from the first open to the command line.</span></a>
+    <a class="card" href="app/"><b>Try it in this tab</b><span>Browser-only mode: open a CSV, Parquet or .tlm file here. Nothing leaves your computer.</span></a>
+    <a class="card" href="sample/"><b>A sample export</b><span>What an HTML export looks like: a flight with a failing check, opened from a static host.</span></a>
+  </div>
+  <p>Downloads, installers and the command line are on the <a href="https://github.com/rafyarvelo/tlmbench/releases">Releases page</a>; the source and the developers guide are on <a href="https://github.com/rafyarvelo/tlmbench">GitHub</a>.</p>
+  <p><small>Licensed under the Apache License 2.0; the manual and its screenshots under CC BY 4.0.</small></p>
+</main>
+</body>
+</html>

@@ -32,6 +32,13 @@ viewer:
     cd crates/web-parquet && cargo build --release --target wasm32-unknown-unknown
     cd app/ui && npx vite build --config vite.viewer.config.ts && npx vite build --config vite.single.config.ts && npx vite build --config vite.browser.config.ts
 
+# The web copy for GitHub Pages in OUT: a landing page, the manual as HTML, browser-only mode and a sample export
+# (docs/developers/releasing.md). The Pages workflow runs it; nothing here publishes.
+pages out: viewer
+    cd tools/manual && npm ci --no-audit --no-fund --silent
+    cargo build --release --bin tlmbench
+    python3 tools/pages.py "{{out}}"
+
 # Browser-only mode as a static site in app/browser/dist (hosting: docs/browser-only.md)
 browser-site: viewer
     @echo "app/browser/dist is ready: serve it from any static host"

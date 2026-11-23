@@ -1,0 +1,55 @@
+# The web copy at https://rafyarvelo.github.io/tlmbench/: a landing page, the manual as HTML (/manual/, what the app's
+# Help › Online manual opens), browser-only mode (/app/) and a sample export (/sample/). Built by `just pages`.
+#
+# Runs by hand (Actions › Pages › Run workflow) and when a release is published, never on a push, so it can't turn a
+# push red while GitHub Pages is off. Turning Pages on is the owner's: Settings › Pages › Source: GitHub Actions.
+name: Pages
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pinned versions
+        run: grep -E '^[A-Z_]+=' ci/versions.env >> "$GITHUB_ENV"
+      - run: rustup toolchain install
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: app/ui
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just@${{ env.JUST_VERSION }}
+      - run: just pages "$RUNNER_TEMP/pages"
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

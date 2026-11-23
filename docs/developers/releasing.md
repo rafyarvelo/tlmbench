@@ -48,7 +48,11 @@ A tag is outward-facing and can't be taken back: the owner pushes it.
 
 ## The web copy
 
-The online manual and the browser-only site are published to GitHub Pages from the repository by `.github/workflows/pages.yml`
-(Settings › Pages › Source: GitHub Actions). It builds the manual as HTML (`just manual --html`), the browser-only site
-(`just browser-site`) and a sample export of the example recording, and publishes them under one address:
-`/manual/`, the app itself at the root, `/sample/`. The app's Help › Online manual opens `/manual/`.
+`just pages OUT` builds the web copy into `OUT`: a landing page (`docs/web/index.html`), the manual as HTML at `manual/`
+(`tools/manual/build.mjs --web`), browser-only mode at `app/` and a sample export of the example flight at `sample/`
+(`tools/pages.py`). Every address is relative, so it works under any path on a static host. The app's Help › Online
+manual opens `https://rafyarvelo.github.io/tlmbench/manual/`.
+
+`.github/workflows/pages.yml` builds it and publishes it to GitHub Pages. It runs by hand (Actions › Pages › Run workflow)
+and when a release is published, never on a push. Turning Pages on is a repository setting, and it is the owner's:
+Settings › Pages › Source: GitHub Actions. Until then the workflow's deploy step fails and nothing else is affected.

@@ -3,10 +3,12 @@
 // link to a chapter or heading that isn't there, or an image that is missing.
 //
 //   node tools/manual/build.mjs [--out docs/manual/build/TelemetryBench-manual.pdf] [--html]   (`just manual`)
+//   node tools/manual/build.mjs --web DIR                                                       (`just pages`)
 //
-// --html also writes the single HTML page beside the PDF (the web copy's starting point).
+// --html also writes the single HTML page beside the PDF. --web writes the web copy instead of the PDF: DIR/index.html, a
+// page that reads on a screen, and the images it uses in DIR/images/ (relative addresses, so it works from any static host).
 
-import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Marked } from 'marked';
@@ -15,6 +17,9 @@ import { chromium } from 'playwright';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const DIR = join(ROOT, 'docs/manual');
 const args = process.argv.slice(2);
+const webArg = args.indexOf('--web');
+const WEB = webArg >= 0 ? resolve(args[webArg + 1] ?? '') : null;
+if (webArg >= 0 && !args[webArg + 1]) throw new Error('--web needs a folder');
 const outArg = args.indexOf('--out');
 const OUT = resolve(outArg >= 0 ? args[outArg + 1] : join(DIR, 'build/TelemetryBench-manual.pdf'));
 const version = JSON.parse(readFileSync(join(ROOT, 'app/src-tauri/tauri.conf.json'), 'utf8')).version;
@@ -62,7 +67,15 @@ const body = chapters
         image({ href, text }) {
           const path = resolve(DIR, href);
           if (!existsSync(path)) problems.push(`${file}: an image ${href}, which isn't there`);
-          return `<figure><img src="${pathToFileURL(path)}" alt="${text}"><figcaption>${text}</figcaption></figure>`;
+          let src = pathToFileURL(path).href;
+          if (WEB && existsSync(path)) {
+            // kept under images/, with the same folders as docs/images
+            const rel = path.slice(join(ROOT, 'docs').length + 1).replace(/\\/g, '/');
+            mkdirSync(dirname(join(WEB, rel)), { recursive: true });
+            copyFileSync(path, join(WEB, rel));
+            src = rel;
+          }
+          return `<figure><img src="${src}" alt="${text}" loading="lazy"><figcaption>${text}</figcaption></figure>`;
         },
       },
     });
@@ -103,6 +116,17 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
   .cover h1 { font-size: 30pt; margin: 0; } .cover p { font-size: 13pt; color: #57606a; margin: 6pt 0 0; }
   .toc { break-before: page; } .toc ol { list-style: none; padding: 0; } .toc .d1 { font-weight: 600; margin-top: 6pt; }
   .toc .d2 { margin-left: 14pt; font-size: 9.5pt; }
+  ${WEB ? `@media screen {
+    body { max-width: 58rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; font-size: 16px; }
+    .chapter { break-before: auto; margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #d8dde3; }
+    .cover { height: auto; padding: 2rem 0 1rem; } .toc { margin-top: 2rem; }
+    pre { overflow-x: auto; white-space: pre; } table { display: block; overflow-x: auto; }
+    :target { scroll-margin-top: 1rem; }
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #111418; color: #e3e6ea; } code, pre { background: #1c2128; } th, td { border-color: #30363d; }
+    .chapter { border-color: #30363d; } a { color: #58a6ff; } figcaption { color: #9aa4af; } img { border-color: #30363d; }
+  }` : ''}
 </style></head><body>
 <div class="cover"><h1>TelemetryBench</h1><p>User Manual, version ${version}</p>
 <p>The code is licensed under the Apache License 2.0; this manual and its screenshots under CC BY 4.0.</p></div>
@@ -110,6 +134,12 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
 ${body}
 </body></html>`;
 
+if (WEB) {
+  mkdirSync(WEB, { recursive: true });
+  writeFileSync(join(WEB, 'index.html'), html.replace('<head>', '<head><meta name="viewport" content="width=device-width, initial-scale=1">'));
+  console.log(`${WEB}: ${chapters.length} chapters, version ${version}`);
+  process.exit(0);
+}
 mkdirSync(dirname(OUT), { recursive: true });
 const htmlPath = OUT.replace(/\.pdf$/, '.html');
 writeFileSync(htmlPath, html);
