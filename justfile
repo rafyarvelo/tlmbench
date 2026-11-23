@@ -36,6 +36,12 @@ viewer:
 browser-site: viewer
     @echo "app/browser/dist is ready: serve it from any static host"
 
+# The User Manual as one PDF (docs/manual/build/TelemetryBench-manual.pdf, bundled with the app): fails on a broken link
+# or a missing image. `just manual --html` keeps the HTML page too.
+manual *args:
+    cd tools/manual && npm ci --no-audit --no-fund --silent
+    node tools/manual/build.mjs {{args}}
+
 # Every file that carries the version says the workspace's (`just versions --tag v1.0.0`). The release's version in one place (R4)
 versions *args:
     python3 tools/check_versions.py {{args}}

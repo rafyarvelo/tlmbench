@@ -39,3 +39,6 @@ __pycache__/
 # the CLI the release bundle ships beside the app (release.yml puts it there)
 app/src-tauri/binaries/
 cli/dist/
+
+# the manual's PDF (just manual)
+docs/manual/build/

@@ -1,0 +1,10 @@
+{
+  "name": "tlmbench-manual",
+  "private": true,
+  "description": "Builds the User Manual (docs/manual/*.md) into one PDF with the Chromium Playwright pins: `just manual`.",
+  "type": "module",
+  "devDependencies": {
+    "marked": "15.0.12",
+    "playwright": "1.64.1"
+  }
+}
