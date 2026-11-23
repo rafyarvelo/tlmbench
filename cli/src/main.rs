@@ -1,5 +1,5 @@
-//! `tlmbench`: the command line over the same core as the desktop app. It has `info`, `cache`, `query`, `record`
-//! and `convert`; check, export html, validate, derive and config export land in later phases.
+//! `tlmbench`: the command line over the same core as the desktop app (its commands: `tlmbench --help`, and the
+//! manual's "The command line" chapter).
 //!
 //! It reads recordings and never writes beside them: the only writes are cache entries under the cache root
 //! (`--cache`, `$TLMBENCH_CACHE`, or the OS cache dir shared with the app), `record`'s session folders (`--out`,
