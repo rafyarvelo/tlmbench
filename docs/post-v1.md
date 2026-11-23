@@ -43,3 +43,12 @@ Not gaps: v1 meets its budgets without them. Each would make something faster or
   plot across files needs interpolation.
 - **Windows and the daemon:** a tab can't be dragged between browser tabs; a Unix socket beside the WebSocket.
 - **Copy as CSV** stops at 100,000 rows (owner, Nov 8); a bigger copy would be an export.
+
+## From the Nov 22 apple-design audit (after the UI freeze)
+
+- **A selected file's actions in a narrow Explorer:** Open and Only this sit on the file's row, so in the 300 px sidebar a
+  short name in a two-file tab still ends in "…" (it no longer vanishes: fixed in the audit). Room for the whole name would
+  mean moving the two buttons (a second line, or hover only): a design change.
+- **The Report tab and the top bar:** Lock and the Events toggle stay live on the Report tab, where they have nothing to act
+  on (harmless; Charts, Tables and Both are disabled there since the audit). A top bar that shows only what the tab in
+  front can use would be calmer.

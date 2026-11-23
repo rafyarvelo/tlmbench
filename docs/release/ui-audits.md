@@ -282,3 +282,51 @@ Nothing else changed.
 
 **Undo:** a layout's rename and delete are steps of the one ⌘Z history now (they undid only from their note). They belong
 to no file, so they stay in the history when the tab in front changes (`t_layouts`).
+
+## Nov 22, 2026: after the Nov 22 runs, before R4's dry run (Opus; the whole app, dark and light, motion and reduced motion; Chromium, 1440 × 900)
+
+Screens: `shots.js` (main view in both themes, cursors, view, ⋯ and export menus, Export to HTML, Settings, Connect, live,
+Alignment, the viewer, browser-only mode), the parity harness's 31 scenes in dark and light (280 differences, the same
+count and classes as Nov 17: nothing regressed), and a script for what Nov 22 added and no scene covers: Your widgets
+(empty, SVG, code, the widget menu), the Report tab (new, grid, pass rates, its tab menu), the results tree of two files,
+Events with a read-only event, quiet and normal pane headers, the Install command-line tool note, Icons, Layouts. A scan of
+every visible text's computed size against the type tokens ran on each screen. Reduced motion: `document.getAnimations()`
+is empty with menus, Settings, Export and a pane hover open. Headings as the apple-design skill's; CLAUDE.md wins.
+
+**Fixed in this pass** (each with its test), ranked:
+
+1. *Craft, layout breaks* (results tree, `dark-results-tree.png`): in the tree of files (W2) a failing check's name was cut
+   to "Roll s…" beside "1× · 1.0000 s · first …". As the prototype's `.crow`, a violation's detail now takes the line
+   under the name; a pass stays on one line (`Checks.svelte`; `t_slotevents`).
+2. *Craft, layout breaks* (Explorer, `light-install-note.png`): a selected file of a two-file tab showed Open and Only
+   this, and its name shrank to nothing while "same clock" wrapped over two lines. The slot word gives way first, on one
+   line; the name keeps at least 3 em (`Explorer.svelte`; `t_slotevents`).
+3. *Craft, layout breaks* (Settings › Plugins, `dark-icons.png`): the sentence beside Open folder and Rescan ran down a
+   column a word wide, seven lines. A row's text keeps at least 120 px and its buttons go under it, on the right; the
+   cache's two buttons are one group (`Settings.svelte`; `t_tokens`).
+4. *Typography, the type tokens* (the widget editor's hints, Settings' notes, the Events file chips, the Checks panel):
+   `<small>` was left to the browser's "smaller", landing at 10, 10.8 and 9.6 px; the ▲ ▼ steps were 9 px (the
+   prototype's are 11). `small` is 11 px app-wide, the steps 11 px (`style.css`, `Checks.svelte`; `t_tokens`,
+   `t_slotevents`).
+5. *Typography, monospace for numbers only* (Explorer, `app-slots.png`, `app-live.png`): the words "primary",
+   "correlated", "same clock" and "Streaming" were in the data font. Words are in the UI font; counts stay monospace
+   (`Explorer.svelte`; `t_slotevents`).
+6. *Feedback, a dead control* (Report tab, `dark-report-grid.png`): the all-panes Charts, Tables and Both stayed enabled
+   with no panes to act on. Disabled when the tab has no panes (`TopBar.svelte`; `t_checkfolder`).
+7. *Craft, consistency* (Report tab, `light-report-rates.png`): "Run 11/22/2026, 7:57:46 PM" in the locale's form beside
+   the trend's "2026-10-12 → 2026-10-18". The run's time is "2026-11-22 19:57" (`Report.svelte`; `t_checkfolder`).
+8. *Copy* (Events, `light-events.png`): "2 events· 0 yours": Svelte drops the space at the start of an `{#if}`. The same
+   slip in "· checking rules…" and the table's "· other files' values" (`Events.svelte`, `Table.svelte`; `t_slotevents`).
+9. *Reduced motion* (the tab strip's ‹ ›): a script's smooth scroll escapes the CSS rule; under reduced motion the arrows
+   now jump (`TopBar.svelte`; `t_narrow`).
+
+**Checked, nothing to change:** quiet pane headers show only the view menu and ⋯ (`dark-quiet.png`), as Y5 expects;
+"Streaming" in the accent and LIVE red; the residuals' zero line and range; the widget editor's list and form, scrolling
+with a live preview in both themes; the widget menu flips above its trigger and scrolls when long; the Install note's
+Copy the line; the Report tab's menu (Close only); dialogs over a scrim, menus from their trigger; the light theme's Icon
+box showing part of a third line is the textarea's own scroll; opening a folder brings its own session (by design).
+
+**For the owner:** nothing that would change the design. Two ideas went to `docs/post-v1.md` (a selected file's actions
+in a narrow Explorer; a top bar that shows only what the Report tab can use).
+
+**Not seen:** the real window (WKWebView, fonts, Retina) and the drags of Y1: R5 and the owner's sheet.
