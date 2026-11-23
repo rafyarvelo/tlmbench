@@ -5,32 +5,30 @@ repository, agree with it which files each of you touches before you edit.
 This prompt is only a hand-off. **Where each step stands is the status table in `docs/release/release-plan.md`; what is
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
-Written Nov 23 (evening) after the run that did R6's fuzz and plugin review and started R7 and R8. What it built is in
-the status table's R6, R7, R5 rows; the CI result is in the CI row.
+Written Nov 24 after the Sonnet run that did R7's rest and R8's pruning. What it built is in the status table's R7 and R8
+rows; the CI result is in the CI row. **This run is Opus's: R6's gates and the soak on the final commit, then the release
+candidate.**
 
 ## The owner's order (Nov 23): agents first, the owner tests once at the end
 
 The owner tests once, near the end, from `docs/release/test-plan.md` (one pass per OS on the release candidate's
 installers, P or F per item; data from `tools/testdata/make.py`). Don't hand the owner checklists mid-way: a
-real-window item goes into the test plan. The owner test sheet is gone. The order now:
+real-window item goes into the test plan. What is left, in order:
 
-1. **R7, the rest:** screenshots for every `<!-- shot: id — … -->` in `docs/manual/` (extend `app/ui/tests/shots.js`,
-   output to a folder you pass, then `docs/images/`; a list of which page uses which); the developers guide
-   (`docs/developers/`, absorbing `docs/development.md` and `plugins/README.md`); reference pages generated from the source
-   (CLI `--help`, the expression functions, settings keys, shortcuts) with a `--check` in `just lint`; the design doc's
-   final sync (fold `docs/follow-ups.md` into `docs/design.md`: the living doc is in Claude Docs, links in
-   `docs/README.md`; ask the owner before editing it); the web copy on GitHub Pages (the manual as HTML from
-   `just manual --html`, the browser-only site, a sample export) at `https://rafyarvelo.github.io/tlmbench/` (the app's
-   Online manual points at `/manual/`).
-2. **R8, the rest:** the owner agreed the list Nov 23: the frozen history is deleted; at the tag, `follow-ups.md` (after
-   the design sync), `ui-audits.md`, `release-plan.md`, `next-agent-prompt.md`, `security-review.md` (summarised in
-   SECURITY.md) and the ledger (as the developers guide's appendix). Plus R8's pruning (scripts, recipes, dead code,
-   `cargo machete`, `knip`).
-3. **R6, last, on the final commit's release build:** every gate and measurement (`just testdata big`, `gen-gate`,
-   `gen-gate2`; check `df -h /` first, delete the 10 GB file after) and the soak (an hour live at 4M samples/s).
-4. **The release candidate:** `v1.0.0-rc.1` (ask the owner before pushing the tag: it is the outward step); the draft
-   release must have every installer, the CLI archives, the manual inside the app, LICENSE and THIRD_PARTY_LICENSES.md.
-   Then the owner runs the test plan per OS; fix every F (ranked), `rc.2`, and so on.
+1. **Before the gates, with the owner:** the **design doc's final sync** (fold `docs/follow-ups.md` into `docs/design.md`;
+   the living doc is in Claude Docs, links in `docs/README.md`; the owner starts it, so ask), **turning on GitHub Pages**
+   (Settings › Pages › Source: GitHub Actions; then run Actions › Pages by hand; the app's Online manual points at
+   `/manual/`), and the delete the Sonnet run left for the owner's choice: `docs/images/app-view-menu.png` (nothing uses it;
+   `shots.js` writes it). Don't decide these.
+2. **R6, last, on the final commit's release build:** every gate and measurement (`docs/developers/gates.md`, "The release
+   candidate's pass": `just testdata big`, `gen-gate`, `gate`, `gen-gate2`, `gate2`, `gate3`, `gate4`, `gate5`; check `df -h /`
+   first and delete the big files after) and the soak (an hour live at 4M samples/s). The screenshots in `docs/images/manual/`
+   were taken Nov 24 over the fake core and the real viewer; retake any a fix changes (`node app/ui/tests/shots.js OUT --manual id`).
+3. **The release candidate:** `v1.0.0-rc.1` (ask the owner before pushing the tag: it is the outward step); the draft release
+   must have every installer, the CLI archives, the manual inside the app, LICENSE and THIRD_PARTY_LICENSES.md. Then the owner
+   runs the test plan per OS; fix every F (ranked), `rc.2`, and so on.
+4. **At the tag, R8's delete list** (agreed Nov 23): `follow-ups.md` (after the design sync), `ui-audits.md`, `release-plan.md`,
+   `next-agent-prompt.md`, `security-review.md` (summarised in SECURITY.md) and the ledger (as the developers guide's appendix).
 
 ## First
 
@@ -38,7 +36,8 @@ real-window item goes into the test plan. The owner test sheet is gone. The orde
    `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/` (newest: `owner-order-nov23.md`).
 2. Run `python3 ci/ledger_check.py`. Counts at the hand-off: Done 340, Partial 3, Missing 2, Diverged 1, Unverified 24,
    Owner pass 18 (388 rows).
-3. Check that the last push is green (see the CI row) and push what is local only with the next code commit.
+3. Check that the last push is green (see the CI row) and push what is local only with the next code commit. Docs-only
+   commits never get a push or a CI watch of their own.
 
 ## Open with the owner
 
@@ -121,6 +120,20 @@ Only bug fixes and R7's own items (Help's manual, About) touch `app/ui/src`. A n
     grep before adding one, or a test breaks far from your change.
   - A test step that moved the pointer (⌘Z after a click on `#stack`) hides hover-only buttons: hover again first.
 
+- **Lessons (Nov 24):**
+  - `node app/ui/tests/shots.js OUT --manual [id ...]` writes the manual's screenshots (each scene is one `scene(...)` or `custom(...)`
+    in `shots-manual.js`; it prints a failing scene and saves `fail-<id>.png`). It takes about ten minutes for all 34: a scene run is
+    ~20 s. The fake core lists a folder from `files` and `bins` only (a CSV that should raise the import dialog needs `fake.csv(...)`
+    and an entry in `files`); a binary file a descriptor claims opens as a recording, so the descriptor form's scene saves its
+    descriptor with `files: []`.
+  - A Monitor command that contains the text it waits for (`pgrep -f "node shots.js"`) matches itself and never ends: watch a pid
+    (`while kill -0 PID`) or grep a log file.
+  - A tool call denied by the safety check (an `rm` with a shell variable) stops the whole compound command, including edits earlier
+    in it: re-check that an edit script ran.
+  - `just lint` now builds the debug CLI (`cargo build --bin tlmbench`, no `-p`) and runs `tools/reference.py --check`: after changing
+    a CLI option, a settings key, an expression function or a menu command, run `just reference` and commit `docs/reference/`.
+  - Svelte drops the space before an `{#if}`: write `{' '}` when words meet across one.
+  - The pages workflow (`pages.yml`) runs by hand or on a published release only, so a push can't turn red while Pages is off.
 - **Lessons (Nov 23):**
   - The UI tests run Chromium, which has a real `window.prompt` and a synchronous `confirm`; the app's WKWebView has no
     `prompt` (wry answers null) and Tauri's `confirm` returns a promise. Never use either: `askText` (`ask.svelte.ts`)
