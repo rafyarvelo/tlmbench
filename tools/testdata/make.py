@@ -15,10 +15,10 @@ Writes (nothing next to your own data):
     flights/flight-gap.csv  a 30 s hole in the times (gap breaks, "connect gaps")
     browser/bench.tlm       a small tlmbench reference file (4 channels, 200,000 samples) for browser-only mode
     browser/codecs-*.parquet  the same small table in Parquet, snappy and Zstandard (written when pyarrow is installed)
-    flights/.tlmbench/      shared config: a check set, a layout, two widgets (SVG and code), events for flight-1,
-                            and decoders/bench.toml (the descriptor for bench.bin and for `send`)
-    flights/bench.bin       60 s of 12-byte binary records at 1 kHz, read through that descriptor
-    flights/modes.csv       a text column (mode: IDLE, TAXI, CLIMB, CRUISE, LAND) beside a number, as a labelled channel
+    flights/.tlmbench/      shared config: a check set, a layout, two widgets (SVG and code), events for flight-1
+    other/bench.bin         60 s of 12-byte binary records at 1 kHz, read through other/.tlmbench/decoders/bench.toml
+                            (also the descriptor for `send`)
+    other/modes.csv         a text column (mode: IDLE, TAXI, CLIMB, CRUISE, LAND) beside a number, as a labelled channel
     big/big-100M.tlm        (with `big`) one channel, 100M samples at 1 MHz: the slow build, hatching and coarse views
     grow.py                 python3 grow.py live.csv  appends a row per second, for the Live tests
 """
@@ -165,7 +165,7 @@ def send(port=5555, hz=1000):
     srv.bind(("127.0.0.1", port))
     srv.listen(1)
     print(f"Sending on tcp://127.0.0.1:{port}: in TelemetryBench, Connect › TCP, address 127.0.0.1:{port}, with the "
-          "descriptor flights/.tlmbench/decoders/bench.toml. Ctrl+C stops.", flush=True)
+          "descriptor other/.tlmbench/decoders/bench.toml. Ctrl+C stops.", flush=True)
     try:
         while True:
             conn, _ = srv.accept()
@@ -222,15 +222,18 @@ def make(root):
     write_parquet(browser)
     flights = root / "flights"
     cfg = flights / ".tlmbench"
-    for d in (cfg / "checks", cfg / "views", cfg / "events", cfg / "decoders", cfg / "widgets" / "dial", cfg / "widgets" / "bar-code"):
+    for d in (cfg / "checks", cfg / "views", cfg / "events", cfg / "widgets" / "dial", cfg / "widgets" / "bar-code"):
         d.mkdir(parents=True, exist_ok=True)
     write_flight(flights / "flight-1.csv", run=0)
     write_flight(flights / "flight-2.csv", run=1, start=3600.0)
     write_flight(flights / "flight-bad.csv", run=2, bad=True)
     write_flight(flights / "flight-gap.csv", run=3, gap=(25.0, 55.0), seconds=90)
-    write_bin(flights / "bench.bin")
-    write_modes(flights / "modes.csv")
-    (cfg / "decoders" / "bench.toml").write_text(BENCH_DECODER)
+    # beside flights/, so the folder check there runs on the flights alone
+    other = root / "other"
+    (other / ".tlmbench" / "decoders").mkdir(parents=True, exist_ok=True)
+    write_bin(other / "bench.bin")
+    write_modes(other / "modes.csv")
+    (other / ".tlmbench" / "decoders" / "bench.toml").write_text(BENCH_DECODER)
     (cfg / "checks" / "flight-limits.toml").write_text(CHECKS)
     (cfg / "views" / "altitude-and-battery.tlmview.json").write_text(LAYOUT)
     (cfg / "events" / "flight-1.toml").write_text(
@@ -275,8 +278,9 @@ def main():
     root = Path(rest[0]).expanduser() if rest else Path.home() / "tlmbench-testdata"
     if root.exists() and any(root.iterdir()) and not (root / "flights").exists():
         sys.exit(f"{root} exists and isn't a test data folder: pick another")
-    if (root / "flights").exists():
-        shutil.rmtree(root / "flights")
+    for d in ("flights", "other"):
+        if (root / d).exists():
+            shutil.rmtree(root / d)
     root.mkdir(parents=True, exist_ok=True)
     make(root)
     if do_big:

@@ -156,7 +156,8 @@ jobs:
               p="$RUNNER_TEMP/TelemetryBench-$v-windows-x64-portable"; mkdir -p "$p"
               cp target/${{ matrix.target }}/release/tlmbench-app.exe "$p/TelemetryBench.exe"
               cp app/src-tauri/binaries/tlmbench-${{ matrix.target }}.exe "$p/tlmbench.exe"
-              cp LICENSE THIRD_PARTY_LICENSES.md docs/manual/build/TelemetryBench-manual.pdf "$p/"
+              cp LICENSE THIRD_PARTY_LICENSES.md "$p/"
+              mkdir -p "$p/manual" && cp docs/manual/build/TelemetryBench-manual.pdf "$p/manual/"
               cp -r plugins/template-decoder plugins/template-estimator plugins/template-payload "$p/"
               (cd "$RUNNER_TEMP" && 7z a -tzip "$out/TelemetryBench-$v-windows-x64-portable.zip" "TelemetryBench-$v-windows-x64-portable" > /dev/null) ;;
             Linux)
