@@ -9,8 +9,9 @@ name: Release
 # A tag v1.0.0-rc.N is a dry run of 1.0.0: the same build, a draft marked as a pre-release, nothing published to PyPI.
 # Run it by hand (workflow_dispatch) to build and test everything and publish nothing at all.
 #
-# Signing uses repository secrets the owner adds (an agent never sees them); without them the build is unsigned and the
-# smoke tests still run. macOS: APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+# Signing (decision 3, changed Nov 22: nothing paid for v1): macOS is ad-hoc signed (tauri.release.conf.json), not
+# notarised; Windows is unsigned until SignPath Foundation accepts the project (its step replaces the .pfx one). The
+# secrets below stay supported for a paid identity later; without them the smoke tests still run. macOS: APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
 # APPLE_ID, APPLE_PASSWORD (an app-specific password), APPLE_TEAM_ID: tauri signs with the hardened runtime and
 # notarises with notarytool. Windows: WINDOWS_CERTIFICATE (base64 .pfx) and WINDOWS_CERTIFICATE_PASSWORD.
 

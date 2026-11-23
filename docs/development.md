@@ -137,7 +137,10 @@ pre-release), and by hand (Actions › Release › Run workflow), which builds a
 - **release** (tags only): every file, `SHA256SUMS`, a build-provenance attestation for each, and a draft GitHub
   Release with the CHANGELOG's entry. The owner reads it and publishes it.
 
-Signing needs repository secrets only the owner holds: `APPLE_CERTIFICATE` (a base64 Developer ID Application `.p12`),
+Signing (decision 3, changed Nov 22: nothing paid for v1): macOS builds are ad-hoc signed (`signingIdentity: "-"` in
+`tauri.release.conf.json`) and not notarised, so a user opens the app once through System Settings › Privacy & Security
+› Open Anyway; Windows is signed by SignPath Foundation once it accepts the project (unsigned until then). The secrets
+below stay supported for a paid identity later: `APPLE_CERTIFICATE` (a base64 Developer ID Application `.p12`),
 `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password) and
 `APPLE_TEAM_ID` (tauri signs and notarises), and `WINDOWS_CERTIFICATE` (a base64 `.pfx`) with
 `WINDOWS_CERTIFICATE_PASSWORD`. Without them the build is unsigned and the smoke tests still run (the macOS one reports

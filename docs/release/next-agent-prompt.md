@@ -34,8 +34,9 @@ audit finding that isn't a bug goes to `docs/post-v1.md`.
 
 - **Quiet interface's default** (W3): asked Nov 22; the owner chose to decide after trying Y5. Ask again once Y5 has a
   result (recommendation then: whatever their Y5 note says; otherwise keep it off).
-- **R4's dry run**: it needs the owner's signing secrets (listed in `docs/development.md`, Releases) and PyPI's trusted
-  publisher for `release.yml`, and it bills a full matrix build. Ask before starting it (`workflow_dispatch`, or a tag
+- **R4's dry run**: free (public repository) but a long matrix; it needs PyPI's trusted publisher for `release.yml`.
+  Signing is decision 3 as changed Nov 22: **nothing paid**: macOS ad-hoc (no notarisation), Windows through SignPath
+  Foundation once the owner's application is accepted (unsigned until then). Ask before starting it (`workflow_dispatch`, or a tag
   `v0.1.0-rc.1`), recommending the hand-started run first (it publishes nothing).
 
 ## Your rows
@@ -52,7 +53,7 @@ audit finding that isn't a bug goes to `docs/post-v1.md`.
   recommendation; the rest goes to `docs/post-v1.md`. Then continue with the rows below.
 - **R4, the rest:** the dry run once the owner agrees, then fix what it finds (it has never run: expect paths in the
   bundles, the NSIS install folder, the deb's package name and the AppImage's layout to need a look); D-cli-02 and
-  D-ui-72 are Done after it. The notarised `.dmg` on a clean Mac (Gatekeeper) is the owner's to check. `just bundle-mac`
+  D-ui-72 are Done after it. When SignPath accepts the project, replace the `.pfx` step with SignPath's GitHub action (the owner holds its token). The ad-hoc `.dmg` on a clean Mac (Open Anyway once) is the owner's to check; the README and manual (R7) must say how to open it. `just bundle-mac`
   builds the macOS bundles locally (an agent's run of it was refused by the permission check on Nov 22: ask first).
   The Windows code in `app/src-tauri/src/install.rs` (PATH through the registry) is compiled only by CI's Windows job.
 - **D-gauge-04** waits for R6's measurement; **D-live-09** is the owner's (review decision 5).
@@ -76,8 +77,8 @@ audit finding that isn't a bug goes to `docs/post-v1.md`.
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all --check` and `npm run typecheck` pass locally,
   plus `cargo clippy --target wasm32-unknown-unknown -- -D warnings` and `cargo fmt --check` in `crates/web` and
   `crates/web-parquet` (they include `decode` files as source: a new dependency in `decode` goes into their `Cargo.toml`
-  and lock files too), and `python`. Then watch CI to green. A full run takes about 1.5 hours and bills about 545 minutes:
-  don't push per row. **Don't change `ci/` or the CI image.**
+  and lock files too), and `python`. Then watch CI to green. A full run takes about 1.5 hours (the repository is public, so
+  it costs nothing, but it holds the runners): don't push per row. **Don't change `ci/` or the CI image.**
 - **Lessons (Nov 17):**
   - The UI tests' harness waits a fixed 600 ms for the page; under a cargo build every core is busy and tests fail at boot
     (`__tlmApp` undefined). Never run the UI suite while cargo builds; rerun such failures alone.
