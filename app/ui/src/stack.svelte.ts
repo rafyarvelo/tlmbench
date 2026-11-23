@@ -402,9 +402,10 @@ function closeExcept(keep: (i: number) => boolean, what: string): void {
   const sel = stack.sel;
   const n = stack.panes.filter((_, i) => !keep(i)).length;
   if (!n) return;
-  const kept = prune(stack.panes.slice(), (_, i) => keep(i));
-  const newSel = Math.max(0, kept.indexOf(stack.panes[sel]));
+  // prune rewrites the panes left (their row flags) in place: inside edit, after Undo has its snapshot (owner, Y1 Nov 23)
   edit(() => {
+    const kept = prune(stack.panes.slice(), (_, i) => keep(i));
+    const newSel = Math.max(0, kept.indexOf(stack.panes[sel]));
     stack.panes = kept;
     stack.sel = newSel;
   });

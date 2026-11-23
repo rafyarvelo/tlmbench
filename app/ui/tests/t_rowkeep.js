@@ -53,6 +53,12 @@ run('rowkeep', async ({ p, check, until }) => {
     check(`closing pane ${k + 1} of the pair keeps the other in its row`, (await app('layout')).join() === 'row,row,row' && JSON.stringify((await app('panes'))[1]) === `[${left}]`, [await app('layout'), await app('panes')]);
     const r = await rect(1);
     check('and it grows across the row', r.y > top.y + 20 && Math.abs(r.w - top.w) < 2, [r, top]);
+    // the owner's Y1 note (Nov 23): Undo after closing the left one put the pair back as two rows
+    await p.mouse.click(5, 5);
+    await p.keyboard.press('ControlOrMeta+z');
+    check(`⌘Z after closing pane ${k + 1} puts the pair back side by side`, (await app('layout')).join() === 'row,row,beside,row' && JSON.stringify(await app('panes')) === '[[0],[1],[2],[3]]', [await app('layout'), await app('panes')]);
+    await p.keyboard.press('ControlOrMeta+Shift+z');
+    check('and ⇧⌘Z closes it again, the other still in its row', (await app('layout')).join() === 'row,row,row', await app('layout'));
   }
   // the same when the left one goes because its only chip was dragged onto the bottom pane
   await set(fourRows);
