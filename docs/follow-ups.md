@@ -349,3 +349,11 @@ removed Nov 15; git history keeps them.
   in front changes; undoing a delete puts the layout back, its tabs stay closed.
 - End jumps back to the live edge of a live tab (the prototype's key). Shortcuts are written the Mac way in the source and
   read as Ctrl+, Alt+ and Shift+ on Windows and Linux (tooltips, menus, hints).
+
+## Nov 23 (R6's plugin review, R7's manual pass)
+
+- Plugins: a WASM plugin's memory limit is for all its memories and tables together (wasmtime and the browser); a chunk
+  may not hold more rows than were asked for. The Plugins section can say so beside "a time and memory limit per call".
+- Open recording… lets any file be picked; one nothing reads goes on to the descriptor form, as a drop does.
+- Help has User manual (the PDF bundled with the app) and Online manual (the web copy), as decision 6 says.
+- The alignment method is called "Time channel"; its Channel picker names the channel (it read "Time channel (gps_tow)").

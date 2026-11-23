@@ -62,7 +62,7 @@ impl TimeMap {
 
     /// The offset at the file's time zero-point: for one knot the offset itself, else the first segment's.
     pub fn offset_at(&self, t_file: Timestamp) -> i64 {
-        self.apply(t_file) - t_file
+        self.apply(t_file).saturating_sub(t_file)
     }
 
     /// Seconds of shared time per second of the file's clock (1 for none or one knot; the end segments' slope
@@ -74,7 +74,7 @@ impl TimeMap {
         }
         let i = k.partition_point(|&(f, _)| f <= t_file).clamp(1, k.len() - 1);
         let (a, b) = (k[i - 1], k[i]);
-        (b.1 - a.1) as f64 / (b.0 - a.0) as f64
+        (b.1 as f64 - a.1 as f64) / (b.0 as f64 - a.0 as f64)
     }
 
     /// The shared time of a file time. Beyond the knots the end segments continue (slope 1 for a single knot).
@@ -90,17 +90,18 @@ impl TimeMap {
     fn through(&self, x: Timestamp, back: bool) -> Timestamp {
         let k = &self.knots;
         let (from, to): (Side, Side) = if back { (|p| p.1, |p| p.0) } else { (|p| p.0, |p| p.1) };
-        match k.len() {
-            0 => x,
-            1 => x - from(&k[0]) + to(&k[0]),
+        // in 128 bits, saturating at the ends of i64: knots from an estimator plugin may sit anywhere (R6, Nov 23)
+        let y = match k.len() {
+            0 => return x,
+            1 => x as i128 - from(&k[0]) as i128 + to(&k[0]) as i128,
             n => {
                 let i = k.partition_point(|p| from(p) <= x).clamp(1, n - 1);
                 let (a, b) = (&k[i - 1], &k[i]);
-                let (dx, dy) = ((from(b) - from(a)) as i128, (to(b) - to(a)) as i128);
-                let y = to(a) as i128 + (x - from(a)) as i128 * dy / dx;
-                y as i64
+                let (dx, dy) = (from(b) as i128 - from(a) as i128, to(b) as i128 - to(a) as i128);
+                to(a) as i128 + scale(x as i128 - from(a) as i128, dy, dx)
             }
-        }
+        };
+        y.clamp(i64::MIN as i128, i64::MAX as i128) as i64
     }
 
     /// The shared times of a span of the file's clock (a map is increasing, so the ends map to the ends).
@@ -113,8 +114,20 @@ impl TimeMap {
         if self.knots.is_empty() {
             return Self::offset(delta_ns);
         }
-        Self { knots: self.knots.iter().map(|&(f, s)| (f, s + delta_ns)).collect() }
+        Self { knots: self.knots.iter().map(|&(f, s)| (f, s.saturating_add(delta_ns))).collect() }
     }
+}
+
+/// `off * dy / dx` rounded toward zero, for `dy` and `dx` above 0 and below 2^64, without overflowing: past 2^127 the
+/// division is split (the remainder's product fits in 128 bits) and a result beyond i128 saturates.
+fn scale(off: i128, dy: i128, dx: i128) -> i128 {
+    if let Some(p) = off.checked_mul(dy) {
+        return p / dx;
+    }
+    let (o, d, x) = (off.unsigned_abs(), dy.unsigned_abs(), dx.unsigned_abs());
+    let m = (o / x).checked_mul(d).and_then(|q| q.checked_add(o % x * d / x)).unwrap_or(u128::MAX);
+    let m = m.min(i128::MAX as u128) as i128;
+    if off < 0 { -m } else { m }
 }
 
 /// What an estimator returns: the map, how far each matched point is from it, and a score in `0..=1`.
@@ -292,6 +305,24 @@ pub fn from_source(file_ns: &[Timestamp], source_ns: &[Timestamp], max_knots: us
 
 #[cfg(test)]
 mod tests {
+    // R6 hostile-plugin review (Nov 23): an estimator plugin's knots overflowed i64 arithmetic
+    #[test]
+    fn extreme_knots_answer_without_overflowing() {
+        use super::TimeMap;
+        let one = TimeMap::new(vec![(i64::MIN, i64::MAX)]).unwrap();
+        assert_eq!(one.apply(0), i64::MAX);
+        assert_eq!(one.inverse(0), i64::MIN);
+        assert_eq!(one.offset_at(0), i64::MAX);
+        let two = TimeMap::new(vec![(i64::MIN, i64::MIN), (i64::MAX, i64::MAX)]).unwrap();
+        assert_eq!(two.apply(12345), 12345);
+        assert_eq!(two.inverse(i64::MAX), i64::MAX);
+        assert_eq!(two.rate_at(0), 1.0);
+        let steep = TimeMap::new(vec![(0, i64::MIN), (1, i64::MAX)]).unwrap();
+        assert_eq!(steep.apply(i64::MAX), i64::MAX);
+        assert_eq!(steep.apply(i64::MIN), i64::MIN);
+        assert_eq!(steep.nudged(i64::MAX).knots[1].1, i64::MAX);
+    }
+
     use super::*;
 
     #[test]

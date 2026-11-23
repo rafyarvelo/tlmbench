@@ -87,6 +87,24 @@ try {
   // the page's core can take a while to start on a loaded runner: wait for it, and say so if it never does
   check('the page and its core start', await until(() => !!window.__tlmApp && typeof window.__tlmBrowserOnly?.add === 'function', null, 90000));
   await p.click('[data-rail="settings"]');
+  // R6 hostile-plugin review (Nov 23): a plugin's memories share the cap; a second memory can't grow a cap of its own
+  const caps = await p.evaluate(() => {
+    // a core module with two memories of no maximum, both exported
+    const wasm = new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0, 5, 5, 2, 0, 0, 0, 0, 7, 9, 2, 1, 0x61, 2, 0, 1, 0x62, 2, 1]);
+    const budget = { left: 16 };
+    const { a, b } = new WebAssembly.Instance(new WebAssembly.Module(window.__tlmBrowserOnly.capMemory(wasm, budget)), {}).exports;
+    const grows = (m, n) => { try { m.grow(n); return true; } catch { return false; } };
+    // a big module (a 2 MB custom section) goes through whole: its sections were once spread into arguments, past the stack
+    const n = 2 << 20;
+    const big = new Uint8Array(8 + 1 + 4 + 2 + n);
+    const len = n + 2; // a custom section (id 0): its size as a 4-byte LEB128, then a one-letter name and the bytes
+    big.set([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0, 0, (len & 0x7f) | 0x80, ((len >> 7) & 0x7f) | 0x80, ((len >> 14) & 0x7f) | 0x80, len >> 21, 1, 0x78]);
+    let bigOk;
+    try { bigOk = window.__tlmBrowserOnly.capMemory(big, { left: 16 }).length === big.length && WebAssembly.validate(big); } catch (e) { bigOk = String(e); }
+    return { a16: grows(a, 16), a1: grows(a, 1), b1: grows(b, 1), left: budget.left, bigOk };
+  });
+  check('a plugin\'s memories share one cap: the first grows to it, no further, and a second can\'t grow', caps.a16 && !caps.a1 && !caps.b1 && caps.left === 0, caps);
+  check('and a module of megabytes goes through whole', caps.bigOk === true, caps.bigOk);
   check('Settings › Plugins is there, with Add plugin… and no Open folder', await until(() => !!document.querySelector('#pluginSet #pluginsAdd')) && !(await p.$('#pluginsOpen')) && /Native plugins need the app/.test(await p.$eval('#pluginSet', (e) => e.textContent)));
 
   await add(DEMO, 'my_decoder.wasm');
@@ -106,7 +124,7 @@ try {
   // the sandbox and its limits, through the test plugin that misbehaves on purpose (it claims files starting with 4 capitals)
   await p.click('[data-rail="settings"]');
   await add(HOSTILE, 'hostile.wasm');
-  await until(() => !!document.querySelector('#pluginSet [data-plugin="hostile.wasm"]'), null, 60000);
+  check('the hostile plugin is added', await until(() => !!document.querySelector('#pluginSet [data-plugin="hostile.wasm"]'), null, 60000), await p.evaluate(() => [document.querySelector('#pluginNote')?.textContent, document.querySelector('#pluginSet')?.textContent]));
   await p.click('[data-rail="explorer"]');
   const opens = async (name, head) => {
     await p.click('#wsNote [aria-label="Dismiss"]').catch(() => {});
@@ -129,6 +147,15 @@ try {
   await opens('d.dat', 'MEMO');
   // a 2 GB allocation, which a browser would grant past 1 GiB: under the cap it fails inside the plugin (Rust aborts)
   check('memory past the cap fails inside the plugin and says so', await until(() => /d\.dat: Error: hostile: .*unreachable/.test(document.querySelector('#wsNote')?.textContent ?? ''), null, 60000), await noteText());
+  // R6 hostile-plugin review (Nov 23): no network, no environment, a runaway stack and an oversized chunk
+  await opens('f.dat', 'SOCK 9');
+  check('it can\'t reach the network', await until(() => /no network/.test(document.querySelector('#wsNote')?.textContent ?? ''), null, 60000), await noteText());
+  await opens('g.dat', 'ENVS');
+  check('it sees no environment, arguments or folders', await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].some((x) => x.textContent === 'g.dat'), null, 60000), [await tabs(), await noteText()]);
+  await opens('h.dat', 'DEEP');
+  check('a runaway stack fails inside the plugin and says so', await until(() => /h\.dat: .*hostile/.test(document.querySelector('#wsNote')?.textContent ?? ''), null, 60000), await noteText());
+  await opens('i.dat', 'ROWS');
+  check('a chunk of more rows than asked for is refused', await until(() => /65537 rows, more than the 65536 asked for/.test(document.querySelector('#wsNote')?.textContent ?? ''), null, 60000), await noteText());
   const t0 = Date.now();
   await opens('e.dat', 'LOOP');
   check('a loop is stopped at the CPU limit, saying so', await until(() => /ran for more than 4 s and was stopped/.test(document.querySelector('#wsNote')?.textContent ?? ''), null, 60000), await noteText());

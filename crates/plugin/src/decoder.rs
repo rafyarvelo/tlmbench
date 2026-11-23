@@ -158,10 +158,11 @@ impl DecoderSession for Session {
     fn next(&mut self, max_rows: u32) -> Result<Option<Chunk>, String> {
         wasm::arm(&mut self.store, self.limits);
         let r = self.d.call_next(&mut self.store, max_rows).map_err(|e| wasm::describe_error(e, "decoding"))?;
-        Ok(r.map_err(|e| format!("can't decode this file: {e}"))?.map(|c| Chunk {
-            rows: c.rows as usize,
-            time: c.time,
-            columns: c.columns,
-        }))
+        let r = r.map_err(|e| format!("can't decode this file: {e}"))?;
+        // what one call returns stays what was asked for (R6, Nov 23)
+        if let Some(c) = r.as_ref().filter(|c| c.rows > max_rows) {
+            return Err(format!("a chunk has {} rows, more than the {max_rows} asked for", c.rows));
+        }
+        Ok(r.map(|c| Chunk { rows: c.rows as usize, time: c.time, columns: c.columns }))
     }
 }

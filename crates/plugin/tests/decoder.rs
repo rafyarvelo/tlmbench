@@ -61,11 +61,15 @@ fn hostile(limits: Limits) -> Arc<dyn DecoderPlugin> {
 }
 
 fn open_as(mode: &str, limits: Limits) -> Result<usize, String> {
+    open_with_text(&format!("{mode} and some more bytes"), limits)
+}
+
+fn open_with_text(text: &str, limits: Limits) -> Result<usize, String> {
     let _g = ONE.lock().unwrap_or_else(|e| e.into_inner());
     set_plugins(vec![hostile(limits)]);
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("x.dat");
-    std::fs::write(&file, format!("{mode} and some more bytes")).unwrap();
+    std::fs::write(&file, text).unwrap();
     let opts = OpenOptions { cache_dir: Some(dir.path().join("cache")), ..Default::default() };
     let r = open(&file, &opts).map(|r| r.info().samples).map_err(|e| e.to_string());
     set_plugins(vec![]);
@@ -106,4 +110,36 @@ fn a_plugin_cannot_read_files_or_the_clock() {
 fn a_chunk_that_does_not_match_its_schema_is_an_error_naming_the_plugin() {
     let e = open_as("BADC", Limits::DECODER).unwrap_err();
     assert!(e.contains("hostile") && e.contains("8 bytes for 2 rows"), "{e}");
+}
+
+// R6's hostile-plugin review (Nov 23, wasmtime 50.0.3)
+
+#[test]
+fn a_plugin_cannot_reach_the_network() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let e = open_with_text(&format!("SOCK {port} and more"), Limits::DECODER).unwrap_err();
+    assert!(e.contains("no network"), "{e}");
+    assert!(listener.accept().is_err(), "nothing connected to the listener");
+}
+
+#[test]
+fn a_plugin_sees_no_environment_arguments_or_folders() {
+    // SAFETY: a variable the app's own environment has, which the plugin must not see; set before any thread reads it
+    unsafe { std::env::set_var("TLMBENCH_SECRET_FOR_THE_TEST", "x") };
+    assert_eq!(open_as("ENVS", Limits::DECODER), Ok(1));
+}
+
+#[test]
+fn a_plugin_that_recurses_without_end_fails_and_the_next_file_opens() {
+    let e = open_as("DEEP", Limits::DECODER).unwrap_err();
+    assert!(e.contains("hostile") && e.contains("failed"), "{e}");
+    assert_eq!(open_as("OKAY", Limits::DECODER), Ok(1));
+}
+
+#[test]
+fn a_chunk_of_more_rows_than_asked_for_is_refused() {
+    let e = open_as("ROWS", Limits::DECODER).unwrap_err();
+    assert!(e.contains("65537 rows") && e.contains("65536"), "{e}");
 }

@@ -14,6 +14,7 @@ import { folderFile, listFolder, pickFolder, readConfig, readPluginsDir } from '
 import * as plugins from './browser-plugins';
 import { isParquet, parquetDump } from './parquet-wasm';
 import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
+import { capMemory } from './wasmcap';
 
 export const LOCAL_PREFIX = 'local://';
 const CACHE_DIR = 'tlmbench-cache';
@@ -518,5 +519,5 @@ export async function installBrowserOnly(): Promise<void> {
     const paths = register(files, [...(e.dataTransfer?.files ?? [])]);
     internals.emit('tauri://drag-drop', { paths, position: { x: e.clientX, y: e.clientY } });
   });
-  (window as unknown as { __tlmBrowserOnly: unknown }).__tlmBrowserOnly = { add: (list: File[]) => register(files, list) };
+  (window as unknown as { __tlmBrowserOnly: unknown }).__tlmBrowserOnly = { add: (list: File[]) => register(files, list), capMemory };
 }

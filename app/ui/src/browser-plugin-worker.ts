@@ -1,7 +1,7 @@
 // Browser-only mode's plugin sandbox (ledger D-brow-09; owner, Nov 16): a WASM decoder plugin, the same `.wasm` component
 // the app runs on wasmtime, translated here by jco (fetched only when a plugin is used) and run in this Worker of its own.
 // What it gets is what the app's sandbox gives: the file through `source.len` and `source.read` and nothing else (no
-// folders, no environment or arguments, clocks fixed at zero, stdout and stderr thrown away). Its memory is capped by
+// network, no folders, no environment or arguments, clocks fixed at zero, stdout and stderr thrown away). Its memory is capped by
 // rewriting the core modules' memory limits before they compile; the page ends this Worker when a call runs past the CPU
 // limit. One Worker does one job: `about` (describe), `sniff`, or `decode` (start, then next until it ends).
 
@@ -10,6 +10,8 @@ import * as clocks from '@bytecodealliance/preview2-shim/clocks';
 import * as filesystem from '@bytecodealliance/preview2-shim/filesystem';
 import * as io from '@bytecodealliance/preview2-shim/io';
 import * as random from '@bytecodealliance/preview2-shim/random';
+import * as sockets from '@bytecodealliance/preview2-shim/sockets';
+import { capMemory } from './wasmcap';
 
 /** What a descriptor's payload plugin decodes (the core's `payload_requests`, D-ingest-09): a packet type's packets, each
  *  `[header length u32][payload length u32][header][payload]`, or plugin fields' bytes, field after field. */
@@ -42,65 +44,6 @@ export type PluginReply =
 declare const FileReaderSync: { new (): { readAsArrayBuffer(b: Blob): ArrayBuffer } } | undefined;
 
 const post = (r: PluginReply, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(r, transfer);
-
-/** Unsigned LEB128 at `at`: the value and the bytes it took. */
-function leb(b: Uint8Array, at: number): [number, number] {
-  let v = 0;
-  let shift = 0;
-  let k = at;
-  for (;;) {
-    const x = b[k++];
-    v += (x & 0x7f) * 2 ** shift;
-    if (!(x & 0x80)) return [v, k - at];
-    shift += 7;
-  }
-}
-const lebBytes = (v: number): number[] => {
-  const out: number[] = [];
-  do {
-    let x = v % 128;
-    v = Math.floor(v / 128);
-    if (v) x |= 0x80;
-    out.push(x);
-  } while (v);
-  return out;
-};
-
-/** A core module with every memory it defines given a maximum of `pages` (or its own, if smaller): growing past it fails
- *  inside the plugin, as wasmtime's memory limit does in the app. */
-export function capMemory(wasm: Uint8Array, pages: number): Uint8Array {
-  const out: number[] = [...wasm.subarray(0, 8)];
-  let at = 8;
-  while (at < wasm.length) {
-    const id = wasm[at];
-    const [size, n] = leb(wasm, at + 1);
-    const start = at + 1 + n;
-    const body = wasm.subarray(start, start + size);
-    if (id !== 5) out.push(id, ...lebBytes(size), ...body);
-    else {
-      const [count, c] = leb(body, 0);
-      let p = c;
-      const mem: number[] = [...lebBytes(count)];
-      for (let i = 0; i < count; i++) {
-        const flags = body[p++];
-        if (flags & 0x04) throw new Error('the plugin uses 64-bit memory, which a browser tab can’t limit');
-        const [min, a] = leb(body, p);
-        p += a;
-        let max = pages;
-        if (flags & 0x01) {
-          const [m, b] = leb(body, p);
-          p += b;
-          max = Math.min(m, pages);
-        }
-        if (min > pages) throw new Error(`the plugin starts with ${Math.round((min * 65536) / 2 ** 20)} MB of memory, over the limit`);
-        mem.push((flags & 0x02) | 0x01, ...lebBytes(min), ...lebBytes(max));
-      }
-      out.push(5, ...lebBytes(mem.length), ...mem);
-    }
-    at = start + size;
-  }
-  return new Uint8Array(out);
-}
 
 /** The translation of a plugin: jco's files (the glue as text, the core modules), kept in the page's storage by digest. */
 async function translated(job: PluginJob): Promise<Map<string, Uint8Array>> {
@@ -197,11 +140,21 @@ async function instantiate(job: PluginJob): Promise<Decoder> {
     'wasi:random/random': random.random,
     'wasi:random/insecure': random.insecure,
     'wasi:random/insecure-seed': random.insecureSeed,
+    // no network: the browser's sockets refuse every call, as the app's do (a plugin that links them still loads)
+    'wasi:sockets/instance-network': sockets.instanceNetwork,
+    'wasi:sockets/network': sockets.network,
+    'wasi:sockets/ip-name-lookup': sockets.ipNameLookup,
+    'wasi:sockets/tcp': sockets.tcp,
+    'wasi:sockets/tcp-create-socket': sockets.tcpCreateSocket,
+    'wasi:sockets/udp': sockets.udp,
+    'wasi:sockets/udp-create-socket': sockets.udpCreateSocket,
   };
+  // the plugin's memories share one budget, however many core modules define them
+  const budget = { left: job.maxPages };
   return mod.instantiate((n) => {
     const b = files.get(n);
     if (!b) throw new Error(`the translation has no ${n}`);
-    return WebAssembly.compile(capMemory(b, job.maxPages) as Uint8Array<ArrayBuffer>);
+    return WebAssembly.compile(capMemory(b, budget) as Uint8Array<ArrayBuffer>);
   }, imports);
 }
 
@@ -231,6 +184,9 @@ const message = (e: unknown): string => {
   const p = e as { payload?: unknown; message?: string };
   return typeof p?.payload === 'string' ? p.payload : String(p?.message ?? e);
 };
+
+/** Rows asked of a decoder at a time, as the app asks (crates/decode/src/plugin.rs `CHUNK_ROWS`). */
+const CHUNK_ROWS = 65_536;
 
 /** Packets a call takes at most, as the app's batches. */
 const BATCH_PACKETS = 4096;
@@ -324,8 +280,9 @@ self.onmessage = async (e: MessageEvent<PluginJob>) => {
     const cols: Float64Array[][] = schema.channels.map(() => []);
     let rows = 0;
     for (;;) {
-      const chunk = p.next(65_536);
+      const chunk = p.next(CHUNK_ROWS);
       if (!chunk) break;
+      if (chunk.rows > CHUNK_ROWS) throw new Error(`a chunk has ${chunk.rows} rows, more than the ${CHUNK_ROWS} asked for`);
       if (schema.timed && chunk.time.length !== chunk.rows) throw new Error(`a chunk of ${chunk.rows} rows has ${chunk.time.length} times`);
       if (chunk.columns.length !== schema.channels.length) throw new Error(`a chunk has ${chunk.columns.length} columns for ${schema.channels.length} channels`);
       chunk.columns.forEach((b, k) => {

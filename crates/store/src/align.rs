@@ -179,9 +179,18 @@ fn by_plugin(reference: &Opened, rmap: &TimeMap, target: &Opened, name: &str, pa
     let (rs, ts) = (series(rr, Some(rmap))?, series(tr, None)?);
     let hint = TimeMap::offset(rmap.apply(rf) - tf);
     let e = plugin.estimate(&rs, &ts, &hint, params).map_err(|e| bad(format!("{name}: {e}")))?;
-    let map = TimeMap::new(e.knots).map_err(|m| bad(format!("{name} returned a bad map: {m}")))?;
-    let est = Estimate { map, residuals: e.residuals, quality: e.quality.clamp(0.0, 1.0) };
-    Ok(done(est, e.note, None))
+    let note = e.note.clone();
+    let est = from_plugin(e).map_err(|m| bad(format!("{name} returned a bad map: {m}")))?;
+    Ok(done(est, note, None))
+}
+
+/// A plugin's estimate as the core keeps it: knots that make a map, a quality in `0..=1` (0 when it isn't a number),
+/// and only the residuals that are numbers (R6's hostile-plugin review, Nov 23: NaN went through `clamp`).
+fn from_plugin(e: PluginEstimate) -> std::result::Result<Estimate, timemap::MapError> {
+    let map = TimeMap::new(e.knots)?;
+    let quality = if e.quality.is_finite() { e.quality.clamp(0.0, 1.0) } else { 0.0 };
+    let residuals = e.residuals.into_iter().filter(|r| r.1.is_finite()).collect();
+    Ok(Estimate { map, residuals, quality })
 }
 
 /// [`thin`], reading the whole channel at once when it has at most `m` samples.
@@ -393,4 +402,26 @@ fn by_time_channel(reference: &Opened, rmap: &TimeMap, target: &Opened, channel:
     let off = e.map.apply(pairs[0].0) - pairs[0].0;
     let note = format!("{name}: {}", signed(off));
     Ok(done(e, Some(note), Some(name)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_plugins_estimate_that_is_not_a_number_is_kept_in_range() {
+        let e = PluginEstimate {
+            knots: vec![(i64::MIN, i64::MIN), (i64::MAX, i64::MAX)],
+            residuals: vec![(0, f64::NAN), (1, 2.0), (2, f64::INFINITY)],
+            quality: f64::NAN,
+            note: None,
+        };
+        let est = from_plugin(e).unwrap();
+        assert_eq!(est.quality, 0.0);
+        assert_eq!(est.residuals, vec![(1, 2.0)]);
+        // the extreme knots make a map that answers without overflowing
+        assert_eq!(est.map.apply(0), 0);
+        let bad = PluginEstimate { knots: vec![(5, 0), (1, 1)], residuals: vec![], quality: 2.0, note: None };
+        assert!(from_plugin(bad).is_err());
+    }
 }

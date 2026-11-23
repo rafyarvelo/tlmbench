@@ -56,6 +56,10 @@ pub(crate) struct Host {
     wasi: WasiCtx,
     table: ResourceTable,
     max_memory: usize,
+    /// Bytes of linear memory and table elements all of the plugin's memories and tables hold now: the caps are for
+    /// the whole plugin (a component may define several memories, multi-memory being on).
+    memory_used: usize,
+    table_used: usize,
     /// The file a decoder reads: the only thing it can reach.
     pub(crate) file: Option<(File, u64)>,
 }
@@ -66,12 +70,36 @@ impl WasiView for Host {
     }
 }
 
-impl ResourceLimiter for Host {
-    fn memory_growing(&mut self, _current: usize, desired: usize, _max: Option<usize>) -> wasmtime::Result<bool> {
-        Ok(desired <= self.max_memory)
+/// Table elements a plugin's tables may hold together.
+const MAX_TABLE_ELEMENTS: usize = 10_000_000;
+
+/// Grows `used` from `current` to `desired` if that keeps it within `cap` (a memory or table counts once, at its size).
+fn take(used: &mut usize, current: usize, desired: usize, cap: usize) -> bool {
+    let total = used.saturating_sub(current).saturating_add(desired);
+    if total > cap {
+        return false;
     }
-    fn table_growing(&mut self, _current: usize, desired: usize, _max: Option<usize>) -> wasmtime::Result<bool> {
-        Ok(desired <= 10_000_000)
+    *used = total;
+    true
+}
+
+impl ResourceLimiter for Host {
+    // also called as each memory and table is made (current 0), so a plugin's initial sizes count too
+    fn memory_growing(&mut self, current: usize, desired: usize, _max: Option<usize>) -> wasmtime::Result<bool> {
+        Ok(take(&mut self.memory_used, current, desired, self.max_memory))
+    }
+    fn table_growing(&mut self, current: usize, desired: usize, _max: Option<usize>) -> wasmtime::Result<bool> {
+        Ok(take(&mut self.table_used, current, desired, MAX_TABLE_ELEMENTS))
+    }
+    // a component has a few of each; many would only reserve address space
+    fn memories(&self) -> usize {
+        64
+    }
+    fn tables(&self) -> usize {
+        1000
+    }
+    fn instances(&self) -> usize {
+        1000
     }
 }
 
@@ -99,7 +127,7 @@ fn host(limits: Limits, file: Option<File>) -> Host {
     // plugin's result depends on its inputs alone.
     let wasi = WasiCtxBuilder::new().wall_clock(FixedWall).monotonic_clock(FixedMono).insecure_random_seed(0).build();
     let file = file.and_then(|f| f.metadata().ok().map(|m| (f, m.len())));
-    Host { wasi, table: ResourceTable::new(), max_memory: limits.memory, file }
+    Host { wasi, table: ResourceTable::new(), max_memory: limits.memory, memory_used: 0, table_used: 0, file }
 }
 
 pub(crate) fn linker() -> wasmtime::Result<Linker<Host>> {
@@ -171,5 +199,24 @@ pub(crate) fn kind_of(c: &Component) -> Option<crate::Kind> {
         Some(crate::Kind::Payload)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // R6 hostile-plugin review (Nov 23): the memory cap was per memory, so a component of several memories got the cap
+    // several times
+    #[test]
+    fn a_plugins_memories_and_tables_share_one_cap() {
+        let mut h = host(Limits { cpu: Duration::from_secs(1), memory: 100 }, None);
+        assert!(h.memory_growing(0, 60, None).unwrap(), "the first memory");
+        assert!(!h.memory_growing(0, 60, None).unwrap(), "a second can't take the cap again");
+        assert!(h.memory_growing(0, 40, None).unwrap(), "what is left, it can");
+        assert!(!h.memory_growing(60, 61, None).unwrap(), "now the first can't grow");
+        assert_eq!(h.memory_used, 100);
+        assert!(h.table_growing(0, MAX_TABLE_ELEMENTS, None).unwrap());
+        assert!(!h.table_growing(0, 1, None).unwrap(), "tables share theirs too");
     }
 }
