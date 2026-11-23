@@ -62,8 +62,22 @@ blocks the inline handler, but browser-only mode and exported HTML have no polic
 **Fixed:** Measure escapes formatted values; a custom widget's `{{value}}` is escaped before its SVG is sanitised.
 Test: `app/ui/tests/t_hostilefile.js` (it fails without the fix).
 
+### The app's policy, code widgets and the daemon
+
+- **The app's CSP** (`tauri.conf.json`): `default-src 'self'`, inline styles only, images from itself and `data:`, IPC
+  only, frames only from the widget scheme. No inline script and no outside loads: a second line behind the sanitisers.
+- **Code widgets** (`tlmwidget://`, `widget-host.html`): `default-src 'none'` with inline script and `eval` only, framed
+  with `sandbox="allow-scripts"` (no same-origin, no top navigation, no network, no images). The pane acts on a message
+  only when it comes from its own frame, and only on "ready". Shared code widgets wait for the person's trust.
+- **The daemon** (`daemon.rs`): loopback only; the socket needs the session token and a local or absent Origin, so a web
+  page can't drive it. **Found and fixed:** the token ignored a failure of the OS's random source (it would have been 32
+  zeros): the daemon now refuses to start without one. With `--ui DIR`, the page's files were guarded against `..` only:
+  on Windows `a\..\..\x` or `C:/…` would have reached `dir.join` and read outside the folder (loopback only, and a
+  web page can't read the answer, but closed): `\` and `:` are refused too. Test: `daemon`
+  `the_page_is_served_from_its_folder_only`. The token is compared plainly, not in constant time: over loopback the
+  timing is noise, and it is 128 random bits.
+
 ### Still to review (R6)
 
 Decoders and descriptor TOML against hostile files (the fuzz targets, `just fuzz-smoke` then longer), plugins in the
-sandbox (the hostile-plugin test), the app's CSP
-and the `tlmwidget` scheme, the daemon's socket and token.
+sandbox (the hostile-plugin test, on wasmtime 50.0.3).
