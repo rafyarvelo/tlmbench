@@ -93,7 +93,13 @@ jobs:
         run: |
           mkdir -p app/src-tauri/binaries
           if [ "${{ matrix.target }}" = universal-apple-darwin ]; then
-            for t in aarch64-apple-darwin x86_64-apple-darwin; do cargo build --release --locked -p tlmbench --target $t; done
+            # tauri builds each architecture of a universal app on its own, and each looks for the CLI under its own
+            # triple; the bundle then takes the universal one (dry run Nov 22: "binaries/tlmbench-aarch64-apple-darwin
+            # doesn't exist")
+            for t in aarch64-apple-darwin x86_64-apple-darwin; do
+              cargo build --release --locked -p tlmbench --target $t
+              cp "target/$t/release/tlmbench" "app/src-tauri/binaries/tlmbench-$t"
+            done
             lipo -create -output app/src-tauri/binaries/tlmbench-universal-apple-darwin \
               target/aarch64-apple-darwin/release/tlmbench target/x86_64-apple-darwin/release/tlmbench
           else
