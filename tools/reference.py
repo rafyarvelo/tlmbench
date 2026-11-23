@@ -43,7 +43,8 @@ def find_bin(arg: str | None) -> Path:
 
 def help_of(exe: Path, *args: str) -> str:
     out = subprocess.run([str(exe), *args, "--help"], capture_output=True, text=True, encoding="utf-8", check=True).stdout
-    return out.rstrip() + "\n"
+    # the same page on every OS: clap prints the program's file name, `tlmbench.exe` on Windows
+    return out.replace("tlmbench.exe", "tlmbench").rstrip() + "\n"
 
 
 def commands(top: str) -> list[str]:
