@@ -63,7 +63,9 @@ export const COMMANDS: Command[] = [
   { id: 'panels', menu: 'Window', label: 'Collapse or expand the sidebar panels' },
   { id: 'perf', menu: 'Window', label: 'Show performance details', check: true },
 
-  { id: 'tipsAgain', menu: 'Help', label: 'Show the tips again' },
+  { id: 'manual', menu: 'Help', label: 'User manual' },
+  { id: 'manualOnline', menu: 'Help', label: 'Online manual' },
+  { id: 'tipsAgain', menu: 'Help', label: 'Show the tips again', sep: true },
   { id: 'installCli', menu: 'Help', label: 'Install command-line tool…', sep: true },
 ];
 

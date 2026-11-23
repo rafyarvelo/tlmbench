@@ -1,6 +1,7 @@
 // What the installed app does for the system around it (R4): files the OS asks it to open (a double-click on a .tlm,
 // Open With, a second launch), those asked for while it started and those that come later; and Help › Install
-// command-line tool…, which says where the command went and, when its folder isn't on PATH, offers the line to add.
+// command-line tool…, which says where the command went and, when its folder isn't on PATH, offers the line to add;
+// Help › User manual and Online manual.
 import { run } from './lib.js';
 
 const files = { '/data/a.tlm': {}, '/data/b.tlm': {}, '/data/c.tlm': {} };
@@ -29,6 +30,15 @@ run(
     await fake(() => (window.__tlmFake.cliError = 'This build has no command-line tool beside the app (a development build).'));
     await fake(() => window.__tlmFake.menuClick('installCli'));
     check('a build without the tool says so', await until(() => /Couldn't install the command-line tool: This build has no command-line tool/.test(document.querySelector('#wsNote')?.textContent ?? '')));
+
+    // Help › User manual (the bundled PDF) and Online manual (R7, decision 6)
+    check('Help has User manual and Online manual', table.some((c) => c.id === 'manual' && c.menu === 'Help' && c.label === 'User manual') && table.some((c) => c.id === 'manualOnline' && c.menu === 'Help' && c.label === 'Online manual'));
+    await fake(() => window.__tlmFake.menuClick('manual'));
+    await fake(() => window.__tlmFake.menuClick('manualOnline'));
+    check('they ask the core to open the PDF, then the web copy', await until(() => JSON.stringify(window.__tlmFake.manualOpens) === '[false,true]'), await fake(() => window.__tlmFake.manualOpens));
+    await fake(() => (window.__tlmFake.manualError = 'This build has no manual beside the app (a development build).'));
+    await fake(() => window.__tlmFake.menuClick('manual'));
+    check('a build without the PDF says so', await until(() => /Couldn't open the manual: This build has no manual/.test(document.querySelector('#wsNote')?.textContent ?? '')));
   },
   { files, launch: '/data/a.tlm', setup: (f) => (f.osAsked = ['/data/b.tlm']) },
 );

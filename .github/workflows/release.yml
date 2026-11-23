@@ -89,6 +89,10 @@ jobs:
           tool: just@${{ env.JUST_VERSION }},tauri-cli@${{ env.TAURI_CLI_VERSION }}
       - name: The viewer (the CLI and the app embed it)
         run: just viewer
+      - name: The manual (the bundle carries its PDF; Help › User manual opens it)
+        run: |
+          (cd tools/manual && npm ci --no-audit --no-fund --silent && npx playwright install --with-deps chromium)
+          just manual
       - name: The CLI, where the bundle takes it from (binaries/tlmbench-<target>)
         run: |
           mkdir -p app/src-tauri/binaries

@@ -5640,7 +5640,22 @@ const RUN: Record<string, () => void> = {
   perf: () => setSetting('showPerf', !settings.showPerf),
   tipsAgain: () => (setSetting('tipsSeen', {}), note('Tips will show again.')),
   installCli: () => void installCli(),
+  manual: () => void openManual(false),
+  manualOnline: () => void openManual(true),
 };
+
+/** The manual's web copy (decision 7: GitHub Pages, beside the browser-only app). */
+export const MANUAL_URL = 'https://rafyarvelo.github.io/tlmbench/manual/';
+
+/** Help › User manual opens the PDF the app is bundled with in the system's viewer; Online manual, the web copy (decision 6). */
+async function openManual(online: boolean): Promise<void> {
+  if (ui.viewer || ui.browserOnly) return void window.open(MANUAL_URL, '_blank', 'noopener');
+  try {
+    await invoke('manual_open', { online });
+  } catch (e) {
+    note(`Couldn't open the manual: ${String(e).replace(/^Error:\s*/, '')}`);
+  }
+}
 
 /** Help › Install command-line tool…: the `tlmbench` beside the app, where a terminal finds it (R4). */
 async function installCli(): Promise<void> {
@@ -5657,6 +5672,7 @@ async function installCli(): Promise<void> {
 const ENABLED: Record<string, () => boolean> = {
   saveLayout: () => tabs.active >= 0,
   installCli: () => !ui.viewer && !ui.browserOnly,
+  manual: () => !ui.viewer && !ui.browserOnly,
   exportData: () => !!state.file && !ui.viewer,
   exportHtml: () => !!state.file && !ui.viewer,
   saveImage: () => !!state.file && stack.panes.length > 0,

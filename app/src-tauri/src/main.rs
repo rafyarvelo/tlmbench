@@ -3784,6 +3784,26 @@ async fn open_with_system(path: String) -> Result<(), String> {
     tauri_plugin_opener::open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// The manual's web copy (decision 7; the UI's `MANUAL_URL` says the same).
+const MANUAL_URL: &str = "https://rafyarvelo.github.io/tlmbench/manual/";
+
+/// Help › User manual: the PDF bundled with the app, opened by the OS's viewer (decision 6; the app runs no program of
+/// its own). Help › Online manual (`online`): the web copy in the browser.
+#[tauri::command]
+async fn manual_open<R: tauri::Runtime>(app: AppHandle<R>, online: bool) -> Result<(), String> {
+    if online {
+        return tauri_plugin_opener::open_url(MANUAL_URL, None::<&str>).map_err(|e| e.to_string());
+    }
+    let pdf = app
+        .path()
+        .resource_dir()
+        .map(|d| d.join("manual").join("TelemetryBench-manual.pdf"))
+        .ok()
+        .filter(|p| p.is_file())
+        .ok_or("This build has no manual beside the app (a development build): use Online manual.")?;
+    tauri_plugin_opener::open_path(pdf, None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Settings → Cache → Open folder: the OS file manager shows the cache folder (reveal only; the app runs no program).
 #[tauri::command]
 async fn cache_reveal(files: State<'_, Files>) -> Result<(), String> {
@@ -3997,6 +4017,7 @@ macro_rules! commands {
             needs_descriptor,
             descriptor_list,
             open_with_system,
+            manual_open,
             descriptor_preview,
             descriptor_find_frames,
             descriptor_save,

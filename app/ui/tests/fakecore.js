@@ -1259,6 +1259,12 @@
       fake.osAsked = [];
       return p;
     },
+    // Help › User manual and Online manual (R7)
+    manual_open({ online }) {
+      (fake.manualOpens ??= []).push(online);
+      if (fake.manualError) throw fake.manualError;
+      return null;
+    },
     cli_install() {
       fake.cliInstalls = (fake.cliInstalls ?? 0) + 1;
       if (fake.cliError) throw fake.cliError;

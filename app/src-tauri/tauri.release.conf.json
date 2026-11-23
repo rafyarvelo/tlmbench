@@ -14,7 +14,8 @@
       "../../plugins/template-decoder/": "plugins/template-decoder/",
       "../../plugins/template-estimator/": "plugins/template-estimator/",
       "../../plugins/template-payload/": "plugins/template-payload/",
-      "../../examples/recordings/.tlmbench/": "examples/.tlmbench/"
+      "../../examples/recordings/.tlmbench/": "examples/.tlmbench/",
+      "../../docs/manual/build/TelemetryBench-manual.pdf": "manual/TelemetryBench-manual.pdf"
     },
     "fileAssociations": [
       { "ext": ["tlm"], "name": "TelemetryBench recording", "description": "TelemetryBench recording", "role": "Editor", "mimeType": "application/x-tlmbench" },
