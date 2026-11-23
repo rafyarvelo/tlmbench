@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Writes THIRD_PARTY_LICENSES.md: every crate and npm package the shipped code is built from, with its licence and the
+"""Writes THIRD_PARTY_LICENSES.md (UTF-8, the same bytes on every OS): every crate and npm package the shipped code is built from, with its licence and the
 licence texts it ships. Plain Python 3; needs `cargo` and the UI's node_modules (npm ci in app/ui).
 
     python3 tools/third_party.py           write it
@@ -25,7 +25,7 @@ def texts(folder: Path) -> list[tuple[str, str]]:
     for p in sorted(folder.iterdir()) if folder.is_dir() else []:
         if p.is_file() and p.name.upper().startswith(NAMES):
             try:
-                found.append((p.name, p.read_text(errors="replace").strip()))
+                found.append((p.name, p.read_text(encoding="utf-8", errors="replace").strip()))
             except OSError:
                 pass
     return found
@@ -34,7 +34,7 @@ def texts(folder: Path) -> list[tuple[str, str]]:
 def crates(manifest: Path) -> dict:
     meta = json.loads(subprocess.run(
         ["cargo", "metadata", "--format-version", "1", "--locked", "--manifest-path", str(manifest)],
-        capture_output=True, text=True, check=True, cwd=ROOT).stdout)
+        capture_output=True, text=True, encoding="utf-8", check=True, cwd=ROOT).stdout)
     pkgs = {p["id"]: p for p in meta["packages"]}
     nodes = {n["id"]: n for n in meta["resolve"]["nodes"]}
     ours = set(meta["workspace_members"])
@@ -59,7 +59,7 @@ def crates(manifest: Path) -> dict:
 
 def npm() -> dict:
     ui = ROOT / "app/ui"
-    want = list(json.loads((ui / "package.json").read_text()).get("dependencies", {}))
+    want = list(json.loads((ui / "package.json").read_text(encoding="utf-8")).get("dependencies", {}))
     out, todo = {}, list(want)
     while todo:
         name = todo.pop()
@@ -67,7 +67,7 @@ def npm() -> dict:
         pj = d / "package.json"
         if not pj.exists():
             sys.exit(f"{name}: not in app/ui/node_modules (npm ci in app/ui first)")
-        m = json.loads(pj.read_text())
+        m = json.loads(pj.read_text(encoding="utf-8"))
         key = (m["name"], m["version"])
         if key in out:
             continue
@@ -111,11 +111,11 @@ def render() -> str:
 def main() -> int:
     text = render()
     if "--check" in sys.argv:
-        if not OUT.exists() or OUT.read_text() != text:
+        if not OUT.exists() or OUT.read_bytes().decode("utf-8") != text:
             print("THIRD_PARTY_LICENSES.md is out of date: python3 tools/third_party.py")
             return 1
         return 0
-    OUT.write_text(text)
+    OUT.write_bytes(text.encode("utf-8"))  # UTF-8 and \n on every OS
     print(f"wrote {OUT.relative_to(ROOT)}")
     return 0
 

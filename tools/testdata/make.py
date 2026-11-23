@@ -55,7 +55,7 @@ def write_flight(path, run=0, start=0.0, seconds=60, hz=100, gap=None, bad=False
         if bad and 45 <= t < 45.5:
             temp += 25  # a short spike
         lines.append(f"{start + t:.3f},{alt:.3f},{speed:.3f},{batt:.4f},{temp:.3f}\n")
-    path.write_text("".join(lines))
+    path.write_text("".join(lines), encoding="utf-8", newline="\n")
 
 
 CHECKS = """schema = 1
@@ -101,7 +101,7 @@ GROW = '''#!/usr/bin/env python3
 import math, sys, time
 path = sys.argv[1] if len(sys.argv) > 1 else "live.csv"
 t0 = time.time()
-with open(path, "w") as f:
+with open(path, "w", encoding="utf-8", newline="\n") as f:
     f.write("time,altitude,speed,battery_v,temp\\n")
     f.flush()
     i = 0
@@ -140,7 +140,7 @@ def write_modes(path, seconds=120, hz=10):
         t = i / hz
         m = modes[min(int(t), len(modes) - 1)]
         lines.append(f"{t:.1f},{m},{ {'IDLE': 0, 'TAXI': 15, 'CLIMB': 90, 'CRUISE': 60, 'LAND': 20}[m] + math.sin(t):.2f}\n")
-    path.write_text("".join(lines))
+    path.write_text("".join(lines), encoding="utf-8", newline="\n")
 
 
 def write_big(path, samples=100_000_000, hz=1_000_000):
@@ -233,20 +233,20 @@ def make(root):
     (other / ".tlmbench" / "decoders").mkdir(parents=True, exist_ok=True)
     write_bin(other / "bench.bin")
     write_modes(other / "modes.csv")
-    (other / ".tlmbench" / "decoders" / "bench.toml").write_text(BENCH_DECODER)
-    (cfg / "checks" / "flight-limits.toml").write_text(CHECKS)
-    (cfg / "views" / "altitude-and-battery.tlmview.json").write_text(LAYOUT)
+    (other / ".tlmbench" / "decoders" / "bench.toml").write_text(BENCH_DECODER, encoding="utf-8", newline="\n")
+    (cfg / "checks" / "flight-limits.toml").write_text(CHECKS, encoding="utf-8", newline="\n")
+    (cfg / "views" / "altitude-and-battery.tlmview.json").write_text(LAYOUT, encoding="utf-8", newline="\n")
     (cfg / "events" / "flight-1.toml").write_text(
         'schema = 1\nrecording = "flight-1.csv"\nidentity = ""\n\n'
         '[[event]]\nid = "ev-takeoff"\nname = "Takeoff"\nstart = 5000000000\nduration = 0\nchannels = ["altitude"]\n\n'
         '[[event]]\nid = "ev-turn"\nname = "Hard turn"\nstart = 30000000000\nduration = 8000000000\nchannels = ["speed", "altitude"]\n'
-    )
-    (cfg / "widgets" / "dial" / "widget.toml").write_text('schema = 1\nname = "Dial"\nkind = "svg"\nentry = "widget.svg"\nangle = [-60, 60]\n')
-    (cfg / "widgets" / "dial" / "widget.svg").write_text(DIAL_SVG)
-    (cfg / "widgets" / "bar-code" / "widget.toml").write_text('schema = 1\nname = "Value (code)"\nkind = "code"\nentry = "widget.js"\nby = "you"\n')
-    (cfg / "widgets" / "bar-code" / "widget.js").write_text(BAR_JS)
+    , encoding="utf-8", newline="\n")
+    (cfg / "widgets" / "dial" / "widget.toml").write_text('schema = 1\nname = "Dial"\nkind = "svg"\nentry = "widget.svg"\nangle = [-60, 60]\n', encoding="utf-8", newline="\n")
+    (cfg / "widgets" / "dial" / "widget.svg").write_text(DIAL_SVG, encoding="utf-8", newline="\n")
+    (cfg / "widgets" / "bar-code" / "widget.toml").write_text('schema = 1\nname = "Value (code)"\nkind = "code"\nentry = "widget.js"\nby = "you"\n', encoding="utf-8", newline="\n")
+    (cfg / "widgets" / "bar-code" / "widget.js").write_text(BAR_JS, encoding="utf-8", newline="\n")
     grow = root / "grow.py"
-    grow.write_text(GROW)
+    grow.write_text(GROW, encoding="utf-8", newline="\n")
     grow.chmod(0o755)
 
 
@@ -261,7 +261,7 @@ def main():
     a = sys.argv[1:]
     if a[:1] == ["grow"]:
         path = a[1] if len(a) > 1 else "live.csv"
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
             f.write(HEADER)
             f.flush()
             t0 = time.time()
