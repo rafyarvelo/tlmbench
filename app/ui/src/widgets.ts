@@ -88,7 +88,7 @@ export function sanitizeSvg(src: string): string {
 export function fillTemplate(spec: CustomWidget, x: Pick<Ctx, 'txt' | 'unit' | 'label' | 'ok' | 'p' | 'col' | 'lvl' | 'lo' | 'hi' | 'dec' | 'name'>): string {
   const [a0, a1] = spec.angle ? [Number(spec.angle[0]), Number(spec.angle[1])] : [-120, 120];
   const vars: Record<string, string> = {
-    value: x.txt,
+    value: esc(x.txt),
     unit: esc(x.unit),
     label: esc(x.label ?? x.txt),
     pct: x.ok ? (x.p * 100).toFixed(1) : '0',

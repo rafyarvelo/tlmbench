@@ -1523,7 +1523,8 @@ async function refreshMeasure(): Promise<void> {
   const span = Number(state.t1 - state.t0);
   const dt = state.A != null && state.B != null ? Number(state.B - state.A) : null;
   const val = (list: Nearest[], ch: number) => list.find((n) => n.channel === ch)?.value ?? null;
-  const fv = (ch: number, v: number | null | undefined) => fmtCh(f.id, ch, v);
+  // a labelled channel's value is text from the file: escaped, since these panels are HTML strings (R6)
+  const fv = (ch: number, v: number | null | undefined) => esc(fmtCh(f.id, ch, v));
   const tile = (k: string, v: string, hi = false) => `<div class="mt${hi ? ' hi' : ''}"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
   const rowsHtml = chans.length
     ? chans

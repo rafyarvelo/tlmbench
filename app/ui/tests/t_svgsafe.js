@@ -20,7 +20,8 @@ const HOSTILE = {
 };
 const OK = '<svg viewBox="0 0 24 24"><defs><linearGradient id="g"><stop offset="0" stop-color="red"/></linearGradient></defs><style>.t { font-size: 12px }</style><rect fill="url(#g)" style="stroke: currentColor"/><use href="#g"/><text class="t">7</text><animate attributeName="opacity" values="0;1" dur="1s"/></svg>';
 
-run('svgsafe', async ({ p, check }) => {
+run('svgsafe', async ({ p, check, until }) => {
+  check('the page boots', await until(() => !!window.__tlmApp?.sanitizeSvg, null, 15000));
   for (const [what, src] of Object.entries(HOSTILE)) {
     const out = await p.evaluate((s) => window.__tlmApp.sanitizeSvg(s), src);
     const bad = /\bon\w+=|<script|javascript|java\s*script|<image|<feimage|<foreignobject|<iframe|url\((?!["']?#)|@import|data:|attributename="(?:xlink:)?href"|attributename="on/i.exec(out);
