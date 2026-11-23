@@ -129,21 +129,21 @@ Channel(index: 'int', name: 'str', unit: 'str | None', dtype: 'str', category: '
 What a `.tlmbench/` folder holds, as objects. `dir` is the folder (None when there is none); `problems` lists files
 that did not read, each `{path, why}`.
 
-### `Config.checks(self) -> 'list[ConfigObject]'`
+### `Config.checks: 'list[ConfigObject]'` (property)
 
-### `Config.decoders(self) -> 'list[ConfigObject]'`
+### `Config.decoders: 'list[ConfigObject]'` (property)
 
-### `Config.events(self) -> 'list[ConfigObject]'`
+### `Config.events: 'list[ConfigObject]'` (property)
 
 ### `Config.of(self, kind: 'str') -> 'list[ConfigObject]'`
 
-### `Config.profiles(self) -> 'list[ConfigObject]'`
+### `Config.profiles: 'list[ConfigObject]'` (property)
 
-### `Config.recipes(self) -> 'list[ConfigObject]'`
+### `Config.recipes: 'list[ConfigObject]'` (property)
 
-### `Config.views(self) -> 'list[ConfigObject]'`
+### `Config.views: 'list[ConfigObject]'` (property)
 
-### `Config.widgets(self) -> 'list[ConfigObject]'`
+### `Config.widgets: 'list[ConfigObject]'` (property)
 
 
 ## `ConfigObject`
@@ -151,6 +151,6 @@ that did not read, each `{path, why}`.
 One object in a `.tlmbench/` folder: a recipe, a check set, a shared view, an import profile, ... `files` maps each of
 its files (relative to the folder) to its text; `text` is the first one, and `data` parses it (TOML or JSON).
 
-### `ConfigObject.data(self) -> 'Any'`
+### `ConfigObject.data: 'Any'` (property)
 
-### `ConfigObject.text(self) -> 'str'`
+### `ConfigObject.text: 'str'` (property)

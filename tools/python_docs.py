@@ -24,9 +24,14 @@ def sig(fn) -> str:
         return "(...)"
 
 
-def block(name: str, obj, level: str) -> list[str]:
+def block(name: str, obj, level: str, prop: bool = False) -> list[str]:
     doc = inspect.getdoc(obj) or ""
-    head = f"{level} `{name}{sig(obj)}`" if callable(obj) else f"{level} `{name}`"
+    if prop:
+        # a property reads as an attribute: its type, not a call
+        ret = sig(obj).rpartition(" -> ")[2] if " -> " in sig(obj) else ""
+        head = f"{level} `{name}: {ret}` (property)" if ret else f"{level} `{name}` (property)"
+    else:
+        head = f"{level} `{name}{sig(obj)}`" if callable(obj) else f"{level} `{name}`"
     return [head, "", doc, ""] if doc else [head, ""]
 
 
@@ -54,7 +59,7 @@ def render() -> str:
             if name.startswith("_"):
                 continue
             if isinstance(member, property):
-                lines += block(f"{cls_name}.{name}", member.fget, "###")
+                lines += block(f"{cls_name}.{name}", member.fget, "###", prop=True)
             elif inspect.isfunction(member):
                 lines += block(f"{cls_name}.{name}", member, "###")
     return "\n".join(lines).rstrip() + "\n"
