@@ -211,6 +211,10 @@ def main() -> int:
             f = OUT / name
             if not f.exists() or f.read_text(encoding="utf-8") != text:
                 print(f"reference: docs/reference/{name} is out of date: run `just reference`")
+                import difflib
+
+                old = f.read_text(encoding="utf-8").splitlines() if f.exists() else []
+                print("\n".join(list(difflib.unified_diff(old, text.splitlines(), "committed", "generated", lineterm=""))[:40]))
                 bad.append(name)
         return 1 if bad else 0
     OUT.mkdir(parents=True, exist_ok=True)
