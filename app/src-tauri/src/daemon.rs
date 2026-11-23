@@ -171,10 +171,19 @@ impl Server {
     }
 }
 
-fn new_token() -> String {
+/// A session token from the OS's random source. Without one there is no daemon: a token of zeros anyone could guess
+/// would let any local program drive the app (R6).
+fn new_token() -> std::io::Result<String> {
     let mut b = [0u8; 16];
-    let _ = getrandom::fill(&mut b);
-    b.iter().map(|x| format!("{x:02x}")).collect()
+    getrandom::fill(&mut b)
+        .map_err(|e| std::io::Error::other(format!("no random source for the session token: {e}")))?;
+    Ok(b.iter().map(|x| format!("{x:02x}")).collect())
+}
+
+/// Whether a requested path stays inside the page's folder: no `..` or empty segment, and nothing a Windows path would
+/// read as a separator, a drive or a stream (`\`, `:`), so `dir.join` can't leave the folder (R6).
+fn inside(rel: &str) -> bool {
+    !rel.contains(['\\', ':']) && !rel.split('/').any(|p| p == ".." || p.is_empty())
 }
 
 /// Starts serving on `127.0.0.1:port` (0: any free port) from a thread of its own. `ui` is the folder the page comes
@@ -189,7 +198,10 @@ pub fn serve<R: Runtime>(
 ) -> std::io::Result<Server> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     let addr = listener.local_addr()?;
-    let token = token.unwrap_or_else(new_token);
+    let token = match token {
+        Some(t) => t,
+        None => new_token()?,
+    };
     // events reach every client (the windows of the app take them from the runtime itself)
     for name in
         ["settings-changed", "view-linked", "table-progress", "html-export-progress", "folder-changed", "menu-action"]
@@ -268,7 +280,7 @@ fn connection<R: Runtime>(
         let _ = std::io::Read::read(&mut &stream, &mut buf);
         let path = target.split('?').next().unwrap_or("/");
         let rel = if path == "/" { "index.html" } else { path.trim_start_matches('/') };
-        let found = ui.filter(|_| !rel.split('/').any(|p| p == ".." || p.is_empty())).and_then(|f| f(rel));
+        let found = ui.filter(|_| inside(rel)).and_then(|f| f(rel));
         match found {
             Some((bytes, kind)) => respond(stream, "200 OK", &kind, &bytes),
             None => respond(stream, "404 Not Found", "text/plain", b"not found"),
@@ -407,6 +419,18 @@ pub fn run(args: Args) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_page_is_served_from_its_folder_only() {
+        // R6: what Windows would read as a separator, a drive or a stream is refused like `..`
+        for ok in ["index.html", "assets/app.js", "a.b/c.css"] {
+            assert!(inside(ok), "{ok}");
+        }
+        for bad in ["../x", "a/../../x", "a//b", "a\\..\\..\\x", "C:/Windows/win.ini", "x.html:stream", ""] {
+            assert!(!inside(bad), "{bad}");
+        }
+        assert_eq!(new_token().unwrap().len(), 32);
+    }
 
     /// A daemon on a free port in this process, with the commands of the app.
     fn start(ui: Option<PathBuf>) -> (Server, tauri::App<tauri::test::MockRuntime>, Arc<Clients>) {
