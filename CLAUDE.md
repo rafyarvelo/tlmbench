@@ -5,7 +5,8 @@ The repo holds the design doc, the Rust crates, CLI and Tauri app, a single-file
 The app is feature-complete against the old roadmap (steps 4.1 to 5.10) and is on the way to v1.0.0:
 `docs/release/release-plan.md` orders that work (one agent at a time) and its status table is the only record of where each
 step stands; `docs/release/ledger.md` is the only feature status (`ci/ledger_check.py`). `docs/release/next-agent-prompt.md`
-is the hand-off. `docs/roadmap.md`, `docs/feature-matrix.md` and `docs/parity-audit.md` are history: don't update them.
+is the hand-off. The old roadmap, feature matrix, parity audit and classes, and the R1 review were deleted Nov 23 (R8,
+owner's OK); git history has them, and the ledger's Source column still cites them.
 
 ## Hard requirements (never trade these away)
 

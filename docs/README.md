@@ -9,7 +9,6 @@
   data comes from `tools/testdata/make.py`.
 - `release/security-review.md`: R6's security review, a dated section per pass.
 - `release/ui-audits.md`: the apple-design audits, one dated section each.
-- `release/parity-classes.md`: every difference from the prototype as Port, App is better or Noise (release step R3.0).
 - `follow-ups.md`: notes owed to the design doc. `post-v1.md`: what the owner placed after the release.
 
 **Reference:**
@@ -22,8 +21,8 @@
 - `viewer-store.md`: what an export holds and which data the viewer's views read.
 - `browser-only.md`: the app in a browser tab with no install, and how to host it.
 
-**History** (frozen; don't update): `roadmap.md` (steps 4.1 to 5.10), `feature-matrix.md`, `parity-audit.md` (Nov 11),
-`release/review.md` (the R1 review).
+**History:** the roadmap (steps 4.1 to 5.10), the feature matrix, the parity audit (Nov 11), the parity classes (R3.0)
+and the R1 review were deleted Nov 23 (R8); git history keeps them (`git log --all -- docs/roadmap.md`).
 
 The living versions are edited in Claude Docs and exported here at each milestone:
 
