@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use serde::Deserialize;
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 /// One command of the table.
@@ -64,7 +64,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, entries: &[Entry]) -> Result<(Menu<
     {
         let name = app.package_info().name.clone();
         let sub = Submenu::new(app, &name, true).map_err(err)?;
-        sub.append(&PredefinedMenuItem::about(app, None, None).map_err(err)?).map_err(err)?;
+        sub.append(&about(app)?).map_err(err)?;
         sub.append(&PredefinedMenuItem::separator(app).map_err(err)?).map_err(err)?;
         sub.append(&PredefinedMenuItem::services(app, None).map_err(err)?).map_err(err)?;
         sub.append(&PredefinedMenuItem::separator(app).map_err(err)?).map_err(err)?;
@@ -122,6 +122,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, entries: &[Entry]) -> Result<(Menu<
             sub.append(&PredefinedMenuItem::maximize(app, None).map_err(err)?).map_err(err)?;
             sub.append(&PredefinedMenuItem::fullscreen(app, None).map_err(err)?).map_err(err)?;
         }
+        // Windows and Linux have no app menu: About ends Help
+        #[cfg(not(target_os = "macos"))]
+        if name == "Help" {
+            sub.append(&PredefinedMenuItem::separator(app).map_err(err)?).map_err(err)?;
+            sub.append(&about(app)?).map_err(err)?;
+        }
         menu.append(&sub).map_err(err)?;
         #[cfg(target_os = "macos")]
         match name {
@@ -131,6 +137,28 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, entries: &[Entry]) -> Result<(Menu<
         }
     }
     Ok((menu, setters))
+}
+
+/// Where releases are published, and what About says of the licences (R7: the version, the licence, the notices).
+const RELEASES: &str = "https://github.com/rafyarvelo/tlmbench/releases";
+const NOTICE: &str = "Licensed under the Apache License 2.0. The open-source software it is built with, and their \
+licences, are listed in THIRD_PARTY_LICENSES.md beside the app.";
+
+/// About TelemetryBench: the system's own window, with the version, the licence and where the notices are.
+fn about<R: Runtime>(app: &AppHandle<R>) -> Result<PredefinedMenuItem<R>, String> {
+    let info = app.package_info();
+    let meta = AboutMetadata {
+        name: Some(info.name.clone()),
+        version: Some(info.version.to_string()),
+        copyright: Some("© TelemetryBench contributors".into()),
+        license: Some("Apache-2.0".into()),
+        website: Some(RELEASES.into()),
+        website_label: Some("Releases".into()),
+        comments: Some(NOTICE.into()),
+        credits: Some(format!("{NOTICE}\n\nReleases: {RELEASES}")),
+        ..Default::default()
+    };
+    PredefinedMenuItem::about(app, None, Some(meta)).map_err(err)
 }
 
 /// The window sends the command table once; the menu bar is built from it.

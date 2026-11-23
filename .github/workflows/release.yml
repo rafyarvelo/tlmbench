@@ -156,6 +156,7 @@ jobs:
               p="$RUNNER_TEMP/TelemetryBench-$v-windows-x64-portable"; mkdir -p "$p"
               cp target/${{ matrix.target }}/release/tlmbench-app.exe "$p/TelemetryBench.exe"
               cp app/src-tauri/binaries/tlmbench-${{ matrix.target }}.exe "$p/tlmbench.exe"
+              cp LICENSE THIRD_PARTY_LICENSES.md docs/manual/build/TelemetryBench-manual.pdf "$p/"
               cp -r plugins/template-decoder plugins/template-estimator plugins/template-payload "$p/"
               (cd "$RUNNER_TEMP" && 7z a -tzip "$out/TelemetryBench-$v-windows-x64-portable.zip" "TelemetryBench-$v-windows-x64-portable" > /dev/null) ;;
             Linux)
@@ -265,7 +266,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/tlmbench$ext" "$RUNNER_TEMP/$d/"
           "$RUNNER_TEMP/$d/tlmbench$ext" --version | grep -q "$v"
           cp README.md "$RUNNER_TEMP/$d/"
-          [ -f LICENSE ] && cp LICENSE "$RUNNER_TEMP/$d/"
+          cp LICENSE THIRD_PARTY_LICENSES.md "$RUNNER_TEMP/$d/"
           cd "$RUNNER_TEMP"
           if [ "$RUNNER_OS" = Windows ]; then 7z a -tzip "out/$d.zip" "$d" > /dev/null; else tar czf "out/$d.tar.gz" "$d"; fi
       - uses: actions/upload-artifact@v7
