@@ -22,13 +22,13 @@ In Explorer the channel tree gains a file level. Each file's row shows its slot 
 
 **Chips.** In a tab with several files, right-click a channel chip for **From file N · name** (read this channel from that file instead) and **Add from every file** (every file's version of it in the pane). A pane's ⋯ menu has **Duplicate for file N**.
 
-<!-- shot: slots — Explorer with two files in a tab, slot numbers and "same clock" on the rows, and a pane with both files' channels -->
+![Explorer with two files in a tab, slot numbers and "same clock" on the rows, and a pane with both files' channels.](../images/manual/slots.png)
 
 ## Alignment
 
 Click the row of any file but the first in Explorer, or right-click it and choose **Alignment and channel prefix…**. Its Alignment section opens under the row.
 
-<!-- shot: alignment-section — a file's Alignment section after cross-correlation: method, note, Fit, residuals plot, Now, Nudge, Lock -->
+![A file's Alignment section after cross-correlation: method, note, Fit, residuals plot, Now, Nudge, Lock.](../images/manual/alignment-section.png)
 
 Choose a method in **Alignment**:
 

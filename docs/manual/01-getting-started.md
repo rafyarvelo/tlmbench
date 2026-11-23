@@ -10,7 +10,7 @@ Download the app for your system from the Releases page and follow [Installing T
 
 When the app starts it shows the start page. It is also what you see with no file open, and the logo at the top of the icon rail brings it back at any time (**Start page**). **Esc** closes it.
 
-<!-- shot: start-page — the start page with three cards, Recent sessions and Recent recordings -->
+![The start page with three cards, Recent sessions and Recent recordings.](../images/manual/start-page.png)
 
 The page has three cards:
 
@@ -37,7 +37,7 @@ To work on a whole folder instead, click **Open folder…** (⇧⌘O / Ctrl+Shif
 
 ## A first look
 
-<!-- shot: first-look — a file open with four panes, the overview strip below, and the time range in the top bar -->
+![A file open with four panes, the overview strip below, and the time range in the top bar.](../images/manual/first-look.png)
 
 The panes share one time axis. The strip under them is the overview: the whole recording, with the part you are looking at highlighted.
 

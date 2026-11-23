@@ -109,4 +109,4 @@ A locked time view holds against all of these except cursors (when **Cursors sti
 - Drag a tab to reorder it; drag it out of the tab bar to open it in its own window (see [windows](13-windows.md)).
 - Drag a file onto the window to open it.
 
-<!-- shot: shortcuts-menu — the View menu open on a Mac, showing the single-key shortcuts and accelerators -->
+![The ⋯ More menu with the shortcut beside each item that has one. The native menu bar (below) lists them all.](../images/manual/shortcuts-menu.png)

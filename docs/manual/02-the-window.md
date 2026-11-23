@@ -2,7 +2,7 @@
 
 This chapter names the parts of the window and what each does: the icon rail, Explorer, tabs, panes, the overview strip, the top bar and the menu bar. It ends with two settings that change how calm or fixed the window is, Quiet interface and Lock.
 
-<!-- shot: window-parts — the whole window with the rail, Explorer, tab strip, top bar, panes, overview and Measure labelled -->
+![The window. 1 icon rail, 2 Explorer, 3 tab strip, 4 top bar, 5 panes, 6 overview, 7 Measure.](../images/manual/window-parts.png)
 
 ## The icon rail
 
@@ -27,7 +27,7 @@ In a browser tab (browser-only mode) Events, Rules & checks, Layouts and Live ar
 
 Explorer is a tree: **folder → file → channel**.
 
-<!-- shot: explorer — Explorer with a folder, two files (one open and expanded) and its channels -->
+![Explorer with a folder, two files (one open and expanded) and its channels.](../images/manual/explorer.png)
 
 - **Folder.** The button at the top of Explorer (**Open folder** until one is open, then the folder's name) opens a menu: **Open folder…**, **Refresh**, **Open recording…**, **Import all N files…**, **Recipes and profiles…**, **Share…**, expand and collapse all, **Remove the folder from Explorer**, **Close all files**. New files show by themselves; on a network share, **Refresh** finds them.
 - **Files.** Hover a file for **Open** and **Only this** (opens it and closes the other tabs). Right-click a file for more: **Open with layout ▸**, **Import settings…**, **Format descriptor…**, **Compare runs**, **Add to this tab**, **Open with its default app**, **Close this file**.
@@ -39,7 +39,7 @@ Select several files and the bar offers **Open** (a tab each), **Open together**
 
 ## Tabs
 
-<!-- shot: tab-strip — the tab strip with a file tab, a layout tab with the unsaved dot, and the open tab menu -->
+![The tab strip with a file tab, a layout tab with the unsaved dot, and the open tab menu.](../images/manual/tab-strip.png)
 
 The tab strip sits at the top. Every open thing is a tab:
 
@@ -66,7 +66,7 @@ A layout shared by someone else is read-only: **Save as…** makes your own copy
 
 The area under the top bar is a stack of panes sharing one time axis. Panes are arranged in **rows**; a row holds up to four **columns** side by side. The stack scrolls when the panes do not fit.
 
-<!-- shot: panes-grid — three rows, the middle one split into two columns, one pane selected -->
+![Three rows, the middle one split into two columns, one pane selected.](../images/manual/panes-grid.png)
 
 **Add a pane.** Press ⇧⌘N / Ctrl+Shift+N (**New pane**), click the **+** between two rows, or choose **Add a pane below** in a pane's menu.
 
@@ -109,17 +109,17 @@ Under the panes (or above them) is the overview: the whole recording as a min/ma
 
 ## The top bar
 
-<!-- shot: top-bar — the top bar at full width with each group labelled -->
+![The top bar at full width. The numbers follow the list below.](../images/manual/top-bar.png)
 
 From left to right:
 
-- The tabs and **+**, then your pinned layouts and recipes, if any (right-click a pin to unpin).
-- The **time range** in view, its span, and the time under the pointer. Click the range to choose how times read (chapter 4).
-- **Mouse mode**: **Box zoom** (B), **Pan** (P), **Cursors** (C).
-- **Clear cursors** (Esc), **Back** (⌥← / Alt+←), **Fit** (F), **Play back** (Space), **Event markers** (E), **Lock** (L).
-- On a window at least 1,200 px wide, **Charts / Tables / Both** set every pane's view at once. At 1,300 px, **Remove every channel** and **Remove every pane** appear too.
-- **Export**: to HTML, data files or an image.
-- **⋯ More**: **Open recording…**, **Link time view with other windows** and **Link cursors too**, **Overview above the panes**, the all-panes views, **Collapse or expand the sidebar panels**, **Switch theme** (T), **Focus mode**, **Show performance details**, **Settings…**. On a narrower window, Clear, Back, Fit, Play and Lock move into this menu.
+1. The tabs and **+**, then your pinned layouts and recipes, if any (right-click a pin to unpin).
+2. The **time range** in view, its span, and the time under the pointer. Click the range to choose how times read (chapter 4).
+3. **Mouse mode**: **Box zoom** (B), **Pan** (P), **Cursors** (C).
+4. **Clear cursors** (Esc), **Back** (⌥← / Alt+←), **Fit** (F), **Play back** (Space), **Event markers** (E), **Lock** (L).
+5. On a window at least 1,200 px wide, **Charts / Tables / Both** set every pane's view at once. At 1,300 px, **Remove every channel** and **Remove every pane** appear too.
+6. **Export**: to HTML, data files or an image.
+7. **⋯ More**: **Open recording…**, **Link time view with other windows** and **Link cursors too**, **Overview above the panes**, the all-panes views, **Collapse or expand the sidebar panels**, **Switch theme** (T), **Focus mode**, **Show performance details**, **Settings…**. On a narrower window, Clear, Back, Fit, Play and Lock move into this menu.
 
 ## The menu bar
 

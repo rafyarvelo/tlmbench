@@ -74,5 +74,5 @@ A shared folder can carry things that run: code widgets and plugins. Both run in
 
 **Plugins.** A folder's `.tlmbench/plugins/` is not loaded until you trust the folder. When you open a folder that shares plugins, a note says so. In **Settings**, under **Plugins**, the folder's row reads *This folder has N plugins waiting for your OK*. Choose **Trust this folder's plugins** to load them, or **Stop trusting** later. Plugins decide how files decode and align, so trust a folder only when you trust who shared it. WASM plugins can't reach your files or network. Native plugins run with your rights and stay off until you turn each one on, whoever shared them.
 
-<!-- shot: share-dialog — the Share dialog with rows in each status, the Share all and Clear links, and the Share N button -->
-<!-- shot: trust-widget — the "Run code widgets from this folder?" question with Show the code open -->
+![The Share dialog with rows in each status, the Share all and Clear links, and the Share N button.](../images/manual/share-dialog.png)
+![The "Run code widgets from this folder?" question with Show the code open.](../images/manual/trust-widget.png)

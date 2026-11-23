@@ -231,6 +231,12 @@ tab. Anything clipped, blurry, misaligned or off: list it in the note. Result: N
 **13.2** Turn on Reduce motion (macOS: Accessibility › Display; Windows: Settings › Accessibility › Visual effects ›
 Animation effects off): zooms and menus don't animate. Result:
 
+**13.3** *(for the manual, on a Mac)* Two screenshots the headless run can't take: the native menu bar with the View menu open
+(`docs/manual/15-keyboard-and-mouse.md`, now showing the ⋯ menu), and two real windows side by side with the time view
+linked (`docs/manual/13-windows.md`, now two page shots joined). Take them with `just app-shot` or ⇧⌘4 into
+`docs/images/manual/shortcuts-menu.png` and `windows-two.png`, same file as the manual's other shots (`flight-1.csv` from
+`tools/testdata/make.py`). Result:
+
 ---
 
 **Signed off:** ______ (all items P or –, or the F items accepted for after v1)

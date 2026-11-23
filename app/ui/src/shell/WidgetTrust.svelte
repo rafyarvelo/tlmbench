@@ -21,7 +21,7 @@
   <div class="dlg tdlg" id="trustDlg" role="dialog" aria-label="Run code widgets from this folder?">
     <header><b>Run code widgets from this folder?</b></header>
     <div class="tbody">
-      <p>This layout uses <b>{spec.name}</b>{#if spec.by} by {spec.by}{/if}, a widget written in code, from <code>{spec.shared}</code>.</p>
+      <p>This layout uses <b>{spec.name}</b>{#if spec.by}{' '}by {spec.by}{/if}, a widget written in code, from <code>{spec.shared}</code>.</p>
       <p class="hint">Code widgets run in a sandbox: they can draw inside their card and read the values you give them, nothing else (no files, no network, no other windows). You can change this later in Settings.</p>
       <details><summary>Show the code</summary><pre class="codeprev">{spec.code}</pre></details>
     </div>

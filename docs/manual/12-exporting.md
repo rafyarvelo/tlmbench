@@ -67,9 +67,9 @@ The export carries the tab's panes as the opening layout. Widgets of your own tr
 
 ### The viewer
 
-The viewer is the app's own interface, reduced to what a static page can do. It opens **Locked**: the time view and the panes are held, so a reader can't lose the view you chose. A **Locked** pill in the header shows the export's file and date. Press **Unlock** (or **L**) to zoom, pan and rearrange freely; reloading locks it again, and nothing is saved. Anything that needs the app is left out, not greyed: saving, sharing, live sources, adding events or checks.
+The viewer is the app's own interface, reduced to what a static page can do. It opens **Locked**: the time view and the panes are held, so a reader can't lose the view you chose. The header shows a closed lock while it is locked, and the export's file and date. Press **Unlock** (or **L**) to zoom, pan and rearrange freely; reloading locks it again, and nothing is saved. Anything that needs the app is left out, not greyed: saving, sharing, live sources, adding events or checks.
 
 ![An HTML export, opened from a static server](../images/app-viewer.png)
 
-<!-- shot: export-data — the Export data dialog with the summary line and the matching command -->
-<!-- shot: viewer-unlock — the viewer's header with the Locked pill, then the same after Unlock -->
+![The Export data dialog with the summary line and the matching command.](../images/manual/export-data.png)
+![The viewer's header, Locked (the closed lock) and then after Unlock.](../images/manual/viewer-unlock.png)

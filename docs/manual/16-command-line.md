@@ -198,4 +198,4 @@ Lists the plugins found in your plugins folder and the `--config` folders, with 
 | `TLMBENCH_RECORDINGS` | Where `record` puts session folders, when `--out` isn't given |
 | `TLMBENCH_VIEWER` | A viewer folder for `export html`, when `--viewer` isn't given |
 
-<!-- shot: cli-check — a terminal running tlmbench check with its summary line and exit code -->
+![A terminal running tlmbench check with its summary line and exit code.](../images/manual/cli-check.png)

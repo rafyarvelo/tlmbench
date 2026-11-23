@@ -26,7 +26,7 @@ Each channel gets the widget that fits its unit and name:
 | **Bar group** | Similar channels on one scale, so the odd one out stands out. | Three or more channels that differ only by a number (`motor_2_rpm`, `cell_4_v`). |
 | **XY dot** | Two channels as a dot with a short trail (a g-g diagram, a stick, a GPS track). | A channel with an `_x`/`_y` partner or latitude/longitude. |
 
-<!-- shot: gauges-pane — a Gauges pane with a dial, a ring, a bar, a tank, a state light and a compass, one card in warn colour -->
+![A Gauges pane with a dial, a ring, a bar, a tank, a state light and a compass, one card in warn colour.](../images/manual/gauges-pane.png)
 
 A card turns yellow or red with the channel's warn or alarm limits, and says "✗ check" while a failing check covers the time it reads. Click a card to open the channel's limits (**Limits** tab).
 
@@ -54,7 +54,7 @@ Open **Your widgets** from the widget menu (**Make a widget…** or **New or edi
 
 The list marks each widget **SVG**, **Code** or **Shared**. **Duplicate** copies one; **Delete** removes yours. A shared widget is read-only: duplicate it to make a copy of your own.
 
-<!-- shot: widget-editor — the Your widgets dialog: the list on the left, the form for an SVG widget with its bindings, and the preview -->
+![The Your widgets dialog: the list on the left, the form for an SVG widget with its bindings, and the preview.](../images/manual/widget-editor.png)
 
 ### SVG widgets
 

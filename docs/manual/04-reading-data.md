@@ -38,7 +38,7 @@ In a live tab the view follows the newest data. The live strip shows **Following
 
 Point at a plot. A line follows the pointer across every pane, each channel chip in a pane's header shows its value at that time, and the top bar shows the time. The values come from the data, not from the drawing, so they stay exact when the plot is a summary of millions of samples.
 
-<!-- shot: pointer-values — a pointer over three panes with the values in the chips and the time in the top bar -->
+![A pointer over three panes with the values in the chips and the time in the top bar.](../images/manual/pointer-values.png)
 
 If **Quiet interface** is on, chip values show only while you point at a plot.
 
@@ -48,7 +48,7 @@ When samples are far enough apart to see (about 6 pixels), the chart marks each 
 
 ## Cursors A and B and Measure
 
-<!-- shot: cursors-measure — two cursors on three panes with the Measure sidebar showing Cursors and Stats -->
+![Two cursors on three panes with the Measure sidebar showing Cursors and Stats.](../images/manual/cursors-measure.png)
 
 **To place cursors**:
 
@@ -69,7 +69,7 @@ Open **Measure** from the rail (⌥⌘B / Ctrl+Alt+B). It has two panels, which 
 
 Switch a pane to **Table** (or **Chart and table**) from its view button, or use **Charts / Tables / Both** in the top bar for every pane. A table lists the samples in the time view, one row per sample of its first channel. **Sample** and **Time** are always columns. Other channels' columns hold their last value between their own samples, dimmed where a cell repeats the one above.
 
-<!-- shot: table-pane — a table with a filter row, the match stepper and Apply to charts ticked -->
+![A table with a filter row, the match stepper and Apply to charts ticked.](../images/manual/table-pane.png)
 
 **Select and sort.** By default a click on a column header selects the column (Shift-click for a range, Ctrl/⌘-click to add), and sorting is in the header's ▾ menu: **Sort ascending**, **Sort descending**, **Clear sort**. Turn on **Click a column header to sort** in Settings to sort with a click instead (click again to reverse, once more to clear, Shift-click to add a column). With columns selected, a bar offers **Chart**, **Table** (new panes with just those columns) and **Hide**. **Columns** lists every column to show or hide, and **Autofit** sizes them.
 
@@ -109,7 +109,7 @@ A tab is in one of three time modes:
 
 Click **Play back** in the top bar, or press Space, to open the transport above the panes. The playhead starts at cursor A, or near the end of the view.
 
-<!-- shot: transport — the transport strip with the playhead line on a chart and on the overview -->
+![The transport strip with the playhead line on a chart and on the overview.](../images/manual/transport.png)
 
 The transport has:
 

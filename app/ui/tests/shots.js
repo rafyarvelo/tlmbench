@@ -1,5 +1,6 @@
 // Screenshots for the README and docs: the built UI with the fake core. Usage: node shots.js [outdir] (default docs/images)
 import { open } from './lib.js';
+import { manualShots } from './shots-manual.js';
 import { spawnSync } from 'node:child_process';
 import { createReadStream, existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import http from 'node:http';
@@ -8,7 +9,14 @@ import { tmpdir } from 'node:os';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const out = process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '../../../docs/images');
+const argv = process.argv.slice(2);
+const out = argv[0] ?? join(dirname(fileURLToPath(import.meta.url)), '../../../docs/images');
+// `--manual [id ...]`: only the User Manual's screenshots (shots-manual.js)
+if (argv.includes('--manual')) {
+  if (!argv[0] || argv[0] === '--manual') throw new Error('pass an output folder: node shots.js OUTDIR --manual [id ...]');
+  await manualShots(out, argv.slice(argv.indexOf('--manual') + 1));
+  process.exit(process.exitCode ?? 0);
+}
 const files = { '/data/flight.tlm': { samples: 600000, rate: 1000 } };
 const shot = async (p, name) => (await p.screenshot({ path: join(out, name) }), console.log(name));
 

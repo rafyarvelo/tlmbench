@@ -18,7 +18,7 @@ The app reads a file once into its cache and works from the cache after that. Th
 
 When you open a CSV whose header has no saved settings, the import dialog (titled **Open** and the file's name, or **Import N files**) shows first. The top line says how many rows and columns it found and what separates them.
 
-<!-- shot: import-dialog — the import dialog on a CSV with the time column, data rate choices and the column list -->
+![The import dialog on a CSV with the time column, data rate choices and the column list.](../images/manual/import-dialog.png)
 
 **Time and data rate.**
 - **Time column**: pick the column that holds time, or **None**.
@@ -53,7 +53,7 @@ These open directly. A `.tlm` file describes its own channels, units and time, s
 
 A binary log has no header the app can read, so you tell it the layout once, in a **descriptor**. When you open a binary file that no descriptor claims, the **Format descriptor** form opens by itself. You can also open it from Explorer: right-click the file and choose **Format descriptor…** (it is greyed out for CSV, TSV, Parquet and `.tlm`).
 
-<!-- shot: descriptor-form — the descriptor form with framing, time, a field list, the hex of the first bytes and the decoded rows -->
+![The descriptor form with framing, time, a field list, the hex of the first bytes and the decoded rows.](../images/manual/descriptor-form.png)
 
 To describe a file:
 

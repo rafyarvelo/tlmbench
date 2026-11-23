@@ -132,5 +132,5 @@ At the bottom of the panel. It opens a list of what to remove, all ticked except
 | **Alignments** | How files in one tab line up |
 | **Cache** | File summaries, rebuilt when a file opens |
 
-<!-- shot: settings-all — the Settings panel on All settings, with Mouse and Display sections -->
-<!-- shot: reset-app — the Reset app dialog with its list -->
+![The Settings panel on All settings, with Mouse and Display sections.](../images/manual/settings-all.png)
+![The Reset app dialog with its list.](../images/manual/reset-app.png)

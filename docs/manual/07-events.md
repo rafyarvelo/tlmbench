@@ -8,7 +8,7 @@ The panel sits in a sidebar (drag its title to move it, or use the swap button).
 
 Press **E** to show or hide event markers on the charts (View › **Event markers**).
 
-<!-- shot: events-panel — the Events panel with category chips, a grouped list, one event being edited and a read-only rule event with its tag -->
+![The Events panel: filter, grouping, a marker and a range, and the range open for editing.](../images/manual/events-panel.png)
 
 ## Add and edit your own events
 

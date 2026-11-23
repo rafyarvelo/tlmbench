@@ -9,7 +9,7 @@ TelemetryBench can follow a source while it records: a serial port, a TCP server
 3. Check the preview under the form (see below).
 4. Press **Connect**. A live tab opens, following the source.
 
-<!-- shot: connect-dialog — the Connect a live source dialog on UDP: the kinds on the left, host and port, descriptor, the Decodes as preview and Preview a frame -->
+![The Connect a live source dialog on UDP: the kinds on the left, host and port, descriptor and where to record.](../images/manual/connect-dialog.png)
 
 | Kind | What it does | You provide |
 | --- | --- | --- |

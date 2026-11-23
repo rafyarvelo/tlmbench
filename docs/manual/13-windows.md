@@ -41,5 +41,5 @@ To turn it on, open **Settings**, find **Browser access** and switch **Open this
 
 To use the interface in a browser without the app at all, see [browser-only mode](18-browser-only.md).
 
-<!-- shot: windows-two — two windows side by side with the time view linked -->
-<!-- shot: browser-access — Settings, Browser access switched on with the address and Copy -->
+![Two windows side by side with the time view linked.](../images/manual/windows-two.png)
+![Settings, Browser access switched on with the address and Copy.](../images/manual/browser-access.png)

@@ -153,7 +153,7 @@ CI sets it once it builds what those tests need (the CLI and `just viewer`).
 The transport (Play back: play/pause, Space, speed, window presets, scrubbing, the A–B loop, each tab's playhead) has no test:
 step 5.5 wrote the file-playback test over the transport's `t_playback` (ledger D-ui-13). `t_eventstop` covers Stop at.
 
-`node shots.js [dir]` writes the README's screenshots (`docs/images/`) from the built UI and the fake core.
+`node shots.js [dir]` writes the README's screenshots (`docs/images/`) from the built UI and the fake core. `node shots.js DIR --manual [id …]` writes the User Manual's (`shots-manual.js`: one scene per `![…](../images/manual/id.png)` in `docs/manual`, files shaped like `tools/testdata/make.py`'s flights, the real viewer, browser-only site and CLI over make.py's own files) and `DIR/README.md`, the list of which chapter uses which image. Always pass a folder; `docs/images/manual` is where they are kept.
 
 `node parity/parity.mjs [scene ...] [--dpr 2] [--light]` (or `just app-parity`) compares the app with the prototype. It
 opens both at the same viewport and device scale, puts each in the same scene (a menu open, a dialog, a hover state;

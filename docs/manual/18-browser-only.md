@@ -41,4 +41,4 @@ python3 -m http.server --directory app/browser/dist
 
 and open `http://localhost:8000`. A browser runs WebAssembly and Workers only from a web address, not from a file opened from disk, so the folder needs a host or a local server. For GitHub Pages, publish `app/browser/dist` with the standard Pages action.
 
-<!-- shot: browser-folder — a browser tab with a folder open in Explorer and the file's panes -->
+![A browser tab with a folder open in Explorer and the file's panes.](../images/manual/browser-folder.png)

@@ -32,7 +32,7 @@ run(
     check('it waits for your OK and shows the value meanwhile', await until(() => !!document.querySelector('#stack [data-gw="current_a"] [data-trustw]') && /A/.test(document.querySelector('#stack [data-gw="current_a"]').innerText) && /Run\?/.test(document.querySelector('#stack [data-gw="current_a"]').innerText)), await text(card('current_a')));
     check('no frame yet', !(await p.$(`${card('current_a')} iframe`)));
     await p.click(`${card('current_a')} [data-trustw]`);
-    check('the prompt names the widget, its sharer and the folder', await until(() => { const t = document.getElementById('trustDlg')?.innerText ?? ''; return /Level bar \(code\)/.test(t) && /j\.kim/.test(t) && /\.tlmbench\/widgets\/level-bar/.test(t); }));
+    check('the prompt names the widget, its sharer and the folder', await until(() => { const t = document.getElementById('trustDlg')?.innerText ?? ''; return /Level bar \(code\) by j\.kim/.test(t) && /\.tlmbench\/widgets\/level-bar/.test(t); }));
     check('and shows the code', await p.$eval('#trustDlg pre', (e) => /build\(el, info\)/.test(e.textContent)));
     await p.click('#trustDlg [data-x]');
     check('keeping value cards leaves it a card', !!(await p.$(`${card('current_a')} [data-trustw]`)) && !((await settingsLS()).trustedWidgetSources ?? []).length);

@@ -50,7 +50,7 @@ A set refers to channels by name, so one set works on any file that has them.
 5. Read the grey line at the end of the row: it previews the result on the open file, for example "fails · 3× · 6.58 min · worst 7995 rpm · first at 00:25:47".
 6. Press **Save**.
 
-<!-- shot: check-editor — the set editor with a check in Lists mode, a check in ƒ mode, a rule row and the preview lines -->
+![The set editor: a check in Lists mode, a check in ƒ mode (its toggle reads Lists), and a rule.](../images/manual/check-editor.png)
 
 **Lists or ƒ.** **Expect** and **When** can each be written two ways, and both save the same expression:
 
@@ -112,7 +112,7 @@ The **Pass rates and trends** tab lists each check with:
 
 Sort by **Check**, **Group** or **Pass rate**, and filter by **Group**. The dates the files span show beside the filter.
 
-<!-- shot: report-tab — the Report tab on Pass rates and trends: several checks with pass rates and sparklines -->
+![The Report tab on Pass rates and trends: several checks with pass rates and sparklines.](../images/manual/report-tab.png)
 
 ## Save a table filter as a rule
 

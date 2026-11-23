@@ -6,7 +6,7 @@ A channel is one column of a recording: a name, a unit and a series of values ov
 
 Click a channel's chip in a pane, or right-click the chip or the channel in Explorer and choose **Display…**. The channel editor has three tabs: **Display**, **Limits** and **Value labels**. Changes apply as you make them. **Done** closes it; **Reset display** puts the Display tab back to its defaults.
 
-<!-- shot: channel-editor — the channel editor on the Display tab: colour swatches, decimals, unit label, line width and style -->
+![The channel editor on the Display tab: colour swatches, decimals, unit label, line width and style.](../images/manual/channel-editor.png)
 
 On the **Display** tab:
 
@@ -96,7 +96,7 @@ A derived channel is computed from other channels by an expression. It behaves l
 5. Set **Unit**, **Category** and **Decimals**, then choose **Where it applies**.
 6. Press **Add and plot**.
 
-<!-- shot: derive-dialog — the Derive dialog with an expression, the green check line and the Where it applies choices -->
+![The Derive dialog with an expression, the green check line and the Where it applies choices.](../images/manual/derive-dialog.png)
 
 **Where it applies:**
 
