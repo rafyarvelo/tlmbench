@@ -357,3 +357,9 @@ removed Nov 15; git history keeps them.
 - Open recording… lets any file be picked; one nothing reads goes on to the descriptor form, as a drop does.
 - Help has User manual (the PDF bundled with the app) and Online manual (the web copy), as decision 6 says.
 - The alignment method is called "Time channel"; its Channel picker names the channel (it read "Time channel (gps_tow)").
+
+## Nov 24 (R7's developers guide)
+
+- The pyramid folder is `pyr/v2/<key>/` (`crates/store/src/pyr.rs`), not `pyr/v1/` as the design's "Pyramid files" and "Pyramid
+  versioning" decisions say; the layout otherwise matches. The cache root also holds `csv/` (decoded columns), `derived/` and
+  `events/<fingerprint>.json`.
