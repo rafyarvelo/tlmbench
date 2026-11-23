@@ -423,8 +423,11 @@ Option while dropping. Then a layout of one chart on top, two side by side, one 
 pair (⋯ › Close pane), Undo, close the right one; also drag the only chip of one of the pair onto the bottom chart.
 Expect: the channel moves to a new pane on that side and leaves the old one (with Option it stays in both). The other
 pane of the pair stays in its row and widens across it; nothing moves up a row.
-Result:
-Notes:
+Result: Pass, but found an unrelated undo bug
+Notes: Works as expected, but I caught an unrelated bug in this specific layout when closing the pane on the second row on the left then hitting undo, the pane doesn't go back to it's original layout it goes back above. Closing the pane in the second row on the right and hitting undo restores the original layout
+(Agent, Nov 23: fixed, ledger D-ui-66: Close pane rewrote the right pane's place before Undo saved the layout, so Undo
+brought the pair back as two rows. `t_rowkeep` checks ⌘Z and ⇧⌘Z after closing either of the pair. The app is rebuilt:
+close the left one of the pair, ⌘Z, and the pair should be side by side again.)
 
 ### Y2. Your widgets, reworked (X3)
 Do: Gauges pane › a widget's ⋯ › Your widgets ▸ › New or edit widgets… (or Settings › Widgets › Edit…). Add an SVG and a
