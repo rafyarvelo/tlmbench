@@ -14,10 +14,12 @@ file opens from it next time, and **a reload brings back the files that were ope
 lists the folder in Explorer, read-only (the picker is asked for read access only and nothing is written to the folder):
 sub-folders, the files the app can read, dot folders left out. A file in it opens from its handle. The folder is remembered
 in the browser, and after a reload the browser asks for permission again. Where there is no picker, the start page says so
-and offers Open recording…. The folder's `.tlmbench/` (shared configuration) is not read yet.
+and offers Open recording…. The folder's `.tlmbench/` is read (categories, widgets, icons, decoders, and plugins once you trust the folder),
+never written: a tab can't Share.
 
-**Still to come for v1** (release plan R2.2): fixed-width and packet files through descriptors (kept in the browser,
-found by file name), WASM decoder plugins in the browser's own engine, and reading the folder's `.tlmbench/`.
+**Also in a tab:** fixed-width and packet files through descriptors (kept in the browser, found by file name, or the
+folder's), and WASM decoder and payload plugins in the browser's own engine, in a Worker of their own with the app's
+limits.
 
 **What a tab leaves out:** what needs the app (live sources, native plugins, browser access, recording, writing shared
 configuration), and what comes after v1 (several files in one tab with alignment, derived channels, events, rules and
