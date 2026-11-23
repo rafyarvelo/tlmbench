@@ -104,6 +104,10 @@ Names and messages from a plugin reach the page as text (Svelte escapes them; th
 - **The same in the browser.** `capMemory` gave each memory of each core module the whole cap. The plugin's modules
   now share one budget (`wasmcap.ts`), and a memory kind it can't limit (64-bit, custom page sizes) is refused. Test:
   `t_browserplugin` (a module with two memories: the first grows to the cap and no further, the second can't grow).
+- **A real-sized plugin couldn't load in the browser.** `capMemory` copied each section by spreading its bytes into
+  a function's arguments, so a section past about 100 KB overflowed the stack ("Maximum call stack size exceeded"):
+  the template plugins were small enough, the hostile one with `std::net` in it wasn't. Sections are copied whole now.
+  Test: `t_browserplugin` (a module with a 2 MB section goes through).
 - **A chunk could hold more rows than asked for.** Bounded only by the plugin's memory; now refused in both
   (`decoder.rs`, the worker). Tests: `decoder` `a_chunk_of_more_rows_than_asked_for_is_refused`, `t_browserplugin`.
 - **An estimator's map could overflow.** Knots near the ends of `i64` overflowed `TimeMap`'s arithmetic (a panic in a
