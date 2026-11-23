@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Test data for the release test sheet (docs/release/owner-test-sheet.md). Plain Python 3, no packages.
+"""Test data for the release test plan (docs/release/test-plan.md). Plain Python 3, no packages, any OS: the same
+files every time, so a result on one machine means the same on another.
 
-    python3 tools/testdata/make.py [folder]        write everything (default ~/tlmbench-testdata)
-    python3 tools/testdata/make.py grow FILE       append a row a second to FILE (a growing CSV, for Live)
-    python3 tools/testdata/make.py big [folder]    also write the 100M-sample file with tlmbench-gen (about 400 MB)
+    python3 make.py [folder]          write everything (default: tlmbench-testdata in your home folder)
+    python3 make.py big [folder]      also write big/big-100M.tlm, 100M samples (about 400 MB, a minute or two)
+    python3 make.py grow FILE         append a row a second to FILE (a growing CSV, for Live)
+    python3 make.py send [PORT]       stream bench records over TCP on PORT (default 5555) at 1 kHz, for Live;
+                                      Ctrl+C stops it, and running it again starts its clock at 0 again
 
 Writes (nothing next to your own data):
     flights/flight-1.csv    60 s at 100 Hz: altitude, speed, battery_v, temp (a good run: every check passes)
@@ -12,14 +15,17 @@ Writes (nothing next to your own data):
     flights/flight-gap.csv  a 30 s hole in the times (gap breaks, "connect gaps")
     browser/bench.tlm       a small tlmbench reference file (4 channels, 200,000 samples) for browser-only mode
     browser/codecs-*.parquet  the same small table in Parquet, snappy and Zstandard (written when pyarrow is installed)
-    flights/.tlmbench/      shared config: a check set, a layout, two widgets (SVG and code), events for flight-1
+    flights/.tlmbench/      shared config: a check set, a layout, two widgets (SVG and code), events for flight-1,
+                            and decoders/bench.toml (the descriptor for bench.bin and for `send`)
+    flights/bench.bin       60 s of 12-byte binary records at 1 kHz, read through that descriptor
+    flights/modes.csv       a text column (mode: IDLE, TAXI, CLIMB, CRUISE, LAND) beside a number, as a labelled channel
+    big/big-100M.tlm        (with `big`) one channel, 100M samples at 1 MHz: the slow build, hatching and coarse views
     grow.py                 python3 grow.py live.csv  appends a row per second, for the Live tests
 """
 import math
 import random
 import shutil
 import struct
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -108,6 +114,76 @@ with open(path, "w") as f:
 '''
 
 
+BENCH_FIELDS = (
+    '[[fields]]\nname = "t"\ntype = "u32"\noffset = 0\n'
+    '[[fields]]\nname = "altitude"\ntype = "f32"\noffset = 4\nunit = "m"\n'
+    '[[fields]]\nname = "battery"\ntype = "i16"\noffset = 8\nunit = "V"\nscale = 0.001\n'
+    '[[fields]]\nname = "armed"\ntype = "u8"\noffset = 10\n'
+)
+# the descriptor of bench.bin and of `send`'s frames (a folder's .tlmbench/decoders/, found by the file name)
+BENCH_DECODER = ('schema = 1\nname = "Bench records"\nfiles = ["*.bin"]\nrecord_size = 12\n'
+                 '[time]\nsource = "field"\nfield = "t"\nunit = "us"\n' + BENCH_FIELDS)
+
+
+def bench_record(t):
+    return struct.pack("<IfhBx", int(t * 1e6) & 0xFFFFFFFF, 120 + 80 * math.sin(t / 9.0), int(12600 - 40 * (t % 60)), 1 if t > 5 else 0)
+
+
+def write_bin(path, seconds=60, hz=1000):
+    path.write_bytes(b"".join(bench_record(i / hz) for i in range(seconds * hz)))
+
+
+def write_modes(path, seconds=120, hz=10):
+    modes = ["IDLE"] * 15 + ["TAXI"] * 15 + ["CLIMB"] * 30 + ["CRUISE"] * 45 + ["LAND"] * 15
+    lines = ["time,mode,throttle\n"]
+    for i in range(seconds * hz):
+        t = i / hz
+        m = modes[min(int(t), len(modes) - 1)]
+        lines.append(f"{t:.1f},{m},{ {'IDLE': 0, 'TAXI': 15, 'CLIMB': 90, 'CRUISE': 60, 'LAND': 20}[m] + math.sin(t):.2f}\n")
+    path.write_text("".join(lines))
+
+
+def write_big(path, samples=100_000_000, hz=1_000_000):
+    """One f32 channel at a fixed rate: a block of a million samples written again and again (fast in plain Python)."""
+    desc = (f'schema = 1\nname = "Big"\nrecord_size = 4\n[time]\nsource = "rate"\nrate_hz = {hz}\n'
+            '[[fields]]\nname = "signal"\ntype = "f32"\noffset = 0\nunit = "V"\n').encode()
+    header_len = -(-(24 + len(desc)) // 64) * 64
+    head = b"TLMBENCH" + struct.pack("<HHIII", 1, 0, header_len, len(desc), 0) + desc
+    block_n = 1_000_000
+    block = struct.pack(f"<{block_n}f", *(math.sin(i / 5000.0) + (3.0 if i % 250_000 == 7 else 0.0) for i in range(block_n)))
+    with open(path, "wb") as f:
+        f.write(head.ljust(header_len, b"\0"))
+        for _ in range(samples // block_n):
+            f.write(block)
+
+
+def send(port=5555, hz=1000):
+    """A TCP server: whoever connects gets bench records at `hz`, time from 0 (a device that just started)."""
+    import socket
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", port))
+    srv.listen(1)
+    print(f"Sending on tcp://127.0.0.1:{port}: in TelemetryBench, Connect › TCP, address 127.0.0.1:{port}, with the "
+          "descriptor flights/.tlmbench/decoders/bench.toml. Ctrl+C stops.", flush=True)
+    try:
+        while True:
+            conn, _ = srv.accept()
+            print("connected", flush=True)
+            t0, i = time.time(), 0
+            try:
+                while True:
+                    due = int((time.time() - t0) * hz)
+                    if due > i:
+                        conn.sendall(b"".join(bench_record(k / hz) for k in range(i, due)))
+                        i = due
+                    time.sleep(0.01)
+            except OSError:
+                print("disconnected", flush=True)
+    except KeyboardInterrupt:
+        pass
+
+
 def write_tlm(path, samples=200_000, hz=1000):
     """A tlmbench reference file: 4 channels (a u32 time in us, f32 altitude, i16 battery in mV, u8 armed), 12-byte records."""
     desc = (
@@ -146,12 +222,15 @@ def make(root):
     write_parquet(browser)
     flights = root / "flights"
     cfg = flights / ".tlmbench"
-    for d in (cfg / "checks", cfg / "views", cfg / "events", cfg / "widgets" / "dial", cfg / "widgets" / "bar-code"):
+    for d in (cfg / "checks", cfg / "views", cfg / "events", cfg / "decoders", cfg / "widgets" / "dial", cfg / "widgets" / "bar-code"):
         d.mkdir(parents=True, exist_ok=True)
     write_flight(flights / "flight-1.csv", run=0)
     write_flight(flights / "flight-2.csv", run=1, start=3600.0)
     write_flight(flights / "flight-bad.csv", run=2, bad=True)
     write_flight(flights / "flight-gap.csv", run=3, gap=(25.0, 55.0), seconds=90)
+    write_bin(flights / "bench.bin")
+    write_modes(flights / "modes.csv")
+    (cfg / "decoders" / "bench.toml").write_text(BENCH_DECODER)
     (cfg / "checks" / "flight-limits.toml").write_text(CHECKS)
     (cfg / "views" / "altitude-and-battery.tlmview.json").write_text(LAYOUT)
     (cfg / "events" / "flight-1.toml").write_text(
@@ -169,13 +248,10 @@ def make(root):
 
 
 def big(root):
-    gen = next((p for p in (Path("target/release/tlmbench-gen"),) if p.exists()), None)
-    if gen is None:
-        print("no target/release/tlmbench-gen: run `cargo build --release -p tlmbench-gen`, then again")
-        return
     out = root / "big"
     out.mkdir(parents=True, exist_ok=True)
-    subprocess.run([str(gen), "--samples", "100M", "--channels", "1", "--out", str(out), "--name", "big-100M", "--format", "tlm"], check=True)
+    print("writing big/big-100M.tlm (about 400 MB)...")
+    write_big(out / "big-100M.tlm")
 
 
 def main():
@@ -192,6 +268,8 @@ def main():
                 f.write(f"{t:.3f},{alt:.3f},{speed:.3f},{batt:.4f},{temp:.3f}\n")
                 f.flush()
                 time.sleep(1)
+    if a[:1] == ["send"]:
+        return send(int(a[1]) if len(a) > 1 else 5555)
     do_big = a[:1] == ["big"]
     rest = a[1:] if do_big else a
     root = Path(rest[0]).expanduser() if rest else Path.home() / "tlmbench-testdata"
