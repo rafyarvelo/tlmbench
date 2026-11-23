@@ -24,7 +24,8 @@ owner's OK); git history has them, and the ledger's Source column still cites th
 - `prototype/plotter.html`: the UI prototype (~11k lines, one file, no build step). Data is synthesized in the
   page; Share and Export are simulated. Published copy: https://claude.ai/artifact/L3Aw4dwFS24oqwfU1yJDv5
 - `prototype/tests/`: Playwright tests, one `t_*.js` per area, `./run.sh` to run them (see its README).
-- `docs/development.md`: setup (`brew bundle`, `ci/setup.sh`), recipes, pinned versions, CI. `docs/follow-ups.md`:
+- `docs/developers/`: the developers guide (setup, recipes, pinned versions, CI, tests, gates, formats, plugins, releasing); `docs/reference/`: generated
+  from the source (`just reference`). `docs/follow-ups.md`:
   notes owed to the design doc; `docs/post-v1.md`: what the owner placed after the release (new ideas go there, not into v1).
 - `justfile`, `ci/`: the same recipes run on the Mac and in CI (`just ci-linux` in the image from `ci/Dockerfile`).
   Tool versions are pinned in `rust-toolchain.toml`, `ci/versions.env`, `requirements-dev.txt` and the tests' package.json.

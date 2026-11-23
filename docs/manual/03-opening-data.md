@@ -80,7 +80,7 @@ For formats a descriptor cannot express, the app runs plugins. It never runs oth
 - **Native plugins** run at full speed with your rights. They stay off until you tick **On** beside each one in Settings, and only load from your own plugins folder.
 - **Plugins shared in a folder** (in its `.tlmbench/`) wait for your OK: Settings shows "This folder has N plugins waiting for your OK" with a switch to trust them.
 
-How to write a plugin is in `plugins/README.md` in the source repository.
+How to write a plugin is in the [developers guide](../developers/plugins.md).
 
 ## Opening from your computer
 

@@ -148,7 +148,7 @@ ci/             CI image, pinned versions, setup, gates, read-only and ledger ch
 ## Building from source
 
 Development is native on the Mac; Linux and Windows build in CI. Full setup is in
-[`docs/development.md`](docs/development.md).
+[the developers guide](docs/developers/README.md).
 
 ```
 brew bundle && ci/setup.sh     # pinned toolchains; then open a new shell

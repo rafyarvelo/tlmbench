@@ -15,7 +15,7 @@ that fits it, or says where it would change it, is easiest to take on.
 
 ## Changing the code
 
-- Set up as [`docs/development.md`](docs/development.md) says (`brew bundle`, `ci/setup.sh`; the same recipes run in
+- Set up as [the developers guide](docs/developers/building-and-testing.md) says (`brew bundle`, `ci/setup.sh`; the same recipes run in
   CI through the `justfile`).
 - Keep the hard requirements: the app works from its cache alone on a read-only folder; nothing is written next to the
   data except by Share and exports; exports are static files; the app never runs Python or other programs (custom code
@@ -28,7 +28,7 @@ that fits it, or says where it would change it, is easiest to take on.
 ## Plugins
 
 Decoders, payload decoders and alignment estimators are WASM components; start from the templates in
-[`plugins/`](plugins/README.md) (`cargo generate`). A plugin can live in its own repository: it needs only the WIT
+[`plugins/`](docs/developers/plugins.md) (`cargo generate`). A plugin can live in its own repository: it needs only the WIT
 package in `crates/plugin/wit`.
 
 ## Licence

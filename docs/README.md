@@ -16,7 +16,7 @@
 - `install.md`: installing on each OS, the first open, checking a download. `manual/`: the User Manual (`just manual`
   builds its PDF). `python-api.md`: the Python API, generated.
 - `design.md`: the design doc (architecture, data model, UI, checks, CLI, sharing, roadmap), exported from the living doc. Each suggestion carries its decision (Proposed, Accepted, Modified, Rejected).
-- `development.md`: setup, recipes, pinned versions, CI, the gates.
+- `developers/`: the developers guide: architecture, the repository, building and testing, the test suites, the gates, file formats, plugins, UI conventions, releasing. `reference/`: the CLI help, expression functions, settings keys and shortcuts, generated from the source (`just reference`).
 - `exports.md`: HTML exports, a folder or one file; why a folder needs a web server; what a trimmed export shows.
 - `viewer-store.md`: what an export holds and which data the viewer's views read.
 - `browser-only.md`: the app in a browser tab with no install, and how to host it.

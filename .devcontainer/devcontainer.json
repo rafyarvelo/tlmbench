@@ -1,5 +1,5 @@
 // The CI image as a dev container, for debugging a Linux CI failure in GitHub Codespaces (no local disk).
-// Day-to-day development is native on the Mac: see docs/development.md.
+// Day-to-day development is native on the Mac: see docs/developers/building-and-testing.md.
 {
   "name": "tlmbench CI image",
   "build": { "dockerfile": "../ci/Dockerfile", "context": ".." },
