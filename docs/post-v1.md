@@ -52,3 +52,13 @@ Not gaps: v1 meets its budgets without them. Each would make something faster or
 - **The Report tab and the top bar:** Lock and the Events toggle stay live on the Report tab, where they have nothing to act
   on (harmless; Charts, Tables and Both are disabled there since the audit). A top bar that shows only what the tab in
   front can use would be calmer.
+
+## Python (owner, Nov 24)
+
+- **`Recording.show()`:** write an HTML export to a temp folder (`export_html`), serve it on `127.0.0.1` with the standard
+  library's `http.server` on a background thread, and open the browser; in a notebook return an iframe (`_repr_html_`).
+  About a day: the function, notebook support, tests (the server answers, the first view loads, the temp folder goes away),
+  and the manual's Python chapter. The risk is the wheel: it must carry the viewer (`app/viewer/viewer.pack`, 2.7 MB), so
+  `python.yml` needs `just viewer` before `maturin`. A remote or cloud notebook can't reach the kernel's `127.0.0.1`; the
+  single-file export would, with its size limit. Not a GUI over the Python core: the UI's command handlers live in the
+  app crate, and a second server would be a second thing to keep in step.
