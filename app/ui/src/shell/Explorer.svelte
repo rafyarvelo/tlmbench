@@ -872,6 +872,22 @@
     font-size: 11px;
     color: var(--fg-muted);
   }
+  /* words ("primary", "same clock", "Streaming") in the UI font: monospace is for numbers, times and units (tokens) */
+  .meta:not(.num) {
+    font-family: var(--font-ui);
+  }
+  /* a file row's slot word gives way before the file's name does, on one line (audit Nov 22: a selected file's Open and
+     Only this squeezed its name to nothing) */
+  .row.file .meta[data-fslotmeta] {
+    min-width: 0;
+    flex-shrink: 100;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row.file .nm {
+    min-width: 3em;
+  }
   .unit {
     margin-left: auto;
     color: var(--fg-muted);

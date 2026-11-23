@@ -40,6 +40,10 @@ run(
     await p.click('#reportTab [data-frun]');
     const done = await until(() => document.querySelectorAll('#reportTab .cgrid tbody tr').length === 5 && document.querySelector('#reportTab [data-frun]').textContent === 'Run again', null, 10000);
     check('the folder run checks every recording', done);
+    // audit Nov 22: the run's time written as the trend's dates are, not in the locale's form beside them
+    check("the run's time reads 2026-11-22 19:57", /^Run \d{4}-\d\d-\d\d \d\d:\d\d$/.test(await text('#reportTab [data-fwhen]')), await text('#reportTab [data-fwhen]'));
+    // audit Nov 22: the all-panes Charts, Tables, Both had nothing to act on here
+    check('the Report tab has no panes for Charts, Tables or Both', await p.$$eval('[data-allmode]', (b) => b.length === 3 && b.every((x) => x.disabled)));
     const grid = await p.evaluate(() => [...document.querySelectorAll('#reportTab .cgrid tbody tr')].map((tr) => [...tr.children].map((td) => td.innerText.replace(/\s+/g, ' ').trim()).join(' | ')));
     check("files × groups, the sub-folder's too", grid.length === 5 && grid.some((r) => /flight_0301/.test(r)) && grid.some((r) => /flight_0418/.test(r)) && grid.some((r) => /gps_logger/.test(r)), grid);
     check('the core ran the set once on each, by path', (await fake(() => window.__tlmFake.checkRuns.filter((r) => r.folder).length)) === 5);

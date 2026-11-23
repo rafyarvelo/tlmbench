@@ -67,7 +67,9 @@
   const line = (pts: Pt[], y: (number | null)[]) => pts.map((_, i) => (y[i] == null ? '' : `${x(i, pts.length).toFixed(1)},${y[i]!.toFixed(1)}`)).filter(Boolean).join(' ');
   const dot = (v: Verdict) => (v === 'fail' ? 'var(--danger)' : v === 'warn' ? 'var(--warn)' : v === 'pass' || v === 'mark' ? 'var(--ok, #3fcf8e)' : 'var(--fg-muted)');
   const fmt = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(2));
-  const when = $derived(folderRun.at ? new Date(folderRun.at).toLocaleString() : '');
+  // the run's local date and time, written as the trend's dates are (2026-10-12), not in the locale's own form beside them
+  const stamp = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const when = $derived(folderRun.at ? stamp(new Date(folderRun.at)) : '');
 </script>
 
 <section class="report" id="reportTab" aria-label="Report of {folderRun.set}">

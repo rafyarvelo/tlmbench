@@ -347,7 +347,7 @@
   </section>
   <section class="cache"><h3>Cache</h3>
     <p class="cpath" id="cachePath" data-tip={cache?.path}>{cache?.path ?? '…'}</p>
-    <div class="urow"><span id="cacheSize" class="num">{cache ? `${size(cache.bytes)} of ${size(cache.cap)}` : ''}</span><button class="tbtn" id="cacheOpen" data-tip="Show the cache folder in the file manager" onclick={() => invoke('cache_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="cacheClear" disabled={!cache?.bytes} data-tip="Remove the summaries of files that aren't open; they are rebuilt when a file opens again. Keeps your settings, import profiles, recipes and sets (Reset app… removes those)" onclick={clearCache}>Clear cache</button></div>
+    <div class="urow"><span id="cacheSize" class="num">{cache ? `${size(cache.bytes)} of ${size(cache.cap)}` : ''}</span><span class="uctl"><button class="tbtn" id="cacheOpen" data-tip="Show the cache folder in the file manager" onclick={() => invoke('cache_reveal').catch(() => {})}>Open folder</button><button class="tbtn" id="cacheClear" disabled={!cache?.bytes} data-tip="Remove the summaries of files that aren't open; they are rebuilt when a file opens again. Keeps your settings, import profiles, recipes and sets (Reset app… removes those)" onclick={clearCache}>Clear cache</button></span></div>
     {#if cleared}<p class="muted" id="cacheNote">{cleared}</p>{/if}
   </section>
   {/if}
@@ -459,10 +459,20 @@
   }
   .urow {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 6px 12px;
     min-height: 30px;
+  }
+  /* its text keeps at least 120 px: buttons that would squeeze it into a column go under it, on the right (audit
+     Nov 22: Plugins' sentence ran down a column a word wide) */
+  .urow > span:first-child:not(.icprev) {
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+  .urow:has(> .uctl, > button) {
+    justify-content: flex-end;
   }
   /* a label and its choice; a choice that won't fit beside a long label goes under it rather than shrink to "…" */
   .row {

@@ -29,6 +29,12 @@ run('narrow', async ({ p, check, fake, until, wait, text }) => {
   await p.click('#tabsLeft');
   await wait(500);
   check('‹ scrolls the strip back', await p.evaluate(() => document.getElementById('wsTabs').scrollLeft) < (await p.evaluate(() => document.getElementById('wsTabs').scrollWidth)) );
+  // audit Nov 22: under reduced motion the arrows jump at once (a script's smooth scroll escapes the CSS rule)
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await p.evaluate(() => (document.getElementById('wsTabs').scrollLeft = 0));
+  const jumped = await p.evaluate(() => new Promise((res) => { const s = document.getElementById('wsTabs'); document.getElementById('tabsRight').click(); requestAnimationFrame(() => res(s.scrollLeft)); }));
+  check('reduced motion: › moves the strip in one step', jumped >= 150, jumped);
+  await p.emulateMedia({ reducedMotion: 'no-preference' });
   await p.setViewportSize({ width: 1440, height: 900 });
   await wait(400);
   check('wide again: the icons return', (await exists('#b-fit')) && (await exists('#b-lock')));

@@ -157,7 +157,7 @@
                 {@const o = r.outcomes[i]}
                 {@const kk = pre + key(s.name, i)}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <div class="crow" class:sel={checks.sel === kk} class:off={!k.enabled} role="button" tabindex="0" aria-pressed={checks.sel === kk} data-tip={tip(k, o)} onclick={() => pick(kk, o)} ondblclick={() => actions.checkEditor(s.name, i)} oncontextmenu={(e) => rowMenu(e, s.name, i, kk, o)} onkeydown={(e) => e.key === 'Enter' && pick(kk, o)}>
+                <div class="crow v-{o?.verdict ?? 'na'}" class:sel={checks.sel === kk} class:off={!k.enabled} role="button" tabindex="0" aria-pressed={checks.sel === kk} data-tip={tip(k, o)} onclick={() => pick(kk, o)} ondblclick={() => actions.checkEditor(s.name, i)} oncontextmenu={(e) => rowMenu(e, s.name, i, kk, o)} onkeydown={(e) => e.key === 'Enter' && pick(kk, o)}>
                   <span class="cv {o?.verdict ?? 'na'}">{k.kind === 'rule' && o?.verdict !== 'off' ? '⚑' : ICONCH[o?.verdict ?? 'na']}</span>
                   <span class="ckn">{k.name}</span>
                   <span class="ckd muted">{o ? outcomeText(o, at, secs) : ''}</span>
@@ -424,7 +424,20 @@
   .ckacts {
     display: flex;
     flex: none;
+    order: 3;
     opacity: 0;
+  }
+  /* as the prototype's .crow: a violation's detail takes a line of its own under the name, so the name keeps its room
+     in the tree of files (audit Nov 22: "Roll s…" beside "1× · 1.0000 s · first …"); a pass stays on one line */
+  .crow {
+    flex-wrap: wrap;
+    row-gap: 1px;
+  }
+  .crow:not(.v-pass, .v-na) .ckd {
+    order: 4;
+    flex: 1 0 100%;
+    max-width: none;
+    padding: 0 0 4px 20px;
   }
   .crow:hover .ckacts,
   .crow.sel .ckacts,
@@ -441,7 +454,7 @@
     border-radius: 4px;
     background: transparent;
     color: var(--fg-muted);
-    font-size: 9px;
+    font-size: 11px;
   }
   .cstep:hover {
     background: var(--border);

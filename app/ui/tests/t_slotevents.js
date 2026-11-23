@@ -40,6 +40,11 @@ run(
     await p.click('#explorer .row.file.sel', { button: 'right' });
     await p.click('.filemenu [data-fm="add"]');
     await until(() => document.querySelectorAll('#explorer .row.slot').length === 2);
+    // audit Nov 22: the selected file 2 shows Open and Only this; its name keeps room and the row one line, its slot word
+    // in the UI font (monospace is for numbers)
+    const brow = await p.$eval(`#explorer .row.file[data-path="${B}"]`, (r) => ({ h: r.getBoundingClientRect().height, nm: r.querySelector('.nm').getBoundingClientRect().width, acts: r.querySelectorAll('.tbtn').length, mono: /mono/i.test(getComputedStyle(r.querySelector('[data-fslotmeta]')).fontFamily) }));
+    check("a selected file's name keeps room beside Open and Only this, on one line", brow.acts === 2 && brow.nm >= 30 && brow.h <= 32, brow);
+    check('its slot word is in the UI font', !brow.mono, brow);
 
     const mine = async () => (await evs()).filter((e) => !e.startsWith('Roll small'));
     check("both files' events show, labelled with their file", await until(() => [...document.querySelectorAll('#eventsPanel .ev .evname')].some((x) => x.textContent === 'Fix')), await evs());
@@ -62,6 +67,8 @@ run(
     await p.selectOption('#evGroup', 'file');
     const heads = await p.$$eval('#eventsPanel .evgroup', (g) => g.map((x) => x.dataset.evg));
     check('group by file has a group per file', heads.join() === 'flight,gps', heads);
+    // audit Nov 22: Svelte dropped the space at the start of the {#if}: "2 events· 0 yours"
+    check('the summary spaces its parts', /^\d+ events · \d+ yours, /.test(await p.$eval('#evSum', (e) => e.textContent)), await p.$eval('#evSum', (e) => e.textContent));
     await p.selectOption('#evGroup', '');
 
     // a new marker from a pane of file 2's channels goes to file 2, in its own clock
@@ -97,6 +104,10 @@ run(
     check("file 2's violation is on the tab's timeline (4 s in its clock, 14 s on the tab)", r2 && BigInt(r2.start) === T0 + 14n * S, r2);
     await p.click(`#checksPanel [data-cfile="${B}"] .cfhead`);
     check("opening file 2 shows its results under it, file 1's still open", (await until((b) => !!document.querySelector(`#checksPanel [data-cfile="${b}"] [data-cset="Limits"]`), B)) && (await p.$$('#checksPanel [data-cset="Limits"]')).length === 2);
+    // audit Nov 22: in the tree a failing check's detail goes under its name (as the prototype's), so the name isn't cut
+    const crow = await p.$eval(`#checksPanel [data-cfile="${B}"] .crow`, (r) => { const n = r.querySelector('.ckn'), d = r.querySelector('.ckd'); return { cut: n.scrollWidth > n.clientWidth, under: d.getBoundingClientRect().top >= n.getBoundingClientRect().bottom - 1, step: getComputedStyle(r.querySelector('.cstep')).fontSize }; });
+    check("a failing check's name shows whole, its detail on the line under it", !crow.cut && crow.under, crow);
+    check('the ▲ ▼ steps are 11 px (the smallest type token)', crow.step === '11px', crow);
     await p.click(`#checksPanel [data-cfile="${B}"] [data-cset="Limits"] .cshead`);
     check('folding a set folds it in that file only', !!(await p.$(`#checksPanel [data-cfile="${A}"] [data-cset="Limits"] .cgrp`)) && !(await p.$(`#checksPanel [data-cfile="${B}"] [data-cset="Limits"] .cgrp`)));
     await p.click(`#checksPanel [data-cfile="${A}"] .cfhead`);

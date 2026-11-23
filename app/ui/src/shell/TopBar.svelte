@@ -17,6 +17,8 @@
   /** A pin's name as people read it: a shared layout by its layout's name. */
   const pinName = (pn: Pin) => (pn.kind === 'shared' ? (ui.shared.find((v) => v.file === pn.name)?.ws?.name ?? pn.name.replace(/\.tlmview\.json$/, '')) : pn.name);
   let pinMenu = $state<null | { at: { x: number; y: number }; pin: Pin }>(null);
+  /** The tab strip's arrows glide, or jump under reduced motion (the CSS rule doesn't reach a script's smooth scroll). */
+  const glide = (): ScrollBehavior => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
   const pinItems = ({ kind, name }: Pin): MenuItem[] => [
     { label: kind === 'recipe' ? 'Add to this file' : 'Open', data: { pm: 'run' }, run: () => actions.runPin(kind, name) },
     { label: 'Unpin from the top bar', data: { pm: 'unpin' }, run: () => actions.togglePin(kind, name) },
@@ -182,7 +184,7 @@
 <svelte:window onkeydowncapture={key} />
 
 <header class="toolbar" bind:clientWidth={barW}>
-  {#if tabsOver}<button class="tb tscroll" id="tabsLeft" aria-label="Scroll tabs left" disabled={tabsAt <= 0} onclick={() => tabsEl?.scrollBy({ left: -200, behavior: 'smooth' })}>‹</button>{/if}
+  {#if tabsOver}<button class="tb tscroll" id="tabsLeft" aria-label="Scroll tabs left" disabled={tabsAt <= 0} onclick={() => tabsEl?.scrollBy({ left: -200, behavior: glide() })}>‹</button>{/if}
   <div class="wstabs" role="tablist" aria-label="Open tabs" id="wsTabs" bind:this={tabsEl} onscroll={measureTabs}>
     {#each tabs.list as t, i (t.key)}
       <div
@@ -257,7 +259,7 @@
       }}>+</button
     >{/if}
   </div>
-  {#if tabsOver}<button class="tb tscroll" id="tabsRight" aria-label="Scroll tabs right" disabled={tabsAt >= tabsMax - 1} onclick={() => tabsEl?.scrollBy({ left: 200, behavior: 'smooth' })}>›</button>{/if}
+  {#if tabsOver}<button class="tb tscroll" id="tabsRight" aria-label="Scroll tabs right" disabled={tabsAt >= tabsMax - 1} onclick={() => tabsEl?.scrollBy({ left: 200, behavior: glide() })}>›</button>{/if}
   {#if settings.pins.length && !ui.viewer}
     <div class="pins" id="pinStrip" role="group" aria-label="Pinned">
       {#each settings.pins as pn (pn.kind + pn.name)}
@@ -299,7 +301,7 @@
   {#if barW >= 1200}
     <div class="seg allmodes" role="group" aria-label="All panes view">
       {#each ALL as [m, label, icon, tip] (m)}
-        <button class="tb" data-allmode={m} aria-pressed={allMode() === m} disabled={lk} aria-label={label} data-tip={lk ? LOCKED : tip} onclick={() => setAllModes(m)}>{@html icon}</button>
+        <button class="tb" data-allmode={m} aria-pressed={allMode() === m} disabled={lk || !stack.panes.length} aria-label={label} data-tip={lk ? LOCKED : tip} onclick={() => setAllModes(m)}>{@html icon}</button>
       {/each}
     </div>
   {/if}

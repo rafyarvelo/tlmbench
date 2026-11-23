@@ -647,7 +647,7 @@
 <div class="ptable" data-table={i} bind:this={box} style={alone ? (h != null ? `flex: none; height: ${h}px` : '') : h != null ? `flex: 0 1 ${h}px; min-height: 90px` : ''}>
   <div class="tbar">
     <span class="tstat" role="status" data-tstat
-      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${rateWords(1e9 / step)})`}{/if}{#if anyHeld && !running} · other files' values are held between their samples, dimmed when unchanged{/if}</span
+      >{#if running}Sorting and filtering… {Math.round(running.done * 100)}%{:else if q && querying}{count.toLocaleString()} of {q.total.toLocaleString()} rows in view{:else}{count.toLocaleString()} {count === 1 ? 'row' : 'rows'} in view{/if}{#if channels.length && !running}{` · one per ${ui.channels[channels[0]]?.name} sample (${rateWords(1e9 / step)})`}{/if}{#if anyHeld && !running}{' · '}other files' values are held between their samples, dimmed when unchanged{/if}</span
     >
     {#if ui.view.A != null || ui.view.B != null}
       <span class="tcur" data-tcur data-tip="Cursors: in Cursors mode click a row to set A, then B. In any mode, right-click a row, or press A or B with the pointer over it."

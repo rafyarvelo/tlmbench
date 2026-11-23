@@ -168,6 +168,11 @@ body {
   color: var(--fg-muted);
 }
 
+/* A <small> left to the browser's "smaller" falls between the type tokens (10 px under 12): 11 px is the smallest token */
+small {
+  font-size: 11px;
+}
+
 .spacer {
   flex: 1;
 }
