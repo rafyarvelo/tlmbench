@@ -18,9 +18,6 @@ type DirHandle = FileSystemDirectoryHandle & {
   requestPermission?(d: { mode: 'read' }): Promise<PermissionState>;
 };
 
-/** Whether this browser can open a folder (Chromium; not Firefox or Safari today). */
-export const canPickFolder = (): boolean => typeof (globalThis as { showDirectoryPicker?: unknown }).showDirectoryPicker === 'function';
-
 const roots = new Map<string, DirHandle>();
 const fileHandles = new Map<string, FileSystemFileHandle>();
 

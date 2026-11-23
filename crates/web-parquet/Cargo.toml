@@ -45,3 +45,7 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# The decoder's files are included as source (`#[path]`), so cargo-machete can't see these dependencies being used.
+[package.metadata.cargo-machete]
+ignored = ["arrow-array", "arrow-schema", "blake3", "bytemuck", "csv-core", "lexical-core", "memchr", "regex", "serde", "thiserror", "tlmbench-core", "toml"]

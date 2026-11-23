@@ -164,7 +164,6 @@ export const hexLen = (sync: string | undefined): number => {
   const h = String(sync ?? '').replace(/^0x/i, '').replace(/[\s_]/g, '');
   return /^([0-9a-f]{2})+$/i.test(h) ? h.length / 2 : 0;
 };
-export const isPackets = (d: Descriptor): boolean => !!d.packets;
 export const checkSize = (d: Descriptor): number => CHECK_SIZE[d.packets?.checksum ?? 'none'] ?? 0;
 
 /** The bytes a record takes: the largest field end, less a packet's header (the fields count from the packet start). */

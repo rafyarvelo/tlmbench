@@ -162,6 +162,12 @@ fuzz-smoke secs="30":
       done
     done
 
+# Unused dependencies and files: cargo machete (a Rust crate's unused dependency), knip in app/ui (unused files, dependencies and
+# imports; `npx` fetches it). Run before a release; not part of CI.
+unused:
+    cargo machete
+    cd app/ui && npx --yes knip --include files,dependencies,unlisted,binaries
+
 # Fuzz one target until stopped: just fuzz decode reference
 fuzz crate target:
     mkdir -p crates/{{crate}}/fuzz/corpus/{{target}} crates/{{crate}}/fuzz/seeds/{{target}}

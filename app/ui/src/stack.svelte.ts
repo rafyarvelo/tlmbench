@@ -609,19 +609,6 @@ export function dropPane(from: number, to: number, zone: Zone, copy = false): vo
   });
 }
 
-/** Moves pane `from` to before pane `to` (or the end), starting a row of its own there. */
-export function movePane(from: number, to: number): void {
-  if (from === to || from + 1 === to) return;
-  edit(() => {
-    const p = stack.panes[from];
-    const arr = prune(stack.panes.slice(), (_, k) => k !== from);
-    const at = to > from ? to - 1 : to;
-    arr.splice(at, 0, { ...p, beside: undefined, under: undefined });
-    stack.panes = arr;
-    stack.sel = at;
-  });
-}
-
 /** Every pane with channels as a chart, a table or both (panes of values keep their view). */
 export function setAllModes(mode: 'chart' | 'table' | 'both'): void {
   edit(() => {

@@ -42,6 +42,7 @@ The test recipes are described in [The test suites](tests.md), the gates in [Gat
 | `just gate5` | the v1 gate: a folder check, and an HTML export of a 2 h, 20-channel flight within 250 MB that opens in under 2 s from a static host (below) |
 | `just ci-linux`, `just ci-native` | everything a CI job runs |
 
+| `just unused` | `cargo machete` and `knip` (in `app/ui`): unused dependencies and files, before a release |
 | `just pages OUT` | the web copy in `OUT`: a landing page, the manual as HTML, browser-only mode, a sample export |
 | `just manual [--html]` | the User Manual as one PDF (and the HTML page) from `docs/manual`; fails on a broken link or a missing image |
 | `just reference [--check]` | the reference pages in `docs/reference` from the source; `just lint` runs the check |

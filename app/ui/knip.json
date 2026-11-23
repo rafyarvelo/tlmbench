@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "index.html",
+    "browser.html",
+    "viewer.html",
+    "vite*.config.ts",
+    "tests/*.{js,mjs}",
+    "tests/parity/*.{js,mjs}",
+    "src/browser-worker.ts",
+    "src/browser-plugin-worker.ts",
+    "src/browser-main.ts",
+    "src/viewer-main.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,svelte}",
+    "tests/**/*.{js,mjs}"
+  ],
+  "ignore": [
+    "tests/parity/vendor/**"
+  ]
+}

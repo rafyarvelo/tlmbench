@@ -96,7 +96,6 @@ export interface PanelLayout {
 }
 /** Each panel's rail group: the left sidebar shows one group at a time, the right one all its panels. */
 export const GROUP_OF: Record<PanelId, Exclude<LeftPanel, ''>> = { explorer: 'explorer', events: 'events', checks: 'checks', layouts: 'layouts', settings: 'settings', cur: 'measure', stats: 'measure' };
-export const PANEL_TITLE: Record<PanelId, string> = { explorer: 'Explorer', events: 'Events', checks: 'Rules & checks', layouts: 'Layouts', settings: 'Settings', cur: 'Cursors', stats: 'Stats' };
 
 /** A folder's session: the files open (in tab order), the one in front, the layouts shown in tabs, and each file's
  *  view and cursors (nanoseconds as strings). `at`: when it was last saved. */

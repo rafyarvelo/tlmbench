@@ -5,7 +5,7 @@
 import { type EventCategory, settings } from './settings.svelte';
 import { cfg } from './share.svelte';
 
-export { DEFAULT_CATEGORIES, type EventCategory } from './settings.svelte';
+export { type EventCategory } from './settings.svelte';
 
 /** An event as the core keeps it: times are decimal strings (exact i64 nanoseconds). */
 export interface TlmEvent {
