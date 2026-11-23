@@ -91,8 +91,11 @@ run(
     await p.check(`#recDlg [data-cshow="${j}"]`);
     await p.click('#recDlg [data-cadd]');
     check('+ Category adds one, ready to name', await until(() => document.activeElement?.matches('[data-cname]') && document.activeElement.value === 'New category'));
-    p.once('dialog', (d) => d.accept('Thermal'));
     await p.selectOption('#recDlg .ckrow[data-k="0"] [data-kf="cat"]', '__new');
+    // the app's own dialog: WKWebView has no window.prompt (R7, Nov 23)
+    check('"+ New category…" asks for its name in the app\'s dialog', await until(() => document.querySelector('#askDlg')?.getAttribute('aria-label') === 'Name the new category'));
+    await p.fill('#askDlg input', 'Thermal');
+    await p.keyboard.press('Enter');
     check('"+ New category…" in a rule makes one and picks it', await until(() => { const s = document.querySelector('#recDlg .ckrow[data-k="0"] [data-kf="cat"]'); return s.options[s.selectedIndex].textContent === 'Thermal'; }));
     await p.click('#recDlg [data-ssave]');
     check('Save keeps the rules in the core', await until(() => window.__tlmFake.checkSetSaves.length === 1));
@@ -103,7 +106,14 @@ run(
     await p.click('[data-rail="events"]');
     await p.evaluate(() => document.querySelector('#eventsPanel [data-evedit]').click());
     check('editing a rule event opens its rule', await until(() => !!document.querySelector('#recDlg .ckrow') && document.querySelector('#recDlg [data-sname]').value === 'Event rules'));
-    await p.click('#recDlg [data-x]');
+    // Delete set waits for the answer: the app's confirm (Tauri's dialog plugin) answers later, as a promise (R7, Nov 23)
+    await p.evaluate(() => (window.confirm = () => Promise.resolve(false)));
+    await p.click('#recDlg [data-sdel]');
+    await p.waitForTimeout(200);
+    check('Delete set, answered No later, keeps the set', !!(await p.$('#recDlg')) && (await fake(() => window.__tlmFake.checkSets.length)) === 1);
+    await p.evaluate(() => (window.confirm = () => Promise.resolve(true)));
+    await p.click('#recDlg [data-sdel]');
+    check('answered Yes, it goes', await until(() => !document.querySelector('#recDlg')) && (await until(() => window.__tlmFake.checkSets.length === 0)));
   },
   {
     files: { '/data/flight.tlm': { channels: ['motor_rpm', 'battery_v', 'flight_mode', 'accel_x', 'gps_sats'] } },

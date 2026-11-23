@@ -74,10 +74,12 @@ run(
     check('a size is a grid span', await until(() => document.querySelector('#stack [data-gw="battery_v"]')?.dataset.gsize === '2x2'));
 
     // a range
-    p.once('dialog', (d) => d.accept('-10, 10'));
     await p.hover(card('battery_v'));
     await p.click(`${card('battery_v')} [data-gwt]`);
     await p.click('.widgetmenu [data-wt="range"]');
+    check('Range… asks in the app\'s dialog (WKWebView has no prompt)', await until(() => /Range for battery_v/.test(document.querySelector('#askDlg')?.getAttribute('aria-label') ?? '')));
+    await p.fill('#askDlg input', '-10, 10');
+    await p.click('#askDlg [data-ask-ok]');
     check('a range is drawn on the widget', await until(() => /10/.test(document.querySelector('#stack [data-gw="battery_v"]')?.textContent ?? '')), await text(card('battery_v')));
 
     // a group can be taken apart and a pair put together again

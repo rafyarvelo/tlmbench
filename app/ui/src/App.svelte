@@ -20,6 +20,7 @@
   import WidgetEditor from './shell/WidgetEditor.svelte';
   import SlotPicker from './shell/SlotPicker.svelte';
   import WidgetTrust from './shell/WidgetTrust.svelte';
+  import Ask from './shell/Ask.svelte';
   import ExportDialog from './shell/ExportDialog.svelte';
   import HtmlExportDialog from './shell/HtmlExportDialog.svelte';
   import CheckEditor from './shell/CheckEditor.svelte';
@@ -147,6 +148,7 @@
 <ShareDialog />
 <WidgetEditor />
 <WidgetTrust />
+<Ask />
 <SlotPicker />
 <CheckEditor />
 {/if}

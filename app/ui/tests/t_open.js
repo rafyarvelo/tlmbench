@@ -17,6 +17,7 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
   check('empty state hidden', !(await visible('#empty')) && (await paneCount()) === 3);
   await fake((b) => (window.__tlmFake.pick = b), B);
   await p.keyboard.press('ControlOrMeta+o');
+  check('Open… lets any file be picked (a binary log goes on to the descriptor form)', (await fake(() => window.__tlmFake.dialogOpts?.filters)) == null, await fake(() => window.__tlmFake.dialogOpts));
   check('⌘O opens another in a tab of its own', await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'bench run.csv'));
   check('the first stays open in its tab', (await fake(() => window.__tlmFake.open.size)) === 2 && (await p.$$('#wsTabs .wstab')).length === 2);
 

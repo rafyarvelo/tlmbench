@@ -1208,7 +1208,7 @@
       const spec = fake.sources[endpoint] ?? { channels: ['rpm', 'temp'] };
       return { detail: '16 bytes a frame, 1000 Hz', channels: spec.channels.map((c) => [c, null]), ...(read ? { values: spec.channels.map((c, k) => [c, 1500 + k]), seen_hz: 1000 } : {}) };
     },
-    'plugin:dialog|open': ({ options }) => (options?.directory ? fake.pickFolder : fake.pick),
+    'plugin:dialog|open': ({ options }) => ((fake.dialogOpts = options), options?.directory ? fake.pickFolder : fake.pick),
     // ask() is a confirm message: it answers with the label of the button pressed
     'plugin:dialog|message': ({ message, buttons }) => ((fake.asked = message), (fake.answer ?? true) ? (buttons?.OkCancelCustom?.[0] ?? 'Yes') : (buttons?.OkCancelCustom?.[1] ?? 'No')),
     'plugin:dialog|save': () => fake.savePick,

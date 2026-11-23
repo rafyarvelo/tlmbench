@@ -3029,7 +3029,8 @@ function emptyWindow(): void {
 }
 
 async function chooseFile(): Promise<void> {
-  const picked = await openDialog({ multiple: true, filters: [{ name: 'Recordings', extensions: ['csv', 'tsv', 'txt', 'tlm', 'parquet'] }] });
+  // any file: one that nothing reads yet (a binary log) goes on to the descriptor form, as a drop does (R7, Nov 23)
+  const picked = await openDialog({ multiple: true });
   const paths = typeof picked === 'string' ? [picked] : Array.isArray(picked) ? picked : [];
   if (paths.length) await openWithImport(paths);
 }

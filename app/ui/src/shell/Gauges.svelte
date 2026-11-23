@@ -2,6 +2,7 @@
      playhead, cursor A or the end of the view, in that order. Colours come from the channel's limits. One call to the
      core per change returns every widget's value, min and max in view and where its state began (`widgets_frame`). -->
 <script lang="ts">
+  import { askText } from '../ask.svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { onDestroy, tick, untrack } from 'svelte';
 
@@ -376,9 +377,9 @@
     out.push({
       label: `Range… ${cfg.min != null && cfg.max != null ? `(${cfg.min} – ${cfg.max})` : '(automatic)'}`,
       data: { wt: 'range' },
-      run: () => {
+      run: async () => {
         const r = rangeOf(ranges[ch] ?? null, chLimits(ch), {});
-        const s = window.prompt(`Range for ${c.name} as "min, max". Leave empty for automatic (${+r[0].toFixed(3)} – ${+r[1].toFixed(3)}).`, cfg.min != null ? `${cfg.min}, ${cfg.max}` : '');
+        const s = await askText(`Range for ${c.name}`, cfg.min != null ? `${cfg.min}, ${cfg.max}` : '', `As "min, max". Leave empty for automatic (${+r[0].toFixed(3)} – ${+r[1].toFixed(3)}).`);
         if (s == null) return;
         const m = s.split(/[,;\s]+/).map(Number).filter(Number.isFinite);
         set(m.length === 2 && m[1] > m[0] ? { min: m[0], max: m[1] } : { min: undefined, max: undefined });

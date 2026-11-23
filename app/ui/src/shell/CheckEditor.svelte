@@ -3,6 +3,7 @@
      · > · value) or ƒ, an expression with autocomplete; both edit the same saved text. Each row previews on the file in
      front. The core runs everything; nothing is written beside the data. -->
 <script lang="ts">
+  import { askText } from '../ask.svelte';
   import { duration, readoutTime } from '../axes';
   import { buildPick, type Agg, type Op, type Pick, parsePick } from '../checkexpr';
   import { type Check, checks, FIELD_HELP, KIND_HELP, newCheck, type Outcome } from '../checks.svelte';
@@ -87,8 +88,8 @@
   const groups = $derived([...new Set(ed?.set.check.map((k) => k.group) ?? [])]);
 
   // ----- categories -----
-  function newCategory(i: number): void {
-    const name = window.prompt('Name the new category')?.trim();
+  async function newCategory(i: number): Promise<void> {
+    const name = (await askText('Name the new category'))?.trim();
     if (!name) return void (ed!.set.check[i].category = ed!.set.check[i].category ?? 'alarm');
     const id = settings.eventCats.find((c) => c.name.toLowerCase() === name.toLowerCase())?.id ?? addCategory(name);
     ed!.set.check[i].category = id;
@@ -226,9 +227,10 @@
     sigs = {};
     prev = {};
   }
-  function remset() {
+  async function remset() {
     if (!ed?.was) return close();
-    if (!window.confirm(`Delete the set ${ed.was}?`)) return;
+    // the app's confirm (the dialog plugin's) answers later: wait for it, or the set went before the answer
+    if (!(await window.confirm(`Delete the set ${ed.was}?`))) return;
     actions.checkDelete(ed.was);
     close();
   }
