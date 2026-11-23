@@ -7,4 +7,4 @@ license = "UNLICENSED"
 publish = false
 
 [dependencies]
-ruzstd = "0.8.3"
+ruzstd = "0.9.1"
