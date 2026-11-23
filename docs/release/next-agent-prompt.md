@@ -18,8 +18,7 @@ real-window item goes into the test plan. What is left, in order:
 1. **Before the gates, with the owner:** the **design doc's final sync** (fold `docs/follow-ups.md` into `docs/design.md`;
    the living doc is in Claude Docs, links in `docs/README.md`; the owner starts it, so ask), **turning on GitHub Pages**
    (Settings › Pages › Source: GitHub Actions; then run Actions › Pages by hand; the app's Online manual points at
-   `/manual/`), and the delete the Sonnet run left for the owner's choice: `docs/images/app-view-menu.png` (nothing uses it;
-   `shots.js` writes it). Don't decide these.
+   `/manual/`). The owner said yes to Pages, to deleting `app-view-menu.png` (done) and to the design sync (see the status table).
 2. **R6, last, on the final commit's release build:** every gate and measurement (`docs/developers/gates.md`, "The release
    candidate's pass": `just testdata big`, `gen-gate`, `gate`, `gen-gate2`, `gate2`, `gate3`, `gate4`, `gate5`; check `df -h /`
    first and delete the big files after) and the soak (an hour live at 4M samples/s). The screenshots in `docs/images/manual/`

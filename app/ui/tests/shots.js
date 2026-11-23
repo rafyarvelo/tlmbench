@@ -30,10 +30,6 @@ for (const scheme of ['dark', 'light']) {
     await shot(p, 'app-cursors.png');
     await p.keyboard.press('Escape');
     await p.click('#m-box');
-    await p.click('[data-vmenu]');
-    await p.waitForTimeout(300);
-    await shot(p, 'app-view-menu.png');
-    await p.keyboard.press('Escape');
     await p.click('#b-more');
     await p.waitForTimeout(300);
     await shot(p, 'app-more-menu.png');
