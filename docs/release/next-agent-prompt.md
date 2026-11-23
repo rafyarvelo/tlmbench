@@ -5,60 +5,50 @@ repository, agree with it which files each of you touches before you edit.
 This prompt is only a hand-off. **Where each step stands is the status table in `docs/release/release-plan.md`; what is
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
-Written Nov 22 after the second Nov 22 run (S5.6-13, the rest of R3.4, R4's first part). What it built is in the
-status table's "Second Nov 22 run" and "R4" rows; the CI result is in the CI row.
+Written Nov 23 after the third Nov 22 run (the apple-design audit, R4's dry runs, R6's first security pass). What it
+built is in the status table's audit, "R4 dry runs" and "R6" rows; the CI result is in the CI row.
 
 ## First
 
 1. Read `CLAUDE.md` (its hard requirements bind you), then `docs/release/release-plan.md` (the status table) and
-   `docs/release/owner-test-sheet.md` (sections Y and Z are what the owner hasn't tried yet; fill in anything they wrote).
+   `docs/release/owner-test-sheet.md`. **The owner is testing sections Y and Z now** (the local build `dc11da5`, and
+   for Z3 the dry run's `.dmg`): every `FAIL` and non-empty `Notes:` comes before anything else, Y1 (the drag and close
+   blockers in WKWebView) above all.
 2. Skim the memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/`, above all the
    owner-decisions files (newest: `owner-decisions-nov22b.md`).
-3. Run the open-rows script: `python3 ci/ledger_check.py`, then list rows that aren't Done or Owner pass.
-4. Ledger counts at the hand-off: Done 339, Partial 5, Missing 2, Diverged 1, Unverified 24, Owner pass 17 (388 rows).
+3. Run `python3 ci/ledger_check.py`. Counts at the hand-off: Done 340, Partial 3, Missing 2, Diverged 1, Unverified 24,
+   Owner pass 18 (388 rows).
 
 ## The UI is frozen (Nov 22)
 
-R3.4 is done: from here only bug fixes, the owner's sheet results and R4's own items touch `app/ui/src`. A new idea or an
-audit finding that isn't a bug goes to `docs/post-v1.md`.
-
-## Built Nov 22 (both runs, all pushed): wait for the owner's sheet before changing them
-
-- First run: the two blockers (D-ui-65, D-ui-66), X1 to X4, W2 to W4, the Report tab, canvas traces. Sheet section Y.
-- Second run: S5.6-13 (tables and XY across files), R3.4 (End, shortcuts per platform, layout undo, the review), files
-  opened from the OS and Install command-line tool… (D-ui-71, D-ui-72). Sheet section Z.
-- **Nothing in Y or Z was seen in a real window by an agent**, the WKWebView drag above all (Y1). If the owner reports a
-  failure there, that comes first.
+Only bug fixes, the owner's sheet results and R4/R6 items touch `app/ui/src`. A new idea or a finding that isn't a bug goes
+to `docs/post-v1.md`. The last whole-app apple-design audit ran Nov 22 after the freeze (`ui-audits.md`); the next is R5's,
+on each OS's installed build.
 
 ## Open questions for the owner (ask, with a recommendation; don't decide)
 
-- **Quiet interface's default** (W3): asked Nov 22; the owner chose to decide after trying Y5. Ask again once Y5 has a
-  result (recommendation then: whatever their Y5 note says; otherwise keep it off).
-- **R4's dry run**: free (public repository) but a long matrix; it needs PyPI's trusted publisher for `release.yml`.
-  Signing is decision 3 as changed Nov 22: **nothing paid**: macOS ad-hoc (no notarisation), Windows through SignPath
-  Foundation once the owner's application is accepted (unsigned until then). Ask before starting it (`workflow_dispatch`, or a tag
-  `v0.1.0-rc.1`), recommending the hand-started run first (it publishes nothing).
+- **Quiet interface's default** (W3): ask once the owner has filled in Y5 (recommendation: whatever their Y5 note says;
+  otherwise keep it off).
+- **The Windows CI cache:** deleted Nov 23 (owner's choice) after it filled the runner's disk twice. If Windows fails again
+  at "Restore cache" with "No space left on device", ask before changing `.github/workflows/ci.yml` to cap it
+  (recommendation: delete it again first).
 
 ## Your rows
 
-- **First, before anything else in the plan: the full apple-design audit** (owner, Nov 22). The last whole-app audit was
-  Nov 17; everything built Nov 22 (Your widgets editor, the Report tab, pins, the results tree, quiet pane headers,
-  Install command-line tool…, the shortcut names) has never been audited. Load the `anthropic-skills:apple-design`
-  skill (if it isn't available, do the pass by hand against its headings and say so) and run it on the whole app, dark
-  and light, with motion and reduced motion: screenshots from `node app/ui/tests/shots.js <out-folder>` (never with no
-  argument) and the parity scenes (`just app-parity`), plus the relevant Svelte and CSS. Follow the plan's "Rules for the
-  audits": the prototype and CLAUDE.md's conventions win over the skill; findings ranked, each with its screenshot, in a
-  dated section of `docs/release/ui-audits.md`, and a line in the status table. The UI is frozen, so fix only what is a
-  bug (cite the finding, add a test); anything that would change the design is a question for the owner with a
-  recommendation; the rest goes to `docs/post-v1.md`. Then continue with the rows below.
-- **R4, the rest:** the dry run once the owner agrees, then fix what it finds (it has never run: expect paths in the
-  bundles, the NSIS install folder, the deb's package name and the AppImage's layout to need a look); D-cli-02 and
-  D-ui-72 are Done after it. When SignPath accepts the project, replace the `.pfx` step with SignPath's GitHub action (the owner holds its token). The ad-hoc `.dmg` on a clean Mac (Open Anyway once) is the owner's to check; the README and manual (R7) must say how to open it. `just bundle-mac`
-  builds the macOS bundles locally (an agent's run of it was refused by the permission check on Nov 22: ask first).
-  The Windows code in `app/src-tauri/src/install.rs` (PATH through the registry) is compiled only by CI's Windows job.
-- **D-gauge-04** waits for R6's measurement; **D-live-09** is the owner's (review decision 5).
-- Then R5 (real-window passes with the owner) and R6, per the plan. The manual PDF (R7) joins the bundle's resources
-  when it exists; the licence (decision 1: Apache-2.0, CC BY 4.0) lands with R7's LICENSE.
+- **The owner's sheet (Y, Z)** first, as above.
+- **R4, the rest:** the dry run is green (45110269772). Left: Z3 on the `.dmg` (owner; the README and R7's manual must say
+  how to open an ad-hoc app the first time: note which path the owner reports, right-click › Open or Privacy & Security ›
+  Open Anyway); PyPI's trusted publisher for `release.yml` and the SignPath application (owner); SignPath's GitHub action
+  in place of the `.pfx` step once accepted (the owner holds its token); the manual PDF in the bundle (R7). A tag
+  `v1.0.0-rc.N` is the full rehearsal later (R9).
+- **R6, the rest** (`security-review.md` has the first pass): the longer fuzz (`just fuzz-smoke 300`, about 20 minutes;
+  stopped Nov 23 for the owner's build: run it when the owner isn't using the Mac, then `rm -rf crates/decode/fuzz/target`),
+  the hostile-plugin review on wasmtime 50.0.3, then every gate and measurement on the release build of the final commit
+  (they need the big test files: `just testdata big`, `gen-gate`, `gen-gate2`; check the disk first), the soak. D-gauge-04
+  waits for its measurement; D-live-09 is the owner's (review decision 5).
+- **R5** (real-window passes with the owner, per OS) once the sheet is back; it needs a Windows and a Linux machine or VM:
+  ask the owner early.
+- R7 (docs, the licence and LICENSE), R8, R9 per the plan.
 
 ## What is decided, and what you must not decide
 
@@ -109,6 +99,17 @@ audit finding that isn't a bug goes to `docs/post-v1.md`.
   - Browser-only tests run against `app/browser/dist`, built by `just viewer`: rebuild it after UI changes or a local
     pass proves nothing (CI builds it fresh). A wait whose result isn't checked hides a slow boot as a later failure.
   - The parity scenes `drag-edge*` report a 2 px and 6 px size gap in the drop label box; known noise, not behaviour.
+- **Lessons (Nov 22, third run):**
+  - This Mac's shell is bash 3 with no `jq`: a Monitor script using `declare -A` or `jq` fails silently. Use `gh … --jq`
+    (no `--arg`) and plain files (a watch script: poll `gh run view --json`, print each newly
+    completed job). A backtick in a Monitor command breaks it.
+  - The disk filled twice in one run (a workspace rebuild after dependency upgrades on top of a stale `target/debug`).
+    Check `df -h /` before a cargo run; under about 12 GB, `rm -rf target/debug` first.
+  - The release workflow builds the universal macOS app one architecture at a time: each needs its own
+    `binaries/tlmbench-<triple>` (fixed `14ab8d5`).
+  - `t_browser` and `t_browserpayload` failed once each under the full suite and passed alone (cold daemon start, slow
+    WASM boot): known load flakes. `t_svgsafe` needed a boot wait.
+  - `cargo audit` and `cargo deny` are installed now (`~/.cargo/bin`).
 - **Lessons (Nov 22, second run):**
   - `maturin develop` refuses to run when both `VIRTUAL_ENV` and `CONDA_PREFIX` are set: `unset CONDA_PREFIX` first.
   - The fake core (`app/ui/tests/fakecore.js`) already has a field for most names (`opened` is the list of opens):
