@@ -123,7 +123,7 @@
           <input class="sel" type="number" step="any" data-m="hi" value={miss.hi ?? ''} placeholder="any" onchange={(e) => setMiss('hi', e.currentTarget.value)} /></label>
       </div>
       <label class="lvf"><span>Missing when</span>
-        <input class="sel" data-m="when" value={miss.when ?? ''} placeholder="gps_fix < 3 or status == 'ERR'" spellcheck="false" onchange={(e) => setMiss('when', e.currentTarget.value)} />
+        <input class="sel" data-m="when" value={miss.when ?? ''} placeholder="gps_fix < 3 || status == 'ERR'" spellcheck="false" onchange={(e) => setMiss('when', e.currentTarget.value)} />
         <small>Values, range and condition use the stored numbers, before scale. A condition can use any channel of the file.</small></label>
       {#if editor.error}<p class="hint err" id="chErr">⚠ {editor.error}</p>{/if}
       <p class="hint">Missing values become gaps everywhere: charts, autoscale, tables, statistics, derived channels and exports.{#if info.missing} <b>{info.missing.toLocaleString()}</b> are missing in this file now.{/if}</p>
