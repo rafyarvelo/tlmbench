@@ -29,6 +29,14 @@ learns about a file lives in its own cache, so a read-only network share works a
 | --- |
 | ![Browser-only mode: a CSV chosen in the page, read in the tab, four panes](docs/images/app-browser.png) |
 
+## Install
+
+Download the app for your system from the [Releases page](https://github.com/rafyarvelo/tlmbench/releases): a `.dmg` for
+macOS (Apple silicon and Intel), an installer, `.msi` or portable zip for Windows, a `.deb` or AppImage for Linux. The
+command line comes with the app (Help › Install command-line tool…) and on its own for each OS; Python is
+`pip install tlmbench`. v1 isn't notarised by Apple or signed for Windows yet, so the first open needs one extra click:
+[`docs/install.md`](docs/install.md) says where, for each OS, and how to check a download.
+
 ## Why it's fast, and why you can trust what it draws
 
 - **A min/max pyramid per channel.** A recording is read once, at disk speed, into summaries of 256, 1,024,
@@ -113,13 +121,6 @@ and draws its first chart in 0.2 s from a local static host (`just gate5`).
 - **Read-only by design,** tested in CI against a read-only mount: nothing is written beside the data. When WebGL2 isn't
   there, the traces draw with Canvas 2D.
 
-## Status
-
-Pre-release: v1 is the whole design in [`docs/design.md`](docs/design.md), and there are no installers yet (build from
-source, below). [`docs/release/release-plan.md`](docs/release/release-plan.md) orders the work to v1.0.0 and says where it
-stands; [`docs/release/ledger.md`](docs/release/ledger.md) lists every v1 requirement with its evidence. The UI was designed as
-a working prototype first: [`prototype/plotter.html`](prototype/plotter.html), one file with no build step.
-
 ## Repository
 
 ```
@@ -144,7 +145,7 @@ examples/       shared configuration in the formats the app writes (.tlmbench/)
 ci/             CI image, pinned versions, setup, gates, read-only and ledger checks
 ```
 
-## Getting started
+## Building from source
 
 Development is native on the Mac; Linux and Windows build in CI. Full setup is in
 [`docs/development.md`](docs/development.md).
@@ -160,3 +161,13 @@ node app/ui/tests/shots.js     # the screenshots in this README (after npm run b
 
 Shared configuration (check sets, recipes, layouts) lives in a folder's `.tlmbench/`, one small file per object and
 ready for git: see [`examples/README.md`](examples/README.md).
+
+## Reporting a problem, contributing
+
+Bugs and ideas: [GitHub issues](https://github.com/rafyarvelo/tlmbench/issues). Security problems go privately: see
+[SECURITY.md](SECURITY.md). How to build, test and send a change: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licence
+
+The code is licensed under the [Apache License 2.0](LICENSE); the manual and screenshots under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
