@@ -1,6 +1,6 @@
 # Settings
 
-Settings is a panel in the sidebar (open it from the rail, or **View › Settings…**, `⌘,` on a Mac, `Ctrl+,` on Windows and Linux). Every change applies and saves at once; there is no Apply button. This chapter lists each setting as it is labelled, what it does and its default.
+Settings is a panel in the sidebar (open it from the rail, or **View › Settings…**, `⌘,` on a Mac, `Ctrl+,` on Windows and Linux). Every key it saves, with its type and default, is listed in the [settings reference](../reference/settings.md). Every change applies and saves at once; there is no Apply button. This chapter lists each setting as it is labelled, what it does and its default.
 
 ![The Settings panel](../images/app-settings.png)
 

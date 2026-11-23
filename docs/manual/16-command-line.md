@@ -6,7 +6,7 @@
 
 In the app, choose **Help › Install command-line tool…**. On macOS and Linux it links `tlmbench` into `~/.local/bin` (the dialog shows the line to add to your shell profile if that folder isn't on your `PATH`); on Windows it adds the app's folder to your user `PATH`. Open a new terminal afterwards.
 
-Without the app, download the `tlmbench-<version>-<os>-<arch>` archive from the Releases page and put `tlmbench` on your `PATH`. [Installing TelemetryBench](../install.md) has the steps for each system, how to check a download, and the container image. Run `tlmbench --version` to check, and `tlmbench <command> --help` for any command.
+Without the app, download the `tlmbench-<version>-<os>-<arch>` archive from the Releases page and put `tlmbench` on your `PATH`. [Installing TelemetryBench](../install.md) has the steps for each system, how to check a download, and the container image. Run `tlmbench --version` to check, and `tlmbench <command> --help` for any command; all of them are printed in the [CLI reference](../reference/cli.md).
 
 ## Exit codes
 

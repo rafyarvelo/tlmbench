@@ -11,7 +11,7 @@ ro_dir := env("TLMBENCH_RO_DIR", "prototype/tests/fold")
 ro_required := env("TLMBENCH_RO_REQUIRED", "")
 # Commands run against that folder (ci/ro_cli.sh; its cache goes to a temp folder); each phase adds what it brings
 ro_commands := "--cmd 'ci/ro_cli.sh \"" + ro_dir + "\"'"
-# Generated recordings (never in the repo; see docs/development.md, "Large test recordings")
+# Generated recordings (never in the repo; see docs/developers/gates.md, "Large test recordings")
 data := env("TLMBENCH_DATA", home_directory() / "tlmbench-data")
 
 default:
@@ -83,6 +83,7 @@ lint: ui
     else echo "lint: no Cargo workspace yet, skipping"; fi
     cd app/ui && npm run -s typecheck
     python3 tools/third_party.py --check
+    cargo build -q --bin tlmbench && python3 tools/reference.py --check --bin target/debug/tlmbench
     # the crates outside the workspace (their own targets): the viewer's core and the Parquet reader for WASM, and the Python extension
     cd crates/web && cargo fmt --check && cargo clippy --target wasm32-unknown-unknown -- -D warnings
     cd crates/web-parquet && cargo fmt --check && cargo clippy --target wasm32-unknown-unknown -- -D warnings
@@ -96,6 +97,10 @@ test: ui
     cd crates/web && cargo test && cd ../web-parquet && cargo test
     if [ -d python ]; then VIRTUAL_ENV="$(dirname "$(dirname "{{python}}")")" "{{python}}" -m maturin develop -m python/Cargo.toml \
       && "{{python}}" -m pytest python && "{{python}}" tools/python_docs.py --check; else echo "test: no python/ yet, skipping binding tests"; fi
+
+# The reference pages in docs/reference/ (CLI help, expression functions, settings keys, shortcuts) from the source; `just reference --check` fails when one is stale
+reference *args:
+    cargo build -q --bin tlmbench && python3 tools/reference.py --bin target/debug/tlmbench {{args}}
 
 # The Python API reference (docs/python-api.md) from the module's docstrings; `just python-docs --check` fails when it is stale
 python-docs *args:

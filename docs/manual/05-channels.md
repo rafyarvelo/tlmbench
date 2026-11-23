@@ -137,7 +137,7 @@ Windows take either a number of samples (`20`) or a time (`5s`, `30d`).
 
 ### Function reference
 
-Argument names in brackets are optional. *x* is a channel or an expression; *cond* is an expression read as true when it is not 0.
+Argument names in brackets are optional. *x* is a channel or an expression; *cond* is an expression read as true when it is not 0. The plain list of names and argument counts is generated from the source: [Expression functions](../reference/expressions.md).
 
 **Math** (element by element)
 

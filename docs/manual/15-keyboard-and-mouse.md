@@ -6,6 +6,8 @@ Shortcuts made of one key (`F`, `L`, `T`, `E`, `Esc`, `Backspace` and the rest) 
 
 ## Menu shortcuts
 
+The same table, generated from the app's command list, is in [Menu bar commands and shortcuts](../reference/shortcuts.md).
+
 | Command | Mac | Windows and Linux |
 | --- | --- | --- |
 | **Open recording…** | `⌘O` | `Ctrl+O` |
