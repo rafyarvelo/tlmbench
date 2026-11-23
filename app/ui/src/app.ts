@@ -68,7 +68,7 @@ import { applyProfile, type Profile, fmtRate, imp, prefixFor, profileOf, type In
 import { type ExportContext, exp, FORMATS, html, img } from './exports.svelte';
 import { derive, type DerivedInfo, manager, type SavedProfile, quoteName, type Recipe, recipes, TEMPLATES, TEMPLATES2 } from './derive.svelte';
 import { SvgContext, svg } from './svgctx';
-import type { CustomWidget } from './widgets';
+import { type CustomWidget, sanitizeSvg } from './widgets';
 import { cfg, choices, defaultPick, type Problem, rowKey, share as shareDlg, type ShareRow } from './share.svelte';
 import { pluginsState, readPlugins } from './plugins.svelte';
 import { tabs, type TabInfo } from './tabs.svelte';
@@ -6180,6 +6180,8 @@ export const gateApi = {
 
 /** What the UI tests read (app/ui/tests): the view, cursors and build state, as plain values. */
 (window as unknown as { __tlmApp: unknown }).__tlmApp = {
+  /** The SVG sanitiser shared widgets and icons go through, in the app and in exports (R6's security review). */
+  sanitizeSvg: (src: string) => sanitizeSvg(src),
   /** What the folder's .tlmbench/ gave: its dir, categories and widgets (tests of shared configuration). */
   sharedConfig: () => ({ dir: cfg.dir, categories: JSON.parse(JSON.stringify(cfg.categories)), widgets: cfg.widgets.map((w) => ({ id: w.id, name: w.name, svg: !!w.svg, code: !!w.code })) }),
   /** Adds a file to the tab in front, on its timeline (what the import dialog's "This tab" does). */

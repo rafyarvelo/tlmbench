@@ -53,18 +53,33 @@ export const esc = (s: unknown): string => String(s).replace(/[&<>"']/g, (c) => 
 
 const INVALID = '<svg viewBox="0 0 120 96"><text x="60" y="50" text-anchor="middle" font-size="9" fill="currentColor">Not a valid SVG</text></svg>';
 
-/** An SVG made safe: scripts, foreign objects, images, media and outside links are removed, and so are event handlers
- * and anything that points outside the document. */
+/** What a URL parser would read in `v`: browsers drop tabs, newlines and other control characters inside a URL, so
+ * "java\tscript:" still runs; lower case, with every space and control character removed. */
+const squeeze = (v: string): string => v.toLowerCase().replace(/[\s\u0000-\u001f\u007f]/g, '');
+
+/** Whether a squeezed value or style text reaches outside the document: a script URL, a data or other scheme, a CSS
+ * url() to anything but a fragment (`url(#grad)` is fine; `url(//host/x)` beacons), or an @import. */
+const reachesOut = (v: string): boolean => /javascript:|vbscript:|data:|@import|url\((?!['"]?#)/.test(v);
+
+/** An SVG made safe: scripts, foreign objects, images, media and outside links are removed, and so are event handlers,
+ * animations that would set a link or a handler, and anything that points outside the document, in attributes and in
+ * style sheets alike (R6: shared widgets and icons reach exported HTML, which has no content policy of its own). */
 export function sanitizeSvg(src: string): string {
   const doc = new DOMParser().parseFromString(String(src), 'image/svg+xml');
   const root = doc.documentElement;
   if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) return INVALID;
-  root.querySelectorAll('script, foreignObject, iframe, object, embed, audio, video, image, use[href^="http"]').forEach((n) => n.remove());
+  root.querySelectorAll('script, foreignObject, iframe, object, embed, audio, video, image, feImage, handler, listener').forEach((n) => n.remove());
+  // SMIL can write any attribute after the checks below: drop an animation of a link, a handler or a style
+  root.querySelectorAll('set, animate, animateMotion, animateTransform, discard').forEach((n) => {
+    const t = squeeze(n.getAttribute('attributeName') ?? '');
+    if (t === 'href' || t.endsWith(':href') || t.startsWith('on') || t === 'style') n.remove();
+  });
+  root.querySelectorAll('style').forEach((n) => reachesOut(squeeze(n.textContent ?? '')) && n.remove());
   for (const n of [root, ...root.querySelectorAll('*')])
     for (const a of [...n.attributes]) {
       const k = a.name.toLowerCase();
-      const v = a.value.trim().toLowerCase();
-      if (k.startsWith('on') || ((k === 'href' || k === 'xlink:href') && !v.startsWith('#')) || v.includes('javascript:') || v.includes('url(http') || v.includes('url("http') || v.includes("url('http")) n.removeAttribute(a.name);
+      const v = squeeze(a.value);
+      if (k.startsWith('on') || ((k === 'href' || k.endsWith(':href')) && !v.startsWith('#')) || reachesOut(v)) n.removeAttribute(a.name);
     }
   return new XMLSerializer().serializeToString(root);
 }
