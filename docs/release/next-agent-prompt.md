@@ -5,50 +5,55 @@ repository, agree with it which files each of you touches before you edit.
 This prompt is only a hand-off. **Where each step stands is the status table in `docs/release/release-plan.md`; what is
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
-Written Nov 23 after the third Nov 22 run (the apple-design audit, R4's dry runs, R6's first security pass). What it
-built is in the status table's audit, "R4 dry runs" and "R6" rows; the CI result is in the CI row.
+Written Nov 23 (evening) after the run that did R6's fuzz and plugin review and started R7 and R8. What it built is in
+the status table's R6, R7, R5 rows; the CI result is in the CI row.
+
+## The owner's order (Nov 23): agents first, the owner tests once at the end
+
+The owner tests once, near the end, from `docs/release/test-plan.md` (one pass per OS on the release candidate's
+installers, P or F per item; data from `tools/testdata/make.py`). Don't hand the owner checklists mid-way: a
+real-window item goes into the test plan. The owner test sheet is gone. The order now:
+
+1. **R7, the rest:** screenshots for every `<!-- shot: id — … -->` in `docs/manual/` (extend `app/ui/tests/shots.js`,
+   output to a folder you pass, then `docs/images/`; a list of which page uses which); the developers guide
+   (`docs/developers/`, absorbing `docs/development.md` and `plugins/README.md`); reference pages generated from the source
+   (CLI `--help`, the expression functions, settings keys, shortcuts) with a `--check` in `just lint`; the design doc's
+   final sync (fold `docs/follow-ups.md` into `docs/design.md`: the living doc is in Claude Docs, links in
+   `docs/README.md`; ask the owner before editing it); the web copy on GitHub Pages (the manual as HTML from
+   `just manual --html`, the browser-only site, a sample export) at `https://rafyarvelo.github.io/tlmbench/` (the app's
+   Online manual points at `/manual/`).
+2. **R8, the rest:** the owner agreed the list Nov 23: the frozen history is deleted; at the tag, `follow-ups.md` (after
+   the design sync), `ui-audits.md`, `release-plan.md`, `next-agent-prompt.md`, `security-review.md` (summarised in
+   SECURITY.md) and the ledger (as the developers guide's appendix). Plus R8's pruning (scripts, recipes, dead code,
+   `cargo machete`, `knip`).
+3. **R6, last, on the final commit's release build:** every gate and measurement (`just testdata big`, `gen-gate`,
+   `gen-gate2`; check `df -h /` first, delete the 10 GB file after) and the soak (an hour live at 4M samples/s).
+4. **The release candidate:** `v1.0.0-rc.1` (ask the owner before pushing the tag: it is the outward step); the draft
+   release must have every installer, the CLI archives, the manual inside the app, LICENSE and THIRD_PARTY_LICENSES.md.
+   Then the owner runs the test plan per OS; fix every F (ranked), `rc.2`, and so on.
 
 ## First
 
-1. Read `CLAUDE.md` (its hard requirements bind you), then `docs/release/release-plan.md` (the status table) and
-   `docs/release/owner-test-sheet.md`. **The owner is testing sections Y and Z now** (the local build `dc11da5`, and
-   for Z3 the dry run's `.dmg`): every `FAIL` and non-empty `Notes:` comes before anything else, Y1 (the drag and close
-   blockers in WKWebView) above all.
-2. Skim the memory files in `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/`, above all the
-   owner-decisions files (newest: `owner-decisions-nov22b.md`).
-3. Run `python3 ci/ledger_check.py`. Counts at the hand-off: Done 340, Partial 3, Missing 2, Diverged 1, Unverified 24,
+1. Read `CLAUDE.md`, then `docs/release/release-plan.md` (the status table) and the memory files in
+   `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/` (newest: `owner-order-nov23.md`).
+2. Run `python3 ci/ledger_check.py`. Counts at the hand-off: Done 340, Partial 3, Missing 2, Diverged 1, Unverified 24,
    Owner pass 18 (388 rows).
+3. Check that the last push is green (see the CI row) and push what is local only with the next code commit.
+
+## Open with the owner
+
+- **Quiet interface's default** (W3): now item 4.7 of the test plan (the owner writes yes or no).
+- **Z3's first-open path:** item 1.2 of the test plan; `docs/install.md` already gives both (macOS 15+: Open Anyway;
+  14 and earlier: right-click › Open).
+- **The Windows CI cache:** if Windows fails at "Restore cache" with "No space left on device", ask before changing the
+  workflow (recommendation: delete the cache again).
+- **R5's machines:** the owner has no Windows or Linux machine yet (Nov 23). If none by the RC, the release notes say
+  which checks stay unverified there.
+- PyPI's trusted publisher and SignPath (the owner's), as before.
 
 ## The UI is frozen (Nov 22)
 
-Only bug fixes, the owner's sheet results and R4/R6 items touch `app/ui/src`. A new idea or a finding that isn't a bug goes
-to `docs/post-v1.md`. The last whole-app apple-design audit ran Nov 22 after the freeze (`ui-audits.md`); the next is R5's,
-on each OS's installed build.
-
-## Open questions for the owner (ask, with a recommendation; don't decide)
-
-- **Quiet interface's default** (W3): ask once the owner has filled in Y5 (recommendation: whatever their Y5 note says;
-  otherwise keep it off).
-- **The Windows CI cache:** deleted Nov 23 (owner's choice) after it filled the runner's disk twice. If Windows fails again
-  at "Restore cache" with "No space left on device", ask before changing `.github/workflows/ci.yml` to cap it
-  (recommendation: delete it again first).
-
-## Your rows
-
-- **The owner's sheet (Y, Z)** first, as above.
-- **R4, the rest:** the dry run is green (45110269772). Left: Z3 on the `.dmg` (owner; the README and R7's manual must say
-  how to open an ad-hoc app the first time: note which path the owner reports, right-click › Open or Privacy & Security ›
-  Open Anyway); PyPI's trusted publisher for `release.yml` and the SignPath application (owner); SignPath's GitHub action
-  in place of the `.pfx` step once accepted (the owner holds its token); the manual PDF in the bundle (R7). A tag
-  `v1.0.0-rc.N` is the full rehearsal later (R9).
-- **R6, the rest** (`security-review.md` has the first pass): the longer fuzz (`just fuzz-smoke 300`, about 20 minutes;
-  stopped Nov 23 for the owner's build: run it when the owner isn't using the Mac, then `rm -rf crates/decode/fuzz/target`),
-  the hostile-plugin review on wasmtime 50.0.3, then every gate and measurement on the release build of the final commit
-  (they need the big test files: `just testdata big`, `gen-gate`, `gen-gate2`; check the disk first), the soak. D-gauge-04
-  waits for its measurement; D-live-09 is the owner's (review decision 5).
-- **R5** (real-window passes with the owner, per OS) once the sheet is back; it needs a Windows and a Linux machine or VM:
-  ask the owner early.
-- R7 (docs, the licence and LICENSE), R8, R9 per the plan.
+Only bug fixes and R7's own items (Help's manual, About) touch `app/ui/src`. A new idea goes to `docs/post-v1.md`.
 
 ## What is decided, and what you must not decide
 
@@ -115,6 +120,17 @@ on each OS's installed build.
   - The fake core (`app/ui/tests/fakecore.js`) already has a field for most names (`opened` is the list of opens):
     grep before adding one, or a test breaks far from your change.
   - A test step that moved the pointer (⌘Z after a click on `#stack`) hides hover-only buttons: hover again first.
+
+- **Lessons (Nov 23):**
+  - The UI tests run Chromium, which has a real `window.prompt` and a synchronous `confirm`; the app's WKWebView has no
+    `prompt` (wry answers null) and Tauri's `confirm` returns a promise. Never use either: `askText` (`ask.svelte.ts`)
+    asks, and a `confirm` is awaited.
+  - Never spread a large array into arguments (`push(...bytes)`): past about 100 KB the stack overflows (it broke
+    browser plugins). `t_browserplugin` now checks a 2 MB module and runs with a 240 s limit in `run.sh`.
+  - An unchecked wait hides the real failure three steps later: make the wait a check that prints the page's note.
+  - Writing the manual found real bugs: have the next docs pass list what it finds unclear or broken, with file:line.
+  - Staging only some hunks (git diff -U0 of the file, the hunks you want, git apply --cached --unidiff-zero) keeps commits to one topic
+    when a file holds several.
 
 ## Report when you stop
 
