@@ -392,7 +392,8 @@ jobs:
           path: files
           merge-multiple: true
       - name: Checksums
-        run: cd files && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        # docker/build-push-action uploads a build record (*.dockerbuild) as an artifact: not a release file (rc.1's draft had two)
+        run: cd files && rm -f *.dockerbuild && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - uses: actions/attest-build-provenance@v3
         with:
           subject-path: files/*

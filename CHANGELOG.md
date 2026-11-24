@@ -9,7 +9,7 @@ Python package is not published to PyPI.
 
 - Installers are not signed by a paid certificate: on macOS, the first open needs System Settings › Privacy & Security
   › Open Anyway (macOS 15 and later) or right-click › Open (macOS 14 and earlier); on Windows, SmartScreen asks once.
-  [`docs/install.md`](docs/install.md) has the steps.
+  [Installing](https://github.com/rafyarvelo/tlmbench/blob/main/docs/install.md) has the steps.
 - Tested on macOS (Apple silicon). On Windows and Linux the automated tests and the install checks pass; checks in
   a real window are still to do.
 
