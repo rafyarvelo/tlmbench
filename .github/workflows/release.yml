@@ -138,6 +138,13 @@ jobs:
             printf '{"bundle":{"windows":{"certificateThumbprint":"%s","digestAlgorithm":"sha256","timestampUrl":"http://timestamp.digicert.com"}}}' "$TAURI_WINDOWS_THUMBPRINT" > "$RUNNER_TEMP/sign.json"
             extra=(--config "$RUNNER_TEMP/sign.json")
           fi
+          # WiX takes only a numeric major.minor.patch.build, so 1.0.0-rc.2 makes the MSI 1.0.0.2 (tauri-bundler's
+          # convert_version refuses "rc.2"; NSIS writes 1.0.0.0 by itself)
+          v=${{ needs.version.outputs.version }}
+          if [ "$RUNNER_OS" = Windows ] && [[ "$v" == *-rc.* ]]; then
+            printf '{"bundle":{"windows":{"wix":{"version":"%s.%s"}}}}' "${v%%-*}" "${v##*-rc.}" > "$RUNNER_TEMP/wix.json"
+            extra+=(--config "$RUNNER_TEMP/wix.json")
+          fi
           # unsigned without the secrets: tauri skips signing when APPLE_SIGNING_IDENTITY is empty
           [ -z "$APPLE_SIGNING_IDENTITY" ] && unset APPLE_SIGNING_IDENTITY APPLE_CERTIFICATE APPLE_ID
           cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config tauri.release.conf.json "${extra[@]}"
