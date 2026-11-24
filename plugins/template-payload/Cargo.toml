@@ -3,6 +3,7 @@ name = "my-payload"
 version = "0.1.0"
 edition = "2024"
 publish = false
+license = "MIT-0"
 
 # A payload plugin for TelemetryBench: decodes packet payloads or fields a descriptor names it for.
 # Build:  cargo build --release --target wasm32-wasip2

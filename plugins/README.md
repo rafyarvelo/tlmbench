@@ -8,6 +8,9 @@ component for `wasm32-wasip2`; the interface is `crates/plugin/wit/tlmbench.wit`
 - `template-payload/`: a payload decoder for a packet type or one field, named by a descriptor (`plugin = "name"`).
 - `test-hostile/` and `test-native/`: used by the tests. Not templates.
 
+The three templates are under MIT No Attribution (`LICENSE` in each, SPDX `MIT-0`): a plugin started from one is yours
+to license as you like, with no notice to keep. The rest of TelemetryBench is MIT OR Apache-2.0.
+
 ```sh
 cargo generate --path /path/to/tlmbench/plugins --name my-format     # pick a template
 cd my-format && cargo test && cargo build --release --target wasm32-wasip2
