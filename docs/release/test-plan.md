@@ -13,12 +13,16 @@ back. The agent fixes every F, ranked, and the next release candidate follows.
 
 1. Download from the release candidate's page (Releases, marked Pre-release): the app for this OS and `SHA256SUMS`.
    `docs/install.md` names the file for each OS.
-2. Get the test data script, `make.py`: https://github.com/rafyarvelo/tlmbench/raw/main/tools/testdata/make.py (save
-   the page as `make.py`). It needs Python 3
-   (macOS and Linux have it; on Windows install it from python.org). Then, in a terminal, in the folder you saved it to:
+2. Get the test data script, `make.py`, and run it. It needs Python 3 (macOS and Linux have it; on Windows install it
+   from python.org). In a terminal (macOS, Linux):
    ```
-   python3 make.py            (Windows: py make.py)
-   python3 make.py big        (also the 400 MB file, for section 9)
+   cd ~ && curl -fsSLO https://raw.githubusercontent.com/rafyarvelo/tlmbench/main/tools/testdata/make.py
+   python3 make.py big        (everything, with the 400 MB file for section 9; without "big", the rest only)
+   ```
+   On Windows, in PowerShell:
+   ```
+   cd ~; curl.exe -fsSLO https://raw.githubusercontent.com/rafyarvelo/tlmbench/main/tools/testdata/make.py
+   py make.py big
    ```
    It writes `tlmbench-testdata` in your home folder: `flights/` (four flight CSVs and a `.tlmbench/` with a check set, a layout,
    widgets and events), `other/` (`bench.bin` with its descriptor, `modes.csv`), `browser/` (`bench.tlm`, Parquet files)
