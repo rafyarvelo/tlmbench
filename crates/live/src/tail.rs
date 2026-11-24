@@ -550,4 +550,60 @@ mod tests {
         let (start, got) = reference::read_header(&bytes).unwrap();
         assert_eq!((got, &bytes[start..]), (d, &body[..]));
     }
+
+    /// A growing file whose name doesn't say its format is read as `.tlm` by its magic, even when the first read is
+    /// shorter than the magic, and as CSV otherwise (coverage, Nov 24: no test reached the sniffing).
+    #[test]
+    fn a_growing_file_without_a_known_extension_is_sniffed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("grow.dat");
+        let d = crate::tests_support::desc();
+        let mut head = Vec::new();
+        reference::write_header(&mut head, &d).unwrap();
+        let body: Vec<u8> = (0u32..2000).flat_map(|s| [s.to_le_bytes(), (s as f32).to_le_bytes()].concat()).collect();
+        write(&path, &head[..3]); // fewer bytes than the magic: undecided until more come
+        let src = Source::start(Endpoint::File(path.clone()), None, &dir.path().join("s"), &opts()).unwrap();
+        thread::sleep(Duration::from_millis(60));
+        write(&path, &head[3..]);
+        for chunk in body.chunks(500) {
+            write(&path, chunk);
+            thread::sleep(Duration::from_millis(1));
+        }
+        let h = src.wait();
+        assert_eq!((h.records_written, h.malformed_bytes, &h.error), (2000, 0, &None), "{h:?}");
+        let bytes = std::fs::read(&h.files[0]).unwrap();
+        let (start, got) = reference::read_header(&bytes).unwrap();
+        assert_eq!((got, &bytes[start..]), (d, &body[..]));
+
+        let log = dir.path().join("grow.log");
+        write(&log, format!("time_s,count,volts [V],note\n{}", csv_rows(0, 300, false)).as_bytes());
+        let src = Source::start(Endpoint::File(log.clone()), None, &dir.path().join("t"), &opts()).unwrap();
+        write(&log, csv_rows(300, 600, false).as_bytes());
+        let h = src.wait();
+        assert_eq!((h.records_written, h.malformed_bytes, &h.error), (600, 0, &None), "read as CSV: {h:?}");
+    }
+
+    /// A quoted CSV field may hold a line end: a row is whole only when its quotes are, however the reads cut it
+    /// (coverage, Nov 24).
+    #[test]
+    fn a_quoted_field_with_a_line_end_waits_for_its_closing_quote() {
+        let dir = tempfile::tempdir().unwrap();
+        let csv = dir.path().join("notes.csv");
+        let rows: String =
+            (0..400).map(|i| format!("{}.{:03},{},\"note {i},\nsecond line\"\n", i / 1000, i % 1000, i * 3)).collect();
+        write(&csv, b"time_s,count,note\n");
+        let src = Source::start(Endpoint::File(csv.clone()), None, &dir.path().join("s"), &opts()).unwrap();
+        // chunks of 7 bytes cut rows inside their quotes, often right after the quoted line end
+        for chunk in rows.as_bytes().chunks(7) {
+            write(&csv, chunk);
+        }
+        let h = src.wait();
+        assert_eq!((h.records_written, h.rows_skipped, h.malformed_bytes, &h.error), (400, 0, 0, &None), "{h:?}");
+        let got = parts(&h);
+        let (d, recs) = &got[0];
+        assert_eq!(d.fields.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["time_s", "count"]);
+        for (i, r) in recs.iter().enumerate() {
+            assert_eq!(r, &[i as f64 * 1e6, (i * 3) as f64], "row {i}");
+        }
+    }
 }
