@@ -259,6 +259,10 @@ def big(root):
 
 def main():
     a = sys.argv[1:]
+    if a[:1] and a[0].startswith("-"):
+        # not a folder: `make.py --help` once wrote the whole set into ./--help
+        print(__doc__)
+        return
     if a[:1] == ["grow"]:
         path = a[1] if len(a) > 1 else "live.csv"
         with open(path, "w", encoding="utf-8", newline="\n") as f:
