@@ -1197,6 +1197,37 @@ mod tests {
         assert!(session.dir().file_name().unwrap().to_str().unwrap().starts_with("session-20"));
     }
 
+    /// A ring whose size isn't a multiple of the record size: as it wraps, records straddle its end and the sequence
+    /// check reads them stitched from both halves (coverage, Nov 24: no test reached that path). Nothing is missing or
+    /// repeated, and the file holds every byte in order.
+    #[test]
+    fn records_that_straddle_the_rings_end_are_whole() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let sent = records(0..200_000);
+        let data = sent.clone();
+        let sender = thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            // paced well under the ring's size a millisecond, so it never fills (a full ring drops records)
+            for part in data.chunks(4001) {
+                s.write_all(part).unwrap();
+                thread::sleep(Duration::from_micros(250));
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = Session::create(dir.path()).unwrap();
+        // 1.6 MB through a 64 KiB + 3 ring: about 24 wraps, each ending part-way through a record
+        let opts = Options { ring_bytes: Some((64 << 10) + 3), ..Options::default() };
+        let src = session.add_source(Endpoint::Tcp(addr.to_string()), Some(&desc()), &opts).unwrap();
+        let h = src.wait();
+        let path = h.files[0].clone();
+        sender.join().unwrap();
+        assert_eq!(h.ring_bytes as usize % 8, 3, "the ring's size must not be a multiple of the 8-byte record");
+        assert_eq!((h.records_in, h.records_written, h.records_dropped), (200_000, 200_000, 0), "{h:?}");
+        assert_eq!((h.sequence_missing, h.sequence_repeated, h.malformed_bytes, h.error.as_deref()), (0, 0, 0, None));
+        assert_eq!(body(&path), sent);
+    }
+
     /// Reconnect (D-live-11): the sender drops the link twice, once mid-record; the source connects again each time,
     /// records into the same file and goes on; once nothing listens it says it is reconnecting, and it ends only when
     /// stopped. Without the option the first drop ends it.
