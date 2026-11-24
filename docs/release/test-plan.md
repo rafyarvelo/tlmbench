@@ -13,8 +13,8 @@ back. The agent fixes every F, ranked, and the next release candidate follows.
 
 1. Download from the release candidate's page (Releases, marked Pre-release): the app for this OS and `SHA256SUMS`.
    `docs/install.md` names the file for each OS.
-2. Get the test data script, `make.py`, and run it. It needs Python 3 (macOS and Linux have it; on Windows install it
-   from python.org). In a terminal (macOS, Linux):
+2. Get the test data script, `make.py`, and run it. It needs Python 3.9 or newer (`python3 --version`; macOS and
+   Linux have it, on Windows install it from python.org). In a terminal (macOS, Linux):
    ```
    cd ~ && curl -fsSLO https://raw.githubusercontent.com/rafyarvelo/tlmbench/main/tools/testdata/make.py
    python3 make.py big       # (everything, with the 400 MB file for section 9; without "big", the rest only)

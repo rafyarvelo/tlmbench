@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test data for the release test plan (docs/release/test-plan.md). Plain Python 3, no packages, any OS: the same
+"""Test data for the release test plan (docs/release/test-plan.md). Plain Python 3.9 or newer, no packages, any OS: the same
 files every time, so a result on one machine means the same on another.
 
     python3 make.py [folder]          write everything (default: tlmbench-testdata in your home folder)
