@@ -4,7 +4,7 @@ members = ["crates/core", "crates/decode", "crates/store", "crates/live", "crate
 exclude = ["crates/decode/fuzz", "crates/web", "plugins/template-decoder", "plugins/template-estimator", "plugins/test-hostile", "plugins/test-native"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0-rc.1"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"

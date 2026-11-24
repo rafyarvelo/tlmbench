@@ -2,6 +2,17 @@
 
 All notable changes, by release. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.0-rc.1
+
+The first release candidate of 1.0.0, for testing: everything listed under 1.0.0 below. It is a pre-release; the
+Python package is not published to PyPI.
+
+- Installers are not signed by a paid certificate: on macOS, the first open needs System Settings › Privacy & Security
+  › Open Anyway (macOS 15 and later) or right-click › Open (macOS 14 and earlier); on Windows, SmartScreen asks once.
+  [`docs/install.md`](docs/install.md) has the steps.
+- Tested on macOS (Apple silicon). On Windows and Linux the automated tests and the install checks pass; checks in
+  a real window are still to do.
+
 ## 1.0.0 (unreleased)
 
 The first release: the whole design in [`docs/design.md`](docs/design.md). What follows is what 1.0.0 can do, by area;

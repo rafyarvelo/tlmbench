@@ -1,7 +1,7 @@
 [package]
 name = "tlmbench-web"
 description = "TelemetryBench in a browser: the core compiled to WASM, answering the viewer's queries over an export's data (and, in browser-only mode, over files opened in the page)"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"

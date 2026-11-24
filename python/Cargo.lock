@@ -1297,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-core"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "bytemuck",
  "rayon",
@@ -1306,7 +1306,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-decode"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-export"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow-array",
  "arrow-ipc",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-expr"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "blake3",
  "serde",
@@ -1361,7 +1361,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-python"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -1376,7 +1376,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-store"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "blake3",
  "bytemuck",
