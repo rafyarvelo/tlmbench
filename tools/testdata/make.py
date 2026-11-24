@@ -55,7 +55,7 @@ def write_flight(path, run=0, start=0.0, seconds=60, hz=100, gap=None, bad=False
         if bad and 45 <= t < 45.5:
             temp += 25  # a short spike
         lines.append(f"{start + t:.3f},{alt:.3f},{speed:.3f},{batt:.4f},{temp:.3f}\n")
-    path.write_text("".join(lines), encoding="utf-8", newline="\n")
+    path.write_bytes(("".join(lines)).encode("utf-8"))
 
 
 CHECKS = """schema = 1
@@ -140,7 +140,7 @@ def write_modes(path, seconds=120, hz=10):
         t = i / hz
         m = modes[min(int(t), len(modes) - 1)]
         lines.append(f"{t:.1f},{m},{ {'IDLE': 0, 'TAXI': 15, 'CLIMB': 90, 'CRUISE': 60, 'LAND': 20}[m] + math.sin(t):.2f}\n")
-    path.write_text("".join(lines), encoding="utf-8", newline="\n")
+    path.write_bytes(("".join(lines)).encode("utf-8"))
 
 
 def write_big(path, samples=100_000_000, hz=1_000_000):
@@ -233,20 +233,20 @@ def make(root):
     (other / ".tlmbench" / "decoders").mkdir(parents=True, exist_ok=True)
     write_bin(other / "bench.bin")
     write_modes(other / "modes.csv")
-    (other / ".tlmbench" / "decoders" / "bench.toml").write_text(BENCH_DECODER, encoding="utf-8", newline="\n")
-    (cfg / "checks" / "flight-limits.toml").write_text(CHECKS, encoding="utf-8", newline="\n")
-    (cfg / "views" / "altitude-and-battery.tlmview.json").write_text(LAYOUT, encoding="utf-8", newline="\n")
-    (cfg / "events" / "flight-1.toml").write_text(
+    (other / ".tlmbench" / "decoders" / "bench.toml").write_bytes((BENCH_DECODER).encode("utf-8"))
+    (cfg / "checks" / "flight-limits.toml").write_bytes((CHECKS).encode("utf-8"))
+    (cfg / "views" / "altitude-and-battery.tlmview.json").write_bytes((LAYOUT).encode("utf-8"))
+    (cfg / "events" / "flight-1.toml").write_bytes((
         'schema = 1\nrecording = "flight-1.csv"\nidentity = ""\n\n'
         '[[event]]\nid = "ev-takeoff"\nname = "Takeoff"\nstart = 5000000000\nduration = 0\nchannels = ["altitude"]\n\n'
         '[[event]]\nid = "ev-turn"\nname = "Hard turn"\nstart = 30000000000\nduration = 8000000000\nchannels = ["speed", "altitude"]\n'
-    , encoding="utf-8", newline="\n")
-    (cfg / "widgets" / "dial" / "widget.toml").write_text('schema = 1\nname = "Dial"\nkind = "svg"\nentry = "widget.svg"\nangle = [-60, 60]\n', encoding="utf-8", newline="\n")
-    (cfg / "widgets" / "dial" / "widget.svg").write_text(DIAL_SVG, encoding="utf-8", newline="\n")
-    (cfg / "widgets" / "bar-code" / "widget.toml").write_text('schema = 1\nname = "Value (code)"\nkind = "code"\nentry = "widget.js"\nby = "you"\n', encoding="utf-8", newline="\n")
-    (cfg / "widgets" / "bar-code" / "widget.js").write_text(BAR_JS, encoding="utf-8", newline="\n")
+    ).encode("utf-8"))
+    (cfg / "widgets" / "dial" / "widget.toml").write_bytes(('schema = 1\nname = "Dial"\nkind = "svg"\nentry = "widget.svg"\nangle = [-60, 60]\n').encode("utf-8"))
+    (cfg / "widgets" / "dial" / "widget.svg").write_bytes((DIAL_SVG).encode("utf-8"))
+    (cfg / "widgets" / "bar-code" / "widget.toml").write_bytes(('schema = 1\nname = "Value (code)"\nkind = "code"\nentry = "widget.js"\nby = "you"\n').encode("utf-8"))
+    (cfg / "widgets" / "bar-code" / "widget.js").write_bytes((BAR_JS).encode("utf-8"))
     grow = root / "grow.py"
-    grow.write_text(GROW, encoding="utf-8", newline="\n")
+    grow.write_bytes((GROW).encode("utf-8"))
     grow.chmod(0o755)
 
 
