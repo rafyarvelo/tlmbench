@@ -52,6 +52,7 @@ state of its own in the table, not "done".
 | R7 Documentation | **Nov 23:** LICENSE (Apache-2.0, every crate), `docs/install.md`, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md, the README for a release, the User Manual's 19 chapters and `just manual` (one PDF, bundled; Help › User manual and Online manual). **Nov 24 (Sonnet run, committed; CI: see the CI row):** the manual's 34 screenshots (`node app/ui/tests/shots.js OUT --manual`, `shots-manual.js`, over make.py-shaped data, the real viewer, browser-only site and CLI over make.py's own files; kept in `docs/images/manual/` with `README.md`, the list of which chapter uses which; the native menu bar and two real linked windows go to test-plan 13.3); the developers guide (`docs/developers/`, ten pages; absorbs `docs/development.md`, `plugins/README.md` is a pointer now); reference pages generated from the source (`tools/reference.py`: CLI help, expression functions, settings keys, menu shortcuts, checked by `just lint`); the web copy (`just pages`, `tools/pages.py`, `.github/workflows/pages.yml`: landing page, manual as HTML, browser-only site, a sample export; runs by hand or on a published release; **Pages is not turned on: the owner's**). What the passes found in the app: `docs-findings.md`. **Design doc final sync done Nov 24 (owner's OK):** a "Final sync" section in Claude Docs folds `follow-ups.md` in, four Nov 7 decisions are Accepted there, `docs/design.md` re-exported; `follow-ups.md` is a stub until the tag. **Left:** About's licence and notices (THIRD_PARTY_LICENSES is generated and checked) |
 | R5 | **Nov 23:** the test plan is written (`test-plan.md`, with `tools/testdata/make.py` for the same data on every OS: a binary log and descriptor, a text column, a TCP sender, the big file); the owner test sheet and the macOS checklist are folded into it and deleted. The owner runs it on the RC, once per OS. No Windows or Linux machine yet |
 | R8 | **Nov 24 (pruning, committed):** `cargo machete` (the plugin crate's `serde_json` and `thiserror` removed; the WASM crates' false positives named in their `Cargo.toml`), `knip` (`app/ui/knip.json`; five dead UI exports removed), `just unused`. Scripts and recipes: nothing is uncalled; `app-view-menu.png` (nothing used it) was deleted with the owner's OK. **Left:** the delete list at the tag (follow-ups after the design sync, ui-audits, release-plan, next-agent-prompt, security-review, the ledger as the guide's appendix) |
+| R6c Coverage | **Nov 24: Rust measured on `ff087fc`** (76.5% of lines; the core crates 86–95%; the five gaps and the steps in "R6c Coverage" below). Tests for the gaps: in progress (see the commits). JavaScript coverage: not run yet |
 | RC | **Nov 24: `v1.0.0-rc.1` tagged on `ff087fc` (owner's OK) after CI went green there (45441775732; macOS ran on its third try: twice no hosted runner, and `dc98540` once failed to link, not reproduced). Release run 45478226369 green: every installer built and passed install-and-smoke on its OS; the draft pre-release has the .dmg, NSIS setup, MSI, portable zip, AppImage, .deb, five CLI archives, the site, wheels and sdist, SHA256SUMS (checked); the app bundle and portable zip carry the manual, LICENSE-MIT, LICENSE-APACHE and THIRD_PARTY_LICENSES.md, the CLI archives the licences. Two docker build records also landed in the draft (left out from rc.2, `b93c0e2`).** Next: the owner's test pass. Before:  Version 1.0.0-rc.1 everywhere (`00e2848`, CHANGELOG entry for the draft's notes); the MSI gets a numeric version for a candidate (`8489939`: tauri-bundler refuses `rc.1` for WiX, so the tag would have failed on Windows) |
 | R9 | Not started. Every release decision is made (Nov 15) |
 | CI | **Nov 24, second push: green on `c925acb` (run 45395959120), all four jobs; Python wheels green (45395959435).** The licence commits (`a022bac`, `9488452`) went up after it: see the next run. **Nov 24 run:** **green on `7b11c39` (run 45291637370), all four jobs.** `2d89541` (45271159623) failed only on Windows lint: clap prints `tlmbench.exe` in the CLI page's usage lines (fixed in `tools/reference.py`). Pages is on (the owner's OK Nov 24) and the Pages workflow ran by hand (45303351111): `/`, `/manual/`, `/app/` and `/sample/` at https://rafyarvelo.github.io/tlmbench/ load. **Nov 23 run:** **green on `a1789fd` (run 45242330461), all four jobs, no rerun.** Before it, `9f26af0` (45228727085) failed only on Windows lint: `tools/third_party.py` read cargo's output as cp1252 (fixed: UTF-8 everywhere). Earlier the same day **green on `c4593dd` (45211777663)**; Python wheels green (45211777130). **Third Nov 22 run (Nov 23):** **green on `14ab8d5` (run 45110261576), all four jobs, no rerun**; Python wheels green on `2c2fba9` (45104707616) and in the dry run on `14ab8d5`. On the way, Windows failed twice on `6b1d60c` and `2c2fba9` before any test ran: restoring its 9 GB target cache (four versions of each test binary) filled the runner's disk. The owner had that cache deleted (Nov 23); if it grows back, capping it is a CI change for the owner to approve. **Second Nov 22 run:** `d93b278` (run 45076016877) failed only on Windows, at lint: `install::on_path` is dead code there (it serves the Unix install); Linux, macOS and Python wheels (45076016802) green. Fixed in `d9c48d9` (Unix-only): CI then **green on `d9c48d9` (run 45083708381), all four jobs, no rerun**. **First Nov 22 run:** `4b3d318` (run 45051069274) failed only on Linux, `t_browserpayload` (the page's WASM core slower to start than an unchecked 30 s wait on a loaded runner); macOS, Windows and Python wheels (45051069260) green. Fixed in `424ed0e` (a 90 s boot wait that is a check of its own, also in `t_browserplugin`); CI then **green on `0e60834` (run 45057964460), all four jobs, no rerun**. Before: green on `e484d77` (run 44178285025) with the Nov 17 Opus run. |
@@ -309,6 +310,47 @@ Done when each OS's copy of `docs/release/test-plan.md` is signed off (owner, No
   names, event text or user SVG; the sanitiser), the app's CSP and `tlmwidget` scheme, the daemon's socket and token,
   and dependency audit (`cargo audit`, `cargo deny`, `npm audit`) with each finding fixed or justified in writing.
 - Done when every budget in the design is a measured line, with the machine and the date.
+
+### R6c Coverage (M, owner Nov 24; tests only, for rc.2)
+
+A report, not a gate: find what no test reaches in the code that reads people's data, and add a test for each real gap.
+A test that finds a bug fixes it (with the test). No coverage threshold in CI.
+
+**Rust (measured Nov 24 on `ff087fc`):** `cargo binstall cargo-llvm-cov` and `rustup component add llvm-tools-preview`,
+then `CARGO_INCREMENTAL=0 cargo llvm-cov nextest --workspace --no-report`, `cargo llvm-cov report --summary-only` (and
+`--json` for line ranges). It builds into `target/llvm-cov-target` (17 GB: delete it once the report is written; check
+`df -h /` first). Result: 76.5% of lines; expr 95%, core 94%, live 92%, decode 90%, export 89%, store 86%, plugin 81%,
+cli 80%, app/src-tauri 28% (its commands run under the UI tests' fake core and the gates, which this doesn't count),
+tools/gen 0% (the gates' generator). The gaps to close, one test each, in this order:
+
+1. **Live: a record that straddles the ring buffer's wrap** (`crates/live/src/lib.rs`, the `straddle` stitching in the
+   drain loop): records whose size doesn't divide the ring, written across the wrap, come out whole and in order.
+2. **Aligning two files** (`crates/store/src/align.rs`, 62%): `estimate` with Starts, Clock, Manual, Sync (pairs,
+   straight and piecewise), Events (by name and the most common shared name; "no shared event" refused) and the
+   time-channel method, each checked against a known offset or drift; bad input (a time that isn't whole nanoseconds)
+   refused.
+3. **Two files in one tab** (`crates/store/src/group.rs`, 68%): `stats` over the shared span (each file's channels
+   through its map), `widgets_frame` (each file answers its own widgets), `status` (progress weighted by samples,
+   Missing when a file is gone).
+4. **Tailing a growing file** (`crates/live/src/tail.rs`): a growing `.tlm` is recognised by its magic (not read as
+   CSV), and a quoted CSV field with a newline split across two reads is held until it completes.
+5. **A field a payload plugin decodes** (`crates/decode/src/payload.rs`, `WithPluginFields`): its view, reads,
+   summaries and stats through the wrapper, against the plugin's values (the template-payload plugin, as the
+   existing payload tests use).
+
+Not worth a test: data-type match arms no sample file uses, the read-ahead for mapped files, plain delegations, and
+`parquet_core.rs` (the WASM crate's own tests cover it, outside the workspace run).
+
+**JavaScript (not measured yet):** the app's UI code under the 135 UI tests. Steps: (a) build the UI with source maps
+for the run only (`vite build --sourcemap`, not committed as the default); (b) in `app/ui/tests/lib.js` (the shared
+`run`) and the ~16 tests that launch their own browser, start `page.coverage.startJSCoverage()` and write
+`stopJSCoverage()`'s result to `$TLM_JS_COVERAGE/<test>.json` only when that variable is set; (c) convert with a tool
+run by `npx` from the scratchpad (`monocart-coverage-reports` or `v8-to-istanbul` + `c8 report`), so no dependency is
+added; (d) report per file of `app/ui/src`, list the real gaps (error paths, dialogs' refusals, settings that change
+behaviour) and add UI tests for them as for Rust. Never run it while cargo builds (the UI harness fails at boot).
+
+**Done when** both reports are written here with the commit they measured, each listed gap has its test (or a line
+saying why not), and the full suites and CI are green.
 
 ### R7 Documentation (L)
 

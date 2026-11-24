@@ -27,6 +27,12 @@ then `rc.2`, and so on to 1.0.0.**
   latency, the CLI on 10 and 100 GB files, a slow live client, golden images and golden CLI output, gate 5 from a remote
   static host. They don't block the candidate; do them while the owner tests, one ledger row per commit.
 
+## Coverage (R6c, while the owner tests)
+
+`docs/release/release-plan.md`, "R6c Coverage", has the Rust report (Nov 24) and the steps: five Rust tests for the
+gaps it found, in order, then the JavaScript coverage run and its tests. The status table's R6c row says which are
+done. Tests only: a test that finds a bug fixes it.
+
 ## The owner's test pass (what to do with it)
 
 The owner runs `docs/release/test-plan.md` once per OS on rc.1's installers (data from `tools/testdata/make.py`) and
