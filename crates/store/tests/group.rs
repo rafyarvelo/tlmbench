@@ -248,3 +248,82 @@ fn tables_sort_and_filter_and_xy_pairs_by_another_files_held_column() {
     assert_eq!(r.series[0].x, (0..8).map(|i| f64::from(9 - i)).collect::<Vec<_>>());
     assert_eq!(r.series[0].y, (0..8).map(|i| f64::from(20 + 10 * i)).collect::<Vec<_>>());
 }
+
+/// Every alignment method but correlation (tested above) and plugins, each against a shift it must find (coverage,
+/// Nov 24: no Rust test reached them; the app's tests run them against the fake core). The reference sits 1 s along
+/// the shared timeline, so each map must carry the reference's own map too.
+#[test]
+fn each_alignment_method_finds_a_known_shift() {
+    use tlmbench_store::align::{Method, estimate};
+    use tlmbench_store::events::{self, Event};
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pb) = (dir.path().join("a.tlm"), dir.path().join("b.tlm"));
+    write(&pa, 20_000, 1.0, 0.0);
+    write(&pb, 20_000, 1.0, 0.0);
+    let store = Store::new(Some(&dir.path().join("cache")));
+    let a = store.open(&pa, None).unwrap();
+    let b = store.open(&pb, None).unwrap();
+    let s = |x: f64| (x * 1e9).round() as i64;
+    let rmap = TimeMap::offset(s(1.0));
+    let run = |m: Method| estimate(dir.path(), &a, &rmap, &b, &m);
+    let at = |m: Method, own: f64| run(m).unwrap().map.apply(s(own));
+
+    // both start at 0: b's start goes where a's start is, 1 s along
+    assert_eq!(at(Method::Starts, 0.0), s(1.0));
+    assert_eq!(at(Method::Starts, 5.0), s(6.0));
+    // the clocks agree: b takes a's map as it is
+    assert_eq!(at(Method::Clock, 5.0), s(6.0));
+    // a manual shift adds to the starts
+    assert_eq!(at(Method::Manual { seconds: 0.25 }, 0.0), s(1.25));
+    // sync pairs (b's own time, the shared time): a straight line through two, and piecewise through three
+    let pairs = |p: &[(f64, f64)]| p.iter().map(|&(x, y)| (s(x).to_string(), s(y).to_string())).collect::<Vec<_>>();
+    let straight = Method::Sync { pairs: pairs(&[(1.0, 3.0), (9.0, 11.0)]), piecewise: false };
+    assert_eq!(at(straight, 5.0), s(7.0));
+    let bent = Method::Sync { pairs: pairs(&[(0.0, 0.0), (10.0, 11.0), (20.0, 20.0)]), piecewise: true };
+    assert_eq!((at(bent.clone(), 10.0), at(bent, 5.0)), (s(11.0), s(5.5)));
+    let half = Method::Sync { pairs: vec![("1.5".into(), "2".into())], piecewise: false };
+    assert!(run(half).unwrap_err().to_string().contains("whole number of nanoseconds"));
+
+    // events: "Sync" is in both files (a at 2 s and 12 s, b at 1 s and 11 s), "Only a" in one
+    let ev = |name: &str, t: f64, id: &str| Event {
+        id: id.into(),
+        name: name.into(),
+        start: s(t).to_string(),
+        duration: "0".into(),
+        category: String::new(),
+        source: "user".into(),
+        channels: Vec::new(),
+        by: None,
+    };
+    for (o, list) in
+        [(&a, vec![("Sync", 2.0), ("Sync", 12.0), ("Only a", 4.0)]), (&b, vec![("Sync", 1.0), ("Sync", 11.0)])]
+    {
+        for (k, (n, t)) in list.into_iter().enumerate() {
+            events::save(dir.path(), o.identity(), ev(n, t, &format!("e{k}"))).unwrap();
+        }
+    }
+    let got = run(Method::Events { name: None }).unwrap();
+    assert_eq!(got.note.as_deref(), Some("Paired 2 “Sync” events"), "the name both files have, when none is given");
+    // b's own 1 s is a's own 2 s, which the shared timeline puts at 3 s
+    assert_eq!((got.map.apply(s(1.0)), got.map.apply(s(11.0))), (s(3.0), s(13.0)));
+    let one_sided = run(Method::Events { name: Some("Only a".into()) }).unwrap_err().to_string();
+    assert!(one_sided.contains("No “Only a” events in both files"), "{one_sided}");
+
+    // a time channel both files record (a GPS time of week, say): b's reads 2 s ahead of a's at the same own time
+    let (pc, pd) = (dir.path().join("c.tlm"), dir.path().join("d.tlm"));
+    let gps = |offset: f32| (0..2000).map(|i| 100.0 + offset + i as f32 / 100.0).collect::<Vec<f32>>();
+    write_values(&pc, "gps", 100.0, &gps(0.0));
+    write_values(&pd, "gps", 100.0, &gps(2.0));
+    let (c, d) = (store.open(&pc, None).unwrap(), store.open(&pd, None).unwrap());
+    let ts = |ch: Option<&str>| {
+        estimate(dir.path(), &c, &TimeMap::identity(), &d, &Method::TimeSource { channel: ch.map(Into::into) })
+    };
+    let got = ts(Some("gps")).unwrap();
+    assert_eq!(got.channel.as_deref(), Some("gps"));
+    for own in [1.0, 5.0, 15.0] {
+        // the moment d's clock calls `own` is when c's channel reads what d's does: c's own + 2 s
+        let off = got.map.apply(s(own)) - s(own + 2.0);
+        assert!(off.abs() < 1_000_000, "{own}: off by {} ms", off as f64 / 1e6);
+    }
+    assert!(ts(Some("nope")).unwrap_err().to_string().contains("Both files need a channel named nope"));
+}
