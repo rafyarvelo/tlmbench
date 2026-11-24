@@ -327,3 +327,43 @@ fn each_alignment_method_finds_a_known_shift() {
     }
     assert!(ts(Some("nope")).unwrap_err().to_string().contains("Both files need a channel named nope"));
 }
+
+/// Two files in one tab: exact statistics over a shared span (each file's own samples through its map), widget values
+/// read through the map, and the build's progress weighted by each file's samples (coverage, Nov 24).
+#[test]
+fn a_group_answers_stats_widgets_and_progress_across_its_files() {
+    use tlmbench_store::Status;
+    use tlmbench_store::widgets::WidgetReq;
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pb) = (dir.path().join("a.tlm"), dir.path().join("b.tlm"));
+    // a counts 0, 1, 2… and b 1000, 1001…, both at 1 kHz; b's own time t is shared time t + 5 s
+    write_values(&pa, "x", 1000.0, &(0..10_000).map(|i| i as f32).collect::<Vec<_>>());
+    write_values(&pb, "y", 1000.0, &(0..10_000).map(|i| 1000.0 + i as f32).collect::<Vec<_>>());
+    let store = Store::new(Some(&dir.path().join("cache")));
+    let a = Arc::new(store.open(&pa, None).unwrap());
+    let b = Arc::new(store.open(&pb, None).unwrap());
+    let s = |x: f64| (x * 1e9).round() as i64;
+    let g = Group::new(vec![(a.clone(), TimeMap::identity()), (b, TimeMap::offset(s(5.0)))], vec![1, 2]);
+
+    assert_eq!(g.status(), Status::Missing);
+    assert_eq!(g.stats(&[0, 1], s(6.0), s(8.0)), None, "no statistics before the pyramids");
+    a.build(&mut |_, _| {}).unwrap();
+    assert_eq!(g.status(), Status::Building { done: 10_000, total: 20_000 }, "one file of two, by samples");
+    let mut seen = Vec::new();
+    g.build(&mut |d, t| seen.push((d, t))).unwrap();
+    assert_eq!(g.status(), Status::Built);
+    assert!(seen.iter().all(|&(d, t)| t == 20_000 && d <= t), "progress is over both files together: {seen:?}");
+
+    // shared [6 s, 8 s): a's samples 6000..8000, and b's own [1 s, 3 s), samples 1000..3000 (values 2000..3999)
+    let st = g.stats(&[0, 1], s(6.0), s(8.0)).unwrap();
+    let mm = |k: usize| (st[k].count, st[k].min.unwrap().0, st[k].max.unwrap().0, st[k].mean);
+    assert_eq!(mm(0), (2000, 6000.0, 7999.0, 6999.5));
+    assert_eq!(mm(1), (2000, 2000.0, 3999.0, 2999.5));
+
+    // a widget frame at shared 7 s: each file answers through its own map (min and max from the view's start)
+    let req = |channel| WidgetReq { channel, minmax: true, run: false, trace: 0 };
+    let f = g.widgets_frame(s(7.0), (s(6.0), s(8.0)), &[req(0), req(1)]).unwrap();
+    let w = |k: usize| (f.widgets[k].value, f.widgets[k].min, f.widgets[k].max);
+    assert_eq!(w(0), (Some(7000.0), Some(6000.0), Some(7000.0)));
+    assert_eq!(w(1), (Some(3000.0), Some(2000.0), Some(3000.0)));
+}
