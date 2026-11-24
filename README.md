@@ -7,6 +7,8 @@ vehicles and test benches. Pan and zoom over billions of samples at 60 fps, read
 run the same views, rules and checks from a command line in CI. It never writes next to your data: everything it
 learns about a file lives in its own cache, so a read-only network share works as well as a local disk.
 
+**[User Manual](https://rafyarvelo.github.io/tlmbench/manual/)** · [Try it in your browser](https://rafyarvelo.github.io/tlmbench/app/) · [A sample export](https://rafyarvelo.github.io/tlmbench/sample/) · [Install](docs/install.md) · [Developers guide](docs/developers/README.md)
+
 ![TelemetryBench with the Explorer open, three panes of a recording and the overview strip below](docs/images/app.png)
 
 | Cursors and Measure | Light theme | The ⋯ menu |
