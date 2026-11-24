@@ -6105,11 +6105,16 @@ new ResizeObserver(scheduleResize).observe(center);
 new ResizeObserver(scheduleResize).observe(stackEl);
 stackEl.addEventListener('scroll', scheduleDraw, { passive: true });
 
-void getCurrentWebview().onDragDropEvent((e) => {
-  const p = e.payload;
-  center.classList.toggle('drop', p.type === 'over' || p.type === 'enter');
-  if (p.type === 'drop' && p.paths.length) void openDropped(p.paths);
-});
+/** Whether the drop listener is in place: it registers asynchronously, and a drop before then is lost (a test that
+ * dropped a file as soon as the page started lost it on a loaded runner, Nov 24). */
+let dropListening = false;
+void getCurrentWebview()
+  .onDragDropEvent((e) => {
+    const p = e.payload;
+    center.classList.toggle('drop', p.type === 'over' || p.type === 'enter');
+    if (p.type === 'drop' && p.paths.length) void openDropped(p.paths);
+  })
+  .then(() => (dropListening = true));
 
 /** A Finder drop: a folder does what Open folder… does (the first, when several are dropped) and files open as Open… does
  * (sheet A4: a dropped folder was opened as a file, "Is a directory"). */
@@ -6198,6 +6203,8 @@ export const gateApi = {
 
 /** What the UI tests read (app/ui/tests): the view, cursors and build state, as plain values. */
 (window as unknown as { __tlmApp: unknown }).__tlmApp = {
+  /** Whether a file dropped on the window now opens (tests wait for it before they drop one). */
+  dropReady: () => dropListening,
   /** The SVG sanitiser shared widgets and icons go through, in the app and in exports (R6's security review). */
   sanitizeSvg: (src: string) => sanitizeSvg(src),
   /** What the folder's .tlmbench/ gave: its dir, categories and widgets (tests of shared configuration). */

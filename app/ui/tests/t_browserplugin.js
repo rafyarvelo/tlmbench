@@ -85,7 +85,7 @@ try {
   };
   await p.goto(url, { waitUntil: 'domcontentloaded' });
   // the page's core can take a while to start on a loaded runner: wait for it, and say so if it never does
-  check('the page and its core start', await until(() => !!window.__tlmApp && typeof window.__tlmBrowserOnly?.add === 'function', null, 90000));
+  check('the page and its core start', await until(() => !!window.__tlmApp?.dropReady?.() && typeof window.__tlmBrowserOnly?.add === 'function', null, 90000));
   await p.click('[data-rail="settings"]');
   // R6 hostile-plugin review (Nov 23): a plugin's memories share the cap; a second memory can't grow a cap of its own
   const caps = await p.evaluate(() => {
