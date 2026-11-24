@@ -103,3 +103,23 @@ On the final commit's release build, in this order: `just testdata big` (the 100
 `tools/testdata/make.py`), `just gen-gate` and `just gate`; `just gen-gate2` and `just gate2`; `just gate3 core` and
 `just gate3 app`; `just gate4`; `just gate5`; then the soak, an hour of a live tab at 4M samples per second. Check
 `df -h /` first: the big files need 10 GB and more, and each recipe deletes what it wrote.
+
+### 1.0.0-rc.1 (Nov 24, 2026, `63360a1`)
+
+MacBook Air M1, 8 GB, 59 Hz, a 1580 px window, 23 GB free; every gate on the release build of `63360a1`.
+
+| Gate | Result |
+| --- | --- |
+| `just testdata big` | written (`big/big-100M.tlm`, 400 MB) |
+| `just gate` | pass: 1 of 1,801 frames missed, longest 1.6 periods; zoomed reduce p95 0.73 ms, whole file p50 3.7 ms; round trip p50 3 ms. (On `a8d9652` the first of three runs failed by one 60 ms frame, 3.5 periods, right after the 2.8 GB of gate files were written; the next two passed.) |
+| `just gate2` | pass: reopen first paint 154 ms (coarse), exact 1.3 s; 20-trace sweep 2 of 1,801 frames missed, longest 1.6 periods, zoomed replies p95 4.9 ms. First-ever open: axes and progress 99 ms, build 7.3 s (1,375 MB/s) |
+| `just gate3 core` | pass: 4 × 1 MHz and 32 × 125 kHz, TCP and UDP, every record identical, none dropped or missing, ring at most 0.12%; recorder 2.4% and 5.5% of a core (TCP). CSV tails kept up at 1M and 4M samples/s |
+| `just gate3 app` | pass: 0 of 3,539 frames missed in both shapes (longest 21 and 25 ms), every record verified |
+| `just gate4` | pass: 53 format and convert checks; the 10 GB zstd packet file's cached reopen 0.048 s (first index build 80.5 s, 128 MB/s). On `a8d9652` it failed (53.5 s): with under 10 GB free, the pyramid's build evicted the packet index (fixed in `644df60`; the same low-disk case now reopens in 0.03 s) |
+| `just gate4 app` | pass: all nine files read the same in the app |
+| `just gate5` | pass: the 2 h flight exports Full at 118.8 MB in 0.3 s; first chart view 284 ms, no page errors |
+| Soak | 15 min, not an hour (below): a live tab on 32 × 125 kHz (4M samples/s) over TCP. 112.5M records, all verified; 46 of 53,927 frames missed (0.09%), longest 64 ms; core reduce p95 12.6 ms. App memory 417 to 1,087 MB from minute 5 to 15 with no trend; WebKit 143 to 173 MB |
+
+The hour wasn't possible on this Mac: a live tab writes everything it receives (to Recordings, or to the cache when
+recording is off), about 16 MB/s at 4M samples/s, so an hour needs about 60 GB free (86 GB for 4 × 1 MHz), and this
+disk had 24 GB. An hour needs an external drive (`TLMBENCH_RECORDINGS`).
