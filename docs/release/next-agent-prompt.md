@@ -18,7 +18,7 @@ real-window item goes into the test plan. What is left, in order:
 1. **Before the gates:** the design doc's final sync is **done** (Nov 24; new notes go to `follow-ups.md`, a stub, and are folded
    at the next export). **GitHub Pages**
    (Settings › Pages › Source: GitHub Actions; then run Actions › Pages by hand; the app's Online manual points at
-   `/manual/`). The owner said yes to Pages (turned on Nov 24; check the status table), to deleting `app-view-menu.png` (done) and to the design sync (done).
+   `/manual/`). The owner said yes to Pages (turned on Nov 24; the workflow ran once and the pages load), to deleting `app-view-menu.png` (done) and to the design sync (done).
 2. **R6, last, on the final commit's release build:** every gate and measurement (`docs/developers/gates.md`, "The release
    candidate's pass": `just testdata big`, `gen-gate`, `gate`, `gen-gate2`, `gate2`, `gate3`, `gate4`, `gate5`; check `df -h /`
    first and delete the big files after) and the soak (an hour live at 4M samples/s). The screenshots in `docs/images/manual/`
