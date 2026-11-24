@@ -11,10 +11,10 @@ then `rc.2`, and so on to 1.0.0.**
 
 ## Where things stand
 
-- **Every gate passes on the release build of `63360a1`** (`docs/developers/gates.md`, "1.0.0-rc.1"). The soak ran
-  15 minutes at 4M samples/s, not an hour: an hour writes about 60 GB and the Mac has about 24 GB free. The owner
-  decides: an external drive (`TLMBENCH_RECORDINGS` pointed at it, `ci/gate3.py --app --shape 32 --seconds 3600` with
-  memory sampled each minute) or accept the 15 minutes.
+- **Every gate passes on the release build of `63360a1`**, and the hour-long soak at 4M samples/s
+  (`docs/developers/gates.md`, "1.0.0-rc.1"; the soak recorded to an external drive through `TMPDIR`, see there).
+- **Licences (owner, Nov 24):** the code is MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`), the plugin templates
+  MIT-0, the manual CC BY 4.0.
 - **The tag:** `v1.0.0-rc.1` is pushed only with the owner's OK (it is the outward step). The release workflow then
   builds a draft pre-release: the macOS universal `.dmg`, Windows NSIS setup, MSI and portable zip, Linux AppImage and
   `.deb`, the CLI archives (five platforms), the Docker image, the browser-only site, wheels (not published to PyPI for
@@ -50,8 +50,6 @@ writes P or F per item. Then:
 
 ## Open with the owner
 
-- **The soak's hour** (above): recommendation, accept the 15 minutes unless the owner has a drive; nothing in the
-  run grew.
 - **Quiet interface's default** (W3): item 4.7 of the test plan.
 - **Z3's first-open path:** item 1.2 of the test plan; `docs/install.md` gives both.
 - **R5's machines:** no Windows or Linux machine yet (Nov 23). If none by 1.0.0, the release notes say which checks stay
@@ -91,6 +89,10 @@ Only bug fixes touch `app/ui/src`, each with a test. A new idea goes to `docs/po
     `bundle.windows.wix.version` for a candidate. NSIS writes `1.0.0.0` by itself.
   - A script in the scratchpad needs `chmod +x` or `bash script`: the soak's memory sampler didn't start the first time.
   - `tools/testdata/make.py --help` used to write the whole set into `./--help` (fixed).
+  - Browser-only tests that drop a file at start-up wait for `__tlmApp.dropReady()`: the app's drop listener registers
+    asynchronously, and `t_browserpayload` lost its drop on a loaded Linux runner (a5e87b4). Check a new test the same way.
+  - GitHub's macOS arm64 runners can be unavailable ("not acquired by Runner of type hosted"): the job is cancelled
+    before a step runs. That isn't a failure of ours; rerun the failed jobs once the run ends.
 - **Earlier lessons** (still true): never run the UI suite while cargo builds (the harness waits a fixed 600 ms, so boot
   fails); `node app/ui/tests/shots.js` with no argument writes into `docs/images`; known load flakes `t_browser`,
   `t_descriptor`, `t_windows`, `t_browserpayload`, `t_browserfolder` and the estimator test (pass alone); `maturin

@@ -118,8 +118,9 @@ MacBook Air M1, 8 GB, 59 Hz, a 1580 px window, 23 GB free; every gate on the rel
 | `just gate4` | pass: 53 format and convert checks; the 10 GB zstd packet file's cached reopen 0.048 s (first index build 80.5 s, 128 MB/s). On `a8d9652` it failed (53.5 s): with under 10 GB free, the pyramid's build evicted the packet index (fixed in `644df60`; the same low-disk case now reopens in 0.03 s) |
 | `just gate4 app` | pass: all nine files read the same in the app |
 | `just gate5` | pass: the 2 h flight exports Full at 118.8 MB in 0.3 s; first chart view 284 ms, no page errors |
-| Soak | 15 min, not an hour (below): a live tab on 32 × 125 kHz (4M samples/s) over TCP. 112.5M records, all verified; 46 of 53,927 frames missed (0.09%), longest 64 ms; core reduce p95 12.6 ms. App memory 417 to 1,087 MB from minute 5 to 15 with no trend; WebKit 143 to 173 MB |
+| Soak | pass, an hour (Nov 24, external exFAT USB drive, `TMPDIR` pointed at it so the recording went there): a live tab on 32 × 125 kHz (4M samples/s) over TCP. 450M records sent, recorded and verified, none dropped or missing, the ring under half full; 178 of 215,893 frames missed (0.08%), longest 81 ms; core reduce p95 12.1 ms, round trip p95 15 ms. App memory 420 to 1,105 MB, mean 782 MB in the first quarter hour and 744 MB in the last (no growth); WebKit 139 to 208 MB, 154 and 169 MB. 57 GB written. A first run of 15 min on the internal disk: the same, 46 of 53,927 frames missed |
 
-The hour wasn't possible on this Mac: a live tab writes everything it receives (to Recordings, or to the cache when
-recording is off), about 16 MB/s at 4M samples/s, so an hour needs about 60 GB free (86 GB for 4 × 1 MHz), and this
-disk had 24 GB. An hour needs an external drive (`TLMBENCH_RECORDINGS`).
+The hour needs about 60 GB free for its recording (a live tab writes everything it receives, about 16 MB/s at 4M
+samples/s; 86 GB for 4 × 1 MHz): run it with `TMPDIR` on a drive that sustains 20 MB/s or more, e.g.
+`TMPDIR=/Volumes/X python3 ci/gate3.py --bin target/release --app --shape 32 --seconds 3600`, with the app's memory
+sampled each minute (`ps -axo rss=,comm=`).
