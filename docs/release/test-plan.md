@@ -17,13 +17,15 @@ back. The agent fixes every F, ranked, and the next release candidate follows.
    from python.org). In a terminal (macOS, Linux):
    ```
    cd ~ && curl -fsSLO https://raw.githubusercontent.com/rafyarvelo/tlmbench/main/tools/testdata/make.py
-   python3 make.py big        (everything, with the 400 MB file for section 9; without "big", the rest only)
+   python3 make.py big       # (everything, with the 400 MB file for section 9; without "big", the rest only)
    ```
    On Windows, in PowerShell:
    ```
    cd ~; curl.exe -fsSLO https://raw.githubusercontent.com/rafyarvelo/tlmbench/main/tools/testdata/make.py
    py make.py big
    ```
+   If it says `pyarrow isn't installed`, item 2.6 has no Parquet file: run `python3 -m pip install pyarrow` (Windows:
+   `py -m pip install pyarrow`) and `make.py big` again.
    It writes `tlmbench-testdata` in your home folder: `flights/` (four flight CSVs and a `.tlmbench/` with a check set, a layout,
    widgets and events), `other/` (`bench.bin` with its descriptor, `modes.csv`), `browser/` (`bench.tlm`, Parquet files)
    and `big/`. Running it again writes the same files.
