@@ -185,3 +185,61 @@ fields = [
     // the plugin's columns share the file's times (100 Hz from zero)
     assert_eq!(rec.time_at(250), 2_500_000_000);
 }
+
+/// A field a payload plugin decodes, through the store as the app reads it: the pyramid builds over it, and views
+/// (exact and coarse), statistics and reads of its column all come from the plugin's values (coverage, Nov 24: only
+/// single values through the wrapper were tested).
+#[test]
+fn a_plugin_field_draws_and_counts_through_the_store() {
+    use tlmbench_core::Viewport;
+    use tlmbench_store::{Precision, Store};
+    let _turn = REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
+    let wasm = common::build("template-payload", "my_payload.wasm");
+    set_payload_plugins(vec![Arc::new(WasmPayload::load(&wasm).unwrap())]);
+    let tmp = tempfile::tempdir().unwrap();
+    let desc = r#"
+schema = 1
+record_size = 4
+time = { source = "rate", rate_hz = 100.0 }
+fields = [
+  { name = "volts", type = "u8", offset = 0 },
+  { name = "pos", type = "f32", offset = 1, plugin = "demo-payload", size = 3 },
+]
+"#;
+    // pos is -i: the plugin reads it from three big-endian bytes
+    let mut data = Vec::new();
+    for i in 0..5000i64 {
+        data.push((i % 200) as u8);
+        let v = -i;
+        data.extend_from_slice(&[(v >> 16) as u8, (v >> 8) as u8, v as u8]);
+    }
+    let (file, toml) = (tmp.path().join("bench.bin"), tmp.path().join("bench.toml"));
+    std::fs::write(&file, data).unwrap();
+    std::fs::write(&toml, desc).unwrap();
+    let store = Store::new(Some(&tmp.path().join("cache")));
+    let o = store.open(&file, Some(&toml)).unwrap();
+    o.build(&mut |_, _| {}).unwrap();
+    let rec = o.recording();
+    assert_eq!(rec.info().channels.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["volts", "pos"]);
+
+    let (scale, offset) = rec.scale_offset(1);
+    assert_eq!(rec.read(1, 330, 333).to_f64(scale, offset), [-330.0, -331.0, -332.0]);
+    let (t0, t1) = (rec.time_at(0), rec.time_at(4999) + 1);
+    let st = o.stats(&[1], t0, t1).unwrap().pop().unwrap();
+    assert_eq!(
+        (st.count, st.min.map(|m| m.0), st.max.map(|m| m.0), st.mean),
+        (5000, Some(-4999.0), Some(0.0), -2499.5)
+    );
+    // a narrower span, inside the file
+    let part = o.stats(&[1], rec.time_at(1000), rec.time_at(2000)).unwrap().pop().unwrap();
+    assert_eq!((part.count, part.min.map(|m| m.0), part.max.map(|m| m.0)), (1000, Some(-1999.0), Some(-1000.0)));
+
+    let vp = Viewport { t0, t1, width_px: 200, raw_max: 0 };
+    for precision in [Precision::Exact, Precision::Coarse] {
+        let v = o.view(1, vp, 4.0, precision);
+        let y: Vec<f32> = v.trace.y.iter().copied().filter(|y| y.is_finite()).collect();
+        assert!(!y.is_empty(), "{precision:?}: something to draw");
+        let (lo, hi) = y.iter().fold((f32::MAX, f32::MIN), |(a, b), &x| (a.min(x), b.max(x)));
+        assert_eq!((lo, hi), (-4999.0, 0.0), "{precision:?}: the view spans the plugin's values");
+    }
+}
