@@ -62,41 +62,43 @@ the folder isn't on PATH, use Copy the line, add it as it says, open a new termi
 ## 2. Opening files
 
 **2.1** Open folder… › `tlmbench-testdata/flights`. The Explorer lists the files; the folder's widgets, layout and check
-set are available. Result:
+set are available. Result: Pass (I think?). Widgets are good, Layouts shows "Altitude and Battery" under "Shared in this folder". "Rules & Checks" is empty, not sure if that is expected.
 
 **2.2** Open `flight-1.csv`. The import dialog shows the columns with time detected; open it. Charts appear, and
-nothing new is written in `flights/` (look in the folder). Result:
+nothing new is written in `flights/` (look in the folder). Result: Pass. Where did the "Takeoff" and "Hard Turn" events come from?
 
-**2.3** Open `flight-2.csv`: the dialog doesn't ask again (same header). Result:
+**2.3** Open `flight-2.csv`: the dialog doesn't ask again (same header). Result: Pass
 
 **2.4** Open `other/bench.bin` with Open recording…: it opens through its folder's descriptor (altitude, battery, armed).
-Result:
+Result: Pass
 
-**2.5** Open `other/modes.csv`: `mode` shows its words (IDLE, TAXI, CLIMB…) on the chart axis and in values. Result:
+**2.5** Open `other/modes.csv`: `mode` shows its words (IDLE, TAXI, CLIMB…) on the chart axis and in values. Result: Pass
 
-**2.6** Open `browser/bench.tlm` and a Parquet file from `browser/`. Both open. Result:
+**2.6** Open `browser/bench.tlm` and a Parquet file from `browser/`. Both open. Result: Pass
 
 **2.7** With the app closed, double-click `bench.tlm` in the file manager: the app opens it, in front. Again while it
-runs: a tab of its own. Result:
+runs: a tab of its own. Result: Pass
 
-**2.8** Right-click `flight-1.csv` › Open With: TelemetryBench is offered (and isn't the default). Result:
+**2.8** Right-click `flight-1.csv` › Open With: TelemetryBench is offered (and isn't the default). Result: Pass
 
 **2.9** Drag `flight-gap.csv`, then the `flights` folder, from the file manager onto the window: the file opens; the
-folder opens as Open folder… does. Result:
+folder opens as Open folder… does. Result: Pass
 
 ## 3. Looking at data
 
 **3.1** On `flight-1.csv`: wheel-zoom, drag to pan, Box zoom, Back, Fit. Each works and the time range updates.
-Result:
+Result: Pass
 
 **3.2** Point at a chart: values at the pointer. Place cursors A and B, open Measure: Δt, Δy, min, max, mean.
-Result:
+Result: Pass
 
-**3.3** `flight-gap.csv`: the 30 s hole is a gap in the line, not a straight line across. Result:
+**3.3** `flight-gap.csv`: the 30 s hole is a gap in the line, not a straight line across. Result: Pass
 
-**3.4** Play: the playhead moves; change the speed; set an A–B loop. Result:
+**3.4** Play: the playhead moves; change the speed; set an A–B loop. Result: Pass, but "Loop A-B" only works after a pause
 
-**3.5** Add a Table pane: sort by a column (its ▾ menu), filter `battery_v > 15`, step through matches, Apply to charts.
+**3.5** Add a Table pane: sort by a column (its ▾ menu); type `> 15` in the filter box under battery_v's header; step
+through the matches (▲ ▼ in the row that appears under the table's bar); tick **Apply to charts** at that row's right. The
+charts leave out the other rows (hatched along the bottom, a "Filtered · N rows hidden" chip).
 Result:
 
 **3.6** Add an XY pane: altitude against speed. Result:
