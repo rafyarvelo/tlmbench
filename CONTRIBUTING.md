@@ -33,5 +33,5 @@ package in `crates/plugin/wit`.
 
 ## Licence
 
-By contributing you agree that your contribution is licensed under the Apache License 2.0, as the project is
-([LICENSE](LICENSE)).
+By contributing you agree that your contribution is licensed under the MIT License or the Apache License 2.0, at
+the choice of whoever uses it, as the project is ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)).

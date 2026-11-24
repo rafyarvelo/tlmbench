@@ -171,5 +171,5 @@ Bugs and ideas: [GitHub issues](https://github.com/rafyarvelo/tlmbench/issues). 
 
 ## Licence
 
-The code is licensed under the [Apache License 2.0](LICENSE); the manual and screenshots under
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+The code is licensed under the [MIT License](LICENSE-MIT) or the [Apache License 2.0](LICENSE-APACHE), at your choice;
+the manual and screenshots under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

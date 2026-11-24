@@ -129,7 +129,7 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
   }` : ''}
 </style></head><body>
 <div class="cover"><h1>TelemetryBench</h1><p>User Manual, version ${version}</p>
-<p>The code is licensed under the Apache License 2.0; this manual and its screenshots under CC BY 4.0.</p></div>
+<p>The code is licensed under the MIT License or the Apache License 2.0; this manual and its screenshots under CC BY 4.0.</p></div>
 <nav class="toc"><h1>Contents</h1><ol>${contents}</ol></nav>
 ${body}
 </body></html>`;

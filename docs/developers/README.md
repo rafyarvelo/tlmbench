@@ -31,6 +31,6 @@ Every change keeps these. They are why the design looks the way it does.
 
 [CONTRIBUTING.md](../../CONTRIBUTING.md) is the short version: report bugs with what you did, the version and your OS;
 every behaviour change comes with a test; `just lint test` and `just app-test` pass before a pull request; small commits,
-one topic each; contributions are Apache-2.0. The design is the source of truth: a decision marked Accepted or Modified
+one topic each; contributions are MIT OR Apache-2.0. The design is the source of truth: a decision marked Accepted or Modified
 is a requirement, and a change to behaviour gets a note in [`docs/follow-ups.md`](../follow-ups.md) so the design doc can be
 brought up to date.

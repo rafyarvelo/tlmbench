@@ -141,7 +141,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, entries: &[Entry]) -> Result<(Menu<
 
 /// Where releases are published, and what About says of the licences (R7: the version, the licence, the notices).
 const RELEASES: &str = "https://github.com/rafyarvelo/tlmbench/releases";
-const NOTICE: &str = "Licensed under the Apache License 2.0. The open-source software it is built with, and their \
+const NOTICE: &str = "Licensed under the MIT License or the Apache License 2.0, at your choice. The open-source software it is built with, and their \
 licences, are listed in THIRD_PARTY_LICENSES.md beside the app.";
 
 /// About TelemetryBench: the system's own window, with the version, the licence and where the notices are.
@@ -151,7 +151,7 @@ fn about<R: Runtime>(app: &AppHandle<R>) -> Result<PredefinedMenuItem<R>, String
         name: Some(info.name.clone()),
         version: Some(info.version.to_string()),
         copyright: Some("© TelemetryBench contributors".into()),
-        license: Some("Apache-2.0".into()),
+        license: Some("MIT OR Apache-2.0".into()),
         website: Some(RELEASES.into()),
         website_label: Some("Releases".into()),
         comments: Some(NOTICE.into()),

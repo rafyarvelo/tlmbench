@@ -7,7 +7,7 @@ exclude = ["crates/decode/fuzz", "crates/web", "plugins/template-decoder", "plug
 version = "1.0.0-rc.1"
 edition = "2024"
 rust-version = "1.99"
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]

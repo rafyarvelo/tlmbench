@@ -41,7 +41,7 @@ Gatekeeper's verdict). PyPI's trusted publisher must name `release.yml` (the wor
    installer on each OS and follow the owner's test plan (`docs/release/test-plan.md`).
 5. Fix what fails, tag the next `rc`. When a candidate passes, tag `v<version>`: the workflow publishes the wheels to PyPI
    (the trusted publisher must name `release.yml` and `python.yml`, with the `pypi` environment) and drafts the release.
-6. Read the draft: every installer, the CLI archives, `SHA256SUMS`, attestations, `LICENSE` and
+6. Read the draft: every installer, the CLI archives, `SHA256SUMS`, attestations, `LICENSE-MIT`, `LICENSE-APACHE` and
    `THIRD_PARTY_LICENSES.md`, the manual inside the app. Publish it.
 
 A tag is outward-facing and can't be taken back: the owner pushes it.

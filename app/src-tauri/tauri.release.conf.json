@@ -16,7 +16,8 @@
       "../../plugins/template-payload/": "plugins/template-payload/",
       "../../examples/recordings/.tlmbench/": "examples/.tlmbench/",
       "../../docs/manual/build/TelemetryBench-manual.pdf": "manual/TelemetryBench-manual.pdf",
-      "../../LICENSE": "LICENSE",
+      "../../LICENSE-MIT": "LICENSE-MIT",
+      "../../LICENSE-APACHE": "LICENSE-APACHE",
       "../../THIRD_PARTY_LICENSES.md": "THIRD_PARTY_LICENSES.md"
     },
     "fileAssociations": [

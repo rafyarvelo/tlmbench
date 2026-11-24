@@ -47,7 +47,7 @@ Result:
 **1.7** The start page shows; Help › User manual opens the PDF manual; Help › Online manual opens a browser page.
 Result:
 
-**1.8** About TelemetryBench (macOS: the app menu; Windows and Linux: end of Help) shows the version, Apache-2.0, and
+**1.8** About TelemetryBench (macOS: the app menu; Windows and Linux: end of Help) shows the version, MIT OR Apache-2.0, and
 mentions THIRD_PARTY_LICENSES.md. Result:
 
 **1.9** Help › Install command-line tool…, then in a new terminal `tlmbench --version` prints the version. (If it says

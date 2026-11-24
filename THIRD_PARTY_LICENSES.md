@@ -1,7 +1,8 @@
 # Third-party licences
 
-TelemetryBench is licensed under the Apache License 2.0 (`LICENSE`). It is built with the open-source software
-below; each is listed with its licence and the licence texts it ships. Written by `tools/third_party.py`.
+TelemetryBench is licensed under the MIT License (`LICENSE-MIT`) or the Apache License 2.0 (`LICENSE-APACHE`),
+at your choice. It is built with the open-source software below; each is listed with its licence and the licence
+texts it ships. Written by `tools/third_party.py`.
 
 | Package | Version | Licence |
 | --- | --- | --- |
