@@ -300,8 +300,10 @@ impl Store {
                 let building = kind == "pyramid" && !path.join("manifest.json").exists();
                 let fingerprint = match kind {
                     "pyramid" => pyr::fingerprint_of(&path),
-                    // a packet index is read into memory on open: removing it never disturbs a reader
-                    "packets" | "plugin" | "payload" | "live" | "live-sessions" => None,
+                    // a packet index or a plugin's decode names its source in its `opened` marker: it stays while
+                    // that file is open, or the next open would decode the whole file again
+                    "packets" | "plugin" | "payload" => source_of(&path),
+                    "live" | "live-sessions" => None,
                     _ => Some(name.clone()),
                 };
                 out.push(Entry {
@@ -1032,6 +1034,14 @@ fn touch_opened(dir: &Path) {
     if dir.is_dir() {
         let _ = fs::write(dir.join("opened"), b"");
     }
+}
+
+#[cfg(feature = "native")]
+/// The fingerprint of the source a decoded entry was made from, as `tlmbench_decode` writes it into `opened`.
+fn source_of(dir: &Path) -> Option<String> {
+    let fp = fs::read_to_string(dir.join("opened")).ok()?;
+    let fp = fp.trim();
+    (!fp.is_empty() && fp.bytes().all(|b| b.is_ascii_hexdigit())).then(|| fp.to_owned())
 }
 
 #[cfg(feature = "native")]

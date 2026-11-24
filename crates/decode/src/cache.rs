@@ -58,6 +58,13 @@ pub fn fingerprint_with(path: &Path, profile: Option<&ImportProfile>) -> Result<
     Ok(profiled_key(fingerprint(path)?, profile))
 }
 
+/// Marks the cache entry `dir`, made from the source with fingerprint `fp`, as just opened: the cache evicts the least
+/// recently opened entries first (the store's convention), and keeps an entry whose source is open in any process
+/// (the store reads `fp` back from the marker).
+pub(crate) fn mark_opened(dir: &Path, fp: &str) {
+    let _ = fs::write(dir.join("opened"), fp.as_bytes());
+}
+
 fn profiled_key(fp: String, profile: Option<&ImportProfile>) -> String {
     match profile.filter(|p| !p.is_default()) {
         Some(p) => blake3::hash(format!("{fp}\n{}", p.key()).as_bytes()).to_hex()[..32].to_owned(),

@@ -108,12 +108,14 @@ const CHUNK_ROWS: u32 = 65_536;
 pub fn open_with(path: &Path, root: &Path, plugin: &dyn DecoderPlugin) -> Result<CachedRecording> {
     let source = Source::open(path)?;
     let info = plugin.info();
-    let key = blake3::hash(format!("{}\0{}\0{}", source.fingerprint()?, info.name, info.version).as_bytes());
+    let fp = source.fingerprint()?;
+    let key = blake3::hash(format!("{fp}\0{}\0{}", info.name, info.version).as_bytes());
     let dir = root.join("plugin").join(&key.to_hex().as_str()[..32]);
     let manifest = match cache::read_manifest(&dir) {
         Some(m) => m,
         None => cache::build_entry(&dir, |tmp| build(path, &source, plugin, tmp))?,
     };
+    cache::mark_opened(&dir, &fp);
     cache::load(path, &dir, manifest, &format!("{} (plugin)", info.name))
 }
 

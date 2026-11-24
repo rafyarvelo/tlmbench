@@ -358,6 +358,40 @@ fn eviction_keeps_what_is_in_use() {
 }
 
 #[test]
+fn eviction_keeps_a_packet_index_while_its_source_is_open() {
+    // Gate 4 (Nov 23): on a disk under `min_free`, building a 10 GB packet file's pyramid evicted the packet index it
+    // had just built, so every reopen decoded the whole file again (53 s instead of 0.04 s)
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let path = recording(data.path());
+    let mut store = Store::new(Some(cache.path()));
+    let opened = store.open(&path, None).unwrap();
+    let fp = tlmbench_decode::cache::fingerprint(&path).unwrap();
+    let entry = |kind: &str, name: &str, marker: &str| {
+        let dir = cache.path().join(kind).join(name);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("index.bin"), vec![0u8; 4096]).unwrap();
+        fs::write(dir.join("opened"), marker).unwrap();
+        dir
+    };
+    let ours = entry("packets", "0123456789abcdef0123456789abcdef", &fp);
+    let plugin = entry("plugin", "1123456789abcdef0123456789abcdef", &fp);
+    let other = entry("packets", "2123456789abcdef0123456789abcdef", "ffffffffffffffffffffffffffffffff");
+    let unnamed = entry("payload", "3123456789abcdef0123456789abcdef", "");
+
+    store.limits = Limits { cap: 0, min_free: u64::MAX };
+    let mut removed = store.evict().unwrap();
+    removed.sort();
+    let mut want = vec![other, unnamed];
+    want.sort();
+    assert_eq!(removed, want, "entries of sources nobody has open go");
+    assert!(ours.is_dir() && plugin.is_dir(), "the open source's packet index and plugin decode stay");
+    drop(opened);
+    let removed = store.evict().unwrap();
+    assert!(removed.contains(&ours) && removed.contains(&plugin), "closed: they age out like any entry");
+}
+
+#[test]
 #[allow(clippy::single_range_in_vec_init)]
 fn a_mask_makes_samples_missing_in_views_stats_and_values() {
     use tlmbench_core::mask::Mask;

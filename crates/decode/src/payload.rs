@@ -93,8 +93,9 @@ pub fn open_type(path: &Path, desc: &Descriptor, part: &Part, format: &str, root
     let plugin = named(path, &format!("packet type \"{}\"", part.name), &name)?;
     let info = plugin.info().clone();
     let source = Source::open(path)?;
+    let fp = source.fingerprint()?;
     let mut key = blake3::Hasher::new();
-    key.update(source.fingerprint()?.as_bytes());
+    key.update(fp.as_bytes());
     key.update(desc.to_toml().as_bytes());
     key.update(format!("\npart {}\0{}\0{}\0{params}", part.id, info.name, info.version).as_bytes());
     let dir = root.join("payload").join(&key.finalize().to_hex()[..32]);
@@ -115,7 +116,7 @@ pub fn open_type(path: &Path, desc: &Descriptor, part: &Part, format: &str, root
             (m, bad)
         }
     };
-    let _ = std::fs::write(dir.join("opened"), b"");
+    cache::mark_opened(&dir, &fp);
     let mut rec = cache::load(path, &dir, manifest, format)?;
     let i = rec.info_mut();
     i.part = Some(part.name.clone());
@@ -221,8 +222,9 @@ pub(crate) fn decode_fields<R: Recording + RecordBytes>(
         plugins.push(named(&path, &format!("field \"{}\"", f.name), name)?);
     }
     let source = Source::open(&path)?;
+    let fp = source.fingerprint()?;
     let mut key = blake3::Hasher::new();
-    key.update(source.fingerprint()?.as_bytes());
+    key.update(fp.as_bytes());
     key.update(desc.to_toml().as_bytes());
     key.update(format!("\npart {:?}", base.info().part).as_bytes());
     for p in &plugins {
@@ -233,7 +235,7 @@ pub(crate) fn decode_fields<R: Recording + RecordBytes>(
         Some(m) => m,
         None => cache::build_entry(&dir, |tmp| write_fields(base, &fields, &plugins, &source, tmp))?,
     };
-    let _ = std::fs::write(dir.join("opened"), b"");
+    cache::mark_opened(&dir, &fp);
     cache::load(&path, &dir, manifest, &base.info().format)
 }
 

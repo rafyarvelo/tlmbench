@@ -141,8 +141,9 @@ impl PacketFile {
             return Err(format_err(path, "the descriptor has no [packets] table"));
         }
         let source = Source::open(path)?;
+        let fp = source.fingerprint()?;
         let mut key = blake3::Hasher::new();
-        key.update(source.fingerprint()?.as_bytes());
+        key.update(fp.as_bytes());
         key.update(desc.to_toml().as_bytes());
         if let Some(q) = &part {
             key.update(format!("\npart {}", q.id).as_bytes());
@@ -181,8 +182,7 @@ impl PacketFile {
             }
             _ => me.build_index(&dir, source.len)?,
         };
-        // the cache evicts the least recently opened entries first (the store's convention)
-        let _ = fs::write(dir.join("opened"), b"");
+        crate::cache::mark_opened(&dir, &fp);
         me.bad_packets = manifest.bad_packets;
         me.skipped_bytes = manifest.skipped_bytes;
         me.info.channels = me

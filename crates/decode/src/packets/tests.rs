@@ -109,6 +109,19 @@ fn every_compression_reads_back() {
 }
 
 #[test]
+fn the_index_names_its_source_for_the_cache() {
+    // the store keeps a packet index while its source is open (it reads the source's fingerprint from `opened`)
+    let tmp = tempfile::tempdir().unwrap();
+    let d = desc(Compression::None, Checksum::None);
+    let f = open(tmp.path(), "named.bin", &d, &bytes(&d, 3, 10));
+    let fp = crate::cache::fingerprint(&tmp.path().join("named.bin")).unwrap();
+    let dirs: Vec<_> = fs::read_dir(tmp.path().join("cache/packets")).unwrap().flatten().map(|e| e.path()).collect();
+    assert_eq!(dirs.len(), 1);
+    assert_eq!(fs::read_to_string(dirs[0].join("opened")).unwrap(), fp);
+    drop(f);
+}
+
+#[test]
 fn damaged_packets_are_skipped_and_counted() {
     let tmp = tempfile::tempdir().unwrap();
     let d = desc(Compression::Zstd, Checksum::Crc32);
