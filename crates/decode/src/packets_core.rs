@@ -375,3 +375,101 @@ pub(crate) fn head_packets(head: &[u8], d: &Descriptor, max: usize) -> Result<He
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::descriptor::LengthField;
+
+    /// A 12-byte header: a 2-byte sync word (or none), a length at offset 2 of `dtype` counting `counts`.
+    fn spec(sync: Option<&str>, dtype: DType, counts: Counts, checksum: Checksum) -> Packets {
+        Packets {
+            sync: sync.map(Into::into),
+            header_size: 12,
+            length: Some(LengthField { offset: 2, dtype, counts, adjust: 0 }),
+            id: None,
+            checksum,
+            compression: Compression::None,
+        }
+    }
+
+    fn packet(p: &Packets, big: bool, len: usize, fill: u8) -> Vec<u8> {
+        frame_packet(p, big, &[0u8; 12], &vec![fill; len]).unwrap()
+    }
+
+    /// Every integer type as the length field, counting the payload or the whole packet, in both byte orders
+    /// (coverage, Nov 24).
+    #[test]
+    fn every_length_type_and_both_counts_frame_alike() {
+        use DType::*;
+        for dtype in [I8, I16, I32, I64, U8, U16, U32, U64] {
+            for counts in [Counts::Payload, Counts::Packet] {
+                for big in [false, true] {
+                    let p = spec(Some("EB90"), dtype, counts, Checksum::Crc16Ccitt);
+                    let data: Vec<u8> = [10, 20, 30].iter().flat_map(|&n| packet(&p, big, n, 7)).collect();
+                    let f = frame(&data, 0, &p, 10, None, &[0xEB, 0x90], big);
+                    let stored: Vec<u64> = f.packets.iter().map(|x| x.stored).collect();
+                    assert_eq!((stored, f.bad), (vec![10, 20, 30], 0), "{dtype:?} {counts:?} big {big}");
+                }
+            }
+        }
+    }
+
+    /// A stream framed read by read: junk before a packet is skipped, a packet that has only partly arrived waits for
+    /// the next read, a sync word cut by the read's end is kept, and a damaged packet is skipped whether or not
+    /// there's a sync word to find the next by (coverage, Nov 24).
+    #[test]
+    fn a_stream_resumes_skips_damage_and_keeps_a_cut_sync_word() {
+        let sync = [0xEB, 0x90];
+        let p = spec(Some("EB90"), DType::U16, Counts::Payload, Checksum::Crc16Ccitt);
+        let (a, b) = (packet(&p, true, 10, 1), packet(&p, true, 20, 2));
+        // junk, a whole packet, the start of the next
+        let mut data = vec![0u8; 5];
+        data.extend(&a);
+        data.extend(&b[..b.len() - 3]);
+        let f = frame_stream(&data, &p, &[], 10, &sync, true);
+        assert_eq!(f.packets, [StreamPacket { offset: 5, stored: 10, id: None }]);
+        assert_eq!((f.skipped, f.consumed), (5, 5 + a.len()), "the partial packet is kept for the next read");
+        let mut next = data[f.consumed..].to_vec();
+        next.extend(&b[b.len() - 3..]);
+        let g = frame_stream(&next, &p, &[], 10, &sync, true);
+        assert_eq!((g.packets.len(), g.packets[0].stored, g.consumed), (1, 20, next.len()));
+
+        // a read that ends on the first byte of a sync word keeps that byte
+        let mut cut = a.clone();
+        cut.push(0xEB);
+        let f = frame_stream(&cut, &p, &[], 10, &sync, true);
+        assert_eq!((f.packets.len(), f.consumed), (1, a.len()));
+        let f = frame_stream(&[1, 2, 3, 4], &p, &[], 10, &sync, true);
+        assert_eq!((f.skipped, f.consumed), (3, 3), "no sync word: all but what could start one");
+
+        // a bad checksum: with a sync word, the scan moves on byte by byte and finds the next packet
+        let mut bad = a.clone();
+        bad[14] ^= 0xff;
+        bad.extend(&b);
+        let f = frame_stream(&bad, &p, &[], 10, &sync, true);
+        assert_eq!(f.packets.len(), 1);
+        assert_eq!(f.packets[0].offset, a.len());
+
+        // without a sync word: a bad checksum skips that packet whole, and an impossible length skips the rest
+        let plain = spec(None, DType::U16, Counts::Packet, Checksum::Crc16Ccitt);
+        let (a, b) = (packet(&plain, true, 10, 1), packet(&plain, true, 20, 2));
+        let mut bad = a.clone();
+        bad[14] ^= 0xff;
+        bad.extend(&b);
+        let f = frame_stream(&bad, &plain, &[], 10, &[], true);
+        assert_eq!((f.packets.len(), f.skipped), (1, a.len()));
+        assert_eq!(f.packets[0].offset, a.len());
+        let mut impossible = b.clone();
+        impossible[2..4].copy_from_slice(&3u16.to_be_bytes()); // shorter than the header it counts
+        impossible.extend(&a);
+        let f = frame_stream(&impossible, &plain, &[], 10, &[], true);
+        assert_eq!((f.packets.len(), f.skipped, f.consumed), (0, impossible.len(), impossible.len()));
+
+        // a file's scan stops at a partial last packet
+        let mut file = a.clone();
+        file.extend(&b[..10]);
+        let f = frame(&file, 0, &plain, 10, None, &[], true);
+        assert_eq!((f.packets.len(), f.bad), (1, 0));
+    }
+}
