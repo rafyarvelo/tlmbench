@@ -99,6 +99,9 @@ Only bug fixes touch `app/ui/src`, each with a test. A new idea goes to `docs/po
   - `tools/testdata/make.py --help` used to write the whole set into `./--help` (fixed).
   - Browser-only tests that drop a file at start-up wait for `__tlmApp.dropReady()`: the app's drop listener registers
     asynchronously, and `t_browserpayload` lost its drop on a loaded Linux runner (a5e87b4). Check a new test the same way.
+  - A live test that must not drop records waits on the recorder (`src.health().records_written`), never on a fixed
+    pace: a loaded CI runner falls behind and a full ring drops records by design (7b1d373).
+  - In zsh, `kill $pids` with several PIDs in one variable fails (no word splitting): list them, or use `kill ${=pids}`.
   - GitHub's macOS arm64 runners can be unavailable ("not acquired by Runner of type hosted"): the job is cancelled
     before a step runs. That isn't a failure of ours; rerun the failed jobs once the run ends.
 - **Earlier lessons** (still true): never run the UI suite while cargo builds (the harness waits a fixed 600 ms, so boot
