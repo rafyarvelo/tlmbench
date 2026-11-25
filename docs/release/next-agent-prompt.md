@@ -29,9 +29,11 @@ then `rc.2`, and so on to 1.0.0.**
 
 ## Coverage (R6c, while the owner tests)
 
-`docs/release/release-plan.md`, "R6c Coverage", has the Rust report (Nov 24) and the steps: five Rust tests for the
-gaps it found, in order, then the JavaScript coverage run and its tests. The status table's R6c row says which are
-done. Tests only: a test that finds a bug fixes it.
+The owner's goal (Nov 24): coverage as close to 100% as possible, Rust and the UI, and measured in CI.
+`docs/release/release-plan.md`, "R6c Coverage", splits it into sub-steps R6c.1–R6c.5 (one crate or area a run, so
+agents can hand it off); the status table's R6c row says where the last run stopped, with the numbers and commit.
+Tests only: a test that finds a bug fixes it. What can't be covered is written down with its reason in
+`docs/developers/coverage.md`. The CI job (R6c.5) waits for the owner's OK of its first version.
 
 ## The owner's test pass (what to do with it)
 
