@@ -160,8 +160,15 @@ try {
       await p.click('#exFolder');
       await p.click('.exmenu [data-ex="refresh"]');
       check('a file its pattern names lists as openable', await until(() => !!document.querySelector('#explorer .row.file[data-path="local://runs/bench.demo"]')));
-      await p.dblclick('#explorer .row.file[data-path="local://runs/bench.demo"]');
-      check('and opens through the folder\'s plugin', await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].some((x) => x.textContent === 'bench.demo'), null, 60000) && (await p.evaluate(() => window.__tlmParse)) === 'plugin', await p.evaluate(() => [window.__tlmParse, document.querySelector('#wsNote')?.textContent]));
+      // the refreshed list can render again just after the row appears, and a double-click on the row it replaces is lost
+      // (CI, Nov 25: no tab, no note, nothing opened): open it again until it does; opening an open file shows its tab
+      const opened = () => until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].some((x) => x.textContent === 'bench.demo') || !!document.querySelector('#wsNote')?.textContent, null, 10000);
+      let shown = false;
+      for (let k = 0; k < 6 && !shown; k++) {
+        await p.dblclick('#explorer .row.file[data-path="local://runs/bench.demo"]').catch(() => {});
+        shown = await opened();
+      }
+      check('and opens through the folder\'s plugin', shown && (await until(() => [...document.querySelectorAll('#wsTabs .wstab .nm')].some((x) => x.textContent === 'bench.demo'), null, 60000)) && (await p.evaluate(() => window.__tlmParse)) === 'plugin', await p.evaluate(() => [window.__tlmParse, document.querySelector('#wsNote')?.textContent, [...document.querySelectorAll('#wsTabs .wstab .nm')].map((x) => x.textContent)]));
     } else console.log('  (skipped the folder\'s plugins: just plugin-template builds the template)');
     check('no page errors', errs.length === 0, errs);
     await ctx.close();
