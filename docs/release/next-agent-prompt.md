@@ -18,7 +18,7 @@ table has the same.
 2. `python3 ci/ledger_check.py`: Done 345, Partial 3, Missing 2, Diverged 1, Unverified 19, Owner pass 18 (388 rows)
    at the hand-off.
 3. `git log origin/main..main`: only this hand-off's docs commit should be unpushed; it goes up with your first code push.
-4. CI on `00a1f9d`: see the status table's CI row.
+4. CI was green on `00a1f9d` (run 45670948681; wheels 45670948792).
 
 ## Where things stand
 
