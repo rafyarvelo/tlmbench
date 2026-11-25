@@ -79,6 +79,7 @@ runs a step, keep the step smaller and have it stop and report at the first desi
 | R4 Packaging and release automation | Opus | Signing, notarisation and a release workflow that must work first time on three OSes |
 | R5 Real-window passes and fixes | Opus | Bugs headless tests can't see; writing the owner's checklists: Sonnet |
 | R6 Performance and security review | Opus | Measuring budgets honestly, a security review; re-running the gates: Sonnet |
+| R6c Coverage | Sonnet | Tests for listed gaps, crate by crate (R6c.3) and file by file (R6c.4), against a written list; Opus when a test finds a real bug, for the UI's harder paths, and for R6c.5 (the CI job and its ratchet) |
 | R7 Documentation | Sonnet | The manual and guides from the design, the ledger and the app; generated reference pages and screenshot runs: Haiku |
 | R8 Cleanup | Haiku | Deleting the agreed list and pruning; dead code and dependency checks: Sonnet |
 | R9 Release candidate and release | Sonnet | Running the checklist; Opus for an RC bug that blocks the tag |
