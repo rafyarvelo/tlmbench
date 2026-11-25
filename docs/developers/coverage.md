@@ -43,6 +43,7 @@ The tests that start their own browser (the browser-only, viewer and real-core t
 | Nov 24, `ff087fc` | 76.5% | |
 | Nov 24, `b6580c6` (R6c.1's five tests) | 77.5% | |
 | Nov 24, `441c477` | | 91.7% (75.9%) |
+| Nov 25, `f9ffec7` (R6c.3, decode's first pass) | 78.3% (decode 93.7%: csv 96.5%, packets_core 96.6%, fixed 97.1%, descriptor 95.5%, packets 94.9%, cache 95.2%) | |
 
 ## What stays uncovered, and why
 
