@@ -191,7 +191,8 @@ fn the_field_wrapper_gives_a_plugins_column_what_its_own_column_gets() {
     assert_eq!((all[0][0].min, all[1][0].min), (0.0, 0.0));
     assert_eq!((all[0][0].first, all[1][0].first), (0.0, 250.0), "each column's own summaries");
     assert_eq!(rec.summarize(1, 0, N), all[1]);
-    rec.prefetch(&[0..N]);
+    let whole = 0..N;
+    rec.prefetch(std::slice::from_ref(&whole));
     // the file's own big-endian column is chunked and decodes from the file; the plugin's cached column isn't
     assert!((rec.chunked(0), rec.chunked(1)) == (true, false));
     let chunks = rec.decode_chunks(&[0], 0..1);

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use tlmbench_core::chunks::Held;
-use tlmbench_core::{Recording, TraceKind, Viewport};
+use tlmbench_core::{TraceKind, Viewport};
 use tlmbench_decode::descriptor::DType;
 use tlmbench_decode::plugin::*;
 use tlmbench_decode::{OpenOptions, open};
