@@ -802,6 +802,121 @@ mod tests {
         assert_eq!(f.value_at(0, 2 * CHUNK_SAMPLES + 3, &held), f.value_at(0, 2 * CHUNK_SAMPLES + 3, &Held::default()));
     }
 
+    /// Every field type, in both byte orders, read from memory and through a map: values, chunks and block summaries
+    /// agree with what was written (coverage, Nov 24: most types' branches had never run).
+    #[test]
+    fn every_type_reads_alike_in_values_chunks_and_summaries() {
+        use DType::*;
+        let types = [I8, I16, I32, I64, U8, U16, U32, U64, F32, F64];
+        let mut offset = 0;
+        let fields: Vec<Field> = types
+            .iter()
+            .map(|&t| {
+                let f = field(&format!("{t:?}"), t, offset);
+                offset += t.size() as u64;
+                f
+            })
+            .collect();
+        // record i holds i % 100 in every field, negated in the signed and float ones
+        let value =
+            |t: DType, i: usize| if matches!(t, U8 | U16 | U32 | U64) { (i % 100) as f64 } else { -((i % 100) as f64) };
+        let n = CHUNK_SAMPLES + 100;
+        for endian in [Endian::Little, Endian::Big] {
+            let big = endian == Endian::Big;
+            let desc = Descriptor {
+                sequence: None,
+                files: Vec::new(),
+                packet_types: Vec::new(),
+                events: Vec::new(),
+                packets: None,
+                schema: 1,
+                name: None,
+                endian,
+                header_size: 0,
+                record_size: offset,
+                time: TimeSpec::Rate { rate_hz: 100.0, t0_ns: 0 },
+                fields: fields.clone(),
+            };
+            let record = |i: usize| -> Vec<u8> {
+                let mut r = Vec::new();
+                for &t in &types {
+                    let v = value(t, i);
+                    macro_rules! put {
+                        ($ty:ty) => {{
+                            let x = v as $ty;
+                            r.extend_from_slice(&if big { x.to_be_bytes() } else { x.to_le_bytes() });
+                        }};
+                    }
+                    match t {
+                        I8 => put!(i8),
+                        I16 => put!(i16),
+                        I32 => put!(i32),
+                        I64 => put!(i64),
+                        U8 => put!(u8),
+                        U16 => put!(u16),
+                        U32 => put!(u32),
+                        U64 => put!(u64),
+                        F32 => put!(f32),
+                        F64 => put!(f64),
+                    }
+                }
+                r
+            };
+            let in_memory = file(&desc, (0..n).map(record));
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("types.tlm");
+            let mut data = Vec::new();
+            reference::write_header(&mut data, &desc).unwrap();
+            (0..n).for_each(|i| data.extend(record(i)));
+            std::fs::write(&path, data).unwrap();
+            let mapped = FixedWidth::open_reference(&path).unwrap();
+            for f in [&in_memory, &mapped] {
+                let h = Held::default();
+                let chans: Vec<usize> = (0..types.len()).collect();
+                for (c, &t) in types.iter().enumerate() {
+                    for i in [0, 57, CHUNK_SAMPLES + 99] {
+                        assert_eq!(f.value_at(c, i, &h), value(t, i), "{t:?} {endian:?} record {i}");
+                    }
+                }
+                let chunks = Channels::decode_chunks(f, &chans, 0..2);
+                assert_eq!(chunks.len(), types.len());
+                for (c, &t) in types.iter().enumerate() {
+                    assert_eq!(chunks[c].len(), 2, "{t:?}");
+                    assert_eq!(chunks[c][1].len(), 100, "{t:?}: the second chunk is the rest");
+                }
+                for (a, b) in [(0, n), (256 * 4, 256 * 20)] {
+                    let all = Channels::summarize_all(f, a, b);
+                    for (c, got) in all.iter().enumerate() {
+                        let want = f.summarize(c, a, b);
+                        let same = |x: &Summary, y: &Summary| bytemuck::bytes_of(x) == bytemuck::bytes_of(y);
+                        assert!(
+                            got.len() == want.len() && got.iter().zip(&want).all(|(x, y)| same(x, y)),
+                            "{:?}",
+                            types[c]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_packet_descriptor_or_a_short_file_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let (bin, toml) = (dir.path().join("x.bin"), dir.path().join("x.toml"));
+        std::fs::write(&bin, [0u8; 10]).unwrap();
+        let fixed = "schema = 1\nrecord_size = 4\nheader_size = 100\ntime = { source = \"index\" }\n\
+                     fields = [ { name = \"v\", type = \"u32\", offset = 0 } ]\n";
+        std::fs::write(&toml, fixed).unwrap();
+        let err = FixedWidth::open_with_descriptor(&bin, &toml).unwrap_err().to_string();
+        assert!(err.contains("10 bytes, shorter than its 100-byte header"), "{err}");
+        let packets = fixed.replace("header_size = 100\n", "")
+            + "[packets]\nsync = \"EB90\"\nheader_size = 4\nlength = { offset = 2, type = \"u16\" }\n";
+        std::fs::write(&toml, packets.replace("offset = 0 }", "offset = 4 }")).unwrap();
+        let err = FixedWidth::open_with_descriptor(&bin, &toml).unwrap_err().to_string();
+        assert!(err.contains("lays out a packet file"), "{err}");
+    }
+
     #[test]
     fn a_native_one_field_file_is_not_chunked() {
         let desc = Descriptor {
