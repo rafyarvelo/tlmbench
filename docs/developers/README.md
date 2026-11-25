@@ -9,6 +9,7 @@ Using the app is in the [User Manual](../manual/README.md). What the product pro
 3. [Building and testing](building-and-testing.md): setup, the `just` recipes, pinned versions, CI, the read-only rule.
 4. [The test suites](tests.md): Rust, Python, the UI tests and the fake core, the prototype's, fuzzing, screenshots.
 5. [Gates and measurements](gates.md): the performance and correctness gates and how each is judged.
+   [Test coverage](coverage.md): how to measure it (Rust and the UI), where it stands, and what stays uncovered on purpose.
 6. [File formats](formats.md): `.tlm`, the cache, descriptors, `.tlmbench/`, exports, the wire protocol.
 7. [Plugins](plugins.md): decoders, payload decoders and alignment estimators (WASM), native decoders (C).
 8. [Changing the UI](ui-conventions.md): the conventions a new control follows.
