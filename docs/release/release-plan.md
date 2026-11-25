@@ -338,6 +338,8 @@ tools/gen 0% (the gates' generator). The gaps to close, one test each, in this o
    summaries and stats through the wrapper, against the plugin's values (the template-payload plugin, as the
    existing payload tests use).
 
+**After the five tests (Nov 24, `b6580c6`, 325 tests):** 77.5% of lines; store 89.4%, live 93.8%, decode 90.9%; `align.rs` 61.8% → 93.6%, `group.rs` 67.5% → 89.2%, `tail.rs` 90.5% → 95.7%, `payload.rs` 69.2% → 82.9%, live `lib.rs` 91.5% → 92.5%. What these files still miss is of the kinds below.
+
 Not worth a test: data-type match arms no sample file uses, the read-ahead for mapped files, plain delegations, and
 `parquet_core.rs` (the WASM crate's own tests cover it, outside the workspace run).
 
