@@ -101,6 +101,8 @@ Only bug fixes touch `app/ui/src`, each with a test. A new idea goes to `docs/po
     asynchronously, and `t_browserpayload` lost its drop on a loaded Linux runner (a5e87b4). Check a new test the same way.
   - A live test that must not drop records waits on the recorder (`src.health().records_written`), never on a fixed
     pace: a loaded CI runner falls behind and a full ring drops records by design (7b1d373).
+  - A double-click right after Explorer's refresh can land on a row the list is replacing and be lost (t_browserfolder,
+    CI f9ffec7: no tab, no note): a test opens again until a tab or a note shows.
   - In zsh, `kill $pids` with several PIDs in one variable fails (no word splitting): list them, or use `kill ${=pids}`.
   - GitHub's macOS arm64 runners can be unavailable ("not acquired by Runner of type hosted"): the job is cancelled
     before a step runs. That isn't a failure of ours; rerun the failed jobs once the run ends.
