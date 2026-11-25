@@ -108,6 +108,136 @@ fn every_compression_reads_back() {
     }
 }
 
+/// Every field type in a packet's records, both byte orders: values, chunks and summaries agree with what was
+/// written; and a file timed by its packets' order alone (coverage, Nov 24).
+#[test]
+fn every_type_reads_alike_and_an_index_time_counts_records() {
+    use DType::*;
+    let types = [I8, I16, I32, I64, U8, U16, U32, U64, F32, F64];
+    let value =
+        |t: DType, i: usize| if matches!(t, U8 | U16 | U32 | U64) { (i % 100) as f64 } else { -((i % 100) as f64) };
+    let tmp = tempfile::tempdir().unwrap();
+    for (k, endian) in [Endian::Little, Endian::Big].into_iter().enumerate() {
+        let big = endian == Endian::Big;
+        let mut offset = 12; // after the packet header
+        let fields: Vec<Field> = types
+            .iter()
+            .map(|&t| {
+                let f = Field {
+                    name: format!("{t:?}"),
+                    dtype: t,
+                    offset,
+                    unit: None,
+                    scale: 1.0,
+                    value_offset: 0.0,
+                    category: None,
+                    bits: None,
+                    plugin: None,
+                    size: 0,
+                    params: None,
+                };
+                offset += t.size();
+                f
+            })
+            .collect();
+        let mut d = desc(Compression::Lz4, Checksum::None);
+        d.endian = endian;
+        d.record_size = offset - 12;
+        d.fields = fields;
+        d.time = if big { TimeSpec::Index } else { TimeSpec::Rate { rate_hz: 1000.0, t0_ns: 0 } };
+        let p = d.packets.clone().unwrap();
+        // a u16 length: 1000 records of 42 bytes fit a packet
+        let (packets, per) = (80, 1000);
+        let mut data = Vec::new();
+        for pk in 0..packets {
+            let mut payload = Vec::new();
+            for j in 0..per {
+                let i = pk * per + j;
+                for &t in &types {
+                    let v = value(t, i);
+                    macro_rules! put {
+                        ($ty:ty) => {{
+                            let x = v as $ty;
+                            payload.extend_from_slice(&if big { x.to_be_bytes() } else { x.to_le_bytes() });
+                        }};
+                    }
+                    match t {
+                        I8 => put!(i8),
+                        I16 => put!(i16),
+                        I32 => put!(i32),
+                        I64 => put!(i64),
+                        U8 => put!(u8),
+                        U16 => put!(u16),
+                        U32 => put!(u32),
+                        U64 => put!(u64),
+                        F32 => put!(f32),
+                        F64 => put!(f64),
+                    }
+                }
+            }
+            data.extend(encode_packet(&p, big, &[0u8; 12], &payload).unwrap());
+        }
+        let f = open(tmp.path(), &format!("types{k}.bin"), &d, &data);
+        let n = packets * per;
+        assert_eq!(f.info().samples, n, "{endian:?}: {} bad packets, {} bytes skipped", f.bad_packets, f.skipped_bytes);
+        let h = Held::default();
+        for (c, &t) in types.iter().enumerate() {
+            for i in [0, 999, 1000, n - 1] {
+                assert_eq!(f.value_at(c, i, &h), value(t, i), "{t:?} {endian:?} record {i}");
+            }
+        }
+        if big {
+            // timed by order: record i at i seconds, from 0
+            assert_eq!(f.info().time, TimeSource::Index);
+            assert_eq!((f.time_at(0), f.time_at(n - 1)), (0, (n as i64 - 1) * 1_000_000_000));
+            assert_eq!((f.info().t_first, f.info().t_last), (Some(0), Some((n as i64 - 1) * 1_000_000_000)));
+        }
+        let chans: Vec<usize> = (0..types.len()).collect();
+        let chunks = Channels::decode_chunks(&f, &chans, 0..2);
+        assert!(chunks.iter().all(|c| c.len() == 2));
+        for (a, b) in [(0, n), (256 * 4, 256 * 200)] {
+            let all = Channels::summarize_all(&f, a, b);
+            for (c, got) in all.iter().enumerate() {
+                assert_eq!(got.len(), f.summarize(c, a, b).len(), "{:?}", types[c]);
+            }
+        }
+        // past the end: no records, and a time past the last finds the end
+        assert_eq!(f.lower_bound(f.time_at(n - 1) + 1), n);
+    }
+}
+
+/// A descriptor without [packets] isn't a packet file; an empty file has no times; a damaged index left in the
+/// cache is rebuilt, not trusted (coverage, Nov 24).
+#[test]
+fn a_wrong_descriptor_an_empty_file_and_a_stale_index() {
+    let tmp = tempfile::tempdir().unwrap();
+    let d = desc(Compression::None, Checksum::None);
+    let path = tmp.path().join("p.bin");
+    fs::write(&path, bytes(&d, 3, 10)).unwrap();
+    let mut flat = d.clone();
+    flat.packets = None;
+    // big enough for the fields' offsets (which count the packet header), so it fails for the missing table alone
+    flat.record_size = 26;
+    let err = PacketFile::open(&path, flat, None, "bench", &tmp.path().join("cache")).unwrap_err().to_string();
+    assert!(err.contains("no [packets] table"), "{err}");
+
+    let empty = open(tmp.path(), "empty.bin", &d, &[]);
+    assert_eq!((empty.info().samples, empty.info().t_first, empty.info().t_last), (0, None, None));
+
+    let f = open(tmp.path(), "p.bin", &d, &bytes(&d, 3, 10));
+    assert_eq!(f.info().samples, 30);
+    drop(f);
+    let dirs: Vec<_> = fs::read_dir(tmp.path().join("cache/packets")).unwrap().flatten().map(|e| e.path()).collect();
+    for dir in &dirs {
+        if dir.join("index.bin").exists() {
+            fs::write(dir.join("index.bin"), b"short").unwrap();
+        }
+    }
+    let again = PacketFile::open(&path, d.clone(), None, "bench", &tmp.path().join("cache")).unwrap();
+    assert_eq!(again.info().samples, 30, "rebuilt from the file");
+    assert_eq!(again.value_at(1, 29, &Held::default()), 29.0 / 4.0);
+}
+
 #[test]
 fn the_index_names_its_source_for_the_cache() {
     // the store keeps a packet index while its source is open (it reads the source's fingerprint from `opened`)
