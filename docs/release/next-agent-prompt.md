@@ -37,8 +37,10 @@ Tests only: a test that finds a bug fixes it. What can't be covered is written d
 
 ## The owner's test pass (what to do with it)
 
-The owner runs `docs/release/test-plan.md` once per OS on rc.1's installers (data from `tools/testdata/make.py`) and
-writes P or F per item. Then:
+The owner fills in a copy per OS of `docs/release/test-plan.md` on rc.1's installers (`test-plan-macos.md`, `-windows`,
+`-linux`; data from `tools/testdata/make.py`) and writes P or F per item. **Change the plan, never a copy, then run
+`python3 tools/testplan.py`**: it rewrites the copies with only their own system's items and keeps every result
+written in them (`--check` says whether they're up to date). The macOS pass is under way (Nov 24–25). Then:
 
 1. Rank the Fs: crashes, data wrong or lost, and anything that writes next to the data first; then a feature that
    doesn't work; then looks and copy. Ask the owner only where an F is a design question (give a recommendation).
