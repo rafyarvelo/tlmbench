@@ -825,6 +825,70 @@ mod tests {
         assert_eq!(*rows.t.last().unwrap(), 20_001_000_000_000);
     }
 
+    /// Coverage (Nov 24): a quoted field longer than the reader's first buffer and a header wider than its first
+    /// field list make it grow, and nothing is lost.
+    #[test]
+    fn the_quoted_reader_grows_for_long_fields_and_wide_rows() {
+        let names: Vec<String> = (0..100).map(|i| format!("c{i}")).collect();
+        let long = "x".repeat(10_000);
+        let row = |t: usize| {
+            format!("{t},{},\"{long}\"\n", (1..99).map(|i| (i * t).to_string()).collect::<Vec<_>>().join(","))
+        };
+        let csv = format!("{}\n{}{}", names.join(","), row(0), row(1));
+        let (schema, rows) = parse_all(csv.as_bytes()).unwrap();
+        assert!(schema.quoted);
+        assert_eq!(schema.columns.len(), 100);
+        assert_eq!(rows.rows, 2);
+        // c98 is the 98th number of the row (c0 is the time)
+        let c98 = schema.columns.iter().filter(|c| c.kind == Kind::Number).count() - 1;
+        assert_eq!(rows.columns[c98], [0.0, 98.0]);
+    }
+
+    /// A text column with more than MAX_LABELS different texts is left out, within a chunk and across chunks, and a
+    /// file of several chunks keeps one dictionary in file order (coverage, Nov 24).
+    #[test]
+    fn text_columns_past_the_label_limit_are_left_out() {
+        let mut csv = String::from("t,mode\n");
+        for i in 0..(MAX_LABELS + 44) {
+            csv.push_str(&format!("{i},m{i}\n"));
+        }
+        let (_, rows) = parse_all(csv.as_bytes()).unwrap();
+        assert!(rows.texts[0].over, "{} labels", rows.texts[0].dict.len());
+
+        // two chunks' texts merged as the cache's writer does: the overflow is noted and gets no label
+        let chunk = |from: usize, to: usize| Texts {
+            dict: (from..to).map(|i| format!("m{i}")).collect(),
+            codes: (0..(to - from) as u16).collect(),
+            over: false,
+        };
+        let mut labels = Labels::default();
+        assert_eq!(labels.absorb(&chunk(0, 200))[199], 199.0);
+        let second = labels.absorb(&chunk(150, 300));
+        assert_eq!(second[0], 150.0, "a text already seen keeps its code");
+        assert_eq!(second[105], 255.0, "the last that fits");
+        assert!(second[106].is_nan() && labels.over);
+
+        // a file of several chunks: one dictionary, in the order the texts first appear
+        let mut big = String::from("t,mode,v\n");
+        let modes = ["IDLE", "TAXI", "CLIMB"];
+        let mut i = 0usize;
+        while big.len() < 2 * CHUNK_BYTES + 1000 {
+            big.push_str(&format!("{i},{},{}\n", modes[(i / 100_000) % 3], i % 7));
+            i += 1;
+        }
+        let (_, rows) = parse_all(big.as_bytes()).unwrap();
+        assert_eq!(rows.rows, i);
+        assert_eq!(rows.texts[0].dict, modes);
+        assert!(!rows.texts[0].over);
+        assert_eq!(rows.texts[0].codes[i - 1] as usize, (i - 1) / 100_000 % 3);
+    }
+
+    #[test]
+    fn an_empty_file_has_no_header_and_header_names_skip_comments() {
+        assert!(scan(b"").unwrap_err().to_string().contains("no header row"));
+        assert_eq!(header_names(b"# exported by a logger\ntime [s],alt\n0,1\n").unwrap(), ["time", "alt"]);
+    }
+
     /// An import profile's choices of time column and kind (coverage, Nov 24).
     #[test]
     fn a_profile_picks_the_time_column_its_unit_and_kinds() {
