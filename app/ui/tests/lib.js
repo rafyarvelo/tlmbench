@@ -35,6 +35,8 @@ export async function open(opts = {}) {
   const b = await chromium.launch(opts.launchArgs ? { args: opts.launchArgs } : {});
   const ctx = await b.newContext({ viewport: opts.viewport ?? { width: 1440, height: 900 }, deviceScaleFactor: opts.dpr ?? 1, colorScheme: opts.colorScheme ?? 'dark' });
   const p = await ctx.newPage();
+  // JavaScript coverage for a report (docs/release/release-plan.md, R6c): only when TLM_JS_COVERAGE names a folder
+  if (process.env.TLM_JS_COVERAGE) await p.coverage.startJSCoverage({ resetOnNavigation: false });
   const files = opts.files ?? { [DEFAULT_FILE]: {} };
   const launch = opts.launch === undefined ? Object.keys(files)[0] ?? null : opts.launch;
   await p.addInitScript(FAKE);
@@ -110,6 +112,15 @@ export async function run(name, body, opts = {}) {
     if (env.errs.length) {
       failed++;
       console.log(`  FAIL page errors: ${env.errs.slice(0, 3).join(' | ')}`);
+    }
+    if (process.env.TLM_JS_COVERAGE) {
+      try {
+        const { mkdirSync, writeFileSync } = await import('node:fs');
+        mkdirSync(process.env.TLM_JS_COVERAGE, { recursive: true });
+        writeFileSync(join(process.env.TLM_JS_COVERAGE, `${name}.json`), JSON.stringify(await env.p.coverage.stopJSCoverage()));
+      } catch (e) {
+        console.log(`  (no coverage: ${e.message})`);
+      }
     }
     await env.b.close();
     env.server.close();
