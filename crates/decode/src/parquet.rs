@@ -304,15 +304,28 @@ mod tests {
     #[test]
     fn every_kind_of_time_column_reads_in_nanoseconds() {
         let s = 1_000_000_000i64;
+        // every case is checked before the test fails, so one run names all that are wrong
+        let mut wrong: Vec<String> = Vec::new();
+        let mut same = |what: &str, got: Vec<i64>, want: [i64; 3]| {
+            if got != want {
+                wrong.push(format!("{what}: {got:?}, wanted {want:?}"));
+            }
+        };
+        let day = 86_400 * s;
         // temporal types carry their unit
-        assert_eq!(times_of(Arc::new(TimestampSecondArray::from(vec![0, 1, 2])), "ts"), [0, s, 2 * s]);
-        assert_eq!(times_of(Arc::new(TimestampMillisecondArray::from(vec![0, 1, 2])), "ts"), [0, 1_000_000, 2_000_000]);
-        assert_eq!(times_of(Arc::new(TimestampNanosecondArray::from(vec![5, 6, 9])), "ts"), [5, 6, 9]);
-        assert_eq!(times_of(Arc::new(Date32Array::from(vec![0, 1, 2])), "day"), [0, 86_400 * s, 2 * 86_400 * s]);
+        same("seconds", times_of(Arc::new(TimestampSecondArray::from(vec![0, 1, 2])), "ts"), [0, s, 2 * s]);
+        same(
+            "milliseconds",
+            times_of(Arc::new(TimestampMillisecondArray::from(vec![0, 1, 2])), "ts"),
+            [0, 1_000_000, 2_000_000],
+        );
+        same("nanoseconds", times_of(Arc::new(TimestampNanosecondArray::from(vec![5, 6, 9])), "ts"), [5, 6, 9]);
+        same("Date32", times_of(Arc::new(Date32Array::from(vec![0, 1, 2])), "day"), [0, day, 2 * day]);
         // a Date64 (milliseconds) is written as a Date32: whole days
-        assert_eq!(
+        same(
+            "Date64",
             times_of(Arc::new(Date64Array::from(vec![0, 86_400_000, 172_800_000])), "day"),
-            [0, 86_400 * s, 2 * 86_400 * s]
+            [0, day, 2 * day],
         );
         // numbers are times when the name says the unit
         let ints: [ArrayRef; 8] = [
@@ -326,14 +339,15 @@ mod tests {
             Arc::new(UInt64Array::from(vec![0, 1, 2])),
         ];
         for a in ints {
-            let t = a.data_type().clone();
-            assert_eq!(times_of(a, "time [s]"), [0, s, 2 * s], "{t}");
+            let t = a.data_type().to_string();
+            same(&t, times_of(a, "time [s]"), [0, s, 2 * s]);
         }
-        assert_eq!(times_of(Arc::new(Float32Array::from(vec![0.0, 0.5, 2.0])), "time [s]"), [0, s / 2, 2 * s]);
-        assert_eq!(times_of(Arc::new(Float64Array::from(vec![0.0, 0.25, 2.0])), "time [s]"), [0, s / 4, 2 * s]);
+        same("f32", times_of(Arc::new(Float32Array::from(vec![0.0, 0.5, 2.0])), "time [s]"), [0, s / 2, 2 * s]);
+        same("f64", times_of(Arc::new(Float64Array::from(vec![0.0, 0.25, 2.0])), "time [s]"), [0, s / 4, 2 * s]);
         let halves = Float16Array::from(vec![f16(0.0), f16(0.5), f16(2.0)]);
-        assert_eq!(times_of(Arc::new(halves), "time [s]"), [0, s / 2, 2 * s]);
-        assert_eq!(times_of(Arc::new(BooleanArray::from(vec![false, true, true])), "time [s]"), [0, s, s]);
+        same("f16", times_of(Arc::new(halves), "time [s]"), [0, s / 2, 2 * s]);
+        same("bool", times_of(Arc::new(BooleanArray::from(vec![false, true, true])), "time [s]"), [0, s, s]);
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// Every value type, without nulls (kept in its type) and with (integers widen to f64, NaN for a null).
@@ -374,6 +388,8 @@ mod tests {
         let by_name = |n: &str| r.info().channels.iter().position(|c| c.name == n).unwrap_or_else(|| panic!("{n}"));
         let col = |n: &str| (0..3).map(|i| r.value_at(by_name(n), i, &h)).collect::<Vec<_>>();
         let dtype = |n: &str| r.info().channels[by_name(n)].dtype;
+        // every column is checked before the test fails, so one run names all that are wrong
+        let mut wrong: Vec<String> = Vec::new();
         for (n, want, ty) in [
             ("i8", [-1.0, 2.0, 3.0], "i8"),
             ("i16", [-1.0, 2.0, 3.0], "i16"),
@@ -386,7 +402,9 @@ mod tests {
             ("f16", [1.5, 2.0, 3.0], "f32"),
             ("bool", [1.0, 0.0, 1.0], "u8"),
         ] {
-            assert_eq!((col(n), dtype(n)), (want.to_vec(), ty), "{n}");
+            if (col(n), dtype(n)) != (want.to_vec(), ty) {
+                wrong.push(format!("{n}: {:?} {}, wanted {want:?} {ty}", col(n), dtype(n)));
+            }
         }
         // the question mark isn't a unit: the name stays
         for (n, ty) in [
@@ -403,10 +421,12 @@ mod tests {
             ("bool?", "f64"),
         ] {
             let v = col(n);
-            assert_eq!(dtype(n), ty, "{n}");
-            assert!(v[1].is_nan() && v[0] != 0.0 && v[2] != 0.0, "{n}: a null is NaN, the rest kept: {v:?}");
+            if dtype(n) != ty || !(v[1].is_nan() && v[0] != 0.0 && v[2] != 0.0) {
+                wrong.push(format!("{n}: {} with {v:?}, wanted {ty}, a null NaN and the rest kept", dtype(n)));
+            }
         }
         assert_eq!(col("i8?")[0], -1.0);
         assert_eq!(col("f16?")[0], 1.5);
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 }
