@@ -32,12 +32,14 @@ back. The agent fixes every F, ranked, and the next release candidate follows.
 
 ## 1. Install and first open
 
-**1.1** Check the download: `shasum -a 256 -c SHA256SUMS --ignore-missing` (Windows: `Get-FileHash <file>`, compare).
-The app's line says OK. Result:
+**1.1** Check the download: put `SHA256SUMS` in the same folder as the installer, then follow `docs/install.md`,
+"Checking a download" (macOS and Linux: `shasum -a 256 -c SHA256SUMS --ignore-missing`; Windows: its PowerShell
+lines). The installer's line says OK (Windows: `True`). Result: Pass
 
 **1.2 mac** Open the `.dmg`, drag TelemetryBench to Applications, open it. The first open needs one extra step:
-Privacy & Security › Open Anyway (macOS 15+), or right-click › Open (macOS 14 and earlier). Write which one you used in
-the note. After that it opens with no warning. Result: Note (which way):
+Privacy & Security › Open Anyway (macOS 15+), right-click › Open (macOS 14 and earlier), or in Terminal
+`xattr -dr com.apple.quarantine /Applications/TelemetryBench.app` (any version). Write which one you used in
+the note. After that it opens with no warning. Result: Note (which way): Pass, using the terminal command "xattr -dr com.apple.quarantine /Applications/TelemetryBench.app"
 
 **1.3 win** Run the `-setup.exe`. SmartScreen may warn: More info › Run anyway. It installs and starts from the Start
 menu. Result:
@@ -51,13 +53,13 @@ Result:
 Result:
 
 **1.7** The start page shows; Help › User manual opens the PDF manual; Help › Online manual opens a browser page.
-Result:
+Result: Pass
 
 **1.8** About TelemetryBench (macOS: the app menu; Windows and Linux: end of Help) shows the version, MIT OR Apache-2.0, and
-mentions THIRD_PARTY_LICENSES.md. Result:
+mentions THIRD_PARTY_LICENSES.md. Result: Pass
 
 **1.9** Help › Install command-line tool…, then in a new terminal `tlmbench --version` prints the version. (If it says
-the folder isn't on PATH, use Copy the line, add it as it says, open a new terminal.) Result:
+the folder isn't on PATH, use Copy the line, add it as it says, open a new terminal.) Result: Pass, but the dialog went away before I could copy the line. It should be a modal dialog with an easier line to copy, preferably a "copy to clipboard" option
 
 ## 2. Opening files
 

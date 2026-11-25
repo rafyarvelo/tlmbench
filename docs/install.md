@@ -25,8 +25,13 @@ The app carries the command line too: Help › Install command-line tool… puts
      blocked", click **Open Anyway**, and confirm with your password.
    - **macOS 14 (Sonoma) and earlier:** right-click (or Control-click) TelemetryBench in Applications › **Open**, then
      **Open** in the dialog.
+   - **Any version, in Terminal:** remove the flag macOS puts on downloaded apps, then open it as usual:
+     ```
+     xattr -dr com.apple.quarantine /Applications/TelemetryBench.app
+     ```
 
-   You do this once; afterwards it opens like any app.
+   You do this once; afterwards it opens like any app. (Check the download first if you like: [Checking a
+   download](#checking-a-download).)
 3. To use `tlmbench` in Terminal: Help › Install command-line tool…. It goes to `~/.local/bin`; if that folder isn't on
    your PATH, the dialog shows the line to add to `~/.zprofile` (Copy the line).
 
@@ -91,11 +96,30 @@ info /data/flight.tlm`.
 ## Checking a download
 
 Each file is listed in `SHA256SUMS` with its checksum, and has a build-provenance attestation that ties it to the
-workflow run that built it.
+workflow run that built it. To check that what you downloaded is what was built, download `SHA256SUMS` into the same
+folder as the file, then in a terminal in that folder:
+
+**macOS and Linux:**
 
 ```
-shasum -a 256 -c SHA256SUMS --ignore-missing          # macOS and Linux
-gh attestation verify <file> --repo rafyarvelo/tlmbench # any OS, with the GitHub CLI
+cd ~/Downloads
+shasum -a 256 -c SHA256SUMS --ignore-missing
 ```
 
-On Windows (PowerShell): `Get-FileHash <file>` and compare with the line in `SHA256SUMS`.
+It prints a line for each file of the list that's in the folder, such as
+`TelemetryBench-<version>-macos-universal.dmg: OK` (`--ignore-missing` skips the files you didn't download). **FAILED**
+means the file is damaged or not the one released: download it again. No output at all means `SHA256SUMS` isn't in
+the same folder as the file.
+
+**Windows (PowerShell):**
+
+```
+cd ~\Downloads
+$f = "TelemetryBench-<version>-windows-x64-setup.exe"
+(Get-FileHash $f).Hash.ToLower() -eq ((Select-String -Path SHA256SUMS -Pattern $f -SimpleMatch).Line -split '\s+')[0]
+```
+
+`True` means it matches; `False` means download it again.
+
+**Any system, with the GitHub CLI:** `gh attestation verify <file> --repo rafyarvelo/tlmbench` also checks that the file
+was built by this repository's release workflow.
