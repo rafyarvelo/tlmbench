@@ -34,12 +34,12 @@ back. The agent fixes every F, ranked, and the next release candidate follows.
 
 **1.1** Check the download: put `SHA256SUMS` in the same folder as the installer, then follow `docs/install.md`,
 "Checking a download" (macOS and Linux: `shasum -a 256 -c SHA256SUMS --ignore-missing`; Windows: its PowerShell
-lines). The installer's line says OK (Windows: `True`). Result: Pass
+lines). The installer's line says OK (Windows: `True`). Result:
 
 **1.2 mac** Open the `.dmg`, drag TelemetryBench to Applications, open it. The first open needs one extra step:
 Privacy & Security › Open Anyway (macOS 15+), right-click › Open (macOS 14 and earlier), or in Terminal
 `xattr -dr com.apple.quarantine /Applications/TelemetryBench.app` (any version). Write which one you used in
-the note. After that it opens with no warning. Result: Note (which way): Pass, using the terminal command "xattr -dr com.apple.quarantine /Applications/TelemetryBench.app"
+the note. After that it opens with no warning. Result: Note (which way):
 
 **1.3 win** Run the `-setup.exe`. SmartScreen may warn: More info › Run anyway. It installs and starts from the Start
 menu. Result:
@@ -53,38 +53,38 @@ Result:
 Result:
 
 **1.7** The start page shows; Help › User manual opens the PDF manual; Help › Online manual opens a browser page.
-Result: Pass
+Result:
 
 **1.8** About TelemetryBench (macOS: the app menu; Windows and Linux: end of Help) shows the version, MIT OR Apache-2.0, and
-mentions THIRD_PARTY_LICENSES.md. Result: Pass
+mentions THIRD_PARTY_LICENSES.md. Result:
 
 **1.9** Help › Install command-line tool…, then in a new terminal `tlmbench --version` prints the version. (If it says
-the folder isn't on PATH, use Copy the line, add it as it says, open a new terminal.) Result: Pass, but the dialog went away before I could copy the line. It should be a modal dialog with an easier line to copy, preferably a "copy to clipboard" option
+the folder isn't on PATH, use Copy the line, add it as it says, open a new terminal.) Result:
 
 ## 2. Opening files
 
 **2.1** Open folder… › `tlmbench-testdata/flights`. The Explorer lists the files; the folder's widgets, layout and check
-set are available. Result: Pass (I think?). Widgets are good, Layouts shows "Altitude and Battery" under "Shared in this folder". "Rules & Checks" is empty, not sure if that is expected.
+set are available. Result:
 
 **2.2** Open `flight-1.csv`. The import dialog shows the columns with time detected; open it. Charts appear, and
-nothing new is written in `flights/` (look in the folder). Result: Pass. Where did the "Takeoff" and "Hard Turn" events come from?
+nothing new is written in `flights/` (look in the folder). Result:
 
-**2.3** Open `flight-2.csv`: the dialog doesn't ask again (same header). Result: Pass
+**2.3** Open `flight-2.csv`: the dialog doesn't ask again (same header). Result:
 
 **2.4** Open `other/bench.bin` with Open recording…: it opens through its folder's descriptor (altitude, battery, armed).
-Result: Pass
+Result:
 
-**2.5** Open `other/modes.csv`: `mode` shows its words (IDLE, TAXI, CLIMB…) on the chart axis and in values. Result: Pass
+**2.5** Open `other/modes.csv`: `mode` shows its words (IDLE, TAXI, CLIMB…) on the chart axis and in values. Result:
 
-**2.6** Open `browser/bench.tlm` and a Parquet file from `browser/`. Both open. Result: Pass
+**2.6** Open `browser/bench.tlm` and a Parquet file from `browser/`. Both open. Result:
 
 **2.7** With the app closed, double-click `bench.tlm` in the file manager: the app opens it, in front. Again while it
-runs: a tab of its own. Result: Pass
+runs: a tab of its own. Result:
 
-**2.8** Right-click `flight-1.csv` › Open With: TelemetryBench is offered (and isn't the default). Result: Pass
+**2.8** Right-click `flight-1.csv` › Open With: TelemetryBench is offered (and isn't the default). Result:
 
 **2.9** Drag `flight-gap.csv`, then the `flights` folder, from the file manager onto the window: the file opens; the
-folder opens as Open folder… does. Result: Pass
+folder opens as Open folder… does. Result:
 
 **2.10** Open the `flights` folder in Explorer. Click the folder's ⋯ › **Refresh**, and straight away double-click
 `flight-2.csv`. Do it three times, quickly. Each double-click opens the file (or shows its tab): none is lost. (A UI
@@ -93,14 +93,14 @@ test lost one on CI, Nov 25; this checks whether a person can.) Result:
 ## 3. Looking at data
 
 **3.1** On `flight-1.csv`: wheel-zoom, drag to pan, Box zoom, Back, Fit. Each works and the time range updates.
-Result: Pass
+Result:
 
 **3.2** Point at a chart: values at the pointer. Place cursors A and B, open Measure: Δt, Δy, min, max, mean.
-Result: Pass
+Result:
 
-**3.3** `flight-gap.csv`: the 30 s hole is a gap in the line, not a straight line across. Result: Pass
+**3.3** `flight-gap.csv`: the 30 s hole is a gap in the line, not a straight line across. Result:
 
-**3.4** Play: the playhead moves; change the speed; set an A–B loop. Result: Pass, but "Loop A-B" only works after a pause
+**3.4** Play: the playhead moves; change the speed; set an A–B loop. Result:
 
 **3.5** Add a Table pane: sort by a column (its ▾ menu); type `> 15` in the filter box under battery_v's header; step
 through the matches (▲ ▼ in the row that appears under the table's bar); tick **Apply to charts** at that row's right. The
