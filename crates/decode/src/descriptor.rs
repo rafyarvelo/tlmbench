@@ -1040,12 +1040,39 @@ mod tests {
             ("unit = \"us\"", "unit = \"fortnights\"", "unknown variant"),
             ("endian = \"little\"", "endian = \"little\"\ncolour = 3", "unknown field"),
             ("record_size = 16", "record_size = 16\nsequence = \"nope\"", "sequence \"nope\""),
+            // coverage (Nov 24): every refusal a hand-written descriptor can meet
+            ("name = \"battery_v\"", "name = \" \"", "a field has an empty name"),
+            ("name = \"battery_v\"", "name = \"t\"", "field \"t\" appears twice"),
+            ("scale = 0.001", "scale = 0.001\nplugin = \" \"", "plugin needs the plugin's name"),
+            ("offset = 0", "offset = 0\nplugin = \"demo\"\nsize = 8", "can't be the time or the sequence"),
+            ("scale = 0.001", "scale = 0.001\nsize = 3", "size and params go with a plugin"),
+            (TIME, "source = \"rate\"\n        rate_hz = 0.0", "time.rate_hz 0 must be a positive number"),
+            (TIME, "source = \"counter\"\n        field = \"t\"\n        clock_hz = -1.0", "time.clock_hz -1 must be"),
         ];
         for (from, to, expect) in cases {
-            let err = Descriptor::parse(&EXAMPLE.replacen(from, to, 1)).unwrap_err().to_string();
+            let text = EXAMPLE.replacen(from, to, 1);
+            assert_ne!(text, EXAMPLE, "{from} must be in the example");
+            let err = Descriptor::parse(&text).unwrap_err().to_string();
             assert!(err.contains(expect), "{to}: {err}");
         }
+        // a sequence that is a bitfield
+        let text = EXAMPLE.replacen("record_size = 16", "record_size = 16\nsequence = \"battery_v\"", 1).replacen(
+            "scale = 0.001",
+            "scale = 0.001\nbits = { shift = 0, width = 4 }",
+            1,
+        );
+        let err = Descriptor::parse(&text).unwrap_err().to_string();
+        assert!(err.contains("sequence \"battery_v\" can't be a bitfield"), "{err}");
+        // a file's errors name it
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("broken.toml");
+        std::fs::write(&path, EXAMPLE.replacen("record_size = 16", "record_size = 0", 1)).unwrap();
+        let err = Descriptor::load(&path).unwrap_err().to_string();
+        assert!(err.contains("broken.toml: ") && err.contains("record_size"), "{err}");
     }
+
+    /// The example's time table, for the cases that swap it whole.
+    const TIME: &str = "source = \"field\"\n        field = \"t\"\n        unit = \"us\"";
 
     const PACKETS: &str = "\n[packets]\nsync = \"EB90\"\nheader_size = 12\nlength = { offset = 2, type = \"u16\" }\n\
                            checksum = \"crc16-ccitt\"\ncompression = \"zstd\"\n";
@@ -1070,6 +1097,7 @@ mod tests {
             ("sync = \"EB90\"", "sync = \"EB9\"", "hex"),
             ("offset = 2, type = \"u16\"", "offset = 11, type = \"u16\"", "inside the 12-byte header"),
             ("\"zstd\"", "\"brotli\"", "unknown variant"),
+            ("header_size = 12", "header_size = 70000", "at most 65536"),
             ("length = { offset = 2, type = \"u16\" }\n", "", "needs packets.length"),
         ] {
             let err =
@@ -1099,6 +1127,9 @@ mod tests {
             ("id = { offset = 4, type = \"u8\" }", "id = { offset = 8, type = \"u8\" }", "packets.id must be"),
             ("schema = 1\n", "schema = 1\nrecord_size = 4\n", "go in each type"),
             ("id = { offset = 4, type = \"u8\" }\n", "", "need [packets] with an id"),
+            ("name = \"b\"", "name = \" \"", "the packet type with id 2 has no name"),
+            ("name = \"b\"", "name = \"b\"\nplugin = \" \"", "plugin needs the plugin's name"),
+            ("name = \"b\"", "name = \"b\"\nparams = { x = 1 }", "params go with a plugin"),
         ] {
             let err = Descriptor::parse(&TYPES.replacen(from, to, 1)).unwrap_err().to_string();
             assert!(err.contains(expect), "{to}: {err}");
