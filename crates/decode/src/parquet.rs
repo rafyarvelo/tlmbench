@@ -272,4 +272,141 @@ mod tests {
         assert_eq!(r.info().time, tlmbench_core::TimeSource::Column { name: "t_ms".into() });
         assert_eq!((r.info().t_first, r.info().t_last), (Some(500_000), Some(1_500_000)));
     }
+
+    use arrow_array::types::{ArrowPrimitiveType, Float16Type};
+    use arrow_array::{
+        ArrayRef, Date32Array, Date64Array, Float16Array, Float64Array, Int8Array, Int32Array, Int64Array,
+        TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array, UInt16Array,
+        UInt32Array, UInt64Array,
+    };
+
+    fn f16(x: f32) -> <Float16Type as ArrowPrimitiveType>::Native {
+        <Float16Type as ArrowPrimitiveType>::Native::from_f32(x)
+    }
+
+    /// A file of one time column (any type the reader takes) and one channel; the times it opens with, in nanoseconds.
+    fn times_of(time: ArrayRef, name: &str) -> Vec<i64> {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("t.parquet");
+        let s = Arc::new(Schema::new(vec![
+            Field::new(name, time.data_type().clone(), true),
+            Field::new("v", DataType::Int32, false),
+        ]));
+        let n = time.len();
+        let v = Int32Array::from_iter_values((0..n as i32).map(|i| i * 10));
+        write(&src, &[RecordBatch::try_new(s, vec![time, Arc::new(v)]).unwrap()], 100);
+        let r = open_parquet(&src, &tmp.path().join("cache")).unwrap();
+        assert_eq!(r.info().channels.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["v"], "{name}");
+        assert_eq!(r.info().samples, n, "{name}");
+        r.read_times(0, n)
+    }
+
+    #[test]
+    fn every_kind_of_time_column_reads_in_nanoseconds() {
+        let s = 1_000_000_000i64;
+        // temporal types carry their unit
+        assert_eq!(times_of(Arc::new(TimestampSecondArray::from(vec![0, 1, 2])), "ts"), [0, s, 2 * s]);
+        assert_eq!(times_of(Arc::new(TimestampMillisecondArray::from(vec![0, 1, 2])), "ts"), [0, 1_000_000, 2_000_000]);
+        assert_eq!(times_of(Arc::new(TimestampNanosecondArray::from(vec![5, 6, 9])), "ts"), [5, 6, 9]);
+        assert_eq!(times_of(Arc::new(Date32Array::from(vec![0, 1, 2])), "day"), [0, 86_400 * s, 2 * 86_400 * s]);
+        // a Date64 (milliseconds) is written as a Date32: whole days
+        assert_eq!(
+            times_of(Arc::new(Date64Array::from(vec![0, 86_400_000, 172_800_000])), "day"),
+            [0, 86_400 * s, 2 * 86_400 * s]
+        );
+        // numbers are times when the name says the unit
+        let ints: [ArrayRef; 8] = [
+            Arc::new(Int8Array::from(vec![0, 1, 2])),
+            Arc::new(arrow_array::Int16Array::from(vec![0, 1, 2])),
+            Arc::new(Int32Array::from(vec![0, 1, 2])),
+            Arc::new(Int64Array::from(vec![0, 1, 2])),
+            Arc::new(UInt8Array::from(vec![0, 1, 2])),
+            Arc::new(UInt16Array::from(vec![0, 1, 2])),
+            Arc::new(UInt32Array::from(vec![0, 1, 2])),
+            Arc::new(UInt64Array::from(vec![0, 1, 2])),
+        ];
+        for a in ints {
+            let t = a.data_type().clone();
+            assert_eq!(times_of(a, "time [s]"), [0, s, 2 * s], "{t}");
+        }
+        assert_eq!(times_of(Arc::new(Float32Array::from(vec![0.0, 0.5, 2.0])), "time [s]"), [0, s / 2, 2 * s]);
+        assert_eq!(times_of(Arc::new(Float64Array::from(vec![0.0, 0.25, 2.0])), "time [s]"), [0, s / 4, 2 * s]);
+        let halves = Float16Array::from(vec![f16(0.0), f16(0.5), f16(2.0)]);
+        assert_eq!(times_of(Arc::new(halves), "time [s]"), [0, s / 2, 2 * s]);
+        assert_eq!(times_of(Arc::new(BooleanArray::from(vec![false, true, true])), "time [s]"), [0, s, s]);
+    }
+
+    /// Every value type, without nulls (kept in its type) and with (integers widen to f64, NaN for a null).
+    #[test]
+    fn every_value_type_reads_with_and_without_nulls() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("v.parquet");
+        let plain = |name: &str, a: ArrayRef| (Field::new(name, a.data_type().clone(), false), a);
+        let nulls = |name: &str, a: ArrayRef| (Field::new(format!("{name}?"), a.data_type().clone(), true), a);
+        let cols: Vec<(Field, ArrayRef)> = vec![
+            plain("i8", Arc::new(Int8Array::from(vec![-1, 2, 3]))),
+            plain("i16", Arc::new(arrow_array::Int16Array::from(vec![-1, 2, 3]))),
+            plain("i32", Arc::new(Int32Array::from(vec![-1, 2, 3]))),
+            plain("i64", Arc::new(Int64Array::from(vec![-1, 2, 3]))),
+            plain("u8", Arc::new(UInt8Array::from(vec![1, 2, 3]))),
+            plain("u16", Arc::new(UInt16Array::from(vec![1, 2, 3]))),
+            plain("u32", Arc::new(UInt32Array::from(vec![1, 2, 3]))),
+            plain("u64", Arc::new(UInt64Array::from(vec![1, 2, 3]))),
+            plain("f16", Arc::new(Float16Array::from(vec![f16(1.5), f16(2.0), f16(3.0)]))),
+            plain("bool", Arc::new(BooleanArray::from(vec![true, false, true]))),
+            nulls("i8", Arc::new(Int8Array::from(vec![Some(-1), None, Some(3)]))),
+            nulls("i16", Arc::new(arrow_array::Int16Array::from(vec![Some(-1), None, Some(3)]))),
+            nulls("i32", Arc::new(Int32Array::from(vec![Some(-1), None, Some(3)]))),
+            nulls("i64", Arc::new(Int64Array::from(vec![Some(-1), None, Some(3)]))),
+            nulls("u8", Arc::new(UInt8Array::from(vec![Some(1), None, Some(3)]))),
+            nulls("u16", Arc::new(UInt16Array::from(vec![Some(1), None, Some(3)]))),
+            nulls("u32", Arc::new(UInt32Array::from(vec![Some(1), None, Some(3)]))),
+            nulls("u64", Arc::new(UInt64Array::from(vec![Some(1), None, Some(3)]))),
+            nulls("f16", Arc::new(Float16Array::from(vec![Some(f16(1.5)), None, Some(f16(3.0))]))),
+            nulls("f64", Arc::new(Float64Array::from(vec![Some(1.5), None, Some(3.0)]))),
+            nulls("bool", Arc::new(BooleanArray::from(vec![Some(true), None, Some(true)]))),
+        ];
+        let schema = Arc::new(Schema::new(cols.iter().map(|c| c.0.clone()).collect::<Vec<_>>()));
+        write(&src, &[RecordBatch::try_new(schema, cols.iter().map(|c| c.1.clone()).collect()).unwrap()], 100);
+        let r = open_parquet(&src, &tmp.path().join("cache")).unwrap();
+        assert_eq!(r.info().time, tlmbench_core::TimeSource::Index);
+        let h = Held::default();
+        let by_name = |n: &str| r.info().channels.iter().position(|c| c.name == n).unwrap_or_else(|| panic!("{n}"));
+        let col = |n: &str| (0..3).map(|i| r.value_at(by_name(n), i, &h)).collect::<Vec<_>>();
+        let dtype = |n: &str| r.info().channels[by_name(n)].dtype;
+        for (n, want, ty) in [
+            ("i8", [-1.0, 2.0, 3.0], "i8"),
+            ("i16", [-1.0, 2.0, 3.0], "i16"),
+            ("i32", [-1.0, 2.0, 3.0], "i32"),
+            ("i64", [-1.0, 2.0, 3.0], "i64"),
+            ("u8", [1.0, 2.0, 3.0], "u8"),
+            ("u16", [1.0, 2.0, 3.0], "u16"),
+            ("u32", [1.0, 2.0, 3.0], "u32"),
+            ("u64", [1.0, 2.0, 3.0], "u64"),
+            ("f16", [1.5, 2.0, 3.0], "f32"),
+            ("bool", [1.0, 0.0, 1.0], "u8"),
+        ] {
+            assert_eq!((col(n), dtype(n)), (want.to_vec(), ty), "{n}");
+        }
+        // the question mark isn't a unit: the name stays
+        for (n, ty) in [
+            ("i8?", "f64"),
+            ("i16?", "f64"),
+            ("i32?", "f64"),
+            ("i64?", "f64"),
+            ("u8?", "f64"),
+            ("u16?", "f64"),
+            ("u32?", "f64"),
+            ("u64?", "f64"),
+            ("f16?", "f32"),
+            ("f64?", "f64"),
+            ("bool?", "f64"),
+        ] {
+            let v = col(n);
+            assert_eq!(dtype(n), ty, "{n}");
+            assert!(v[1].is_nan() && v[0] != 0.0 && v[2] != 0.0, "{n}: a null is NaN, the rest kept: {v:?}");
+        }
+        assert_eq!(col("i8?")[0], -1.0);
+        assert_eq!(col("f16?")[0], 1.5);
+    }
 }
