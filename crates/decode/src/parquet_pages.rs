@@ -229,7 +229,7 @@ mod tests {
         ArrayRef, BooleanArray, Float16Array, Float32Array, Float64Array, Int32Array, Int64Array, RecordBatch,
         StringArray,
     };
-    use arrow_schema::{DataType, Field, Schema};
+    use arrow_schema::{Field, Schema};
     use parquet::arrow::ArrowWriter;
     use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions};
     use parquet::basic::Compression;
