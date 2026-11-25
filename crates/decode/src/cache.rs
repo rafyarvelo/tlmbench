@@ -679,6 +679,50 @@ mod tests {
         assert_eq!(r.info().t_last, Some(400_001_000_000_000));
     }
 
+    /// One file of 17 MB takes every chunk-boundary path of the build (coverage, R6c.3): the first 16 MB are the schema's
+    /// sample, cut at a row end; a row of 200 KB sits across the first chunk boundary, where the splitter's 64 KB window
+    /// finds no line end three times; and the first quote comes after the sample, so the fast reader meets it mid-build
+    /// and the file is read again with the general one.
+    #[test]
+    fn a_big_file_with_a_long_row_on_a_chunk_boundary_and_a_quote_after_the_sample() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("big.csv");
+        let header = "t,v,note\n";
+        let long = "y".repeat(200_000);
+        let mut text = String::from(header);
+        let (mut rows, mut sum) = (0usize, 0u64);
+        fn push(text: &mut String, rows: &mut usize, sum: &mut u64, note: &str) {
+            text.push_str(&format!("{rows},{},{note}\n", *rows % 1000));
+            *sum += (*rows % 1000) as u64;
+            *rows += 1;
+        }
+        while text.len() < header.len() + csv::CHUNK_BYTES - 1000 {
+            push(&mut text, &mut rows, &mut sum, "x");
+        }
+        let long_row = rows;
+        push(&mut text, &mut rows, &mut sum, &long);
+        while text.len() < 17 << 20 {
+            push(&mut text, &mut rows, &mut sum, "x");
+        }
+        push(&mut text, &mut rows, &mut sum, "\"two, three\"");
+        push(&mut text, &mut rows, &mut sum, "x");
+        fs::write(&src, &text).unwrap();
+        let root = tmp.path().join("cache");
+        let r = open_csv(&src, &root).unwrap();
+        assert_eq!(r.info().samples, rows);
+        assert_eq!(r.info().t_last, Some((rows as i64 - 1) * 1_000_000_000));
+        let ch = &r.info().channels;
+        assert_eq!(ch.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["v", "note"]);
+        assert_eq!(ch[1].labels, ["x", long.as_str(), "two, three"]);
+        let v = r.read(0, 0, rows).to_f64(1.0, 0.0);
+        assert_eq!(v.iter().sum::<f64>() as u64, sum, "every row read once, none lost at a boundary");
+        let note = |i: usize| r.read(1, i, i + 1).to_f64(1.0, 0.0)[0];
+        assert_eq!((note(long_row - 1), note(long_row), note(long_row + 1)), (0.0, 1.0, 0.0));
+        assert_eq!((note(rows - 2), note(rows - 1)), (2.0, 0.0));
+        // from the cache the second time
+        assert_eq!(open_csv(&src, &root).unwrap().info(), r.info());
+    }
+
     #[test]
     fn backwards_time_is_flagged_not_reordered() {
         let tmp = tempfile::tempdir().unwrap();
