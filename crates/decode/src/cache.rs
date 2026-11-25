@@ -792,6 +792,45 @@ mod tests {
         assert!(open_csv_with(&src, &tmp.path().join("c2"), Some(&bad)).is_err());
     }
 
+    /// Coverage (Nov 24): a resample longer than its write buffer interpolates throughout; one that would make an
+    /// absurd number of rows is refused; a cache file of the wrong size is refused with how to fix it.
+    #[test]
+    fn long_resamples_absurd_ones_and_a_damaged_cache() {
+        use crate::profile::*;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("cache");
+        let src = tmp.path().join("slow.csv");
+        fs::write(&src, "time,v\n0,0\n1,10\n2,20\n").unwrap();
+        let at = |hz| ImportProfile { rate: RateChoice::Resample { hz }, ..Default::default() };
+        let r = open_csv_with(&src, &root, Some(&at(100_000.0))).unwrap();
+        assert_eq!(r.info().samples, 200_001, "more rows than the 64k write buffer");
+        let (scale, offset) = r.scale_offset(0);
+        assert_eq!(r.read(0, 150_000, 150_001).to_f64(scale, offset), [15.0]);
+        assert_eq!(r.read(0, 200_000, 200_001).to_f64(scale, offset), [20.0]);
+        let wide = tmp.path().join("wide.csv");
+        fs::write(&wide, "time,v\n0,0\n1000000,1\n").unwrap();
+        let err = open_csv_with(&wide, &root, Some(&at(1e9))).unwrap_err().to_string();
+        assert!(err.contains("would make"), "{err}");
+
+        // damage a column file of a cached entry: reopening says so, rather than reading past its end
+        let plain = tmp.path().join("plain.csv");
+        fs::write(&plain, "time,v\n0,1\n1,2\n2,3\n").unwrap();
+        drop(open_csv(&plain, &root).unwrap());
+        let mut damaged = 0;
+        for e in fs::read_dir(root.join("csv")).unwrap().flatten() {
+            for f in fs::read_dir(e.path()).unwrap().flatten() {
+                let name = f.file_name().to_string_lossy().into_owned();
+                if name.ends_with(".f64") && fs::read(f.path()).unwrap().len() == 24 {
+                    fs::write(f.path(), [0u8; 8]).unwrap();
+                    damaged += 1;
+                }
+            }
+        }
+        assert!(damaged > 0, "a 3-row f64 column to damage");
+        let err = open_csv(&plain, &root).unwrap_err().to_string();
+        assert!(err.contains("wrong size (delete the cache to rebuild)"), "{err}");
+    }
+
     #[test]
     fn profile_rates() {
         use crate::profile::*;
