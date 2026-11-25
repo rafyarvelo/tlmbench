@@ -1205,23 +1205,26 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let sent = records(0..200_000);
-        let data = sent.clone();
-        let sender = thread::spawn(move || {
-            let (mut s, _) = listener.accept().unwrap();
-            // paced well under the ring's size a millisecond, so it never fills (a full ring drops records)
-            for part in data.chunks(4001) {
-                s.write_all(part).unwrap();
-                thread::sleep(Duration::from_micros(250));
-            }
-        });
         let dir = tempfile::tempdir().unwrap();
         let mut session = Session::create(dir.path()).unwrap();
         // 1.6 MB through a 64 KiB + 3 ring: about 24 wraps, each ending part-way through a record
-        let opts = Options { ring_bytes: Some((64 << 10) + 3), ..Options::default() };
+        let ring = (64 << 10) + 3;
+        let opts = Options { ring_bytes: Some(ring), ..Options::default() };
         let src = session.add_source(Endpoint::Tcp(addr.to_string()), Some(&desc()), &opts).unwrap();
+        let (mut s, _) = listener.accept().unwrap();
+        // a full ring drops records (by design): send only while the ring has room, so a slow runner can't fill it
+        // (CI, Nov 24: paced by time alone, a loaded Linux runner dropped 4,790)
+        let room = (ring / 8 / 4) as u64;
+        for (k, part) in sent.chunks(4000).enumerate() {
+            let before = (k * 500) as u64;
+            while before.saturating_sub(src.health().records_written) > room {
+                thread::sleep(Duration::from_millis(1));
+            }
+            s.write_all(part).unwrap();
+        }
+        drop(s);
         let h = src.wait();
         let path = h.files[0].clone();
-        sender.join().unwrap();
         assert_eq!(h.ring_bytes as usize % 8, 3, "the ring's size must not be a multiple of the 8-byte record");
         assert_eq!((h.records_in, h.records_written, h.records_dropped), (200_000, 200_000, 0), "{h:?}");
         assert_eq!((h.sequence_missing, h.sequence_repeated, h.malformed_bytes, h.error.as_deref()), (0, 0, 0, None));
