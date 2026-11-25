@@ -18,6 +18,11 @@ cargo llvm-cov report --json > cov.json  # per line: a segment with a zero count
 rm -rf target/llvm-cov-target
 ```
 
+On the 8 GB Mac add `CARGO_BUILD_JOBS=2` (four rustc at 2.8 GB each filled the swap) and never start a second cargo
+command while one runs. To list the uncovered lines of a crate from `cov.json`: for each file's `segments` entry
+`[line, col, count, hasCount, isRegionEntry, isGap]`, the lines from a segment with `count == 0`, `hasCount` and not
+`isGap` to the next segment's line.
+
 **The UI** (about 25 minutes; never while cargo builds, or the harness fails at boot):
 
 ```
@@ -44,6 +49,7 @@ The tests that start their own browser (the browser-only, viewer and real-core t
 | Nov 24, `b6580c6` (R6c.1's five tests) | 77.5% | |
 | Nov 24, `441c477` | | 91.7% (75.9%) |
 | Nov 25, `f9ffec7` (R6c.3, decode's first pass) | 78.3% (decode 93.7%: csv 96.5%, packets_core 96.6%, fixed 97.1%, descriptor 95.5%, packets 94.9%, cache 95.2%) | |
+| Nov 25, `00a1f9d` (R6c.3, decode's second pass) | 79.0% (decode 96.3%: payload 99.0%, plugin 100%, reference 100%, parquet_core 98.6%, parquet 97.4%, cache 97.4%, fixed 98.9%; parquet_pages 73.1%; live 93.8%, store 89.4%, core 94.3%, expr 95.3%, export 88.5%, plugin 81.4%, cli 79.8%, app 27.6%, tools 0%) | |
 
 ## What stays uncovered, and why
 
@@ -57,13 +63,17 @@ Only these may stay unreached; each is a range with its reason. Anything not lis
 ## Left to do in `decode` (R6c.3's first crate)
 
 Done Nov 24: the descriptor's refusals; CSV's quoted reader, label limits, empty files and profiles (which found the
-`stamp [ms]` bug, `868883c`); every field type in fixed-width and packet files; packet framing and streams. Left:
+`stamp [ms]` bug, `868883c`); every field type in fixed-width and packet files; packet framing and streams.
+Done Nov 25 (`00a1f9d`): `payload.rs` (the field wrapper's every call, checked against a column that differs; a
+plugin's errors; damaged packets; a batch with no rows), the cache's chunk boundaries (one 17 MB file: a 200 KB row on
+the first boundary, a quote after the schema's sample), a plugin column of every type, every Parquet time column and
+value type with and without nulls, a decoder plugin's faults, a reference file's header. Left, each a line or a few
+(list them with the recipe under "Measuring": a segment with a zero count that has `hasCount` and isn't a gap):
 
-- `payload.rs`: the field wrapper's remaining delegations (`view_masked`, `stats_masked`, `view_coarse` through a
-  plugin field) and the payload decode's failure paths (a plugin that returns too few rows, an error).
-- `parquet_core.rs`, `parquet_pages.rs`: run by the WASM crate's tests (`crates/web-parquet`), not the workspace's;
-  either count those (`cargo llvm-cov` in that crate too) or add native tests of the paths only they reach.
-- `cache.rs`: a row longer than the splitter's window at a chunk boundary, the first 16 MB cut at a row end, quotes
-  first met in a later chunk during the build (all need files of 8–16 MB: one test can build one), and the cached
-  columns of every type (a decoder plugin that returns each type).
-- `preview.rs`, `plugin.rs`, `strided.rs`, `bytes.rs`, `reference.rs`, `profile.rs`, `lib.rs`: a handful of lines each.
+- `parquet_pages.rs` (73%): the page checks of `check_chunk` for compressed, dictionary and v2 pages and damaged
+  headers; needs files written with those options (the `parquet` crate's `WriterProperties`) and files cut or flipped
+  on purpose. The WASM crate's tests (`crates/web-parquet`) are not counted: decide to measure them or leave them.
+- `cache.rs`, `csv.rs`, `descriptor.rs`, `packets.rs`, `packets_core.rs`, `fixed.rs`, `lib.rs`, `preview.rs`,
+  `strided.rs`, `bytes.rs`, `profile.rs`: mostly error branches (an unreadable file, a failed write) and one-line
+  guards; each needs a read of the line to say test or reason. `bytes.rs` 35, 48, 56, 70-71, 77 are Windows-only or
+  OS-failure paths: reasons to write.

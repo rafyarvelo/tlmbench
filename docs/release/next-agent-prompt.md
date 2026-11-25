@@ -6,7 +6,7 @@ This prompt is only a hand-off. **Where each step stands is the status table in 
 done is `docs/release/ledger.md`.** If this prompt and those disagree, they win, and you fix this prompt.
 
 Written Nov 25 after the Opus run that did R6's gates and the soak, tagged `v1.0.0-rc.1` (owner's OK), and started
-coverage (R6c). **Recommended model for the next run: Sonnet**, for R6c.3 below (tests for gaps listed in writing,
+coverage (R6c); a Sonnet run then finished most of decode (`00a1f9d`). **Recommended model for the next run: Sonnet**, for R6c.3 below (tests for gaps listed in writing,
 crate by crate). Switch to **Opus** when the owner hands back a test pass with Fs to fix, when a coverage test finds a
 real bug that needs a design judgement, or for R6c.5 (the coverage CI job). The plan's "Recommended model per step"
 table has the same.
@@ -17,10 +17,8 @@ table has the same.
    `/Users/rafy/.claude/projects/-Users-rafy-workspace-tlmbench/memory/`.
 2. `python3 ci/ledger_check.py`: Done 345, Partial 3, Missing 2, Diverged 1, Unverified 19, Owner pass 18 (388 rows)
    at the hand-off.
-3. `git log origin/main..main`: docs-only commits were left unpushed on purpose (the per-OS test plans and
-   `tools/testplan.py`, test-plan 2.10, the status table, this prompt). They go up with your first code push.
-   `tools/testplan.py` doesn't run in CI.
-4. CI was green on `0648fe1` (run 45616413906).
+3. `git log origin/main..main`: only this hand-off's docs commit should be unpushed; it goes up with your first code push.
+4. CI on `00a1f9d`: see the status table's CI row.
 
 ## Where things stand
 
@@ -30,9 +28,11 @@ table has the same.
 - **Gates and soak:** all pass on the release build of `63360a1` (`docs/developers/gates.md`, "1.0.0-rc.1").
 - **Licences (owner, Nov 24):** the code MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`), the plugin templates MIT-0,
   the manual CC BY 4.0.
-- **Coverage (R6c):** Rust 78.3% of lines on `f9ffec7` (decode 93.7%, store 89.4%, live 93.8%); the UI 91.7% of lines,
-  75.9% of branches (13 self-launching tests not counted yet). Two bugs found so far, both fixed with tests: a packet
-  index evicted on a nearly full disk (`644df60`), and a CSV profile's time column ignoring its header's unit (`868883c`).
+- **Coverage (R6c):** Rust 79.0% of lines on `00a1f9d` (decode 96.3%, live 93.8%, store 89.4%, core 94.3%, expr 95.3%,
+  export 88.5%, plugin 81.4%, cli 79.8%, app 27.6%, tools 0%); the UI 91.7% of lines, 75.9% of branches (13
+  self-launching tests not counted yet). Two bugs found so far, both fixed with tests: a packet index evicted on a
+  nearly full disk (`644df60`), and a CSV profile's time column ignoring its header's unit (`868883c`); decode's second
+  pass found none.
 
 ## The next run: R6c.3, coverage crate by crate (Sonnet)
 
@@ -41,10 +41,10 @@ Nov 24), the sub-steps and the rules; `docs/developers/coverage.md` has how to m
 uncovered (each with a reason) and **decode's remaining list**. Work in this order, one crate per run or less, and stop
 where your context or the clock says:
 
-1. **Finish decode** from coverage.md's list: `payload.rs`'s wrapper paths and failures; `cache.rs`'s chunk-boundary
-   cases (one 8–16 MB test file can serve them all) and typed cached columns; the Parquet readers (decide: measure
-   `crates/web-parquet`'s own tests, or add native ones); the small files.
-2. **live**, then **store**, then export, core, expr, cli, plugin, app/src-tauri (its commands as functions, or
+1. **Finish decode** from coverage.md's list (`parquet_pages.rs` at 73%, then the error branches of the other files,
+   each a test or a written reason; decide whether `crates/web-parquet`'s own tests are measured). Short: do it in
+   under an hour and go on.
+2. **live** (93.8%), then **store** (89.4%, `joined.rs` 57%, `config_core.rs` 75%), then export, core, expr, cli, plugin, app/src-tauri (its commands as functions, or
    `tauri::test`), tools/gen. For each: measure, list every uncovered range (a segment of `cargo llvm-cov report --json`
    with a zero count, its `hasCount` set and not a gap region), read each, then a test or a written reason in
    coverage.md.
@@ -111,7 +111,12 @@ guide's appendix).
   CONDA_PREFIX`, `maturin develop`, `pytest python`), `just app-test` and `just proto-test` pass locally (the UI suites
   when the UI or its tests changed, and never while cargo builds). Then watch CI to green (about 1.5 hours). Docs-only
   commits never get a push or a CI watch of their own. **Don't change `ci/` or the CI image.**
-- **Disk** (about 24 GB free; 8 GB of memory): a workspace test build is ~16 GB in `target/debug`, a coverage build ~17
+- **Memory and shell:** the Mac has 8 GB: `CARGO_BUILD_JOBS=2` for every cargo build (lint, tests, coverage, maturin);
+  `sysctl vm.swapusage` before a big build, and if swap is over 4 GB wait or report; never start a cargo command while
+  one of yours runs (a command that moves to the background will notify you). The shell's PATH lacks Homebrew and
+  cargo: start commands with `export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"` (`gh`, `just`, `cmake`: hdf5's
+  build fails without cmake). A stale `target/llvm-cov-target` from an interrupted run breaks hdf5's CMake: delete it.
+- **Disk** (about 24 GB free): a workspace test build is ~16 GB in `target/debug`, a coverage build ~17
   GB in `target/llvm-cov-target`, the release build ~13 GB; the disk filled twice on Nov 24–25 (a failed `maturin
   develop`, and two test links failing at once). `df -h /` before each build; under ~12 GB free delete what you don't
   need (`target/debug`, `python/target`, `target/release`: the owner OKs it). Cargo workspace-wide only, never `-p`.
