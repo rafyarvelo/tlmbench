@@ -4,8 +4,10 @@ One pass per OS, on the release candidate's installers. Each item is a short thi
 `Result:` write **P** (pass) or **F** (fail); add a few words only for an F. Skip an item that doesn't apply to the OS
 (marked **mac**, **win** or **linux**) by writing **–**.
 
-Copy this file once per OS (`test-plan-macos.md`, `test-plan-windows.md`, `test-plan-linux.md`), fill it in, and hand it
-back. The agent fixes every F, ranked, and the next release candidate follows.
+This is the plan; don't fill it in. Each OS has its copy, with only its own items and wording: `test-plan-macos.md`,
+`test-plan-windows.md`, `test-plan-linux.md`. Fill in yours and hand it back. After changing this plan, run
+`python3 tools/testplan.py`: it rewrites the copies and keeps what was written in them.
+The agent fixes every F, ranked, and the next release candidate follows.
 
 **OS:** ______ **Version:** ______ **Date:** ______ **Screen:** (Retina / normal / both)
 
@@ -214,7 +216,8 @@ folder… on the mounted volume, open a file. The tab menu says the folder is re
 of Share. Result:
 
 **10.6 win/linux** Read-only: make a copy of `flights` read-only (Windows: Properties › Read-only on the folder and
-its files; Linux: `chmod -R a-w`), and do as 10.5. Result:
+its files; Linux: `chmod -R a-w`), Open folder… on it and open a file. The tab menu says the folder is read-only and
+offers Export file… instead of Share. Result:
 
 ## 11. Windows and the browser
 

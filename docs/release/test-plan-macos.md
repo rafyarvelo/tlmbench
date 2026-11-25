@@ -1,11 +1,11 @@
 # Release test plan: macOS
 
 One pass per OS, on the release candidate's installers. Each item is a short thing to do and what should happen. After
-`Result:` write **P** (pass) or **F** (fail); add a few words only for an F. Skip an item that doesn't apply to the OS
-(marked **mac**, **win** or **linux**) by writing **–**.
+`Result:` write **P** (pass) or **F** (fail); add a few words only for an F.
 
-Copy this file once per OS (`test-plan-macos.md`, `test-plan-windows.md`, `test-plan-linux.md`), fill it in, and hand it
-back. The agent fixes every F, ranked, and the next release candidate follows.
+This is the macOS copy of `test-plan.md` (written by `tools/testplan.py`, which keeps the results): fill it
+in and hand it back.
+The agent fixes every F, ranked, and the next release candidate follows.
 
 **OS:** macOS 14.3.1 **Version:** 1.0.0-rc.1 (and the local build before it) **Date:** Nov 24–25, 2026 **Screen:** (Retina / normal / both)
 
@@ -13,19 +13,14 @@ back. The agent fixes every F, ranked, and the next release candidate follows.
 
 1. Download from the release candidate's page (Releases, marked Pre-release): the app for this OS and `SHA256SUMS`.
    `docs/install.md` names the file for each OS.
-2. Get the test data script, `make.py`, and run it. It needs Python 3.9 or newer (`python3 --version`; macOS and
-   Linux have it, on Windows install it from python.org). In a terminal (macOS, Linux):
+2. Get the test data script, `make.py`, and run it. It needs Python 3.9 or newer (`python3 --version`; macOS has
+   it). In Terminal:
    ```
    cd ~ && curl -fsSLO https://raw.githubusercontent.com/rafyarvelo/tlmbench/main/tools/testdata/make.py
    python3 make.py big       # (everything, with the 400 MB file for section 9; without "big", the rest only)
    ```
-   On Windows, in PowerShell:
-   ```
-   cd ~; curl.exe -fsSLO https://raw.githubusercontent.com/rafyarvelo/tlmbench/main/tools/testdata/make.py
-   py make.py big
-   ```
-   If it says `pyarrow isn't installed`, item 2.6 has no Parquet file: run `python3 -m pip install pyarrow` (Windows:
-   `py -m pip install pyarrow`) and `make.py big` again.
+   If it says `pyarrow isn't installed`, item 2.6 has no Parquet file: run `python3 -m pip install pyarrow` and
+   `python3 make.py big` again.
    It writes `tlmbench-testdata` in your home folder: `flights/` (four flight CSVs and a `.tlmbench/` with a check set, a layout,
    widgets and events), `other/` (`bench.bin` with its descriptor, `modes.csv`), `browser/` (`bench.tlm`, Parquet files)
    and `big/`. Running it again writes the same files.
@@ -33,29 +28,17 @@ back. The agent fixes every F, ranked, and the next release candidate follows.
 ## 1. Install and first open
 
 **1.1** Check the download: put `SHA256SUMS` in the same folder as the installer, then follow `docs/install.md`,
-"Checking a download" (macOS and Linux: `shasum -a 256 -c SHA256SUMS --ignore-missing`; Windows: its PowerShell
-lines). The installer's line says OK (Windows: `True`). Result: Pass
+"Checking a download" (`shasum -a 256 -c SHA256SUMS --ignore-missing` in Terminal). The installer's line says OK. Result: Pass
 
-**1.2 mac** Open the `.dmg`, drag TelemetryBench to Applications, open it. The first open needs one extra step:
+**1.2** Open the `.dmg`, drag TelemetryBench to Applications, open it. The first open needs one extra step:
 Privacy & Security › Open Anyway (macOS 15+), right-click › Open (macOS 14 and earlier), or in Terminal
 `xattr -dr com.apple.quarantine /Applications/TelemetryBench.app` (any version). Write which one you used in
 the note. After that it opens with no warning. Result: Note (which way): Pass, using the terminal command "xattr -dr com.apple.quarantine /Applications/TelemetryBench.app"
 
-**1.3 win** Run the `-setup.exe`. SmartScreen may warn: More info › Run anyway. It installs and starts from the Start
-menu. Result:
-
-**1.4 win** Unpack the `-portable.zip` and run `TelemetryBench.exe`: it starts. Result:
-
-**1.5 linux** `sudo apt install ./TelemetryBench-…-linux-amd64.deb`, then start it from the applications menu.
-Result:
-
-**1.6 linux** `chmod +x` the AppImage and run it (if it can't mount: `--appimage-extract-and-run`). It starts.
-Result:
-
 **1.7** The start page shows; Help › User manual opens the PDF manual; Help › Online manual opens a browser page.
 Result: Pass
 
-**1.8** About TelemetryBench (macOS: the app menu; Windows and Linux: end of Help) shows the version, MIT OR Apache-2.0, and
+**1.8** About TelemetryBench (the app menu) shows the version, MIT OR Apache-2.0, and
 mentions THIRD_PARTY_LICENSES.md. Result: Pass
 
 **1.9** Help › Install command-line tool…, then in a new terminal `tlmbench --version` prints the version. (If it says
@@ -117,14 +100,14 @@ Result:
 shows where it lands, and it lands there. Result:
 
 **4.2** In a pane of two channels, drag one chip to the pane's own left edge, then (another time) its right edge: the
-channel moves to a new pane on that side. Hold Option (Windows/Linux: Ctrl) while dropping: it's copied instead.
+channel moves to a new pane on that side. Hold Option while dropping: it's copied instead.
 Result:
 
 **4.3** Make one pane on top, two side by side, one at the bottom. Close the left one of the pair: the right one widens
-in its row. ⌘Z (Ctrl+Z): the pair is back side by side. Same with the right one. Result:
+in its row. ⌘Z: the pair is back side by side. Same with the right one. Result:
 
 **4.4** Drag three channels onto categories in the Explorer one after another, close a pane in between; ⌘Z four times
-steps back through each, ⇧⌘Z (Ctrl+Shift+Z) redoes. Result:
+steps back through each, ⇧⌘Z redoes. Result:
 
 **4.5** Save the layout (Save as…), rename it, ⌘Z (the name comes back), delete it, ⌘Z (it's back). Result:
 
@@ -209,12 +192,9 @@ Unlock lets you rearrange. Result:
 
 **10.4** Save image (PNG): the image matches the pane. Result:
 
-**10.5 mac** Read-only: `hdiutil create -srcfolder ~/tlmbench-testdata/flights -format UDRO ro.dmg`, open it, Open
+**10.5** Read-only: `hdiutil create -srcfolder ~/tlmbench-testdata/flights -format UDRO ro.dmg`, open it, Open
 folder… on the mounted volume, open a file. The tab menu says the folder is read-only and offers Export file… instead
 of Share. Result:
-
-**10.6 win/linux** Read-only: make a copy of `flights` read-only (Windows: Properties › Read-only on the folder and
-its files; Linux: `chmod -R a-w`), and do as 10.5. Result:
 
 ## 11. Windows and the browser
 
@@ -242,8 +222,7 @@ Result:
 **13.1** Walk the app once more in light and dark: start page, Explorer, a few panes, a dialog, Settings, the Report
 tab. Anything clipped, blurry, misaligned or off: list it in the note. Result: Note:
 
-**13.2** Turn on Reduce motion (macOS: Accessibility › Display; Windows: Settings › Accessibility › Visual effects ›
-Animation effects off): zooms and menus don't animate. Result:
+**13.2** Turn on Reduce motion (System Settings › Accessibility › Display): zooms and menus don't animate. Result:
 
 **13.3** *(for the manual, on a Mac)* Two screenshots the headless run can't take: the native menu bar with the View menu open
 (`docs/manual/15-keyboard-and-mouse.md`, now showing the ⋯ menu), and two real windows side by side with the time view
