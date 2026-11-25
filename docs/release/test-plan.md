@@ -86,6 +86,10 @@ runs: a tab of its own. Result: Pass
 **2.9** Drag `flight-gap.csv`, then the `flights` folder, from the file manager onto the window: the file opens; the
 folder opens as Open folder… does. Result: Pass
 
+**2.10** Open the `flights` folder in Explorer. Click the folder's ⋯ › **Refresh**, and straight away double-click
+`flight-2.csv`. Do it three times, quickly. Each double-click opens the file (or shows its tab): none is lost. (A UI
+test lost one on CI, Nov 25; this checks whether a person can.) Result:
+
 ## 3. Looking at data
 
 **3.1** On `flight-1.csv`: wheel-zoom, drag to pan, Box zoom, Back, Fit. Each works and the time range updates.
