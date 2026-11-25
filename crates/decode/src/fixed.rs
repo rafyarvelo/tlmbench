@@ -813,7 +813,7 @@ mod tests {
             .iter()
             .map(|&t| {
                 let f = field(&format!("{t:?}"), t, offset);
-                offset += t.size() as u64;
+                offset += t.size();
                 f
             })
             .collect();
