@@ -524,8 +524,16 @@ fn apply_profile(
                     None => return Err(Error::Descriptor(format!("import profile: unknown time unit {u:?}"))),
                 },
                 None => {
-                    let unit_ns =
-                        time_unit(&columns[index].name, columns[index].unit.as_deref()).unwrap_or(1_000_000_000);
+                    // the column's own unit (`stamp [ms]`), else a time-like name's suffix (`time_ms`), else
+                    // seconds: a column chosen as the time needn't have a time-like name (coverage, Nov 24: a
+                    // chosen `stamp [ms]` was read in seconds)
+                    let c = &columns[index];
+                    let unit_ns = c
+                        .unit
+                        .as_deref()
+                        .and_then(|u| time_unit_of(&u.to_ascii_lowercase()))
+                        .or_else(|| time_unit(&c.name, None))
+                        .unwrap_or(1_000_000_000);
                     TimeColumn::Numeric { index, unit_ns }
                 }
             }
@@ -815,6 +823,33 @@ mod tests {
         assert!(schema.quoted);
         assert_eq!(rows.rows, 20_002);
         assert_eq!(*rows.t.last().unwrap(), 20_001_000_000_000);
+    }
+
+    /// An import profile's choices of time column and kind (coverage, Nov 24).
+    #[test]
+    fn a_profile_picks_the_time_column_its_unit_and_kinds() {
+        let csv = b"stamp [ms],alt,code\n0,10,1\n500,11,2\n1000,12,3\n";
+        let with = |time: TimeChoice, columns: Vec<crate::profile::ColumnChoice>| {
+            scan_with(csv, Some(&ImportProfile { time, columns, ..Default::default() }))
+        };
+        let col = |name: &str, unit: Option<&str>| TimeChoice::Column { name: name.into(), unit: unit.map(Into::into) };
+        // the unit from the profile, then from the header's own unit
+        assert_eq!(
+            with(col("alt", Some("us")), vec![]).unwrap().time,
+            TimeColumn::Numeric { index: 1, unit_ns: 1_000 }
+        );
+        assert_eq!(
+            with(col("stamp", None), vec![]).unwrap().time,
+            TimeColumn::Numeric { index: 0, unit_ns: 1_000_000 }
+        );
+        assert!(with(col("alt", Some("fortnights")), vec![]).unwrap_err().to_string().contains("unknown time unit"));
+        assert_eq!(with(TimeChoice::None, vec![]).unwrap().time, TimeColumn::Index);
+        // a number column read as text, and the old time column becomes a number when another is chosen
+        let text =
+            crate::profile::ColumnChoice { source: "code".into(), kind: Some(ColumnKind::Text), ..Default::default() };
+        let s = with(col("alt", None), vec![text]).unwrap();
+        let kinds: Vec<Kind> = s.columns.iter().map(|c| c.kind).collect();
+        assert_eq!(kinds, [Kind::Number, Kind::Time, Kind::Text]);
     }
 
     #[test]
