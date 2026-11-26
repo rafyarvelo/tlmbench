@@ -1074,3 +1074,45 @@ const UNREAD_RAW_MAX: usize = 1 << 22;
 
 /// How long a process waits between looks at another process's build.
 const FOLLOW_EVERY: Duration = Duration::from_millis(200);
+
+#[cfg(all(test, feature = "native"))]
+mod tests {
+    //! The one path of a view that depends on how much of a file is in memory (coverage, R6c.3, Nov 26): reading a
+    //! level through before an exact view of a cold file. Which pages are cold is the operating system's to say, so the
+    //! plan is made by hand.
+
+    use super::*;
+
+    #[test]
+    fn an_exact_view_planned_to_read_its_level_through_gives_the_view_it_would_have_given() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("w.csv");
+        let mut t = String::from("t,a,b\n");
+        for i in 0..60_000 {
+            t.push_str(&format!("{},{},{}\n", i, (i % 97) as f64, ((i * 7) % 31) as f64));
+        }
+        fs::write(&src, t).unwrap();
+        let o = Store::new(Some(&d.path().join("cache"))).open(&src, None).unwrap();
+        o.build(&mut |_, _| {}).unwrap();
+        let info = o.rec.info();
+        let vp = Viewport { t0: info.t_first.unwrap(), t1: info.t_last.unwrap(), width_px: 40, raw_max: 0 };
+        let req = Request { channels: vec![0, 1], gap_factors: vec![], vp, connect_gaps: false };
+        let g = o.loaded.read().unwrap();
+        let l = g.as_ref();
+        let plan = |warm: bool| {
+            let mut p = o.plan(&req, l, Precision::Exact);
+            p.warm = warm;
+            p
+        };
+        assert!(plan(false).coarse_pays);
+        let held: Vec<Held> = req.channels.iter().map(|_| Held::default()).collect();
+        let cold = o.views_planned(&req, &plan(true), l, Precision::Exact, &held);
+        let warm = o.views_planned(&req, &plan(false), l, Precision::Exact, &held);
+        assert_eq!(cold.len(), 2);
+        for (a, b) in cold.iter().zip(&warm) {
+            assert_eq!((a.channel, a.from_pyramid), (b.channel, b.from_pyramid));
+            assert_eq!((&a.trace.t, &a.trace.y), (&b.trace.t, &b.trace.y));
+        }
+        assert!(cold[0].from_pyramid && !cold[0].trace.y.is_empty());
+    }
+}
