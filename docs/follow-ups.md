@@ -28,3 +28,5 @@ deleted at the release tag (R8).
   time charts do (and follows Settings › Zoom speed); it was 25% for every event, far too fast on a trackpad.
 - **Nov 26, theme on drawn panes (owner, rc.1 test plan 3.7).** The XY and Spectrum panes repaint when the theme
   changes (it showed only when they were next drawn for another reason). A bug fix; nothing for the design.
+- **Nov 26, Loop A–B (owner, rc.1 test plan 3.4).** While looping, a playhead outside A–B goes to A at once (turned on
+  while playing past B, it looped only after a pause and play). A bug fix; nothing for the design.

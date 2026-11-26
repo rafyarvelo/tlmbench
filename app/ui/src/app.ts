@@ -622,7 +622,9 @@ function playFrame(now: number): void {
   const before = play.t;
   let t = play.t + dt * play.speed;
   const lp = loopSpan();
-  if (lp && before < lp[1] && t >= lp[1]) t = lp[0];
+  // while looping, a playhead outside A–B goes to A: the loop may be turned on while playing past B, or before A, and
+  // it then looped only after a pause and play (owner, rc.1 test plan 3.4)
+  if (lp && (t >= lp[1] || t < lp[0])) t = lp[0];
   else if (t >= play.end) [t, play.running] = [play.end, false];
   // Stop at: pause with the next matching event at the playhead (the next play goes on past it)
   const stop = settings.stopAt !== 'off' && play.running && state.file ? nextStop(before, t, state.file.first) : null;

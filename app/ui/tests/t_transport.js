@@ -93,6 +93,16 @@ run(
     check('looping keeps the playhead between A and B while it plays', lp.loop && lp.running && lp.t >= 60 && lp.t <= 80, lp);
     await p.click('#playStrip [data-pplay]');
     await p.click('#playStrip [data-ploop]');
+    // turned on while it plays past B (or before A), it loops at once, without a pause (owner, rc.1 test plan 3.4)
+    for (const from of [100, 20]) {
+      await p.evaluate((t) => window.__tlmPlay.seek(t), from);
+      await p.click('#playStrip [data-pplay]');
+      await until(() => window.__tlmPlay.state().running);
+      await p.click('#playStrip [data-ploop]');
+      check(`the loop turned on while playing at ${from} s takes the playhead to A–B`, await until(() => { const s = window.__tlmPlay.state(); return s.loop && s.running && s.t >= 60 && s.t <= 80; }), await state());
+      await p.click('#playStrip [data-pplay]');
+      await p.click('#playStrip [data-ploop]');
+    }
     await p.evaluate(() => window.__tlmPlay.cursors(null, null));
 
     // Stop at: the transport pauses at an event (there are none in the fake recording, so the choices are offered)
