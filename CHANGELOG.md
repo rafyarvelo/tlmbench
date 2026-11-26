@@ -2,6 +2,25 @@
 
 All notable changes, by release. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.0-rc.2
+
+The second release candidate: fixes from testing rc.1 on macOS, and from the test coverage work. A pre-release; the
+Python package is not published to PyPI.
+
+- Panes: Add pane and New pane (back in ⋯ › All panes) add below the selected pane, and so does every "new chart" or
+  "new table" (the selection bar, the Explorer, a table's columns, a check's row).
+- Explorer: the selected channel row, the open file's row and a category row show add, new chart and new table (and
+  remove, for a plotted channel) when pointed at, over the end of the row so a long name keeps its width.
+- Layouts: Delete layout in a tab's ▾ menu works (it did nothing).
+- XY: the wheel and trackpad zoom as much as they move (it was far too fast on a trackpad); XY and Spectrum panes
+  repaint at once when the theme changes.
+- Play: Loop A–B turned on while playing outside A–B goes there at once (it needed a pause).
+- Help › Install command-line tool…: the line to add to PATH is shown in a dialog with Copy, until closed.
+- Derived channels: a recipe with a channel of another file in the tab is computed on its own file's samples (one at a
+  higher rate failed it, and one starting later shifted it).
+- CSV: a time column a saved import profile picks without a unit takes its header's unit (a `stamp [ms]` column was
+  read in seconds).
+
 ## 1.0.0-rc.1
 
 The first release candidate of 1.0.0, for testing: everything listed under 1.0.0 below. It is a pre-release; the
