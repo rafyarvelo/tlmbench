@@ -63,6 +63,27 @@ run(
     await p.mouse.dblclick(box.x + box.w * 0.5, box.y + box.h * 0.5);
     check('double-click fits again', await until(() => window.__tlmFake.xyAsks.at(-1).ask.rect === null && document.querySelector('#stack [data-xyfit]').disabled));
 
+    // the wheel zooms as much as it moved: a trackpad's small deltas zoom a little (owner, rc.1 test plan 3.6: it was 25%
+    // a step, far too fast)
+    {
+      const rect = () => p.evaluate(() => window.__tlmFake.xyAsks.at(-1).ask.rect);
+      await p.mouse.move(box.x + box.w * 0.5, box.y + box.h * 0.5);
+      let n3 = (await asks()).length;
+      await p.mouse.wheel(0, -4);
+      await until((n) => window.__tlmFake.xyAsks.length > n && window.__tlmFake.xyAsks.at(-1).ask.rect, n3);
+      const r1 = await rect();
+      for (let k = 0; k < 9; k++) {
+        n3 = (await asks()).length;
+        await p.mouse.wheel(0, -4);
+        await until((n) => window.__tlmFake.xyAsks.length > n, n3);
+      }
+      const r10 = await rect();
+      const ratio = r1 && r10 ? (r10[1] - r10[0]) / (r1[1] - r1[0]) : null;
+      check('nine more small trackpad steps zoom in a little (about 5%), not 25% each', ratio != null && ratio > 0.9 && ratio < 0.99, [r1, r10, ratio]);
+      await p.mouse.dblclick(box.x + box.w * 0.5, box.y + box.h * 0.5);
+      await until(() => window.__tlmFake.xyAsks.at(-1).ask.rect === null);
+    }
+
     // the pointer over the plot marks its time on every pane
     let hovered = false;
     for (let k = 1; k < 30 && !hovered; k++) {

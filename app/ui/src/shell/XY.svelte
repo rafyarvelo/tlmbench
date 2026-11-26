@@ -358,7 +358,11 @@
     const { x, y } = at(e);
     if (!inPlot(x, y) || !reply?.range) return;
     e.preventDefault();
-    const f = e.deltaY > 0 ? 1.25 : 0.8;
+    // as much as the wheel moved, as the time charts zoom: a trackpad sends many small deltas, and a step of 25% for
+    // each made it far too fast (owner, rc.1 test plan 3.6); a pinch (ctrlKey) zooms faster
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    const speed = { slow: 0.5, normal: 1, fast: 2 }[settings.zoomSpeed];
+    const f = Math.exp(Math.max(-200, Math.min(200, dy)) * (e.ctrlKey ? 0.01 : 0.0015) * speed);
     const [cx, cy] = [invX(x), invY(y)];
     const r = viewRect();
     setXy(i, { xyView: [cx - (cx - r[0]) * f, cx + (r[1] - cx) * f, cy - (cy - r[2]) * f, cy + (r[3] - cy) * f] });

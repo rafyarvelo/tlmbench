@@ -24,3 +24,5 @@ deleted at the release tag (R8).
 - **Nov 26, Install command-line tool (owner, rc.1 test plan 1.9).** When the tool's folder isn't on PATH, the line to
   add is shown in a small dialog that stays until Done, read-only and selected, with Copy (it was a note that went in
   12 s). The design's R4 text could say so.
+- **Nov 26, XY wheel zoom (owner, rc.1 test plan 3.6).** The XY pane's wheel zooms as much as the wheel moved, as the
+  time charts do (and follows Settings › Zoom speed); it was 25% for every event, far too fast on a trackpad.
