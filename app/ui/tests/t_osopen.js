@@ -22,8 +22,15 @@ run(
     const table = await p.evaluate(() => window.__tlmApp.commandInfo().commands);
     check('Help has Install command-line tool…', table.some((c) => c.id === 'installCli' && c.menu === 'Help' && c.label === 'Install command-line tool…'));
     await fake(() => window.__tlmFake.menuClick('installCli'));
-    check('it says where the command went and that its folder is not on PATH', await until(() => /Installed as \/Users\/me\/\.local\/bin\/tlmbench\. Its folder isn't on your PATH yet: add this line to ~\/\.zprofile/.test(document.querySelector('#wsNote')?.textContent ?? '')), await p.evaluate(() => document.querySelector('#wsNote')?.textContent));
-    check('with the line, and Copy the line', /export PATH="\$HOME\/\.local\/bin:\$PATH"/.test(await p.evaluate(() => document.querySelector('#wsNote')?.textContent ?? '')) && (await p.evaluate(() => document.querySelector('#wsNote button')?.textContent?.trim())) === 'Copy the line');
+    await p.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); });
+    // a dialog that stays until closed, not a note that goes in 12 s (owner, rc.1 test plan 1.9)
+    check('it says where the command went and that its folder is not on PATH, in a dialog', await until(() => /Installed as \/Users\/me\/\.local\/bin\/tlmbench\. Its folder isn't on your PATH yet: add this line to ~\/\.zprofile/.test(document.querySelector('#askDlg')?.textContent ?? '')), await p.evaluate(() => document.querySelector('#askDlg')?.textContent));
+    check('with the line, read-only', await p.evaluate(() => { const i = document.querySelector('#askDlg input'); return i?.value === 'export PATH="$HOME/.local/bin:$PATH"' && i.readOnly; }));
+    check('modal (a scrim behind it), and not a note that goes by itself', await p.evaluate(() => !!document.querySelector('.scrim') && !/PATH/.test(document.querySelector('#wsNote')?.textContent ?? '')));
+    await p.click('#askDlg [data-ask-copy]');
+    check('Copy puts the line on the clipboard and says so', await until(() => window.__copied === 'export PATH="$HOME/.local/bin:$PATH"' && document.querySelector('#askDlg [data-ask-copy]')?.textContent === 'Copied'));
+    await p.click('#askDlg [data-ask-ok]');
+    check('Done closes it', await until(() => !document.querySelector('#askDlg')));
     await fake(() => (window.__tlmFake.cliResult = { at: '/Users/me/.local/bin/tlmbench', onPath: true, pathLine: null, profile: null }));
     await fake(() => window.__tlmFake.menuClick('installCli'));
     check('on PATH already: one line, nothing to copy', await until(() => /Installed: a new terminal runs tlmbench/.test(document.querySelector('#wsNote')?.textContent ?? '')));

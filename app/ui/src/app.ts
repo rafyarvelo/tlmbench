@@ -73,6 +73,7 @@ import { cfg, choices, defaultPick, type Problem, rowKey, share as shareDlg, typ
 import { pluginsState, readPlugins } from './plugins.svelte';
 import { tabs, type TabInfo } from './tabs.svelte';
 import { actions, type AlignMethod, type AlignView, type FolderEntry, type SlotRow, isLocked, setLocked, ui, viewLocked } from './ui.svelte';
+import { showLine } from './ask.svelte';
 import { type Batch, decodeBatch, type Reply } from './wire';
 import { namesUsed, slotsUsed, fromWorkspace, isWorkspace, toWorkspace, viewFile, type Workspace } from './workspaces';
 
@@ -5663,7 +5664,7 @@ async function installCli(): Promise<void> {
     const r = await invoke<{ at: string; onPath: boolean; pathLine: string | null; profile: string | null }>('cli_install');
     if (r.onPath) return void note(`Installed: a new terminal runs tlmbench (${r.at}).`);
     const line = r.pathLine ?? '';
-    note(`Installed as ${r.at}. Its folder isn't on your PATH yet: add this line to ${r.profile}, then open a new terminal: ${line}`, () => void navigator.clipboard.writeText(line), 'Copy the line');
+    await showLine('Add the command-line tool to your PATH', line, `Installed as ${r.at}. Its folder isn't on your PATH yet: add this line to ${r.profile}, then open a new terminal.`);
   } catch (e) {
     note(`Couldn't install the command-line tool: ${String(e).replace(/^Error:\s*/, '')}`);
   }

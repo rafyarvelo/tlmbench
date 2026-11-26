@@ -21,3 +21,6 @@ deleted at the release tag (R8).
   chart / table" (the selection bar, Explorer ⋯, a table's selected columns, a check's row) now puts the new pane below
   the selected one, not at the end. The prototype's "Clicking a row" setting is not in the app (Select first is how the
   app always works). The design's Explorer text could say so.
+- **Nov 26, Install command-line tool (owner, rc.1 test plan 1.9).** When the tool's folder isn't on PATH, the line to
+  add is shown in a small dialog that stays until Done, read-only and selected, with Copy (it was a note that went in
+  12 s). The design's R4 text could say so.
