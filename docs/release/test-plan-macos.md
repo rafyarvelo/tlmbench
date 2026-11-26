@@ -71,7 +71,7 @@ folder opens as Open folder… does. Result: Pass
 
 **2.10** Open the `flights` folder in Explorer. Click the folder's ⋯ › **Refresh**, and straight away double-click
 `flight-2.csv`. Do it three times, quickly. Each double-click opens the file (or shows its tab): none is lost. (A UI
-test lost one on CI, Nov 25; this checks whether a person can.) Result:
+test lost one on CI, Nov 25; this checks whether a person can.) Result: Pass, works nominally
 
 ## 3. Looking at data
 
@@ -88,36 +88,37 @@ Result: Pass
 **3.5** Add a Table pane: sort by a column (its ▾ menu); type `> 15` in the filter box under battery_v's header; step
 through the matches (▲ ▼ in the row that appears under the table's bar); tick **Apply to charts** at that row's right. The
 charts leave out the other rows (hatched along the bottom, a "Filtered · N rows hidden" chip).
-Result:
+Result: Pass
+Note: Should adding a pane always be at the bottom of the layout? Just wondering if it may be a better default setting to add below the selected pane, or even above the select pane. Just seems hard to create a layout with the current setup. The App is missing the "New Pane" toolbar button that the prototype has under "All Panes" which makes a difference.  It looks like the prototype already has this behavior and it has buttons that pop up on hover in the explorer to add below the current pane. THIS NEEDS TO BE ADDRESSED.
 
-**3.6** Add an XY pane: altitude against speed. Result:
+**3.6** Add an XY pane: altitude against speed. Result: Pass, but zoom is WAY to sensitive on my trackpad
 
-**3.7** Light and dark (Settings): everything readable in both; text crisp. Result:
+**3.7** Light and dark (Settings): everything readable in both; text crisp. Result: Pass, Both readable but there is a noticeable delay where the XY Pane doesn't switch colors right away
 
 ## 4. Panes and layout
 
 **4.1** Drag a channel from the Explorer onto a pane, onto a pane's left and right edges, and between panes. An outline
-shows where it lands, and it lands there. Result:
+shows where it lands, and it lands there. Result: Pass
 
 **4.2** In a pane of two channels, drag one chip to the pane's own left edge, then (another time) its right edge: the
 channel moves to a new pane on that side. Hold Option while dropping: it's copied instead.
-Result:
+Result: Pass
 
 **4.3** Make one pane on top, two side by side, one at the bottom. Close the left one of the pair: the right one widens
-in its row. ⌘Z: the pair is back side by side. Same with the right one. Result:
+in its row. ⌘Z: the pair is back side by side. Same with the right one. Result: Pass
 
 **4.4** Drag three channels onto categories in the Explorer one after another, close a pane in between; ⌘Z four times
-steps back through each, ⇧⌘Z redoes. Result:
+steps back through each, ⇧⌘Z redoes. Result: Pass
 
-**4.5** Save the layout (Save as…), rename it, ⌘Z (the name comes back), delete it, ⌘Z (it's back). Result:
+**4.5** Save the layout (Save as…), rename it, ⌘Z (the name comes back), delete it, ⌘Z (it's back). Result: FAIL, clicking "Delete Layout" under rename from the chevron menu does nothing. Deleting and undoing from the layouts menu works
 
 **4.6** Layouts: right-click a layout › Pin to the top bar; its button opens it; right-click the button › Unpin.
-Result:
+Result: Pass
 
 **4.7** Settings › Quiet interface on: pane headers show only the view menu and ⋯ until you point at them. Should it be
-on by default? Write yes or no in the note. Result: Note (yes/no):
+on by default? Write yes or no in the note. Result: Note (yes/no): Pass, off by default
 
-**4.8** Quit and reopen: the tabs, the layout and the settings are as you left them. Result:
+**4.8** Quit and reopen: the tabs, the layout and the settings are as you left them. Result: Pass
 
 ## 5. Channels, events, checks
 
