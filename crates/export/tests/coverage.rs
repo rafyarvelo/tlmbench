@@ -91,13 +91,13 @@ fn every_stored_type_survives_every_columnar_format_raw_and_the_scaled_one_is_a_
             let w = export(rec.as_ref(), &o, &out).unwrap();
             assert_eq!(w.rows, 5);
             let back = open(&out, &cache, None);
-            for c in 0..10 {
+            for (c, ty) in types.iter().enumerate() {
                 let want = if raw { values_raw(rec.as_ref(), c) } else { values(rec.as_ref(), c) };
-                assert!(same(&values(back.as_ref(), c), &want), "{format:?} raw={raw} {}", types[c]);
+                assert!(same(&values(back.as_ref(), c), &want), "{format:?} raw={raw} {ty}");
             }
             if format == Format::Parquet {
-                for c in 0..10 {
-                    let want = if !raw && types[c] == "f32" { "f64" } else { types[c] };
+                for (c, ty) in types.iter().enumerate() {
+                    let want = if !raw && *ty == "f32" { "f64" } else { ty };
                     assert_eq!(back.info().channels[c].dtype, want, "{format:?} raw={raw}");
                 }
             }

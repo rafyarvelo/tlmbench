@@ -79,7 +79,7 @@ fn a_viewer_pack_cut_short_gives_the_files_before_the_cut_and_a_viewer_is_writte
         assert!(got.len() <= 1, "cut at {cut}: {got:?}");
         assert!(got.iter().all(|(p, _)| p == "index.html"));
     }
-    assert_eq!(html::unpack(&whole[..4 + 10 + 4 + 6 + 4 + 13 + 4 + 2 - 0]).len(), 2);
+    assert_eq!(html::unpack(&whole).len(), 2);
 
     let tmp = tempfile::tempdir().unwrap();
     html::write_viewer(tmp.path(), &got).unwrap();
