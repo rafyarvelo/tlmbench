@@ -3,20 +3,20 @@
 <script lang="ts">
   import { ICON } from '../icons';
   import Menu from './Menu.svelte';
-  import { addPaneBelow, setMode, stack, type PaneMode } from '../stack.svelte';
+  import { addPaneBelowSelected, setMode, stack, type PaneMode } from '../stack.svelte';
   import { ui, viewLocked } from '../ui.svelte';
 
   let menu = $state<HTMLElement | null>(null);
   const KINDS: [PaneMode, string][] = [['chart', 'Chart'], ['table', 'Table'], ['both', 'Chart and table'], ['cv', 'Chart and values'], ['values', 'Values']];
   function add(mode: PaneMode) {
     menu = null;
-    addPaneBelow(stack.panes.length - 1);
+    addPaneBelowSelected();
     if (mode !== 'chart') setMode(stack.sel, mode);
   }
 </script>
 
 <div class="addrow" hidden={!ui.file}>
-  <button id="addPane" class="addpane" disabled={viewLocked()} data-tip={viewLocked() ? 'Unlock to add panes' : undefined}>{@html ICON.plus}Add pane</button><button
+  <button id="addPane" class="addpane" disabled={viewLocked()} data-tip={viewLocked() ? 'Unlock to add panes' : 'Add an empty pane below the selected one'}>{@html ICON.plus}Add pane</button><button
     id="addPaneKinds"
     class="addpane kinds"
     disabled={viewLocked()}

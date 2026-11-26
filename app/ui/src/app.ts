@@ -32,7 +32,7 @@ import { type Check, type CheckSet, checks, folderRun, EVENT_RULES, newCheck, ne
 import { adjustList, chColor, chDisp, editor, chLevel, chLimits, hasLimits, lineOf, type Limits, limitsOf, openChannelEditor, twinIn } from './display.svelte';
 import {
   addChannels,
-  addPaneBelow,
+  addPaneBelowSelected,
   assignColors,
   clearChannels,
   clearPanes,
@@ -5413,7 +5413,7 @@ center.addEventListener('change', (e) => {
   void requestView();
 });
 
-$('addPane').addEventListener('click', () => addPaneBelow(stack.panes.length - 1));
+$('addPane').addEventListener('click', addPaneBelowSelected);
 onStackChange(() => void layoutChanged());
 
 // Measure's stats channel picker, wherever its panel sits
@@ -5630,7 +5630,7 @@ const RUN: Record<string, () => void> = {
   overviewTop: () => setSetting('overviewTop', !settings.overviewTop),
   theme: toggleTheme,
   settings: () => setSetting('leftPanel', 'settings'),
-  newPane: () => addPaneBelow(stack.sel),
+  newPane: addPaneBelowSelected,
   duplicate: () => duplicate(stack.sel, false),
   duplicateBeside: () => duplicate(stack.sel, true),
   removeChannels: clearChannels,

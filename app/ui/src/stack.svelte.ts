@@ -298,6 +298,13 @@ export function addPaneBelow(i: number): void {
   });
 }
 
+/** A new, empty pane below the selected pane's row, or at the bottom when no pane is selected (Add pane, ⋯ New
+ * pane, ⌘⇧N; owner, rc.1 test plan 3.5: always at the bottom made a layout hard to build). */
+export function addPaneBelowSelected(): void {
+  const n = stack.panes.length;
+  addPaneBelow(stack.sel >= 0 && stack.sel < n ? stack.sel : n - 1);
+}
+
 /** A new, empty pane below pane `i`, in its column. */
 export function splitDown(i: number): void {
   edit(() => {

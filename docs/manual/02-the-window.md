@@ -68,7 +68,7 @@ The area under the top bar is a stack of panes sharing one time axis. Panes are 
 
 ![Three rows, the middle one split into two columns, one pane selected.](../images/manual/panes-grid.png)
 
-**Add a pane.** Press ⇧⌘N / Ctrl+Shift+N (**New pane**), click the **+** between two rows, or choose **Add a pane below** in a pane's menu.
+**Add a pane.** Click **Add pane** under the panes, choose **New pane** in ⋯ or press ⇧⌘N / Ctrl+Shift+N: the new pane goes below the selected one. Or click the **+** between two rows, or choose **Add a pane below** in a pane's menu.
 
 **Select a pane** by clicking it. Channels you click in Explorer go to the selected pane.
 

@@ -8,7 +8,7 @@
   import { play, playActions } from '../play.svelte';
   import { moveTab, tabs } from '../tabs.svelte';
   import { TIME_FORMATS } from '../axes';
-  import { addPaneBelow, allMode, clearChannels, clearPanes, setAllModes, stack } from '../stack.svelte';
+  import { addPaneBelowSelected, allMode, clearChannels, clearPanes, setAllModes, stack } from '../stack.svelte';
   import { actions, isLocked, setLocked, ui, viewLocked } from '../ui.svelte';
   import { cfg } from '../share.svelte';
   import CheckBadge from './CheckBadge.svelte';
@@ -136,11 +136,12 @@
     { label: 'Overview above the panes', checked: settings.overviewTop, run: () => setSetting('overviewTop', !settings.overviewTop) },
     { heading: 'All panes' },
     ...ALL.map(([m, label, , tip]): MenuItem => ({ label: `Every pane as ${m === 'both' ? 'chart and table' : label.toLowerCase().replace(/s$/, '')}`, checked: allMode() === m, radio: true, data: { allmode: m }, disabled: lk, tip: lk ? LOCKED : tip, run: () => setAllModes(m) })),
+    // New pane below the selected one, here in the app too (owner, rc.1 test plan 3.5: the prototype's All panes has it)
+    { label: 'New pane', kbd: '⌘⇧N', data: { more: 'addpane' }, disabled: !ui.file || lk, tip: lk ? LOCKED : 'Add an empty pane below the selected one', run: addPaneBelowSelected },
     // the desktop app's menu bar (Pane, File) and the top bar's Export say the rest; a page without them keeps these here
     ...(desktop
       ? []
       : ([
-          { label: 'New pane', kbd: '⌘⇧N', data: { more: 'addpane' }, disabled: !ui.file || lk, tip: lk ? LOCKED : undefined, run: () => addPaneBelow(Math.max(0, stack.panes.length - 1)) },
           { label: 'Remove every channel', data: { more: 'nochan' }, disabled: lk || !stack.panes.some((p) => p.channels.length), tip: lk ? LOCKED : undefined, run: clearChannels },
           { label: 'Remove every pane', data: { more: 'nopanes' }, disabled: lk || !stack.panes.length, tip: lk ? LOCKED : undefined, run: clearPanes },
           ...(__VIEWER__ ? [{ label: 'Save the view as an image…', data: { more: 'exportimage' }, disabled: !ui.file || !stack.panes.length, run: actions.imageOpen }] : []),

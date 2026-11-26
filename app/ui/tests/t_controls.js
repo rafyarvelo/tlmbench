@@ -64,8 +64,26 @@ run('controls', async ({ p, check, text, visible, plotAt, settingsLS, until, wai
   await more();
   const heads = await p.$$eval('.moremenu .mgrp', (e) => e.map((x) => x.textContent));
   check('⋯ has View, All panes and Window groups', heads.join() === 'View,All panes,Window', heads);
-  check('⋯ no longer repeats what the top bar and menu bar have', !(await p.$('[data-more="nochan"], [data-more="exportdata"], [data-more="addpane"]')));
+  check('⋯ no longer repeats what the top bar and menu bar have', !(await p.$('[data-more="nochan"], [data-more="exportdata"]')));
+  check('...but All panes has New pane, as the prototype (owner, rc.1 test plan 3.5)', !!(await p.$('.moremenu [data-more="addpane"]')));
   await p.keyboard.press('Escape');
+
+  // Add pane and ⋯ New pane add below the selected pane, not at the bottom (owner, rc.1 test plan 3.5)
+  {
+    const app = (f) => p.evaluate((f) => window.__tlmApp[f](), f);
+    await p.click('#stack [data-pane="0"] .phead');
+    await until(() => window.__tlmApp.sel() === 0);
+    await p.click('#addPane');
+    const a = await app('panes');
+    check('Add pane puts an empty pane below the selected one, and selects it', a.length === 4 && a[1].length === 0 && a[2].length > 0 && a[3].length > 0 && (await app('sel')) === 1, [a, await app('sel')]);
+    await more();
+    await p.click('.moremenu [data-more="addpane"]');
+    const b = await app('panes');
+    check('⋯ New pane does the same', b.length === 5 && b[1].length === 0 && b[2].length === 0 && b[4].length > 0 && (await app('sel')) === 2, [b, await app('sel')]);
+    await p.keyboard.press('ControlOrMeta+z');
+    await p.keyboard.press('ControlOrMeta+z');
+    check('both undo', await until(() => window.__tlmApp.panes().length === 3 && window.__tlmApp.panes().every((c) => c.length > 0)), await app('panes'));
+  }
   await p.click('#tb-clearch');
   check('Remove every channel empties the panes, keeping them', (await paneCount()) === 3 && (await p.$$eval('#stack .chip', (e) => e.length)) === 0);
   await p.click('#wsNote button:has-text("Undo")');

@@ -7,3 +7,10 @@ owner's Nov 7 calls, which had only been made in the repository's copy) and adde
 
 New notes go here, with the date, when behaviour differs from the design; they are folded at the next export. This file is
 deleted at the release tag (R8).
+
+- **Nov 25, new panes (owner, rc.1 test plan 3.5).** Add pane (under the stack, and its ▾ kinds), ⋯ › New pane and ⌘⇧N
+  add an empty pane below the selected pane's row (at the bottom when none is selected), and select it; before, Add
+  pane and ⋯ New pane always added at the bottom. ⋯ › All panes has New pane in the desktop app again (the prototype's
+  group); the design's Panes bar line ("Pane actions (new, clear channels, remove all) live in the Explorer's Panes
+  bar") and the ⋯ menu line ("New pane, Remove every channel or pane and Export are the menu bar's and the top bar's")
+  need updating to say where these are now.
