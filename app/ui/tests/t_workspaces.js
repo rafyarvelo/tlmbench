@@ -102,6 +102,18 @@ run(
     check('deleting closes its tabs', await until(() => ![...document.querySelectorAll('#wsTabs .nm')].some((n) => n.textContent === 'Review')) && !(await saved()).some((w) => w.name === 'Review'), await names());
     await p.locator('button', { hasText: 'Undo' }).click();
     check('Undo brings it back', (await saved()).map((w) => w.name).join() === 'Review,Blank', (await saved()).map((w) => w.name));
+
+    // Delete layout from the tab's own ▾ menu too (owner, rc.1 test plan 4.5: it did nothing, the menu's tab was
+    // gone by the time the delete asked for its name)
+    const blank = await p.$eval('#wsTabs .wstab:has(.nm:text-is("Blank"))', (t) => t.dataset.tab).catch(() => null);
+    check('the Blank layout has a tab', !!blank, await names());
+    await p.click(`#wsTabs .wstab[data-tab="${blank}"] .nm`);
+    await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'Blank');
+    await tabMenu();
+    await p.click('.tabmenu [data-ws="delete"]');
+    check('Delete layout in the tab menu deletes it and closes its tab', await until(() => ![...document.querySelectorAll('#wsTabs .nm')].some((n) => n.textContent === 'Blank')) && !(await saved()).some((w) => w.name === 'Blank'), [await names(), (await saved()).map((w) => w.name)]);
+    await p.locator('button', { hasText: 'Undo' }).click();
+    check('...and Undo brings it back', (await saved()).map((w) => w.name).join() === 'Review,Blank', (await saved()).map((w) => w.name));
   },
   { files, launch: null },
 );

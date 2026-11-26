@@ -388,7 +388,11 @@
         {/if}
         {#if menuTab?.ws && !menuTab.shared}
           <button class="mi" role="menuitem" data-ws="rename" onclick={() => (startNaming(menuTab!.ws!), (tabMenu!.naming = 'rename'))}><span class="nm">Rename…</span></button>
-          <button class="mi" role="menuitem" data-ws="delete" onclick={() => tabAct(() => actions.deleteWs(menuTab!.ws!))}><span class="nm">Delete layout</span></button>
+          <button class="mi" role="menuitem" data-ws="delete" onclick={() => {
+            // read the name before tabAct closes the menu: menuTab follows the open menu
+            const name = menuTab!.ws!;
+            tabAct(() => actions.deleteWs(name));
+          }}><span class="nm">Delete layout</span></button>
         {/if}
         {#if !(menuTab?.live || menuTab?.report)}<div class="msep"></div>{/if}
         <button class="mi" role="menuitem" data-ws="newwin" onclick={() => tabAct((k) => actions.moveToWindow(k))}><span class="nm">Move to new window</span></button>
