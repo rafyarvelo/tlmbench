@@ -52,6 +52,7 @@ The tests that start their own browser (the browser-only, viewer and real-core t
 | Nov 25, `00a1f9d` (R6c.3, decode's second pass) | 79.0% (decode 96.3%: payload 99.0%, plugin 100%, reference 100%, parquet_core 98.6%, parquet 97.4%, cache 97.4%, fixed 98.9%; parquet_pages 73.1%; live 93.8%, store 89.4%, core 94.3%, expr 95.3%, export 88.5%, plugin 81.4%, cli 79.8%, app 27.6%, tools 0%) | |
 | Nov 25, third pass (R6c.3, decode; Sonnet) | 79.5% (decode 97.1%: parquet_pages 99.2%, lib 100%, reference 100%, plugin 100%, backwards 100%, payload 99.0%, fixed 98.8%, profile 98.6%, parquet_core 98.6%, parquet 98.1%; live 93.8%, store 89.4%, core 94.3%, expr 95.3%, export 88.5%, plugin 81.4%, cli 79.9%, app 27.6%, tools 0%) | |
 | Nov 26, `93fa262` (R6c.3, live and store; Sonnet) | 81.5% (live 99.3%, store 93.9%: adjust, joined, events, widgets, xy, config_core, error, chunks, sys 100%; group 97.5%, lib 96.1%, live 95.8%, trigger 96.9%, derived 91.8%, pyr 91.8%, recipes 92.9%, checks 92.0%, align 93.6%, config 87.8%; decode 97.2%) | |
+| Nov 26, `6f497e4` (R6c.3, store and export; Sonnet) | 83.0% (store 98.8%: group, joined, events, widgets, xy, trigger, adjust, chunks, sys, config_core 100%; checks 99.1%, config 99.1%, lib 98.1%, pyr 98.8%, live 98.9%, align 97.8%, recipes 97.6%, derived 95.9%; export 97.2%: csv, widgets 100%, html 98.1%, hdf 96.4%, lib 94.0%, columnar 92.0%; core 95.1%, expr 96.1%, live 99.3%, decode 97.3%, plugin 81.4%, cli 79.9%, app 27.6%) | |
 
 ## What is measured
 
@@ -119,30 +120,41 @@ Left (decode is 97.1%, 171 lines; list them with the recipe under "Measuring"):
   348-349, 382, 394, 429-436, 533, 895; `profile.rs` 82, 209, 269 (the profile matcher's thresholds); `payload.rs`
   189-193; `cache.rs` 186-188 (`f64_type`), 299 (resampling a file with no time), 774.
 
-## Left to do in `store` (R6c.3, Nov 26)
+## Done in `store` and `export` (R6c.3, Nov 26, fifth pass)
 
-Done Nov 26 (`crates/store/tests/coverage.rs`, one file per behaviour group): events (labels, missing values, the cap,
-damaged and unreadable files); a missing-when that is true everywhere, false everywhere or wrong; the XY query's edges;
-a widgets frame on a growing file and on a channel with too many runs; a recording and pyramid held in memory; a joined
-recording read through every `Recording` method against its parts; triggers (Above, Below, the level itself, the quiet
-window, disarming, NaN, a constant); the recipe library (names, renames, deletes, problems, import, `check`); the
-shared-config reader's every refusal; damaged cache entries and a build that follows another process; groups (routing,
-map changes, build). Mutation checks: a break of joined routing, trigger `Above`'s comparison, the event cap, the widget
-look-back, the XY mask and the gaps-file size check each made a test fail (the first trigger tests missed `Above`'s
-`<=`, so `a_value_on_the_level_is_on_neither_side_of_it` was added).
+`store` 93.9% -> 98.8%, `export` 88.5% -> 97.2%. New files: store `tests/coverage_config.rs` (every kind of file in a `.tlmbench/` that doesn't
+read, compare rows, failed writes and pulls, the app mirror, the folders read beside the cache), `coverage_align.rs`
+(refusals, a fake estimator plugin, offsets in words, three-window matching), `coverage_checks.rs` (sets, JSON, roll-ups,
+scopes, live rows against whole runs at every step, the library, cached results), `coverage_derived.rs`, `coverage_live.rs`,
+`coverage_group.rs`, `coverage_io.rs`, `coverage_lib.rs`, `coverage_pyr.rs`, and test modules inside `pyr.rs` and `lib.rs`
+for what only the crate can reach (reading a level through, a pyramid not started, `concat`); export `tests/coverage.rs`
+(every column type, time format, layout, HDF5/MAT naming, resampling, refusals) and `coverage_html.rs` (detail spellings,
+viewer packs, one-file limits, spans, provenance, the SVG sanitiser's odd inputs). Mutation checks on export: dropping the
+quote from the CSV quoting rule, the detail cap's clamp and HDF5's duplicate-name suffix each made a test fail; store was not
+re-broken (a store change relinks about 25 test binaries of 700 MB each, and the disk had 9 GB).
 
-Left (store is 93.9%, 297 lines, measured on `93fa262`; list them with the recipe under "Measuring"):
+**Found, not fixed:** a recipe that names a channel of another file in the tab (`x + "Y·2"`) is computed on the grid of the
+*longer* of its operands (`elementwise` leads with the longest series, the last on a tie), so with the other file at a higher
+rate the derived channel fails with "computed 492 samples for 50", and with equal lengths but different start times it is
+written one sample out (its samples are at the other file's times). `group.rs`'s cross test only has files at one rate.
+The fix is a design call (resample foreign channels onto the base recording's samples in `RecEnv::read_foreign`, keeping
+`interp(...)` working, or make the base series lead); `coverage_derived.rs` tests only the case that works (same times).
 
-- **Not producible in a test, by design:** the `?` of an OS error on a cache or events file just made or written
-  (`lib.rs` 208-209, 252-253, 327, 341, 375, 993-996, 1018-1019, 1059-1061; `pyr.rs` 108, 235, 260, 270, 446, 493-513, 519,
-  579-587, 601-604; `events.rs` 106, 109, 127, 135; `recipes.rs` 88-100, 118-131; `derived.rs` 274-290, 317-324, 331-394), `read_at`'s unix wrapper being unreached on Windows
-  (`pyr.rs` 388-390), `trigger.rs` 184-187 (an expression that parses and resolves but fails while running).
-- **Behaviours still to test** (each a few lines; read the line first): `config.rs` (87.8%: the shared folder's writers,
-  `share`, merging and the overlay, 65-66 to 1093); `checks.rs` (92.0%: 124-126, 293-345, 364-369, 664-713, 741-800, 957-1184);
-  `align.rs` (123-401: the alignment methods' refusals); `derived.rs` (a recording with no time column, `RecEnv::limits`,
-  the empty range, recipes over more than a million samples that fail midway: 60, 117, 146-148, 161, 181, 189-191, 331-377,
-  394, 417, 437-453); `pyr.rs` (`warm` 194-210, a resumed build of a time column 526, 534-535, `from_memory`'s growing
-  path 145-145, a damaged level 220-324); `lib.rs` (the planned `warm` and prefetch paths 722-792, `filter_mask` 906,
-  `with_pyramid` of a growing file); `live.rs` (68-426, not yet read line by line: the growing pyramid's `?` branches, `LiveDerived`'s
-  skipped recipes and error paths; some are OS errors, the rest are behaviours); `group.rs` 87, 159, 173, 186, 216, 266, 366, 397, 416 (a file with no times, a view
-  built part-way, a held column with no index).
+Left in `store` (4,951 lines, 60 not reached), each with its reason:
+
+| File | Lines | Why |
+| --- | --- | --- |
+| `lib.rs` | 208, 223, 243, 252-253, 327, 341, 375, 993-996, 1018-1019, 1059-1061 | `?` of an OS error (a cache folder, a lock file, a folder that can't be read) |
+| `lib.rs` | 494, 602, 624, 686, 722, 768-769, 789-792, 807, 828, 956 | `}` or closure ends the counter attributes to a line already run, a `let ... else` for a pyramid that is absent, and a guard that cannot be reached with a built pyramid |
+| `pyr.rs` | 108, 235, 260, 270, 317-318, 359, 438, 446, 469, 479, 493-519, 534-535, 550-604 | the `?` of a file made, written, synced, locked or renamed (disk full, a broken disk); `TLMBENCH_SLOW_BUILD` (an environment variable, as `cache.rs`'s) |
+| `derived.rs` | 274-290, 317-324, 333-394, 417, 437-438 | the same `?` on a cache file; `computed a number where samples were expected` and `computed N samples for M` guard an invariant of the evaluator |
+| `checks.rs` | 173, 226, 230, 341-345, 416, 556-558, 665, 750, 762-764, 994, 1115 | `Masked::series` (the trait requires it; nothing calls it), a serde error arm that `skip_serializing_if` makes unreachable, a rename that fails after its temporary file was written |
+| `config.rs`, `config_core.rs` | 693, 726, 935-936, 1019, 1031, 1093, 171 | `update_renamed`'s re-read of a file `renamed_recordings` read a moment before (a race), closing braces, the root-user skip of a permission test |
+| `align.rs` | 140, 159, 179, 214, 275, 290, 308, 337-349, 395, 401 | `from_pairs` errors that the checks before them exclude, a fine window that finds no overlap after a coarse match (needs a match the fine search can't confirm) |
+| `live.rs` | 68-80, 103, 116, 129, 151, 164, 176, 184, 201, 212, 220, 247, 313, 346-368, 404-414 | `?` on files of a live folder just made or written |
+| `events.rs`, `recipes.rs`, `sys.rs`, `widgets.rs`, `group.rs` | events 106-135, recipes 62 and 168-170, sys 37 and 91, widgets 97-98, group 87, 266, 416 | `?` on writes; `Head::series`, which nothing calls; `statvfs` and `getrusage` failing |
+
+Left in `export` (1,343 lines, 37 not reached): `columnar.rs` 34-36, 106-115, 140-147, 160-163, `hdf.rs` 21-23, 96-256, `html.rs` 306-317,
+354-356, 433-458, 502-505, 579-597, 633-645, 659, 680-681, `lib.rs` 57-59, 242, 266, 293-347, `csv.rs` 72, 142, 158 and
+`widgets.rs` 110: the `?` of a file that can't be created, written, renamed or read, the `unreachable!` for formats that have
+their own writers, the `Format::extension` arms for HDF5 and MAT (called by the CLI), and closing braces.
