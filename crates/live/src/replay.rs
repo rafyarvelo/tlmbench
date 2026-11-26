@@ -235,4 +235,35 @@ mod tests {
         let biggest = times.windows(2).map(|w| w[1] - w[0]).max().unwrap();
         assert!(biggest < 5_000_000, "no gap where it paused: {biggest} ns");
     }
+
+    #[test]
+    fn a_recording_that_cannot_be_replayed_ends_the_source_with_the_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = |ep: Endpoint, name: &str| {
+            Source::start(ep, None, &dir.path().join(name), &Options::default()).unwrap().wait()
+        };
+        let h = run(replay(&dir.path().join("missing.csv"), "speed=1"), "a");
+        assert!(h.ended && h.error.is_some() && h.files.is_empty(), "{h:?}");
+        // a header and no rows
+        let empty = dir.path().join("empty.csv");
+        std::fs::write(&empty, "time_s,count\n").unwrap();
+        let h = run(replay(&empty, "speed=1"), "b");
+        assert!(h.ended && h.error.is_some() && h.records_written == 0, "{h:?}");
+    }
+
+    /// One sample has no interval to go by; it is played, and a start past the end plays nothing.
+    #[test]
+    fn a_single_sample_plays_and_a_start_past_the_end_plays_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let one = csv(dir.path(), 1);
+        let h =
+            Source::start(replay(&one, "speed=1"), None, &dir.path().join("a"), &Options::default()).unwrap().wait();
+        assert_eq!((h.records_written, &h.error), (1, &None), "{h:?}");
+
+        let src = csv(dir.path(), 100);
+        let h =
+            Source::start(replay(&src, "start=60"), None, &dir.path().join("b"), &Options::default()).unwrap().wait();
+        assert!(h.ended && h.error.is_none() && h.records_written == 0, "{h:?}");
+        assert_eq!(h.files.len(), 1, "the recording's file exists, with no rows: {h:?}");
+    }
 }

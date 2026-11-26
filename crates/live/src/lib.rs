@@ -21,6 +21,8 @@
 mod packets;
 pub mod replay;
 pub mod tail;
+#[cfg(test)]
+mod tests_cov;
 
 use std::collections::VecDeque;
 use std::fmt;

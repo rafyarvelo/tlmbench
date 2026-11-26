@@ -355,14 +355,7 @@ plugin = "fake"
 
     #[test]
     fn a_packet_stream_records_a_source_per_type_from_one_connection() {
-        set_payload_plugins(vec![Arc::new(Fake(PluginInfo {
-            name: "fake".into(),
-            version: "1".into(),
-            tier: Tier::Wasm,
-            description: None,
-            files: Vec::new(),
-            path: "fake".into(),
-        }))]);
+        install();
         let d = Descriptor::parse(ROVER).unwrap();
         let p = d.packets.clone().unwrap();
         let mut sent = Vec::new();
@@ -414,5 +407,294 @@ plugin = "fake"
             serde_json::from_slice(&std::fs::read(session.dir().join("session.json")).unwrap()).unwrap();
         assert_eq!(json["sources"][1]["descriptor"], "status");
         assert_eq!(json["sources"][1]["files"][0], "source-2.tlm");
+    }
+
+    fn info(name: &str) -> PluginInfo {
+        PluginInfo {
+            name: name.into(),
+            version: "1".into(),
+            tier: Tier::Wasm,
+            description: None,
+            files: Vec::new(),
+            path: name.into(),
+        }
+    }
+
+    /// A payload plugin that misbehaves in the way its name says: it has no session, no schema, no time, or returns
+    /// rows that are wrong or fail.
+    #[derive(Debug)]
+    struct Odd(PluginInfo);
+    struct OddSession(String);
+
+    impl PayloadPlugin for Odd {
+        fn info(&self) -> &PluginInfo {
+            &self.0
+        }
+        fn session(&self) -> Result<Box<dyn PayloadSession>, String> {
+            match self.0.name.as_str() {
+                "nosession" => Err("it won't start".into()),
+                n => Ok(Box::new(OddSession(n.into()))),
+            }
+        }
+    }
+
+    impl PayloadSession for OddSession {
+        fn packet_schema(&mut self, _: &str, _: &str) -> Result<PluginSchema, String> {
+            match self.0.as_str() {
+                "noschema" => Err("no schema for you".into()),
+                n => Ok(PluginSchema {
+                    channels: vec![PluginChannel { name: "temp".into(), unit: None, dtype: DType::F32 }],
+                    timed: n != "untimed",
+                }),
+            }
+        }
+        fn decode_packets(&mut self, _: &str, _: &str, _: &[(Vec<u8>, Vec<u8>)]) -> Result<Chunk, String> {
+            let col = |n: usize| vec![vec![0u8; n]];
+            match self.0.as_str() {
+                "badrows" => Err("can't read these".into()),
+                // two rows announced, one row's bytes
+                "shortrows" => Ok(Chunk { rows: 2, time: vec![0, 1], columns: col(4) }),
+                // a timed type's rows without their times
+                "shorttime" => Ok(Chunk { rows: 1, time: Vec::new(), columns: col(4) }),
+                // untimed: one row, 1.5
+                _ => Ok(Chunk { rows: 1, time: Vec::new(), columns: vec![1.5f32.to_le_bytes().to_vec()] }),
+            }
+        }
+        fn decode_field(&mut self, _: &str, _: &str, _: DType, _: u32, _: u32, _: &[u8]) -> Result<Vec<u8>, String> {
+            Err("can't read this field".into())
+        }
+    }
+
+    /// Installs every plugin these tests use, once for all: the list is one per process, so tests that each set it
+    /// would take it from one another when they share a process.
+    fn install() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            let mut all: Vec<Arc<dyn PayloadPlugin>> = vec![Arc::new(Fake(info("fake")))];
+            for n in ["nosession", "noschema", "untimed", "badrows", "shortrows", "shorttime", "badfield"] {
+                all.push(Arc::new(Odd(info(n))));
+            }
+            set_payload_plugins(all);
+        });
+    }
+
+    fn descriptor(compression: &str, types: &str) -> Descriptor {
+        Descriptor::parse(&format!(
+            "schema = 1\nname = \"t\"\n[packets]\nsync = \"EB90\"\nheader_size = 6\nlength = {{ offset = 2, type = \"u16\" }}\n\
+             id = {{ offset = 4, type = \"u8\" }}\nchecksum = \"crc16-ccitt\"\ncompression = \"{compression}\"\n{types}"
+        ))
+        .unwrap()
+    }
+
+    const IMU: &str = r#"
+[[packet_types]]
+id = 1
+name = "imu"
+record_size = 9
+time = { source = "field", field = "t", unit = "us" }
+fields = [
+  { name = "t", type = "u64", offset = 6 },
+  { name = "count", type = "u8", offset = 14 },
+]
+"#;
+
+    fn typed(plugin: &str) -> String {
+        format!("[[packet_types]]\nid = 2\nname = \"status\"\nplugin = \"{plugin}\"\n")
+    }
+
+    fn packet(d: &Descriptor, id: u8, payload: &[u8]) -> Vec<u8> {
+        encode_packet(d.packets.as_ref().unwrap(), false, &[0, 0, 0, 0, id, 0], payload).unwrap()
+    }
+
+    /// Feeds `chunks` to a demux of `d`, each type's ring behind it: what each ring got, and the malformed bytes.
+    fn feed_all(d: &Descriptor, chunks: &[Vec<u8>]) -> (Vec<Vec<u8>>, u64) {
+        let plans = plans(d).unwrap();
+        let sizes: Vec<usize> = plans.iter().map(|p| p.record.record_size as usize).collect();
+        let mut demux = Demux::new(d, plans).unwrap();
+        let counters: Vec<crate::Counters> = sizes.iter().map(|_| Default::default()).collect();
+        let parts: Vec<crate::Parts> = sizes.iter().map(|_| Default::default()).collect();
+        let (mut rings, mut outs) = (Vec::new(), Vec::new());
+        for (k, &rs) in sizes.iter().enumerate() {
+            let (producer, consumer) = rtrb::RingBuffer::<u8>::new(1 << 16);
+            outs.push(consumer);
+            rings.push(Ring { producer, rs, cap: 1 << 16, pushed: 0, counters: &counters[k], parts: &parts[k] });
+        }
+        for c in chunks {
+            demux.feed(c, &mut rings);
+        }
+        let got = outs
+            .iter_mut()
+            .map(|c| {
+                let chunk = c.read_chunk(c.slots()).unwrap();
+                let (a, b) = chunk.as_slices();
+                let v = [a, b].concat();
+                chunk.commit_all();
+                v
+            })
+            .collect();
+        (got, counters[0].malformed.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    fn imu_payload(range: std::ops::Range<u64>) -> Vec<u8> {
+        range.flat_map(|i| [(i * 1000).to_le_bytes().to_vec(), vec![i as u8]].concat()).collect()
+    }
+
+    /// A type with no plugin goes to its ring as read (header, then record), whole packets only; a packet whose size
+    /// isn't a whole number of records is counted as malformed, and the stream goes on.
+    #[test]
+    fn plain_records_go_through_as_read() {
+        install();
+        let d = descriptor("none", IMU);
+        let stream = [
+            packet(&d, 1, &imu_payload(0..2)),
+            packet(&d, 1, &imu_payload(0..1)[..5]), // 5 bytes: not a record
+            packet(&d, 1, &imu_payload(2..3)),
+        ]
+        .concat();
+        let whole = |chunks: Vec<Vec<u8>>| {
+            let (out, malformed) = feed_all(&d, &chunks);
+            assert_eq!(out[0].len(), 3 * 15, "three records of header and payload");
+            assert_eq!((out[0][4], &out[0][6..14], out[0][14]), (1, &0u64.to_le_bytes()[..], 0), "the first record");
+            assert_eq!((&out[0][36..44], out[0][44]), (&2000u64.to_le_bytes()[..], 2), "the third");
+            assert_eq!(malformed, 6 + 5, "the odd packet's header and bytes");
+        };
+        whole(vec![stream.clone()]);
+        whole(stream.chunks(7).map(<[u8]>::to_vec).collect());
+    }
+
+    /// A type without a name or an id (a stream of one kind of packet) is recorded under the descriptor's name.
+    #[test]
+    fn a_stream_of_one_kind_is_one_plan_named_for_the_descriptor() {
+        let d = Descriptor::parse(
+            r#"
+schema = 1
+name = "beacon"
+record_size = 2
+time = { source = "rate", rate_hz = 100.0 }
+fields = [{ name = "v", type = "u16", offset = 4 }]
+[packets]
+sync = "EB90"
+header_size = 4
+length = { offset = 2, type = "u16" }
+"#,
+        )
+        .unwrap();
+        let plans = plans(&d).unwrap();
+        assert_eq!(plans.len(), 1);
+        assert_eq!(
+            (plans[0].id, plans[0].name.clone(), plans[0].record.name.clone()),
+            (None, None, Some("beacon".into()))
+        );
+        let p = encode_packet(d.packets.as_ref().unwrap(), false, &[0; 4], &[1, 0, 2, 0]).unwrap();
+        let (out, malformed) = feed_all(&d, &[p]);
+        assert_eq!((out[0].len(), malformed), (12, 0), "two records of header and value");
+        assert_eq!((out[0][4], out[0][10]), (1, 2));
+    }
+
+    /// A plugin that can't be had: the plan says which one, and for what.
+    #[test]
+    fn plans_say_which_plugin_they_cannot_have() {
+        install();
+        let err = |plugin: &str| plans(&descriptor("none", &typed(plugin))).err().expect("a refusal");
+        assert!(err("ghost").contains("packet type \"status\" needs the plugin \"ghost\", which isn't loaded"));
+        assert_eq!(err("nosession"), "nosession: it won't start");
+        assert_eq!(err("noschema"), "noschema: no schema for you");
+        // a field's plugin is looked for the same way
+        let d = descriptor(
+            "none",
+            &IMU.replace(
+                "offset = 14 }",
+                "offset = 14 },\n  { name = \"h\", type = \"f64\", offset = 6, plugin = \"ghost\", size = 8 }",
+            ),
+        );
+        let e = plans(&d).err().expect("a refusal");
+        assert!(e.contains("field \"h\" needs the plugin \"ghost\""), "{e}");
+        // a record layout that doesn't hold together
+        let mut d = descriptor("none", IMU);
+        d.packet_types[0].time = TimeSpec::Field { field: "nope".into(), unit: TimeUnit::Us, t0_ns: 0 };
+        assert!(plans(&d).err().expect("a refusal").contains("nope"));
+        // a sync word that isn't hex is the demux's refusal
+        let mut d = descriptor("none", IMU);
+        let p = plans(&d).unwrap();
+        d.packets.as_mut().unwrap().sync = Some("zz".into());
+        assert!(Demux::new(&d, p).err().expect("a refusal").contains("sync"));
+    }
+
+    /// A plugin's rows with no time are written as its channels alone.
+    #[test]
+    fn a_plugin_type_without_time_records_its_channels_only() {
+        install();
+        let d = descriptor("none", &typed("untimed"));
+        let p = plans(&d).unwrap();
+        assert_eq!(p[0].record.record_size, 4);
+        assert_eq!(p[0].record.time, TimeSpec::Index);
+        let (out, malformed) = feed_all(&d, &[packet(&d, 2, &[0; 4])]);
+        assert_eq!((out[0].clone(), malformed), (1.5f32.to_le_bytes().to_vec(), 0));
+    }
+
+    /// Rows a plugin can't give, or gives wrongly, are counted as malformed: the packet's header and bytes.
+    #[test]
+    fn a_plugins_bad_rows_are_malformed_packets() {
+        install();
+        for plugin in ["badrows", "shortrows", "shorttime"] {
+            let d = descriptor("none", &typed(plugin));
+            let stream = [packet(&d, 2, &[1; 12]), packet(&d, 2, &[2; 12])].concat();
+            let (out, malformed) = feed_all(&d, &[stream]);
+            assert!(out[0].is_empty(), "{plugin}");
+            assert_eq!(malformed, 2 * (6 + 12), "{plugin}");
+        }
+    }
+
+    /// A payload that doesn't decompress is malformed too.
+    #[test]
+    fn a_payload_that_does_not_decompress_is_malformed() {
+        install();
+        let d = descriptor("zstd", &typed("untimed"));
+        let mut raw = d.clone();
+        raw.packets.as_mut().unwrap().compression = tlmbench_decode::descriptor::Compression::None;
+        // framed as plain bytes, read as zstd
+        let (out, malformed) = feed_all(&d, &[packet(&raw, 2, &[7; 12]), packet(&d, 2, &[0; 4])]);
+        assert_eq!(out[0], 1.5f32.to_le_bytes().to_vec(), "the good packet after it is read");
+        assert_eq!(malformed, 6 + 12);
+    }
+
+    /// A plugin that can't decode a field leaves zeros where its values go, and the record is kept.
+    #[test]
+    fn a_field_the_plugin_cannot_decode_is_zero() {
+        install();
+        let d = descriptor(
+            "none",
+            &IMU.replace(
+                "offset = 14 }",
+                "offset = 14 },\n  { name = \"h\", type = \"f64\", offset = 6, plugin = \"badfield\", size = 8 }",
+            ),
+        );
+        let (out, malformed) = feed_all(&d, &[packet(&d, 1, &imu_payload(0..2))]);
+        assert_eq!((out[0].len(), malformed), (2 * (15 + 8), 0));
+        assert_eq!(&out[0][15..23], &[0u8; 8]);
+        assert_eq!((out[0][14], &out[0][23 + 6..23 + 14]), (0, &1000u64.to_le_bytes()[..]));
+    }
+
+    /// A stream that claims a packet longer than anything arrives doesn't grow without end: past 64 MB waiting, it is
+    /// dropped and counted, and the next whole packet is read.
+    #[test]
+    fn a_packet_that_never_completes_is_dropped_at_the_limit() {
+        let mut d = descriptor("none", IMU);
+        d.packets.as_mut().unwrap().length = Some(tlmbench_decode::descriptor::LengthField {
+            offset: 2,
+            dtype: DType::U32,
+            counts: Default::default(),
+            adjust: 0,
+        });
+        d.packets.as_mut().unwrap().header_size = 8;
+        d.packets.as_mut().unwrap().id.as_mut().unwrap().offset = 6;
+        let p = d.packets.clone().unwrap();
+        let mut head = vec![0xEB, 0x90, 0, 0, 0, 0, 1, 0];
+        head[2..6].copy_from_slice(&900_000_000u32.to_le_bytes());
+        let mut stream = head;
+        stream.resize(MAX_PENDING + 16, 0);
+        let good = encode_packet(&p, false, &[0, 0, 0, 0, 0, 0, 1, 0], &imu_payload(0..1)).unwrap();
+        let (_, malformed) = feed_all(&d, &[stream.clone(), good]);
+        assert_eq!(malformed as usize, stream.len(), "everything held was let go");
     }
 }

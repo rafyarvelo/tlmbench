@@ -606,4 +606,204 @@ mod tests {
             assert_eq!(r, &[i as f64 * 1e6, (i * 3) as f64], "row {i}");
         }
     }
+
+    /// A file that never appears ends the source, once `idle_end` has passed, with the reason.
+    #[test]
+    fn a_file_that_never_appears_ends_the_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Source::start(Endpoint::File(dir.path().join("never.csv")), None, &dir.path().join("s"), &opts())
+            .unwrap()
+            .wait();
+        assert!(h.ended && h.records_written == 0, "{h:?}");
+        assert!(h.error.as_deref().is_some_and(|e| e.contains("never.csv doesn't exist")), "{h:?}");
+    }
+
+    /// A path that can't be read ends the source with the system's reason: a folder named like a CSV is opened, then
+    /// fails to read; a file nobody may read fails to open.
+    #[cfg(unix)]
+    #[test]
+    fn a_path_that_cannot_be_read_ends_the_source_with_the_reason() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("folder.csv");
+        std::fs::create_dir(&folder).unwrap();
+        let h = Source::start(Endpoint::File(folder), None, &dir.path().join("a"), &opts()).unwrap().wait();
+        assert!(h.ended && h.error.is_some() && h.records_written == 0, "{h:?}");
+
+        let locked = dir.path().join("locked.csv");
+        std::fs::write(&locked, "t,v\n1,2\n").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if File::open(&locked).is_ok() {
+            return; // running as root: nothing is locked
+        }
+        let h = Source::start(Endpoint::File(locked), None, &dir.path().join("b"), &opts()).unwrap().wait();
+        assert!(h.ended && h.error.as_deref().is_some_and(|e| e.contains("ermission")), "{h:?}");
+    }
+
+    /// Stopping a source that follows a file records what it read, with no error.
+    #[test]
+    fn a_followed_file_can_be_stopped() {
+        let dir = tempfile::tempdir().unwrap();
+        let csv = dir.path().join("run.csv");
+        write(&csv, format!("time_s,count,volts [V],note\n{}", csv_rows(0, 50, false)).as_bytes());
+        let src = Source::start(Endpoint::File(csv), None, &dir.path().join("s"), &Options::default()).unwrap();
+        let t = Instant::now();
+        while src.records_written() < 50 {
+            assert!(t.elapsed() < Duration::from_secs(10), "{:?}", src.health());
+            thread::sleep(Duration::from_millis(5));
+        }
+        let h = src.stop();
+        assert!(h.ended && h.error.is_none(), "{h:?}");
+        assert_eq!((h.records_written, h.malformed_bytes), (50, 0));
+    }
+
+    /// The last row has no line end: once the file has been still for `idle_end` it is whole.
+    #[test]
+    fn a_last_row_without_its_line_end_counts_once_the_file_is_still() {
+        let dir = tempfile::tempdir().unwrap();
+        let csv = dir.path().join("cut.csv");
+        write(&csv, b"t,v\n1,10\n2,20\n3,30");
+        let h = Source::start(Endpoint::File(csv), None, &dir.path().join("s"), &opts()).unwrap().wait();
+        assert_eq!((h.records_written, h.malformed_bytes, &h.error), (3, 0, &None), "{h:?}");
+        assert_eq!(parts(&h)[0].1[2], [3e9, 30.0]);
+    }
+
+    /// A file that is neither named like a CSV or a .tlm, nor long enough to tell which, leaves its bytes counted as
+    /// malformed.
+    #[test]
+    fn a_short_file_of_unknown_kind_is_counted_as_malformed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("short.dat");
+        write(&path, b"abc");
+        let h = Source::start(Endpoint::File(path), None, &dir.path().join("s"), &opts()).unwrap().wait();
+        assert_eq!((h.records_written, h.malformed_bytes, h.bytes_in), (0, 3, 3), "{h:?}");
+        assert!(h.error.is_none() && h.files.is_empty(), "{h:?}");
+    }
+
+    /// A .tlm's header may arrive after the 16 bytes that say how long it is.
+    #[test]
+    fn a_tlm_header_that_arrives_in_two_pieces_is_waited_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("late.tlm");
+        let d = crate::tests_support::desc();
+        let mut head = Vec::new();
+        reference::write_header(&mut head, &d).unwrap();
+        assert!(head.len() > 20);
+        write(&path, &head[..20]);
+        let src = Source::start(Endpoint::File(path.clone()), None, &dir.path().join("s"), &opts()).unwrap();
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(src.records_written(), 0);
+        write(&path, &head[20..]);
+        let body: Vec<u8> = (0u32..100).flat_map(|s| [s.to_le_bytes(), (s as f32).to_le_bytes()].concat()).collect();
+        write(&path, &body);
+        let h = src.wait();
+        assert_eq!((h.records_written, h.malformed_bytes, &h.error), (100, 0, &None), "{h:?}");
+    }
+
+    /// A .tlm whose header can't be read is the source's error, and nothing is recorded.
+    #[test]
+    fn a_tlm_with_a_bad_header_is_the_sources_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.tlm");
+        let mut bytes = vec![b'x'; 12];
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        write(&path, &bytes);
+        let h = Source::start(Endpoint::File(path), None, &dir.path().join("s"), &opts()).unwrap().wait();
+        assert!(h.ended && h.error.is_some() && h.records_written == 0, "{h:?}");
+    }
+
+    /// A CSV with nothing in it to take a header from is the source's error.
+    #[test]
+    fn a_csv_without_a_header_is_the_sources_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.csv");
+        write(&path, b"\n\n\n");
+        let h = Source::start(Endpoint::File(path), None, &dir.path().join("s"), &opts()).unwrap().wait();
+        assert!(h.ended && h.error.as_deref().is_some_and(|e| e.contains("no header")), "{h:?}");
+        assert_eq!(h.records_written, 0);
+    }
+
+    /// Quotes that first appear after the schema was settled: the rows from there on are read as quoted, and a line
+    /// end inside the quotes doesn't cut a row.
+    #[test]
+    fn quotes_that_appear_after_the_schema_is_settled_are_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let csv = dir.path().join("late-quotes.csv");
+        write(&csv, b"time_s,count,note\n0.000,0,a\n0.001,1,b\n0.002,2,c\n");
+        let src = Source::start(Endpoint::File(csv.clone()), None, &dir.path().join("s"), &opts()).unwrap();
+        let t = Instant::now();
+        while src.records_written() < 3 {
+            assert!(t.elapsed() < Duration::from_secs(10), "{:?}", src.health());
+            thread::sleep(Duration::from_millis(5));
+        }
+        write(&csv, b"0.003,3,\"x, y\"\n0.004,4,\"two\nlines\"\n0.005,5,plain\n");
+        let h = src.wait();
+        assert_eq!((h.records_written, h.rows_skipped, h.malformed_bytes, &h.error), (6, 0, 0, &None), "{h:?}");
+        let got = parts(&h);
+        assert_eq!(got[0].1.iter().map(|r| r[1]).collect::<Vec<_>>(), [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(got[0].1[5][0], 5e6);
+    }
+
+    /// An ISO time column is recorded as nanoseconds; rows with no time column are numbered.
+    #[test]
+    fn iso_times_are_nanoseconds_and_a_file_without_time_is_numbered() {
+        let dir = tempfile::tempdir().unwrap();
+        let iso = dir.path().join("iso.csv");
+        write(&iso, b"when,v\n2024-01-01T00:00:00.000Z,1\n2024-01-01T00:00:00.500Z,2\n2024-01-01T00:00:01.000Z,3\n");
+        let h = Source::start(Endpoint::File(iso), None, &dir.path().join("a"), &opts()).unwrap().wait();
+        assert_eq!((h.records_written, &h.error), (3, &None), "{h:?}");
+        let got = parts(&h);
+        assert_eq!(got[0].0.time, TimeSpec::Field { field: "when".into(), unit: TimeUnit::Ns, t0_ns: 0 });
+        assert_eq!(got[0].1, [[1_704_067_200e9, 1.0], [1_704_067_200.5e9, 2.0], [1_704_067_201e9, 3.0]]);
+
+        let plain = dir.path().join("plain.csv");
+        write(&plain, b"a,b\n5,2\n3,9\n8,1\n4,7\n");
+        let h = Source::start(Endpoint::File(plain), None, &dir.path().join("b"), &opts()).unwrap().wait();
+        assert_eq!((h.records_written, &h.error), (4, &None), "{h:?}");
+        let got = parts(&h);
+        assert_eq!(got[0].0.time, TimeSpec::Index);
+        assert_eq!(got[0].1, [[5.0, 2.0], [3.0, 9.0], [8.0, 1.0], [4.0, 7.0]]);
+    }
+
+    /// A file that is moved away leaves the source waiting, not ending: when another takes its place, that is the
+    /// next part.
+    #[test]
+    fn a_file_that_is_gone_for_a_moment_is_waited_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let csv = dir.path().join("log.csv");
+        write(&csv, format!("time_s,count,volts [V],note\n{}", csv_rows(0, 50, false)).as_bytes());
+        let src = Source::start(Endpoint::File(csv.clone()), None, &dir.path().join("s"), &opts()).unwrap();
+        let t = Instant::now();
+        while src.records_written() < 50 {
+            assert!(t.elapsed() < Duration::from_secs(10), "{:?}", src.health());
+            thread::sleep(Duration::from_millis(5));
+        }
+        // moved, not deleted: the old file keeps its identity, so the new one can't share it
+        std::fs::rename(&csv, dir.path().join("log.csv.1")).unwrap();
+        thread::sleep(Duration::from_millis(120));
+        assert!(!src.health().ended, "a file that is gone doesn't end the source");
+        write(&csv, format!("time_s,count,volts [V],note\n{}", csv_rows(0, 20, false)).as_bytes());
+        let h = src.wait();
+        assert_eq!(h.files.len(), 2, "{h:?}");
+        assert_eq!(parts(&h).iter().map(|p| p.1.len()).collect::<Vec<_>>(), [50, 20]);
+    }
+
+    /// Rows that are all left out (a time that doesn't read, a time that goes back) add no records.
+    #[test]
+    fn rows_that_are_all_left_out_add_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let csv = dir.path().join("skipped.csv");
+        write(&csv, b"t,v\n1,10\n2,20\n3,30\n");
+        let src = Source::start(Endpoint::File(csv.clone()), None, &dir.path().join("s"), &opts()).unwrap();
+        let t = Instant::now();
+        while src.records_written() < 3 {
+            assert!(t.elapsed() < Duration::from_secs(10), "{:?}", src.health());
+            thread::sleep(Duration::from_millis(5));
+        }
+        write(&csv, b"oops,9\n");
+        thread::sleep(Duration::from_millis(100));
+        write(&csv, b"1.5,9\n");
+        let h = src.wait();
+        assert_eq!((h.records_written, h.rows_skipped, h.rows_back_in_time, &h.error), (3, 1, 1, &None), "{h:?}");
+    }
 }
