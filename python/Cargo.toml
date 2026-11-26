@@ -30,6 +30,8 @@ arrow-schema = "60.1.0"
 # link (LNK2019 on instances the upstream crates didn't emit). Debug builds are what `maturin develop` makes.
 [profile.dev]
 opt-level = 2
+# line tables only: full debug info at opt-level 2 ran the Linux CI runner out of memory (rustc killed, Nov 25-26)
+debug = "line-tables-only"
 
 [profile.release]
 lto = "thin"

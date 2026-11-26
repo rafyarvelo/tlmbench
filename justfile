@@ -102,7 +102,7 @@ test: ui
     else echo "test: no Cargo workspace yet, skipping Rust tests"; fi
     # the WASM crates' own tests, run natively (their own targets)
     cd crates/web && cargo test && cd ../web-parquet && cargo test
-    if [ -d python ]; then VIRTUAL_ENV="$(dirname "$(dirname "{{python}}")")" "{{python}}" -m maturin develop -m python/Cargo.toml \
+    if [ -d python ]; then VIRTUAL_ENV="$(dirname "$(dirname "{{python}}")")" "{{python}}" -m maturin develop -m python/Cargo.toml ${CI:+--jobs=2} \
       && "{{python}}" -m pytest python && "{{python}}" tools/python_docs.py --check; else echo "test: no python/ yet, skipping binding tests"; fi
 
 # The reference pages in docs/reference/ (CLI help, expression functions, settings keys, shortcuts) from the source; `just reference --check` fails when one is stale
