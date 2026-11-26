@@ -401,3 +401,444 @@ fn a_recording_is_not_joined_to_channels_of_another_length() {
     let e = store.join(long, short).err().expect("a refusal");
     assert!(e.to_string().contains("300 samples but its derived channels 2"), "{e}");
 }
+
+// ---- triggers ------------------------------------------------------------------------------------------------
+
+use tlmbench_store::trigger::{Kind, Spec};
+
+fn trigger_spec(channel: &str, kind: Kind, level: f64, post: f64, repeat: bool) -> Spec {
+    Spec { channel: channel.into(), kind, level, pre: 0.1, post, repeat }
+}
+
+/// 0 for 100 samples, then 10 for 100, and so on: it goes above any level between at samples 100, 300, 500...
+/// and below it at 200, 400...
+fn square(i: usize) -> f32 {
+    if (i / 100) % 2 == 1 { 10.0 } else { 0.0 }
+}
+
+fn followed(dir: &Path, f: impl Fn(usize) -> f32) -> (Store, tlmbench_store::Live, PathBuf) {
+    let path = dir.join("live.tlm");
+    tlm(&path, 100, &f);
+    let store = Store::new(Some(&dir.join("cache")));
+    let live = store.open_live(&path).unwrap();
+    (store, live, path)
+}
+
+fn crossings(store: &Store, live: &tlmbench_store::Live) -> Vec<(i64, String)> {
+    let ev = events::list(store.root(), live.opened().identity()).unwrap();
+    ev.iter().map(|e| (e.start.parse::<i64>().unwrap() / 1_000_000, e.name.clone())).collect()
+}
+
+/// Entering the region above or below a level is a crossing; each kind names itself in its event, and a level
+/// that is not whole is written as it is.
+#[test]
+fn above_and_below_cross_where_they_enter_the_region() {
+    let data = cache();
+    let (store, live, path) = followed(data.path(), square);
+    live.arm_trigger(trigger_spec("a", Kind::Above, 5.0, 0.05, true), &[]).unwrap();
+    append(&path, 100, 700, square);
+    live.refresh().unwrap();
+    assert_eq!(
+        crossings(&store, &live),
+        [(300, "Trigger: a goes above 5".to_owned()), (500, "Trigger: a goes above 5".into())],
+        "the crossing at 100 is between the samples before it was armed and the first after: not seen"
+    );
+    let s = live.trigger_status();
+    assert!(s.armed && s.count == 2 && s.error.is_none());
+    assert_eq!(s.rule.as_deref(), Some("prev(\"a\") <= 5 && \"a\" > 5"));
+
+    let data = cache();
+    let (store, live, path) = followed(data.path(), square);
+    live.arm_trigger(trigger_spec("a", Kind::Below, 2.5, 0.05, true), &[]).unwrap();
+    append(&path, 100, 700, square);
+    live.refresh().unwrap();
+    assert_eq!(
+        crossings(&store, &live),
+        [
+            (200, "Trigger: a goes below 2.5".to_owned()),
+            (400, "Trigger: a goes below 2.5".into()),
+            (600, "Trigger: a goes below 2.5".into())
+        ]
+    );
+    assert_eq!(live.trigger_status().rule.as_deref(), Some("prev(\"a\") >= 2.5 && \"a\" < 2.5"));
+}
+
+/// Crossings inside the window of the one before aren't new ones; a disarmed trigger sees nothing more.
+#[test]
+fn a_crossing_in_the_window_of_the_last_is_not_another_and_a_disarmed_trigger_stops() {
+    let data = cache();
+    let (store, live, path) = followed(data.path(), square);
+    live.arm_trigger(trigger_spec("a", Kind::Above, 5.0, 0.5, true), &[]).unwrap();
+    append(&path, 100, 700, square);
+    live.refresh().unwrap();
+    // 300 starts a half second window that holds 500 (200 ms later): only 300 counts
+    assert_eq!(crossings(&store, &live).len(), 1);
+    assert_eq!(live.trigger_status().count, 1);
+    assert!(live.trigger_status().pending, "the window of the last crossing isn't over");
+
+    live.disarm_trigger();
+    assert!(!live.trigger_status().armed);
+    append(&path, 700, 1500, square);
+    live.refresh().unwrap();
+    assert_eq!(live.trigger_status().count, 1);
+    assert_eq!(crossings(&store, &live).len(), 1);
+    // armed again: it looks from where it is
+    live.arm_trigger(trigger_spec("a", Kind::Above, 5.0, 0.01, true), &[]).unwrap();
+    append(&path, 1500, 1900, square);
+    live.refresh().unwrap();
+    assert_eq!(crossings(&store, &live).len(), 2, "the one at 1700");
+}
+
+/// Missing samples are looked past, and a number that never changes never crosses.
+#[test]
+fn missing_samples_are_skipped_and_a_constant_never_crosses() {
+    let data = cache();
+    let gappy = |i: usize| {
+        if (150..160).contains(&i) {
+            f32::NAN
+        } else if i >= 160 {
+            10.0
+        } else {
+            0.0
+        }
+    };
+    let (store, live, path) = followed(data.path(), gappy);
+    live.arm_trigger(trigger_spec("a", Kind::Above, 5.0, 0.05, false), &[]).unwrap();
+    append(&path, 100, 300, gappy);
+    live.refresh().unwrap();
+    // the first value after the gap is compared with the last one before it
+    assert_eq!(crossings(&store, &live), [(160, "Trigger: a goes above 5".to_owned())]);
+
+    let data = cache();
+    let (store, live, path) = followed(data.path(), |_| 1.0);
+    live.arm_trigger(trigger_spec("3", Kind::Rise, 2.0, 0.05, true), &[]).unwrap();
+    append(&path, 100, 300, |_| 1.0);
+    live.refresh().unwrap();
+    let s = live.trigger_status();
+    assert!(s.armed && s.count == 0 && s.error.is_none(), "{s:?}");
+    assert!(crossings(&store, &live).is_empty());
+}
+
+// ---- the recipe library --------------------------------------------------------------------------------------
+
+use tlmbench_store::Library;
+
+#[test]
+fn the_recipe_library_names_files_renames_and_deletes() {
+    let root = cache();
+    let lib = Library::new(root.path());
+    let dir = root.path().join("recipes");
+    let r = |name: &str, expr: &str| recipe(name, expr);
+
+    assert!(matches!(lib.save(&r("  ", "a"), None), Err(Error::Invalid(_))));
+    // a name with no letters or digits still gets a file; two names that slug alike get one each
+    lib.save(&r("!!!", "a + 1"), None).unwrap();
+    lib.save(&r("Total Power", "a * 2"), None).unwrap();
+    lib.save(&r("total-power", "a * 3"), None).unwrap();
+    assert!(
+        dir.join("recipe.toml").exists()
+            && dir.join("total-power.toml").exists()
+            && dir.join("total-power-2.toml").exists()
+    );
+    assert_eq!(lib.list().iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["!!!", "Total Power", "total-power"]);
+    assert_eq!(lib.get("total-power").unwrap().expr, "a * 3");
+    assert!(lib.get("nothing").is_none());
+
+    // editing one in place keeps its file; renaming removes the old name's
+    lib.save(&r("total-power", "a * 4"), Some("total-power")).unwrap();
+    assert_eq!(lib.get("total-power").unwrap().expr, "a * 4");
+    assert!(dir.join("total-power-2.toml").exists());
+    lib.save(&r("Power", "a * 4"), Some("total-power")).unwrap();
+    assert!(lib.get("total-power").is_none() && lib.get("Power").is_some());
+    assert!(!dir.join("total-power-2.toml").exists());
+
+    // a file of two recipes loses one, then goes with the other
+    let pair = dir.join("pair.toml");
+    fs::write(&pair, tlmbench_expr::recipe::to_toml(&[r("One", "a"), r("Two", "b")])).unwrap();
+    assert_eq!(lib.list().len(), 5);
+    lib.delete("One").unwrap();
+    assert!(pair.exists() && lib.get("One").is_none() && lib.get("Two").is_some());
+    lib.delete("Two").unwrap();
+    assert!(!pair.exists());
+    lib.delete("never-existed").unwrap();
+}
+
+#[test]
+fn the_recipe_library_reports_files_it_cannot_read_and_imports_text() {
+    let root = cache();
+    let lib = Library::new(root.path());
+    let dir = root.path().join("recipes");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("broken.toml"), "this is = not [valid").unwrap();
+    fs::write(dir.join("notes.txt"), "not a recipe file").unwrap();
+    assert!(lib.list().is_empty());
+    let problems = lib.problems();
+    assert_eq!(problems.len(), 1);
+    assert!(problems[0].0.ends_with("broken.toml") && !problems[0].1.is_empty());
+    // deleting skips the file it can't read; saving a recipe of the same slug as a broken file's takes another name
+    lib.delete("anything").unwrap();
+    lib.save(&recipe("Broken", "a"), None).unwrap();
+    assert!(dir.join("broken-2.toml").exists());
+
+    let text = tlmbench_expr::recipe::to_toml(&[recipe("Imported", "a + b"), recipe("Also", "a - b")]);
+    assert_eq!(lib.import(&text).unwrap(), ["Imported", "Also"]);
+    assert_eq!(lib.get("Imported").unwrap().expr, "a + b");
+    assert!(lib.import("not [toml").is_err());
+}
+
+/// A recipe's preview over the first samples: one number, a series, or nothing at all.
+#[test]
+fn a_recipe_check_summarizes_numbers_series_and_empty_results() {
+    let data = cache();
+    let p = ramp_csv(data.path(), 100);
+    let o = Store::new(Some(cache().path())).open(&p, None).unwrap();
+    let rec = o.recording();
+    let flat = tlmbench_store::check(rec, "mean(a)").unwrap();
+    assert_eq!((flat.samples, flat.number), (100, Some(49.5)));
+    let centred = tlmbench_store::check(rec, "a - mean(a)").unwrap();
+    assert_eq!((centred.values, centred.min, centred.max, centred.number), (100, Some(-49.5), Some(49.5), None));
+    assert!((centred.mean.unwrap()).abs() < 1e-9);
+    let nothing = tlmbench_store::check(rec, "a / 0 - a / 0").unwrap();
+    assert_eq!(
+        (nothing.samples, nothing.values, nothing.min, nothing.mean, nothing.number),
+        (100, 0, None, None, None)
+    );
+    assert!(tlmbench_store::check(rec, "a +").is_err());
+    assert!(tlmbench_store::check(rec, "nosuch + 1").is_err());
+}
+
+// ---- the shared configuration read through a tree -----------------------------------------------------------
+
+use std::collections::BTreeMap;
+use tlmbench_store::config::{Tree, from_tree};
+
+struct Mem(BTreeMap<&'static str, &'static str>);
+
+impl Tree for Mem {
+    fn text(&self, rel: &str) -> Option<String> {
+        self.0.get(rel).map(|s| s.to_string())
+    }
+    fn dirs(&self, rel: &str) -> Vec<String> {
+        let prefix = format!("{rel}/");
+        let mut v: Vec<String> = self
+            .0
+            .keys()
+            .filter_map(|k| k.strip_prefix(&prefix))
+            .filter_map(|k| k.split_once('/').map(|(d, _)| d.to_owned()))
+            .collect();
+        v.dedup();
+        v
+    }
+    fn files(&self, rel: &str, ext: &str) -> Vec<String> {
+        let prefix = format!("{rel}/");
+        self.0
+            .keys()
+            .filter_map(|k| k.strip_prefix(&prefix))
+            .filter(|k| !k.contains('/') && k.ends_with(ext))
+            .map(str::to_owned)
+            .collect()
+    }
+}
+
+#[test]
+fn a_folder_read_through_a_tree_gives_categories_widgets_and_icons_and_skips_the_rest() {
+    let tree = Mem(BTreeMap::from([
+        (
+            "categories.toml",
+            "schema = 1\n[[category]]\nid = \"fault\"\nname = \"Fault\"\ncolor = \"#f00\"\nicon = \"warn\"\n",
+        ),
+        ("icons/warn.svg", "<svg/>"),
+        ("icons/notes.txt", "not an icon"),
+        // a code widget with its inputs and parameters
+        (
+            "widgets/attitude/widget.toml",
+            "schema = 1\nname = \"Attitude\"\nkind = \"code\"\nentry = \"main.js\"\nby = \"me\"\nicon = \"i.svg\"\n\
+             [[input]]\nrole = \"pitch\"\nlabel = \"Pitch\"\n[[input]]\nrole = \"roll\"\n\
+             [[param]]\nname = \"max\"\ntype = \"number\"\ndefault = \"10\"\n[[param]]\nname = \"mode\"\ntype = \"choice\"\nchoices = [\"a\", \"b\"]\n",
+        ),
+        ("widgets/attitude/main.js", "export default 1"),
+        ("widgets/attitude/i.svg", "<svg id='i'/>"),
+        // an svg widget with an angle, whose icon can't be a path
+        (
+            "widgets/dial/widget.toml",
+            "schema = 1\nname = \"Dial\"\nkind = \"svg\"\nentry = \"dial.svg\"\nangle = [-135.0, 135.0]\nicon = \"../x.svg\"\n",
+        ),
+        ("widgets/dial/dial.svg", "<svg id='dial'/>"),
+        // the ways a widget is refused
+        ("widgets/nofile/other.txt", "x"),
+        ("widgets/badtoml/widget.toml", "not [toml"),
+        ("widgets/oldschema/widget.toml", "schema = 9\nname = \"Old\"\nkind = \"svg\"\nentry = \"a.svg\"\n"),
+        ("widgets/oldschema/a.svg", "<svg/>"),
+        ("widgets/slash/widget.toml", "schema = 1\nname = \"S\"\nkind = \"svg\"\nentry = \"sub/a.svg\"\n"),
+        ("widgets/dotted/widget.toml", "schema = 1\nname = \"D\"\nkind = \"svg\"\nentry = \".hidden.svg\"\n"),
+        ("widgets/noentry/widget.toml", "schema = 1\nname = \"N\"\nkind = \"svg\"\nentry = \"missing.svg\"\n"),
+        ("widgets/oddkind/widget.toml", "schema = 1\nname = \"O\"\nkind = \"python\"\nentry = \"a.py\"\n"),
+        ("widgets/oddkind/a.py", "print(1)"),
+    ]));
+    let got = from_tree(&tree);
+    assert_eq!(got.categories.len(), 1);
+    assert_eq!(
+        (got.categories[0].id.as_str(), got.categories[0].icon.as_deref(), got.categories[0].show_on_charts),
+        ("fault", Some("warn"), true)
+    );
+    assert_eq!(got.icons.len(), 1);
+    assert_eq!((got.icons[0].name.as_str(), got.icons[0].svg.as_str()), ("warn", "<svg/>"));
+    let ids: Vec<&str> = got.widgets.iter().map(|w| w.id.as_str()).collect();
+    assert_eq!(ids, ["attitude", "dial"], "only the readable ones");
+    let att = &got.widgets[0];
+    assert_eq!(
+        (att.name.as_str(), att.by.as_deref(), att.code.as_deref(), att.svg.as_deref()),
+        ("Attitude", Some("me"), Some("export default 1"), None)
+    );
+    assert_eq!(att.icon.as_deref(), Some("<svg id='i'/>"));
+    assert_eq!(
+        att.inputs.iter().map(|i| (i.role.as_str(), i.label.as_deref())).collect::<Vec<_>>(),
+        [("pitch", Some("Pitch")), ("roll", None)]
+    );
+    assert_eq!(
+        (att.params[0].name.as_str(), att.params[0].kind.as_str(), att.params[0].default.as_deref()),
+        ("max", "number", Some("10"))
+    );
+    assert_eq!(att.params[1].choices, ["a", "b"]);
+    let dial = &got.widgets[1];
+    assert_eq!(
+        (dial.svg.as_deref(), dial.angle, dial.icon.as_deref(), dial.code.as_deref()),
+        (Some("<svg id='dial'/>"), Some([-135.0, 135.0]), None, None)
+    );
+
+    // a categories file of another schema, or damaged, gives none
+    let old = Mem(BTreeMap::from([(
+        "categories.toml",
+        "schema = 2\n[[category]]\nid = \"a\"\nname = \"A\"\ncolor = \"#fff\"\n",
+    )]));
+    assert!(from_tree(&old).categories.is_empty());
+    let bad = Mem(BTreeMap::from([("categories.toml", "[[category")]));
+    assert!(from_tree(&bad).categories.is_empty());
+}
+
+// ---- the pyramid cache ---------------------------------------------------------------------------------------
+
+/// `t,a,b` with times that are not at a steady rate, so the time is a stored column (and has a `times.bin`).
+fn uneven_csv(dir: &Path) -> PathBuf {
+    let mut t = String::from("t,a,b\n");
+    for i in 0..3000usize {
+        t.push_str(&format!("{},{},{}\n", i * i % 10_007 + i * 10_007, i, 2 * i));
+    }
+    csv(dir, "uneven.csv", &t)
+}
+
+/// The cache entry of `path` in `root`, built.
+fn built_entry(root: &Path, path: &Path) -> PathBuf {
+    let o = Store::new(Some(root)).open(path, None).unwrap();
+    o.build(&mut |_, _| {}).unwrap();
+    root.join("pyr/v2").join(o.key())
+}
+
+/// A cache entry that was cut short, changed or is missing a file is refused with what is wrong, never read.
+#[test]
+fn a_damaged_cache_entry_is_refused() {
+    let data = cache();
+    let path = uneven_csv(data.path());
+    type Damage = (&'static str, fn(&Path), &'static str);
+    let damages: [Damage; 5] = [
+        (
+            "c0.pyr cut short",
+            |d| fs::OpenOptions::new().write(true).open(d.join("c0.pyr")).unwrap().set_len(10).unwrap(),
+            "expected",
+        ),
+        (
+            "manifest of another recording",
+            |d| {
+                let text = fs::read_to_string(d.join("manifest.json")).unwrap();
+                let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                v["samples"] = 7.into();
+                fs::write(d.join("manifest.json"), v.to_string()).unwrap();
+            },
+            "manifest doesn't match",
+        ),
+        ("gaps.bin of the wrong size", |d| fs::write(d.join("gaps.bin"), [1, 2, 3]).unwrap(), "wrong size"),
+        (
+            "times.bin of the wrong size",
+            |d| {
+                let mut f = fs::OpenOptions::new().append(true).open(d.join("times.bin")).unwrap();
+                f.write_all(&[0; 8]).unwrap();
+            },
+            "wrong size",
+        ),
+        ("c0.pyr missing", |d| fs::remove_file(d.join("c0.pyr")).unwrap(), "c0.pyr"),
+    ];
+    for (what, damage, why) in damages {
+        let root = cache();
+        let dir = built_entry(root.path(), &path);
+        assert!(dir.join("times.bin").exists(), "a stored time column has times.bin");
+        damage(&dir);
+        let e = Store::new(Some(root.path())).open(&path, None).err().unwrap_or_else(|| panic!("{what}: opened"));
+        assert!(matches!(e, Error::Damaged { .. } | Error::Io { .. }), "{what}: {e}");
+        assert!(e.to_string().contains(why), "{what}: {e}");
+    }
+}
+
+/// An entry that turns out damaged by the time it is built is made again.
+#[test]
+fn a_build_replaces_an_entry_that_was_damaged_meanwhile() {
+    let data = cache();
+    let path = uneven_csv(data.path());
+    let root = cache();
+    let store = Store::new(Some(root.path()));
+    let waiting = store.open(&path, None).unwrap(); // nothing built yet
+    assert_eq!(waiting.status(), tlmbench_store::Status::Missing);
+    let dir = built_entry(root.path(), &path); // another process builds it...
+    fs::OpenOptions::new().write(true).open(dir.join("c1.pyr")).unwrap().set_len(10).unwrap(); // ...and it is damaged
+    waiting.build(&mut |_, _| {}).unwrap();
+    assert_eq!(waiting.status(), tlmbench_store::Status::Built);
+    let again = Store::new(Some(root.path())).open(&path, None).unwrap();
+    assert_eq!(again.status(), tlmbench_store::Status::Built, "the entry on disk is whole again");
+    assert_eq!(
+        format!("{:?}", again.stats(&[0, 1], 0, i64::MAX)),
+        format!("{:?}", waiting.stats(&[0, 1], 0, i64::MAX))
+    );
+}
+
+/// While another process builds an entry, a build here follows it: it ends when the entry is whole, or when
+/// cancelled, and it never builds the same entry twice.
+#[test]
+fn a_build_waits_for_another_process_and_follows_it() {
+    let data = cache();
+    let path = uneven_csv(data.path());
+    let ref_cache = cache();
+    let reference = built_entry(ref_cache.path(), &path); // the entry as another process would leave it
+
+    let root = cache();
+    let o = Arc::new(Store::new(Some(root.path())).open(&path, None).unwrap());
+    let lock_path = root.path().join("pyr/v2").join(format!("{}.lock", o.key()));
+    let lock = fs::File::options().create(true).truncate(false).write(true).open(&lock_path).unwrap();
+    lock.lock().unwrap(); // "the other process" is building
+
+    // cancelled while waiting: it returns, and nothing is built
+    let waiter = {
+        let o = o.clone();
+        std::thread::spawn(move || o.build(&mut |_, _| {}))
+    };
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    o.cancel();
+    waiter.join().unwrap().unwrap();
+    assert_eq!(o.status(), tlmbench_store::Status::Missing);
+    assert!(!root.path().join("pyr/v2").join(o.key()).join("manifest.json").exists());
+    drop(o);
+
+    // the other process finishes: the entry appears whole, and the waiting build takes it as built
+    let o = Arc::new(Store::new(Some(root.path())).open(&path, None).unwrap());
+    let waiter = {
+        let o = o.clone();
+        std::thread::spawn(move || o.build(&mut |_, _| {}))
+    };
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let dest = root.path().join("pyr/v2").join(o.key());
+    fs::create_dir_all(&dest).unwrap();
+    for f in ["c0.pyr", "c1.pyr", "gaps.bin", "times.bin", "manifest.json"] {
+        fs::copy(reference.join(f), dest.join(f)).unwrap();
+    }
+    waiter.join().unwrap().unwrap();
+    assert_eq!(o.status(), tlmbench_store::Status::Built);
+    drop(lock);
+}
