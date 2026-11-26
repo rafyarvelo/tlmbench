@@ -14,3 +14,10 @@ deleted at the release tag (R8).
   group); the design's Panes bar line ("Pane actions (new, clear channels, remove all) live in the Explorer's Panes
   bar") and the ⋯ menu line ("New pane, Remove every channel or pane and Export are the menu bar's and the top bar's")
   need updating to say where these are now.
+
+- **Nov 25, Explorer row actions (owner, rc.1 test plan 3.5: match the prototype).** The selected channel row (while
+  pointed at), the open file's row and, on hover, a category row show the prototype's icons over the row's end: add to
+  the selected pane, a new chart, a new table, and for a plotted channel remove from every pane. Every "open in a new
+  chart / table" (the selection bar, Explorer ⋯, a table's selected columns, a check's row) now puts the new pane below
+  the selected one, not at the end. The prototype's "Clicking a row" setting is not in the app (Select first is how the
+  app always works). The design's Explorer text could say so.

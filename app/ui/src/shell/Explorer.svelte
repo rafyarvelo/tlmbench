@@ -11,7 +11,7 @@
   import { chBase, chCss, chName, chUnit } from '../display.svelte';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
-  import { addChannels, newPaneWith, note, panesOf, removeChannels, stack, toggleChannel, undoable } from '../stack.svelte';
+  import { addChannels, newPaneBelowSelected, note, panesOf, removeChannels, stack, toggleChannel, undoable } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, type FolderEntry, ui, viewLocked } from '../ui.svelte';
   import Alignment from './Alignment.svelte';
@@ -98,6 +98,12 @@
     return c ? stateOf(c.health, c.stopped) : null;
   });
   const slotOf = (path: string) => ui.slots.find((s) => s.path === path);
+  /** An open file's channels that the filter shows (all of them when its name matches), for its row's actions. */
+  const fileChans = (path: string, name: string) => {
+    const s = ui.slots.length > 1 ? slotOf(path) : undefined;
+    const all = s ? Array.from({ length: s.count }, (_, k) => s.first + k) : ui.channels.map((_, k) => k);
+    return all.filter((ch) => chanMatch(ui.channels[ch]) || matcher.test(name));
+  };
   /** How a file of the tab is aligned to file 1, in words. */
   const alignWord = (sl: (typeof ui.slots)[number]) =>
     ({ starts: 'starts aligned', clock: 'same clock', timesrc: 'time channel', xcorr: 'correlated', events: 'events', sync: 'sync points', manual: 'offset', plugin: sl.align.plugin ?? 'plugin' })[sl.align.method];
@@ -381,7 +387,7 @@
     </div>
   {/if}
 
-  <div class="tree" role="tree" aria-label="Recordings" tabindex="-1" onkeydown={treeKey}>
+  <div class="tree" class:multi={picked.length > 1 || pickedFiles.length > 1} role="tree" aria-label="Recordings" tabindex="-1" onkeydown={treeKey}>
     {#if ui.folder}
       {#snippet dir(d: FolderEntry, depth: number)}
         {#each d.children.filter((c) => (c.dir ? dirShown(c) : fileShown(c))) as c (c.path)}
@@ -435,8 +441,8 @@
     <div class="selbar" id="selBar" role="toolbar" aria-label="Selected channels">
       <span class="cap">{targets.length === 1 ? ui.channels[targets[0]]?.name : `${targets.length} selected`}</span><span class="spacer"></span>
       <button class="tbtn" data-sel="add" data-tip="Plot in the selected pane" onclick={() => addChannels(targets)}>Add to pane {stack.sel + 1}</button>
-      <button class="tbtn" data-sel="chart" onclick={() => newPaneWith(targets)}>Chart</button>
-      <button class="tbtn" data-sel="table" onclick={() => newPaneWith(targets, 'table')}>Table</button>
+      <button class="tbtn" data-sel="chart" onclick={() => newPaneBelowSelected(targets)}>Chart</button>
+      <button class="tbtn" data-sel="table" onclick={() => newPaneBelowSelected(targets, 'table')}>Table</button>
       {#if !ui.browserOnly}<button class="tbtn" data-sel="derive" data-tip={targets.length > 2 ? 'Pick one or two channels to derive from' : 'A new channel computed from this one'} disabled={targets.length > 2} onclick={() => actions.deriveOpen(targets)}>Derive…</button>{/if}
       <button class="tbtn" data-sel="remove" disabled={!targets.some(plottedAnywhere)} data-tip="Take out of every pane" onclick={() => removeChannels(targets)}>Remove</button>
     </div>
@@ -476,8 +482,8 @@
     items={[
       { heading: `${shownChans.length} channel${shownChans.length === 1 ? '' : 's'}${q.trim() ? ' match' : ''}` },
       { label: `Add all ${shownChans.length} channels to pane ${stack.sel + 1}`, data: { ex: 'add-all' }, disabled: !shownChans.length, run: () => addChannels(shownChans) },
-      { label: 'Open them in a new chart', data: { ex: 'new-chart' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans) },
-      { label: 'Open them in a new table', data: { ex: 'new-table' }, disabled: !shownChans.length, run: () => newPaneWith(shownChans, 'table') },
+      { label: 'Open them in a new chart', data: { ex: 'new-chart' }, disabled: !shownChans.length, run: () => newPaneBelowSelected(shownChans) },
+      { label: 'Open them in a new table', data: { ex: 'new-table' }, disabled: !shownChans.length, run: () => newPaneBelowSelected(shownChans, 'table') },
       { sep: true },
       { label: `Show files that can't be opened${hidden ? ` (${hidden} hidden)` : ''}`, checked: settings.exShowAll, data: { ex: 'showall' }, run: () => setSetting('exShowAll', !settings.exShowAll) },
       ...(ui.browserOnly ? [] : [{ sep: true } as const, { label: 'Recipes and profiles…', data: { ex: 'recipes' }, run: actions.recipesOpen }]),
@@ -513,6 +519,7 @@
     onkeydown={(e) => key(e, { kind: 'file', path })}
   >
     {#if open}<button class="chev fchev" class:on={!fileShut(path)} data-file-chev aria-label={fileShut(path) ? 'Show the channels' : 'Hide the channels'} onclick={(e) => (e.stopPropagation(), toggleFile(path))}>{@html ICON.chev}</button>{/if}{@html ICON.file}{#if sl}<b class="slotn" data-fslot={sl.slot}>{sl.slot}</b>{/if}<span class="nm" data-tip={group ? name : undefined}>{group ?? name}</span>{#if sl}<span class="meta" data-fslotmeta>{sl.slot === 1 ? (group ? (ui.slots.every((x) => x.path === path) ? `${ui.slots.length} packet types` : `${ui.slots.length} files`) : 'primary') : `${sl.align.locked ? 'locked · ' : ''}${alignWord(sl)}`}</span>{/if}<CheckBadge {path} />{#if open && ui.slots.length < 2 && frontState}{@const fs = frontState}<span class="meta lvst" data-state={fs} data-lvstate>{WORD[fs]}</span>{/if}{#if needsDesc.has(path) && !inTab(path)}<span class="fbadge" data-tip="Open it to describe its byte layout">no descriptor</span>{/if}{#if tabs.list.find((t) => t.path === path && t.rate)?.rate}<button class="ratechip" data-frate data-tip="Data rate. Click to see the import settings and change them." onclick={(e) => (e.stopPropagation(), actions.importAgain(path))}>{tabs.list.find((t) => t.path === path && t.rate)?.rate}</button>{/if}{#if inTab(path) && !open}<span class="dot" aria-label="open in a tab"></span>{/if}
+    {#if open && !ui.viewer && ui.channels.length}{@render rowActs(fileChans(path, name), name, false, true)}{/if}
     {#if sel === path && !open && listedPath(path) && pickedFiles.length < 2}
       <button class="tbtn act" onclick={(e) => (e.stopPropagation(), actions.openPath(path))}>Open</button>
       <button class="tbtn" data-tip="Open it and close the other tabs" onclick={(e) => (e.stopPropagation(), actions.openOnly(path))}>Only this</button>
@@ -540,10 +547,10 @@
               onclick={(e) => !clickCat(e, g.name, groups) && setSetting('exCatClosed', shut ? settings.exCatClosed.filter((n) => n !== g.name) : [...settings.exCatClosed, g.name])}
               onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), pickedCats.length > 1 && pickedCats.includes(g.name) ? addChannels(picked) : (e.currentTarget as HTMLElement).click())}>
               <span class="chev" class:on={!shut}>{@html ICON.chev}</span><span class="nm">{g.name}</span>
-              <span class="catact">
-                <button class="linkbtn" data-cat-act="add" data-tip="Plot the group in the selected pane" onclick={(e) => (e.stopPropagation(), addChannels(vis))}>Add</button>
-                <button class="linkbtn" data-cat-act="chart" onclick={(e) => (e.stopPropagation(), newPaneWith(vis))}>Chart</button>
-                <button class="linkbtn" data-cat-act="table" onclick={(e) => (e.stopPropagation(), newPaneWith(vis, 'table'))}>Table</button>
+              <span class="hov" data-hov>
+                <button class="ibtn" data-cat-act="add" disabled={viewLocked()} aria-label="Add the {vis.length} {g.name} channels shown to pane {stack.sel + 1}" data-tip="Add the group to pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), addChannels(vis))}>{@html ICON.plus}</button>
+                <button class="ibtn" data-cat-act="table" disabled={viewLocked()} aria-label="Open the {vis.length} {g.name} channels shown in a new table pane" data-tip="Open the group in a new table pane below pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), newPaneBelowSelected(vis, 'table'))}>{@html ICON.vtable}</button>
+                <button class="ibtn" data-cat-act="chart" disabled={viewLocked()} aria-label="Open the {vis.length} {g.name} channels shown in a new chart pane" data-tip="Open the group in a new chart pane below pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), newPaneBelowSelected(vis))}>{@html ICON.vchart}</button>
               </span>
               <span class="meta num" data-count>{vis.filter(plottedAnywhere).length} / {vis.length}</span>
             </div>
@@ -594,7 +601,23 @@
   >
     <button class="box" role="checkbox" aria-checked={inSel(ch)} disabled={viewLocked()} data-tip={viewLocked() ? 'Unlock to change panes' : undefined} aria-label="Plot {c.name} in pane {stack.sel + 1}" onclick={(e) => (e.stopPropagation(), toggleChannel(ch))}>{#if inSel(ch)}{@html ICON.check}{/if}</button>
     {#if c.derived}<span class="dglyph" data-tip="Derived: {c.derived.expr}" aria-label="Derived channel">ƒ</span>{/if}<span class="nm">{ui.slots.length > 1 ? chBase(ch) : chName(ch)}</span>{#if failing.has(c.name)}<span class="chkdot" class:warn={failing.get(c.name) === 'warn'} data-chkdot data-tip="Used by a failing check" aria-label="used by a failing check"></span>{/if}{#if where.length}<span class="where" data-where>pane {where.join(', ')}</span>{/if}{#if c.missing && !settings.quietUI}<span class="miss" data-miss={c.missing} data-tip="{c.missing.toLocaleString()} samples are missing in this file" aria-label="{c.missing} missing">⌀ {c.missing.toLocaleString()}</span>{/if}{#if chUnit(ch)}<span class="unit">{chUnit(ch)}</span>{/if}
+    {@render rowActs([ch], c.name, plottedAnywhere(ch))}
   </div>
+{/snippet}
+
+<!-- A row's actions, as the prototype's: add to the selected pane, open in a new chart or table below it (and, for a
+     plotted channel, take it out of every pane). They overlay the row's right end, so a long name stays whole; on a
+     channel or file row they show on the selected row while you point at it, on a group row on hover
+     (owner, rc.1 test plan 3.5). -->
+{#snippet rowActs(chs: number[], what: string, plotted = false, many = false)}
+  {@const lk = viewLocked()}
+  {@const them = many ? `the ${chs.length} ${what} channels shown` : what}
+  <span class="hov" data-hov>
+    {#if plotted}<button class="ibtn" data-rmall disabled={lk} aria-label="Remove {them} from every pane" data-tip={lk ? 'Unlock to change panes' : 'Remove from every pane'} onclick={(e) => (e.stopPropagation(), removeChannels(chs))}>{@html ICON.close}</button>{/if}
+    <button class="ibtn" data-hadd disabled={lk || !chs.length} aria-label="Add {them} to pane {stack.sel + 1}" data-tip={lk ? 'Unlock to change panes' : `Add to pane ${stack.sel + 1}`} onclick={(e) => (e.stopPropagation(), addChannels(chs))}>{@html ICON.plus}</button>
+    <button class="ibtn" data-hnew="chart" disabled={lk || !chs.length} aria-label="Open {them} in a new chart pane" data-tip={lk ? 'Unlock to change panes' : `Open in a new chart pane below pane ${stack.sel + 1}`} onclick={(e) => (e.stopPropagation(), newPaneBelowSelected(chs))}>{@html ICON.vchart}</button>
+    <button class="ibtn" data-hnew="table" disabled={lk || !chs.length} aria-label="Open {them} in a new table pane" data-tip={lk ? 'Unlock to change panes' : `Open in a new table pane below pane ${stack.sel + 1}`} onclick={(e) => (e.stopPropagation(), newPaneBelowSelected(chs, 'table'))}>{@html ICON.vtable}</button>
+  </span>
 {/snippet}
 
 <style>
@@ -907,18 +930,50 @@
   .row.cat {
     font-weight: 600;
   }
-  .catact {
-    display: none;
-    gap: 8px;
-    margin-left: auto;
+  /* a row's actions overlay its right end, fading in over the name, so a long name stays whole (the prototype's) */
+  .row {
+    position: relative;
   }
-  .row.cat:hover .catact,
-  .row.cat:focus-within .catact {
+  .hov {
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    align-items: center;
+    gap: 0;
+    padding-left: 28px;
+    background: linear-gradient(to right, transparent, var(--accent-soft) 26px);
+    border-radius: 0 8px 8px 0;
+  }
+  .row:not(.sel):not(:focus-visible) .hov {
+    background: linear-gradient(to right, transparent, var(--raised) 26px);
+  }
+  .hov .ibtn {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+  }
+  .hov .ibtn :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+  /* while pointed at (or one of them has the keyboard's focus); the keyboard has the same in the selection bar */
+  .row.chan.sel:is(:hover, :has(> .hov :focus-visible)) > .hov,
+  .row.file.sel:is(:hover, :has(> .hov :focus-visible)) > .hov,
+  .row.cat:is(:hover, :has(> .hov :focus-visible)) > .hov {
     display: inline-flex;
   }
-  .row.cat:hover .catact + .meta,
-  .row.cat:focus-within .catact + .meta {
-    margin-left: 8px;
+  /* several rows picked: the selection bar acts on them all */
+  .tree.multi .row > .hov {
+    display: none !important;
+  }
+  @media (hover: none) {
+    .row.chan.sel > .hov,
+    .row.file.sel > .hov,
+    .row.cat > .hov {
+      display: inline-flex;
+    }
   }
   .fchev {
     padding: 0;

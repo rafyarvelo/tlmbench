@@ -24,9 +24,11 @@ run('channels', async ({ p, check, text, visible, fake, paneCount, until, wait }
   await p.click('#explorer .row.cat[data-cat="motor"] .nm');
   await p.hover('#explorer .row.cat[data-cat="other"]');
   const np = await paneCount();
+  const s0 = await app('sel');
   await p.click('#explorer .row.cat[data-cat="other"] [data-cat-act="chart"]');
-  check('a category\'s Chart opens the group in a new pane', (await paneCount()) === np + 1 && (await app('panes')).at(-1).join() === '2,3', await app('panes'));
-  await p.click('#stack [data-pane="3"] [data-pmenu]');
+  check('a category\'s chart icon opens the group in a new pane below the selected one', (await paneCount()) === np + 1 && (await app('sel')) === s0 + 1 && (await app('panes'))[s0 + 1].join() === '2,3', [await app('sel'), await app('panes')]);
+  await p.hover(`#stack [data-pane="${s0 + 1}"] .phead`);
+  await p.click(`#stack [data-pane="${s0 + 1}"] [data-pmenu]`);
   await p.locator('.panemenu .mi', { hasText: /^Close pane$/ }).click();
   check('back to three panes', (await paneCount()) === 3);
 
@@ -64,11 +66,45 @@ run('channels', async ({ p, check, text, visible, fake, paneCount, until, wait }
   await p.keyboard.press('ControlOrMeta+a');
   check('Ctrl+A picks every channel', /6 selected/i.test(await text('#selBar')), await text('#selBar'));
   const n0 = await paneCount();
+  const s1 = await app('sel');
   await p.click('#selBar [data-sel="chart"]');
-  check('Chart opens them in a new pane', (await paneCount()) === n0 + 1 && (await app('panes')).at(-1).length === 6, await app('panes'));
+  check('Chart opens them in a new pane below the selected one', (await paneCount()) === n0 + 1 && (await app('sel')) === s1 + 1 && (await app('panes'))[s1 + 1].length === 6, [await app('sel'), await app('panes')]);
   await p.click('#selBar [data-sel="table"]');
   check('Table opens them in a new table pane', (await paneCount()) === n0 + 2 && (await p.$$('#stack [data-table]')).length >= 1);
   await p.keyboard.press('Escape');
+
+  // a row's actions, as the prototype's (owner, rc.1 test plan 3.5): on the selected row while you point at it, over
+  // its right end so the name stays whole; add, a new chart or table below the selected pane, and out of every pane
+  {
+    const shown = (sel) => p.$eval(sel, (e) => getComputedStyle(e).display !== 'none').catch(() => false);
+    await p.click(`${ch(4)} .nm`);
+    await p.mouse.move(0, 0);
+    check('a selected channel row shows no actions until you point at it', !(await shown(`${ch(4)} [data-hov]`)));
+    const w0 = await p.$eval(`${ch(4)} .nm`, (e) => e.getBoundingClientRect().width);
+    await p.hover(`${ch(4)} .nm`);
+    check('pointed at, the selected row shows add, chart and table', (await shown(`${ch(4)} [data-hov]`)) && !!(await p.$(`${ch(4)} [data-hadd]`)) && !!(await p.$(`${ch(4)} [data-hnew="chart"]`)) && !!(await p.$(`${ch(4)} [data-hnew="table"]`)));
+    check('...over the row\'s end: the name keeps its width', (await p.$eval(`${ch(4)} .nm`, (e) => e.getBoundingClientRect().width)) === w0);
+    await p.hover(`${ch(5)} .nm`);
+    check('a row that is not selected shows none under the pointer', !(await shown(`${ch(5)} [data-hov]`)));
+    await p.hover(`${ch(4)} .nm`);
+    const s2 = await app('sel');
+    const n2 = await paneCount();
+    await p.click(`${ch(4)} [data-hnew="chart"]`);
+    check('its chart icon opens the channel in a new chart below the selected pane', (await paneCount()) === n2 + 1 && (await app('sel')) === s2 + 1 && (await app('panes'))[s2 + 1].join() === '4', [await app('sel'), await app('panes')]);
+    await p.hover(`${ch(4)} .nm`);
+    await p.click(`${ch(4)} [data-hnew="table"]`);
+    check('its table icon, a table below that', (await paneCount()) === n2 + 2 && (await app('sel')) === s2 + 2 && (await app('panes'))[s2 + 2].join() === '4' && (await app('modes'))[s2 + 2] === 'table', [await app('sel'), await app('modes')]);
+    await p.hover(`${ch(4)} .nm`);
+    check('a plotted channel also offers Remove from every pane', !!(await p.$(`${ch(4)} [data-rmall]`)));
+    await p.click(`${ch(4)} [data-rmall]`);
+    check('...which takes it out of every pane', await until(() => !window.__tlmApp.panes().some((c) => c.includes(4))), await app('panes'));
+    // the open file's row: every channel the filter shows
+    await p.click(`#explorer .row.file[data-path$="flight.tlm"] .nm`);
+    await p.hover(`#explorer .row.file[data-path$="flight.tlm"] .nm`);
+    const s3 = await app('sel');
+    await p.click(`#explorer .row.file[data-path$="flight.tlm"] [data-hnew="chart"]`);
+    check('the open file\'s chart icon opens all its channels in a new chart below the selected pane', (await app('sel')) === s3 + 1 && (await app('panes'))[s3 + 1].length === 6, [await app('sel'), await app('panes')]);
+  }
 
   // files: right-click, Show only these, Close all with Undo
   await p.click('#explorer .row.file[data-path$="hover.csv"]', { button: 'right' });

@@ -22,7 +22,7 @@ run(
     await p.focus('#explorer .row.chan[data-ch="0"]');
     await p.keyboard.press('ControlOrMeta+a');
     await p.click('#selBar [data-sel="chart"]');
-    const idx = (await p.locator('#stack section.pane').count()) - 1;
+    const idx = await p.evaluate(() => window.__tlmApp.sel()); // the new pane, below the selected one
     await p.click(`#stack [data-pane="${idx}"] [data-vmenu]`);
     await p.click('.menu [data-vm="gauges"]');
     await until(() => document.querySelectorAll('#stack [data-gw] svg').length >= 3);

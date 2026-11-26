@@ -95,6 +95,11 @@ Result:
 
 **3.7** Light and dark (Settings): everything readable in both; text crisp. Result:
 
+**3.8** Select a pane, then click a channel in the Explorer and point at it: icons appear at the row's end over the
+name (add, chart, table; × too if it's plotted). The chart icon opens it in a new pane right below the selected pane;
+so does Add pane, and the selection bar's Chart. Point at a category and at the open file: the same icons. (Added Nov
+25 for your 3.5 note.) Result:
+
 ## 4. Panes and layout
 
 **4.1** Drag a channel from the Explorer onto a pane, onto a pane's left and right edges, and between panes. An outline

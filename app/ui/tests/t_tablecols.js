@@ -70,7 +70,7 @@ run('tablecols', async ({ p, check, text, until, settingsLS }) => {
   check('Select this column shows the bar', (await text(`${T} [data-selbar]`)).includes('1 selected'), await text(`${T} [data-selbar]`));
   check('the column is marked', !!(await p.$(`${T} .thead .tth.sel[data-col="c0"]`)));
   await p.click(`${T} [data-sc="table"]`);
-  check('Table opens the column in a new table pane', await until(() => document.querySelectorAll('#stack section.pane').length === 4) && (await p.evaluate(() => window.__tlmApp.modes().at(-1))) === 'table', await p.evaluate(() => window.__tlmApp.modes()));
+  check('Table opens the column in a new table pane (below this one, selected)', await until(() => document.querySelectorAll('#stack section.pane').length === 4) && (await p.evaluate(() => window.__tlmApp.modes()[window.__tlmApp.sel()])) === 'table', await p.evaluate(() => window.__tlmApp.modes()));
   check('and the selection is done', !(await p.$(`${T} [data-selbar]`)));
   await p.click(`${T} [data-col="c1"] .thtop`, { modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'] });
   check('Ctrl/⌘-click on a header selects too', (await text(`${T} [data-selbar]`)).includes('1 selected'));

@@ -485,6 +485,20 @@ export function newPaneWith(chs: number[], mode?: PaneMode, out?: { ch: number; 
   });
 }
 
+/** A new pane with these channels below the selected pane's row (at the end when none is selected), selected: what
+ * "open in a new chart / table" does from the Explorer, a table's selected columns and a check (owner, rc.1 test plan
+ * 3.5, as the prototype). A drop on empty space keeps newPaneWith: it goes where it was dropped. */
+export function newPaneBelowSelected(chs: number[], mode?: PaneMode): void {
+  const n = stack.panes.length;
+  if (!(stack.sel >= 0 && stack.sel < n)) return newPaneWith(chs, mode);
+  const r = rowOf(stack.sel);
+  const at = r[r.length - 1] + 1;
+  edit(() => {
+    stack.panes.splice(at, 0, { channels: [...chs], ...(mode && mode !== 'chart' ? { mode } : {}) });
+    stack.sel = at;
+  });
+}
+
 /** A new pane, a row of its own, before pane `before` (a row's first pane). */
 export function newPaneBefore(chs: number[], before: number, mode?: PaneMode, out?: { ch: number; from: number }): void {
   const target = stack.panes[before];

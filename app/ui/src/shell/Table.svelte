@@ -21,7 +21,7 @@
   import { ICON } from '../icons';
   import { chCss, chName, chUnit } from '../display.svelte';
   import { catColor, catName, events, marked, type TlmEvent } from '../events.svelte';
-  import { fmtCh, learnDecimals, moveChannel, newPaneWith, note, paneEvents, setTable, sortLocked, stack } from '../stack.svelte';
+  import { fmtCh, learnDecimals, moveChannel, newPaneBelowSelected, note, paneEvents, setTable, sortLocked, stack } from '../stack.svelte';
   import { actions, ui } from '../ui.svelte';
   import { decodeRows, type Rows } from '../wire';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -660,8 +660,8 @@
     {#if chosen.length}
       <span class="tselbar" role="group" aria-label="Selected columns" data-selbar>
         <b>{chosen.length} selected</b>
-        <button class="tbtn" data-sc="chart" data-tip="Plot the selected columns in a new chart pane" onclick={() => (newPaneWith(chosen), (picked = []))}>{@html ICON.vchart}Chart</button>
-        <button class="tbtn" data-sc="table" data-tip="Open just the selected columns in a new table pane" onclick={() => (newPaneWith(chosen, 'table'), (picked = []))}>{@html ICON.vtable}Table</button>
+        <button class="tbtn" data-sc="chart" data-tip="Plot the selected columns in a new chart pane below this one" onclick={() => (newPaneBelowSelected(chosen), (picked = []))}>{@html ICON.vchart}Chart</button>
+        <button class="tbtn" data-sc="table" data-tip="Open just the selected columns in a new table pane" onclick={() => (newPaneBelowSelected(chosen, 'table'), (picked = []))}>{@html ICON.vtable}Table</button>
         <button class="tbtn" data-sc="hide" data-tip="Hide the selected columns from this table (bring them back from Columns)" onclick={() => (hide(chosen), (picked = []))}>Hide</button>
         <button class="tbtn" data-sc="clear" aria-label="Clear the selection" data-tip="Clear the selection" onclick={() => (picked = [])}>{@html ICON.close}</button>
       </span>

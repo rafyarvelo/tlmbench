@@ -19,7 +19,7 @@ run(
     await p.focus('#explorer .row.chan[data-ch="0"]');
     await p.keyboard.press('ControlOrMeta+a');
     await p.click('#selBar [data-sel="chart"]');
-    const last = (await p.locator('#stack section.pane').count()) - 1;
+    const last = await p.evaluate(() => window.__tlmApp.sel()); // the new pane, below the selected one
     await p.click(`#stack [data-pane="${last}"] [data-vmenu]`);
     check('the view menu offers Gauges', (await p.$$eval('.menu [data-vm]', (e) => e.map((x) => x.dataset.vm))).includes('gauges'));
     await p.click('.menu [data-vm="gauges"]');

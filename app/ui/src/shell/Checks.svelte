@@ -8,7 +8,7 @@
   import { ICON } from '../icons';
   import { endPanelDrag, startPanelDrag } from '../panels.svelte';
   import { movePanel, setPanelOpen, setSetting, settings, sideOf } from '../settings.svelte';
-  import { newPaneWith, addChannels, stack } from '../stack.svelte';
+  import { newPaneBelowSelected, addChannels, stack } from '../stack.svelte';
   import { tabs } from '../tabs.svelte';
   import { actions, ui } from '../ui.svelte';
   import Menu, { type MenuItem } from './Menu.svelte';
@@ -87,9 +87,9 @@
       anchor: e.currentTarget as HTMLElement,
       label: 'Open channels',
       items: [
-        { label: `Open its ${n} channel${n === 1 ? '' : 's'} in a new chart`, run: () => newPaneWith(chs) },
+        { label: `Open its ${n} channel${n === 1 ? '' : 's'} in a new chart`, run: () => newPaneBelowSelected(chs) },
         { label: `Add its ${n} channel${n === 1 ? '' : 's'} to the selected pane`, disabled: !stack.panes.length, run: () => addChannels(chs) },
-        { label: `Open its ${n} channel${n === 1 ? '' : 's'} in a new table`, run: () => newPaneWith(chs, 'table') },
+        { label: `Open its ${n} channel${n === 1 ? '' : 's'} in a new table`, run: () => newPaneBelowSelected(chs, 'table') },
       ],
     };
   }
@@ -104,7 +104,7 @@
         { label: 'Edit this check', run: () => actions.checkEditor(set, i) },
         { label: checks.sel === kk ? 'Deselect' : 'Select', run: () => (checks.sel = checks.sel === kk ? null : kk) },
         { sep: true },
-        { label: `Open its ${n} channel${n === 1 ? '' : 's'} in a new chart`, disabled: !n, run: () => newPaneWith(chs) },
+        { label: `Open its ${n} channel${n === 1 ? '' : 's'} in a new chart`, disabled: !n, run: () => newPaneBelowSelected(chs) },
         { label: `Add its ${n} channel${n === 1 ? '' : 's'} to the selected pane`, disabled: !n || !stack.panes.length, run: () => addChannels(chs) },
       ],
     };
