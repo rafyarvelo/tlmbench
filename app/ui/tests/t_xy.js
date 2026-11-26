@@ -84,6 +84,16 @@ run(
       await until(() => window.__tlmFake.xyAsks.at(-1).ask.rect === null);
     }
 
+    // a theme change repaints it at once, not when it is next drawn for another reason (owner, rc.1 test plan 3.7)
+    {
+      const px = () => p.$eval('#stack [data-xy] canvas', (c) => [...c.getContext('2d').getImageData(4, 4, 1, 1).data].join());
+      await p.mouse.move(5, 5);
+      const before = await px();
+      await p.keyboard.press('t');
+      check('the theme repaints the XY plot', await until((b) => [...document.querySelector('#stack [data-xy] canvas').getContext('2d').getImageData(4, 4, 1, 1).data].join() !== b, before), [before, await px()]);
+      await p.keyboard.press('t');
+    }
+
     // the pointer over the plot marks its time on every pane
     let hovered = false;
     for (let k = 1; k < 30 && !hovered; k++) {

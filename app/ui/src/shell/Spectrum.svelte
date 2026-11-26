@@ -63,6 +63,7 @@
     const cv = canvas;
     const list = specs;
     const W = width;
+    void ui.themeTick; // its colours come from the theme's tokens
     if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
     cv.width = Math.round(W * dpr);

@@ -137,7 +137,8 @@
     const cv = canvas;
     const R = reply;
     const [W, a, d, mk] = [width, area, drag, marks];
-    void [a, mk, ui.view.A, ui.view.B, ui.hover];
+    // the theme too: the colours come from its tokens (owner, rc.1 test plan 3.7: it changed only when next drawn)
+    void [a, mk, ui.view.A, ui.view.B, ui.hover, ui.themeTick];
     if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
     cv.width = Math.round(W * dpr);

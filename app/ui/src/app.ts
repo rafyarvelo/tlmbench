@@ -230,6 +230,7 @@ function tokens(): Record<string, string> {
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   tokenCache = null;
+  ui.themeTick++;
   renderPanes();
 });
 const colorOf = (ch: number) => {
@@ -6092,6 +6093,7 @@ onSetting((key) => {
   if (key === 'theme') {
     applyTheme();
     tokenCache = null;
+    ui.themeTick++;
     renderPanes();
   } else if (key === 'drawRaw' || key === 'gapLines') {
     if (key === 'gapLines') state.ovStale = true;

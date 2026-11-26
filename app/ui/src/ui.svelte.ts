@@ -60,6 +60,8 @@ export interface SlotRow {
 }
 
 export const ui = $state({
+  /** Counts theme changes (a setting, or the system's under Match system): canvases the page draws itself repaint on it. */
+  themeTick: 0,
   /** An HTML export's viewer: it opens only what its export holds and edits nothing. */
   viewer: !!(globalThis as { __tlmViewer?: boolean }).__tlmViewer,
   /** A viewer's lock (`isLocked`): it opens locked, its time view and panes held until the person unlocks it (not kept anywhere). */

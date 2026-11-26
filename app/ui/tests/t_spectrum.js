@@ -16,6 +16,13 @@ run(
     check('each channel\'s peak is named', await until(() => /accel_x: peak 12\.5 Hz/.test(document.querySelector('#stack .specinfo')?.textContent ?? '')), await text('#stack .specinfo'));
     check('the canvas has a size', await p.$eval('#stack [data-spectrum] canvas', (c) => c.width > 0 && c.height > 0));
     check('a spectrum pane has no chart plot', await p.evaluate(() => !document.querySelector('#stack section.pane').querySelector('.plot')));
+    // a theme change repaints it at once (rc.1 test plan 3.7: canvases drawn here kept the old theme's colours)
+    const hash = () => { const c = document.querySelector('#stack [data-spectrum] canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0; for (let k = 0; k < d.length; k += 4) h = (h * 31 + d[k] + 7 * d[k + 1] + 13 * d[k + 2] + 17 * d[k + 3]) >>> 0; return h; };
+    await p.mouse.move(5, 5);
+    await p.evaluate((src) => (window.__look = (0, eval)(`(${src})`)()), hash.toString());
+    await p.keyboard.press('t');
+    check('the theme repaints the spectrum', await until((src) => (0, eval)(`(${src})`)() !== window.__look, hash.toString()));
+    await p.keyboard.press('t');
 
     // a new time view asks again
     const n = (await asked()).length;

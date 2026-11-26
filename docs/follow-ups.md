@@ -26,3 +26,5 @@ deleted at the release tag (R8).
   12 s). The design's R4 text could say so.
 - **Nov 26, XY wheel zoom (owner, rc.1 test plan 3.6).** The XY pane's wheel zooms as much as the wheel moved, as the
   time charts do (and follows Settings › Zoom speed); it was 25% for every event, far too fast on a trackpad.
+- **Nov 26, theme on drawn panes (owner, rc.1 test plan 3.7).** The XY and Spectrum panes repaint when the theme
+  changes (it showed only when they were next drawn for another reason). A bug fix; nothing for the design.
