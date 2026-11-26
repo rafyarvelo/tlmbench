@@ -179,7 +179,7 @@ fn a_packet_stream_over_udp_ends_when_it_goes_quiet() {
     }
     let h = src.wait();
     assert!(h.ended && h.error.is_none(), "{h:?}");
-    assert!(h.records_written >= 2 && h.records_written % 2 == 0 && h.records_written <= 2 * sent, "{h:?}");
+    assert!(h.records_written >= 2 && h.records_written.is_multiple_of(2) && h.records_written <= 2 * sent, "{h:?}");
     assert_eq!(h.malformed_bytes, 0, "{h:?}");
 }
 
@@ -296,7 +296,7 @@ fn a_udp_source_ends_when_it_goes_quiet() {
     }
     let h = src.wait();
     assert!(h.ended && h.error.is_none(), "{h:?}");
-    assert!(h.records_written >= 10 && h.records_written % 10 == 0, "{h:?}");
+    assert!(h.records_written >= 10 && h.records_written.is_multiple_of(10), "{h:?}");
     assert_eq!(h.malformed_bytes, 3 * h.records_written / 10, "the 3 stray bytes of each datagram: {h:?}");
 }
 
