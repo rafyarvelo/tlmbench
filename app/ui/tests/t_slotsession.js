@@ -24,7 +24,11 @@ run(
     await p.press('[data-foff="2"]', 'Tab');
     await until(() => window.__tlmFake.aligns.at(-1)?.method.seconds === 1.5);
     await p.check('[data-lock="2"]');
-    await p.waitForTimeout(600);
+    // wait for the session to be saved with the lock (a fixed wait was short on a loaded machine)
+    await until(([dir, a]) => {
+      const all = { ...JSON.parse(localStorage.getItem('tlmbench.settings') || '{}'), ...JSON.parse(localStorage.getItem('tlmbench.settings.window.main') || '{}') };
+      return all.sessions?.[dir]?.groups?.[a]?.[0]?.locked === true;
+    }, [DIR, A], 10000);
     const g = (await settingsLS()).sessions?.[DIR]?.groups?.[A];
     check('the session lists the second file with its alignment', g?.length === 1 && g[0].path === B && g[0].method === 'manual' && g[0].locked === true && g[0].knots.length === 1, g);
 
