@@ -46,11 +46,13 @@ the folder isn't on PATH, use Copy the line, add it as it says, open a new termi
 
 ## 2. Opening files
 
-**2.1** Open folder… › `tlmbench-testdata/flights`. The Explorer lists the files; the folder's widgets, layout and check
-set are available. Result:
+**2.1** Open folder… › `tlmbench-testdata/flights`. The Explorer lists the files; the folder's widgets and layout are
+available. (Rules & checks says to open a recording first: its check set shows in 2.2.) Result:
 
 **2.2** Open `flight-1.csv`. The import dialog shows the columns with time detected; open it. Charts appear, and
-nothing new is written in `flights/` (look in the folder). Result:
+nothing new is written in `flights/` (look in the folder). Rules & checks lists the folder's "Flight limits"; the
+events "Takeoff" and "Hard turn" come from the folder too (`flights/.tlmbench/events/flight-1.toml`, which
+`make.py` writes). Result:
 
 **2.3** Open `flight-2.csv`: the dialog doesn't ask again (same header). Result:
 
