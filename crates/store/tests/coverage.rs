@@ -189,9 +189,9 @@ fn a_missing_when_that_is_the_same_everywhere_or_wrong() {
     assert_eq!(col(&none)[7], 7.0);
     let some = open("b > 90").unwrap();
     assert!(col(&some)[46].is_nan() && col(&some)[45] == 45.0);
-    let e = open("a >").err().expect("a refusal");
+    let e = open("a >").expect_err("a refusal");
     assert!(e.to_string().contains("Missing when"), "{e}");
-    let e = open("nosuch > 1").err().expect("a refusal");
+    let e = open("nosuch > 1").expect_err("a refusal");
     assert!(e.to_string().contains("Missing when"), "{e}");
     // all the recordings of a file take the adjustment too
     let many = Store::new(Some(cache().path()))
@@ -398,7 +398,7 @@ fn a_recording_is_not_joined_to_channels_of_another_length() {
     let (p, q) = (ramp_csv(data.path(), 300), csv(data.path(), "short.csv", "t,a,b\n0,1,2\n0.001,2,3\n"));
     let store = Store::new(Some(cache().path()));
     let (long, short) = (Arc::new(store.open(&p, None).unwrap()), Arc::new(store.open(&q, None).unwrap()));
-    let e = store.join(long, short).err().expect("a refusal");
+    let e = store.join(long, short).expect_err("a refusal");
     assert!(e.to_string().contains("300 samples but its derived channels 2"), "{e}");
 }
 
@@ -841,4 +841,103 @@ fn a_build_waits_for_another_process_and_follows_it() {
     waiter.join().unwrap().unwrap();
     assert_eq!(o.status(), tlmbench_store::Status::Built);
     drop(lock);
+}
+
+// ---- groups --------------------------------------------------------------------------------------------------
+
+use tlmbench_core::timemap::TimeMap;
+use tlmbench_store::group::Group;
+
+/// Two files on one timeline: a question about one file's channels leaves the other alone, a time map can change
+/// after the group is made, and a channel that isn't there is refused or a gap.
+#[test]
+fn a_group_routes_each_question_to_the_files_that_hold_the_channels() {
+    let (da, db) = (cache(), cache());
+    let store = Store::new(Some(cache().path()));
+    let a = Arc::new(store.open(&ramp_csv(da.path(), 1000), None).unwrap());
+    let b = Arc::new(store.open(&ramp_csv(db.path(), 1000), None).unwrap());
+    let g = Group::new(vec![(a, TimeMap::identity()), (b, TimeMap::offset(5_000_000_000))], vec![7, 9]);
+    assert_eq!(g.file_ids(), [7, 9]);
+    assert_eq!(g.files().len(), 2);
+    assert_eq!(g.bounds_now(), (Some(0), Some(5_999_000_000)));
+    g.set_map(1, TimeMap::offset(8_000_000_000));
+    g.set_map(5, TimeMap::offset(1)); // no such file: ignored
+    assert_eq!(g.bounds_now(), (Some(0), Some(8_999_000_000)));
+    assert_eq!(g.files()[1].1.apply(0), 8_000_000_000);
+    g.set_map(1, TimeMap::offset(5_000_000_000));
+
+    assert_eq!(g.route(3), Some((1, 1)));
+    assert!(g.route(99).is_none());
+    // channels of the first file only
+    assert_eq!(g.readings(&[0, 1], 500_000_000).iter().filter(|r| r.is_some()).count(), 2);
+    assert!(g.stats(&[0], 0, 1_000_000_000).is_none(), "statistics wait for the pyramid");
+    // the second file's, on the shared timeline: its own sample 500 is at 5.5 s, and a run of one value starts there
+    let f = g
+        .widgets_frame(
+            5_500_000_000,
+            (5_000_000_000, 6_000_000_000),
+            &[WidgetReq { channel: 2, run: true, ..Default::default() }],
+        )
+        .unwrap();
+    assert_eq!(
+        (f.index, f.t, f.widgets[0].value, f.widgets[0].run_start),
+        (500, 5_500_000_000, Some(500.0), Some(5_500_000_000))
+    );
+    // the first file's only: nothing is asked of the second
+    let f =
+        g.widgets_frame(500_000_000, (0, 1_000_000_000), &[WidgetReq { channel: 0, ..Default::default() }]).unwrap();
+    assert_eq!(f.widgets[0].value, Some(500.0));
+
+    // XY: a channel that isn't there refuses; two of one file pair as they are
+    let q = |x: usize, ys: &[usize]| XyReq {
+        x,
+        ys: ys.to_vec(),
+        t0: 0,
+        t1: 1_000_000_000,
+        rect: None,
+        grid: (50, 50),
+        max_points: 100,
+    };
+    assert!(g.xy_points(&q(99, &[1])).is_none());
+    assert!(g.xy_points(&q(0, &[99])).is_none());
+    let xy = g.xy_points(&q(0, &[1])).unwrap();
+    assert_eq!(xy.range, Some([0.0, 999.0, 0.0, 1998.0]));
+    // a column of another file, held at this file's times; a channel that isn't there, or a time outside the file, is a gap
+    assert!(g.held_column(99, &[0, 1]).iter().all(|v| v.is_nan()));
+    assert!(g.held_column(2, &[-9_000_000_000, -8_000_000_000]).iter().all(|v| v.is_nan()));
+    assert_eq!(g.held_column(2, &[5_000_000_000, 5_250_000_000]), [0.0, 250.0]);
+
+    // building follows each file's progress; cancelling is passed on
+    assert_eq!(g.status(), tlmbench_store::Status::Missing);
+    let mut last = (0, 0);
+    g.build(&mut |d, t| last = (d, t)).unwrap();
+    assert_eq!(last.0, last.1);
+    assert_eq!(g.status(), tlmbench_store::Status::Built);
+    // one file's channels only: the other is left alone
+    let st = g.stats(&[0], 0, 1_000_000_000).unwrap();
+    assert_eq!((st[0].count, st[0].min.map(|m| m.0), st[0].max.map(|m| m.0)), (1000, Some(0.0), Some(999.0)));
+    g.cancel();
+}
+
+/// Sitting exactly on the level is neither side of it: leaving it upward is entering "above", leaving it downward
+/// is entering "below", and arriving at it is neither.
+#[test]
+fn a_value_on_the_level_is_on_neither_side_of_it() {
+    // 0, then 5 (on the level), then 10, then 5 again, then 0
+    let stairs = |i: usize| match i {
+        0..150 => 0.0,
+        150..250 => 5.0,
+        250..350 => 10.0,
+        350..450 => 5.0,
+        _ => 0.0,
+    };
+    for (kind, want) in [(Kind::Above, 250), (Kind::Below, 450)] {
+        let data = cache();
+        let (store, live, path) = followed(data.path(), stairs);
+        live.arm_trigger(trigger_spec("a", kind, 5.0, 0.01, true), &[]).unwrap();
+        append(&path, 100, 600, stairs);
+        live.refresh().unwrap();
+        let got: Vec<i64> = crossings(&store, &live).iter().map(|c| c.0).collect();
+        assert_eq!(got, [want], "{kind:?}");
+    }
 }
