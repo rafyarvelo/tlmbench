@@ -606,3 +606,121 @@ pub(crate) fn build(op: &Opened, progress: &mut dyn FnMut(u64, u64)) -> Result<b
     let _ = fs::remove_file(&lock_path);
     Ok(true)
 }
+
+#[cfg(all(test, feature = "native"))]
+mod tests {
+    //! The parts of a pyramid's files and levels that only the crate can reach (coverage, R6c.3): reading a level
+    //! through before a view, a pyramid not started, and putting two pyramids side by side.
+
+    use super::*;
+    use crate::Store;
+
+    fn built(dir: &Path, name: &str, rows: usize) -> crate::Opened {
+        let mut t = String::from("t,a,b\n");
+        for i in 0..rows {
+            t.push_str(&format!("{},{},{}\n", i, i % 17, (i * 3) % 11));
+        }
+        let src = dir.join(name);
+        fs::write(&src, t).unwrap();
+        let o = Store::new(Some(&dir.join("cache"))).open(&src, None).unwrap();
+        o.build(&mut |_, _| {}).unwrap();
+        o
+    }
+
+    fn loaded(o: &crate::Opened) -> std::sync::RwLockReadGuard<'_, Option<Loaded>> {
+        o.loaded.read().unwrap()
+    }
+
+    /// Nothing is summarized before the first block, a growing pyramid keeps its levels in memory, and reading the
+    /// level through is for the files of a finished build only.
+    #[test]
+    fn a_pyramid_not_started_has_no_levels_and_a_growing_one_is_in_memory() {
+        let d = tempfile::tempdir().unwrap();
+        let o = built(d.path(), "a.csv", 5000);
+        let g = loaded(&o);
+        let l = g.as_ref().unwrap();
+        assert!(l.pyramid(0).is_some());
+        let none = Loaded::from_memory(Vec::new(), vec![4], 0, GapIndex::default());
+        assert!(none.pyramid(0).is_none(), "no samples summarized yet");
+        let level4 = l.maps[0].clone();
+        let grow = Loaded::growing(vec![std::sync::Arc::new(vec![level4])], vec![l.lens[0]], 5000, GapIndex::default());
+        assert_eq!(grow.pyramid(0).map(|p| p.raw_past), Some(true), "the newest samples are read raw");
+        // a growing pyramid has no files to read through and nothing cold to find
+        grow.warm(0, 0, 5000);
+        assert_eq!(grow.cold(0, 0, 5000), None);
+        // an empty range has no summaries either
+        assert_eq!(l.cold(0, 6000, 7000), None, "past the last summary");
+        assert_eq!(l.cold(0, 5000, 4000), None);
+    }
+
+    /// Reading a channel's level 4 through changes nothing but what is in memory: the answers are the same before and
+    /// after, a file that was deleted or cut short is given up on quietly, and the share of it in memory is a share.
+    #[test]
+    fn reading_a_level_through_changes_no_answer_and_gives_up_on_a_file_that_went() {
+        let d = tempfile::tempdir().unwrap();
+        let o = built(d.path(), "w.csv", 50_000);
+        let g = loaded(&o);
+        let l = g.as_ref().unwrap();
+        let level4 = |l: &Loaded| l.pyramid(0).unwrap().levels[0].to_vec();
+        let before = level4(l);
+        l.warm(0, 0, 50_000);
+        l.warm(0, 20_000, 30_000);
+        assert_eq!(level4(l), before);
+        // just written files are mostly in memory
+        assert_eq!(l.cold(0, 0, 50_000), Some(false));
+        // a file cut short, in another entry (cutting this one would zero what is mapped): the read fails and warm
+        // stops without a sound
+        let d2 = tempfile::tempdir().unwrap();
+        let o2 = built(d2.path(), "w.csv", 50_000);
+        let g2 = loaded(&o2);
+        let l2 = g2.as_ref().unwrap();
+        let p = l2.paths[0].clone();
+        fs::OpenOptions::new().write(true).open(&p).unwrap().set_len(SUMMARY as u64).unwrap();
+        l2.warm(0, 0, 50_000);
+        // a file that was removed: warm returns without a sound
+        fs::remove_file(&p).unwrap();
+        l2.warm(0, 0, 50_000);
+        assert_eq!(level4(l), before);
+    }
+
+    /// Two pyramids side by side: only when both are finished, with the same levels; growing ones only with growing ones
+    /// that agree; a file that isn't the size it should be is refused.
+    #[test]
+    fn two_pyramids_join_only_when_they_agree() {
+        let d = tempfile::tempdir().unwrap();
+        let a = built(d.path(), "a.csv", 5000);
+        let (ga, gb) = (loaded(&a), loaded(&a));
+        let (la, lb) = (ga.as_ref().unwrap(), gb.as_ref().unwrap());
+        let both = Loaded::concat(la, lb).unwrap().unwrap();
+        assert_eq!((both.maps.len(), both.done, both.complete), (4, 5000, true));
+        assert_eq!(both.pyramid(3).unwrap().levels[0], la.pyramid(1).unwrap().levels[0]);
+        // not finished, or other levels
+        let mut building = Loaded::from_memory(Vec::new(), la.lens.clone(), la.done, GapIndex::default());
+        building.offsets = la.offsets.clone();
+        building.complete = false;
+        assert!(Loaded::concat(la, &building).unwrap().is_none());
+        let mut other = Loaded::from_memory(Vec::new(), vec![1, 1], la.done, GapIndex::default());
+        other.complete = true;
+        other.offsets = offsets(&other.lens);
+        assert!(Loaded::concat(la, &other).unwrap().is_none());
+        // growing with growing: the levels agree or they don't
+        let one = |lens: Vec<usize>, done: usize| {
+            Loaded::growing(vec![std::sync::Arc::new(Vec::new())], lens, done, GapIndex::default())
+        };
+        let joined = Loaded::concat(&one(vec![0], 8), &one(vec![0], 8)).unwrap().unwrap();
+        assert_eq!((joined.growing.len(), joined.done), (2, 8));
+        assert!(Loaded::concat(&one(vec![0], 8), &one(vec![0], 9)).unwrap().is_none());
+        assert!(Loaded::concat(&one(vec![0], 8), &one(vec![1], 8)).unwrap().is_none());
+        // one growing and one not
+        assert!(Loaded::concat(&one(vec![0], 8), la).unwrap().is_none());
+        assert!(Loaded::concat(la, &one(vec![0], 8)).unwrap().is_none());
+        // a pyramid file that was cut is a damaged entry
+        let p = la.paths[0].clone();
+        let full = fs::metadata(&p).unwrap().len();
+        let f = fs::OpenOptions::new().write(true).open(&p).unwrap();
+        f.set_len(full - 1).unwrap();
+        let e = Loaded::concat(la, lb).unwrap_err();
+        assert!(matches!(e, Error::Damaged { .. }), "{e}");
+        f.set_len(full).unwrap();
+    }
+}
