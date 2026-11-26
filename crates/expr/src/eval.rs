@@ -40,6 +40,12 @@ pub trait Env {
     fn limits(&self, _channel: &str, _alarm: bool) -> Option<(Option<f64>, Option<f64>)> {
         None
     }
+    /// The grid of the recording's own samples `r`, when the expression may also read series on other grids (another
+    /// file's channels, on that file's times): what they combine into, and the result, is then on this grid, held (or
+    /// `interp`) onto it. `None`: every series is on the one grid already.
+    fn grid(&self, _r: Range<usize>) -> Option<Grid> {
+        None
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -117,6 +123,7 @@ pub fn eval_range(e: &Expr, env: &dyn Env, r: Range<usize>) -> R<Val> {
         ));
     }
     let mut st = vec![St::default(); plan.nodes.len()];
+    let r_base = r.clone();
     let mut cx = Ctx {
         env,
         commit: r.len(),
@@ -128,8 +135,9 @@ pub fn eval_range(e: &Expr, env: &dyn Env, r: Range<usize>) -> R<Val> {
         resolved: &[],
         warm: 0,
         causal: false,
+        base: env.grid(r_base.clone()),
     };
-    ev(e, &mut cx)
+    ev_top(e, &mut cx)
 }
 
 /// The number of samples to replay before a chunk of a recipe whose only state is windows of samples, so that the
@@ -177,8 +185,9 @@ fn warm_eval(e: &Expr, env: &dyn Env, r: Range<usize>, warm: usize, causal: bool
         resolved: &[],
         warm: r.start - from,
         causal,
+        base: env.grid(from..r.end),
     };
-    let v = ev(e, &mut cx)?;
+    let v = ev_top(e, &mut cx)?;
     if st.iter().any(|s| s.short) {
         return Ok(None);
     }
@@ -218,8 +227,9 @@ pub fn run(e: &Expr, env: &dyn Env, chunk: usize, sink: &mut dyn FnMut(usize, &S
                 resolved: &resolved,
                 warm: 0,
                 causal: false,
+                base: env.grid(a..end),
             };
-            let val = ev(e, &mut cx)?;
+            let val = ev_top(e, &mut cx)?;
             if last {
                 match val {
                     Val::Num(x) | Val::Dur(x) => number = Some(x),
@@ -468,6 +478,21 @@ struct Ctx<'a> {
     warm: usize,
     /// Live data: filters run forward only (causal), from the warm-up's first sample (S5.1-06).
     causal: bool,
+    /// The recording's own grid for `range`, when other grids may come in ([`Env::grid`]).
+    base: Option<Grid>,
+}
+
+/// The expression's value for the samples `cx.range`, on the recording's own grid: a result on another file's grid
+/// (a recipe of only its channels) is held onto it, sample for sample.
+fn ev_top(e: &Expr, cx: &mut Ctx) -> R<Val> {
+    let v = ev(e, cx)?;
+    Ok(match (v, &cx.base) {
+        (Val::Ser(s), Some(g)) if s.grid != *g => {
+            let n = cx.range.len();
+            Val::Ser(Series::new(s.onto(g, n), g.clone()))
+        }
+        (v, _) => v,
+    })
 }
 
 fn num_of(v: &Val) -> Option<f64> {
@@ -491,7 +516,7 @@ fn ev(e: &Expr, cx: &mut Ctx) -> R<Val> {
                 UnOp::Neg => |x| -x,
                 UnOp::Not => |x| (x == 0.0) as i32 as f64,
             };
-            elementwise(&[a], |x| f(x[0]))
+            elementwise(&[a], cx.base.as_ref(), |x| f(x[0]))
         }
         Expr::Bin { op, a, b } => {
             let (a, b) = operands(*op, a, b, cx)?;
@@ -511,7 +536,7 @@ fn ev(e: &Expr, cx: &mut Ctx) -> R<Val> {
                 BinOp::And => |x, y| (x != 0.0 && y != 0.0) as i32 as f64,
                 BinOp::Or => |x, y| (x != 0.0 || y != 0.0) as i32 as f64,
             };
-            elementwise(&[a, b], |x| f(x[0], x[1]))
+            elementwise(&[a, b], cx.base.as_ref(), |x| f(x[0], x[1]))
         }
         Expr::Call { f, args, at } => call(f, args, *at, cx),
     }
@@ -550,8 +575,11 @@ fn operands(op: BinOp, a: &Expr, b: &Expr, cx: &mut Ctx) -> R<(Val, Val)> {
 
 /// Applies `f` over the arguments element by element. Series are held (or interpolated) onto the longest one's
 /// grid; numbers stay numbers; any NaN in gives NaN out.
-fn elementwise(args: &[Val], f: impl Fn(&[f64]) -> f64) -> R<Val> {
-    let lead = args.iter().filter_map(|a| if let Val::Ser(s) = a { Some(s) } else { None }).max_by_key(|s| s.len());
+/// `f` sample by sample over the arguments, on the grid of the one that leads: the recording's own grid when one is on
+/// it ([`Env::grid`]: another file's channel, even a longer one, is held onto it), else the longest.
+fn elementwise(args: &[Val], base: Option<&Grid>, f: impl Fn(&[f64]) -> f64) -> R<Val> {
+    let sers = || args.iter().filter_map(|a| if let Val::Ser(s) = a { Some(s) } else { None });
+    let lead = base.and_then(|g| sers().find(|s| s.grid == *g)).or_else(|| sers().max_by_key(|s| s.len()));
     let Some(lead) = lead else {
         let xs: Vec<f64> = args.iter().map(|a| num_of(a).unwrap()).collect();
         return Ok(Val::Num(if xs.iter().any(|x| x.is_nan()) { f64::NAN } else { f(&xs) }));
@@ -891,7 +919,8 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
         }
         return Ok(Val::Num(f64::NAN));
     }
-    let ew = |g: &dyn Fn(&[f64]) -> f64| elementwise(&a, g);
+    let base = cx.base.clone();
+    let ew = |g: &dyn Fn(&[f64]) -> f64| elementwise(&a, base.as_ref(), g);
     let ser = |i: usize| series_arg(&a[i], f, at);
     let win = |i: usize| window(a.get(i), f, at);
     use std::f64::consts::PI;
@@ -907,7 +936,7 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
         "sign" => ew(&|x| if x[0] == 0.0 { 0.0 } else { x[0].signum() })?,
         "round" => {
             let q = 10f64.powf(a.get(1).and_then(num_of).unwrap_or(0.0));
-            elementwise(&a[..1], |x| (x[0] * q).round() / q)?
+            elementwise(&a[..1], base.as_ref(), |x| (x[0] * q).round() / q)?
         }
         "clamp" => ew(&|x| x[0].max(x[1]).min(x[2]))?,
         "sin" => ew(&|x| x[0].sin())?,
@@ -1113,7 +1142,9 @@ fn call(f: &str, args: &[Expr], at: usize, cx: &mut Ctx) -> R<Val> {
                 .limits(ch, alarm)
                 .filter(|(l, h)| l.is_some() || h.is_some())
                 .ok_or_else(|| ExprError::new(format!("{ch} has no {kind} limits"), at))?;
-            elementwise(&a, |x| (lo.is_some_and(|l| x[0] <= l) || hi.is_some_and(|h| x[0] >= h)) as i32 as f64)?
+            elementwise(&a, base.as_ref(), |x| {
+                (lo.is_some_and(|l| x[0] <= l) || hi.is_some_and(|h| x[0] >= h)) as i32 as f64
+            })?
         }
         _ => unreachable!("{f} is in the table but not evaluated"),
     })

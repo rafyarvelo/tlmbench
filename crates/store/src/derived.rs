@@ -110,6 +110,18 @@ impl<'a> RecEnv<'a> {
 
     /// Another file's channel over the shared times of samples `a..b` of this recording: from the last sample at or
     /// before the first, to one past the last (for interpolation).
+    /// The times of this recording's samples `a..b`, in seconds from its first.
+    fn own_grid(&self, a: usize, b: usize) -> Grid {
+        match &self.rec.info().time {
+            TimeSource::Rate { hz } => Grid::Rate { hz: *hz, t0: 0.0, start: a },
+            TimeSource::Index => Grid::Rate { hz: 1.0, t0: 0.0, start: a },
+            TimeSource::Column { .. } => {
+                let t = self.rec.read_times(a, b);
+                Grid::Stamps(t.iter().map(|&t| (t - self.t_first) as f64 / 1e9).collect::<Vec<_>>().into())
+            }
+        }
+    }
+
     fn read_foreign(&self, f: &Foreign, a: usize, b: usize) -> Series {
         let rec = f.opened.recording();
         let n = rec.info().samples;
@@ -156,15 +168,17 @@ impl Env for RecEnv<'_> {
         let c = *self.idx.get(name)?;
         let (scale, offset) = self.rec.scale_offset(c);
         let v = self.rec.read(c, a, b).to_f64(scale, offset);
-        let grid = match &info.time {
-            TimeSource::Rate { hz } => Grid::Rate { hz: *hz, t0: 0.0, start: a },
-            TimeSource::Index => Grid::Rate { hz: 1.0, t0: 0.0, start: a },
-            TimeSource::Column { .. } => {
-                let t = self.rec.read_times(a, b);
-                Grid::Stamps(t.iter().map(|&t| (t - self.t_first) as f64 / 1e9).collect::<Vec<_>>().into())
-            }
-        };
-        Some(Series::new(v, grid))
+        Some(Series::new(v, self.own_grid(a, b)))
+    }
+
+    /// With another file's channels about (on that file's times), what the recipe computes is on this recording's
+    /// samples: a channel of a faster or later-starting file no longer sets the length (R6c.3, Nov 26).
+    fn grid(&self, r: Range<usize>) -> Option<Grid> {
+        if self.foreign.is_empty() {
+            return None;
+        }
+        let n = self.rec.info().samples;
+        Some(self.own_grid(r.start.min(n), r.end.min(n)))
     }
 
     fn samples(&self) -> Option<usize> {

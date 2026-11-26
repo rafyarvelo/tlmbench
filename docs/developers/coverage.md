@@ -133,12 +133,13 @@ viewer packs, one-file limits, spans, provenance, the SVG sanitiser's odd inputs
 quote from the CSV quoting rule, the detail cap's clamp and HDF5's duplicate-name suffix each made a test fail; store was not
 re-broken (a store change relinks about 25 test binaries of 700 MB each, and the disk had 9 GB).
 
-**Found, not fixed:** a recipe that names a channel of another file in the tab (`x + "Y·2"`) is computed on the grid of the
-*longer* of its operands (`elementwise` leads with the longest series, the last on a tie), so with the other file at a higher
-rate the derived channel fails with "computed 492 samples for 50", and with equal lengths but different start times it is
-written one sample out (its samples are at the other file's times). `group.rs`'s cross test only has files at one rate.
-The fix is a design call (resample foreign channels onto the base recording's samples in `RecEnv::read_foreign`, keeping
-`interp(...)` working, or make the base series lead); `coverage_derived.rs` tests only the case that works (same times).
+**Found and fixed (Nov 26):** a recipe that names a channel of another file in the tab (`x + "Y·2"`) was computed on the
+grid of the *longer* of its operands (`elementwise` led with the longest series, the last on a tie), so with the other
+file at a higher rate the derived channel failed ("computed 492 samples for 50"), and with equal lengths but different
+start times it came out one sample out. Now the evaluator asks the recording for its own grid (`Env::grid`, only when
+other files' channels are about): what combines with it, and a result of only other files' channels, is held (or
+`interp`) onto the recording's samples. `group.rs`'s `a_recipe_with_a_faster_or_later_files_channel_is_on_its_own_files_samples`
+covers a faster file and a later one, in pieces, with a window, in one piece and alone.
 
 Left in `store` (4,951 lines, 60 not reached), each with its reason:
 

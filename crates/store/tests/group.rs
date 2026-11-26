@@ -185,6 +185,56 @@ fn a_recipe_reads_another_files_channel_through_its_time_map() {
     assert!(diff.iter().any(|x| x.abs() > 0.1), "a different map gives a different channel (and its own cache entry)");
 }
 
+#[test]
+fn a_recipe_with_a_faster_or_later_files_channel_is_on_its_own_files_samples() {
+    // a 1 kHz file and the same moments logged at 10 kHz, or at 1 kHz from 0.5 s later: each value is its time in ms,
+    // so `a - "a·2"` is 0 wherever both have data. The other file used to set the grid: "computed 49995 samples for
+    // 5000", and with equal lengths the channel came out shifted (R6c.3, Nov 26).
+    use tlmbench_expr::Recipe;
+    use tlmbench_store::Foreign;
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pf, pl) = (dir.path().join("a.tlm"), dir.path().join("fast.tlm"), dir.path().join("late.tlm"));
+    write_values(&pa, "a", 1000.0, &(0..5000).map(|i| i as f32).collect::<Vec<_>>());
+    write_values(&pf, "a", 10_000.0, &(0..50_000).map(|i| i as f32 / 10.0).collect::<Vec<_>>());
+    write_values(&pl, "a", 1000.0, &(0..5000).map(|i| (i + 500) as f32).collect::<Vec<_>>());
+    let store = Store::new(Some(&dir.path().join("cache")));
+    let a = store.open(&pa, None).unwrap();
+    let recipe = |name: &str, expr: &str| Recipe {
+        name: name.into(),
+        expr: expr.into(),
+        unit: None,
+        category: None,
+        decimals: None,
+        automatic: false,
+    };
+    // in pieces in parallel (stateless), from a warm-up (a window), in one piece (a running total), and of the other
+    // file's channel alone
+    let recipes = [
+        recipe("Diff", "a - \"a·2\""),
+        recipe("Win", "rolling_mean(a - \"a·2\", 3)"),
+        recipe("Run", "cumsum(a - \"a·2\")"),
+        recipe("Twice", "\"a·2\" * 2"),
+    ];
+    for (path, map, from) in [(&pf, TimeMap::identity(), 0usize), (&pl, TimeMap::offset(500_000_000), 500)] {
+        let foreign =
+            [Foreign { name: "a·2".into(), opened: Arc::new(store.open(path, None).unwrap()), channel: 0, map }];
+        let d = store.open_derived_cross(&a, &recipes, &foreign).unwrap();
+        assert_eq!(d.names, ["Diff", "Win", "Run", "Twice"], "{}: {:?}", path.display(), d.skipped);
+        let o = d.opened.unwrap();
+        let rec = o.recording();
+        assert_eq!(rec.info().samples, 5000, "{}", path.display());
+        let col = |c: usize| rec.read(c, from + 2, 5000).to_f64(1.0, 0.0);
+        let worst = |v: &[f64]| v.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+        assert!(worst(&col(0)) < 1e-6, "{}: Diff off by {}", path.display(), worst(&col(0)));
+        assert!(worst(&col(1)) < 1e-6, "{}: Win off by {}", path.display(), worst(&col(1)));
+        let twice: Vec<f64> = col(3).iter().zip(from + 2..).map(|(v, i)| v - 2.0 * i as f64).collect();
+        assert!(worst(&twice) < 1e-6, "{}: Twice off by {}", path.display(), worst(&twice));
+        if from == 0 {
+            assert!(worst(&col(2)) < 1e-6, "{}: Run off by {}", path.display(), worst(&col(2)));
+        }
+    }
+}
+
 /// A file of one f32 channel at `rate_hz` with these values.
 fn write_values(path: &Path, name: &str, rate_hz: f64, values: &[f32]) {
     let mut d = descriptor(name);
