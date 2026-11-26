@@ -666,20 +666,23 @@ mod tests {
         l.warm(0, 0, 50_000);
         l.warm(0, 20_000, 30_000);
         assert_eq!(level4(l), before);
-        // just written files are mostly in memory
-        assert_eq!(l.cold(0, 0, 50_000), Some(false));
+        // just written files are mostly in memory (Windows can't tell: no mincore)
+        assert_eq!(l.cold(0, 0, 50_000), if cfg!(unix) { Some(false) } else { None });
         // a file cut short, in another entry (cutting this one would zero what is mapped): the read fails and warm
-        // stops without a sound
-        let d2 = tempfile::tempdir().unwrap();
-        let o2 = built(d2.path(), "w.csv", 50_000);
-        let g2 = loaded(&o2);
-        let l2 = g2.as_ref().unwrap();
-        let p = l2.paths[0].clone();
-        fs::OpenOptions::new().write(true).open(&p).unwrap().set_len(SUMMARY as u64).unwrap();
-        l2.warm(0, 0, 50_000);
-        // a file that was removed: warm returns without a sound
-        fs::remove_file(&p).unwrap();
-        l2.warm(0, 0, 50_000);
+        // stops without a sound. Windows refuses to cut or remove a mapped file, so this is for Unix.
+        #[cfg(unix)]
+        {
+            let d2 = tempfile::tempdir().unwrap();
+            let o2 = built(d2.path(), "w.csv", 50_000);
+            let g2 = loaded(&o2);
+            let l2 = g2.as_ref().unwrap();
+            let p = l2.paths[0].clone();
+            fs::OpenOptions::new().write(true).open(&p).unwrap().set_len(SUMMARY as u64).unwrap();
+            l2.warm(0, 0, 50_000);
+            // a file that was removed: warm returns without a sound
+            fs::remove_file(&p).unwrap();
+            l2.warm(0, 0, 50_000);
+        }
         assert_eq!(level4(l), before);
     }
 
@@ -714,13 +717,16 @@ mod tests {
         // one growing and one not
         assert!(Loaded::concat(&one(vec![0], 8), la).unwrap().is_none());
         assert!(Loaded::concat(la, &one(vec![0], 8)).unwrap().is_none());
-        // a pyramid file that was cut is a damaged entry
-        let p = la.paths[0].clone();
-        let full = fs::metadata(&p).unwrap().len();
-        let f = fs::OpenOptions::new().write(true).open(&p).unwrap();
-        f.set_len(full - 1).unwrap();
-        let e = Loaded::concat(la, lb).unwrap_err();
-        assert!(matches!(e, Error::Damaged { .. }), "{e}");
-        f.set_len(full).unwrap();
+        // a pyramid file that was cut is a damaged entry (Unix: Windows refuses to cut a mapped file)
+        #[cfg(unix)]
+        {
+            let p = la.paths[0].clone();
+            let full = fs::metadata(&p).unwrap().len();
+            let f = fs::OpenOptions::new().write(true).open(&p).unwrap();
+            f.set_len(full - 1).unwrap();
+            let e = Loaded::concat(la, lb).unwrap_err();
+            assert!(matches!(e, Error::Damaged { .. }), "{e}");
+            f.set_len(full).unwrap();
+        }
     }
 }
