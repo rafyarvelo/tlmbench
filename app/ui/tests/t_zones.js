@@ -9,7 +9,10 @@ run('zones', async ({ p, check, wait, until, paneCount, visible, text }) => {
   const drop = (from, to, x, y) => p.dragAndDrop(num(from), `#stack [data-pane="${to}"]`, { force: true, targetPosition: { x, y } });
   const size = (i) => p.evaluate((i) => { const r = document.querySelector(`#stack [data-pane="${i}"]`).getBoundingClientRect(); return { w: r.width, h: r.height }; }, i);
 
-  check('three rows at first', (await layout()) === '0 | 1 | 2', await layout());
+  // wait for the stack to settle: the harness's fixed start-up wait is short on a loaded machine, and a drop measured
+  // on panes still being laid out lands on the wrong edge
+  const settled = async () => { let last = ''; for (let k = 0; k < 40; k++) { const now = JSON.stringify([await layout(), await size(0), await size(1)]); if (now === last) return true; last = now; await wait(100); } return false; };
+  check('three rows at first', (await until(() => [...document.querySelectorAll('#stack .prow')].length === 3)) && (await layout()) === '0 | 1 | 2' && (await settled()), await layout());
   let s = await size(0);
   await drop(2, 0, s.w * 0.92, s.h * 0.5);
   check('the right edge puts it beside', (await layout()) === '0/1 | 2' && (await paneCount()) === 3, await layout());
