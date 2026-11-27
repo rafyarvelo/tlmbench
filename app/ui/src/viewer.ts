@@ -5,7 +5,7 @@
 // A viewer opens its files itself (the export names them), shows the layout it was exported with, and can't import,
 // edit layouts, rules or checks, or make derived channels.
 
-import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
+import { type Commands, installInternals, loadCore, stubs, TABLE_COMMANDS, tableChannels } from './wasmcore';
 
 type Handler = (data: unknown) => void;
 
@@ -237,6 +237,10 @@ export async function installViewerCore(): Promise<void> {
     group_state: (a) => core('group_state', a),
     group_map: (a) => core('group_map', a),
     rows: async (a) => (await waitRaw(a.file, a.channels), core('rows', a)),
+    // table sort and filter, while locked too (D-ui-62): they were missing, so a table's sort and filter did nothing
+    ...Object.fromEntries(TABLE_COMMANDS.map((c) => [c, (a: Record<string, unknown>) => core(c, a)])),
+    table_query: async (a) => (await waitRaw(a.file, tableChannels(a)), core('table_query', a)),
+    table_mask: async (a) => (await waitRaw(a.file, tableChannels(a)), core('table_mask', a)),
     xy_points: async (a) => (await waitRaw(a.file, [(a.ask as { x: number }).x, ...(a.ask as { ys: number[] }).ys]), core('xy_points', a)),
     spectrum: async (a) => (await waitRaw(a.file, a.channels), core('spectrum', a)),
     widgets_frame: async (a) => (await waitRaw(a.file, (a.widgets as { channel: number }[]).map((w) => w.channel)), core('widgets_frame', a)),

@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use tlmbench_core::gaps::GapIndex;
+use tlmbench_core::mask::Mask;
 use tlmbench_core::pyramid::{Pyramid, Summary, build_levels, summarize};
 use tlmbench_core::recording::{ChannelInfo, ChannelOp, Channels, RecordingInfo, TimeSource, TimesOp};
 use tlmbench_core::{RateTimes, Samples, Times, Timestamp};
@@ -13,6 +14,8 @@ pub struct State {
     pub files: Vec<Option<Ds>>,
     /// Tabs of several files on one timeline, by the id the page uses for the tab (see [`crate::group`]).
     pub groups: std::collections::HashMap<u32, crate::group::Group>,
+    /// Tables' sorted and filtered lists of rows, by the token the page gave the query (see [`crate::table`]).
+    pub queries: std::collections::HashMap<u32, crate::table::RowQuery>,
 }
 
 pub enum Tm {
@@ -141,6 +144,10 @@ pub struct Ds {
     pub gaps: GapIndex,
     /// Samples the file has (times may still be arriving).
     pub len: usize,
+    /// What each table's Apply to charts leaves out, by the table (its owner); see [`Ds::set_mask`].
+    pub masks: std::collections::HashMap<u32, Mask>,
+    /// Everything the owners leave out together: missing in every view, statistic and value of the file.
+    pub mask: Mask,
 }
 
 impl std::fmt::Debug for Tm {
@@ -213,6 +220,8 @@ impl Ds {
             cols: (0..n).map(|_| Col::default()).collect(),
             gaps: GapIndex::default(),
             len,
+            masks: Default::default(),
+            mask: Mask::default(),
         };
         ds.refresh();
         ds
@@ -248,6 +257,15 @@ impl Ds {
             return None;
         }
         Some(Pyramid::new(self.len, col.levels.iter().map(|l| l.as_slice()).collect()))
+    }
+
+    /// Sets what `owner` (a table with Apply to charts) leaves out; `None` takes it back.
+    pub fn set_mask(&mut self, owner: u32, mask: Option<Mask>) {
+        match mask {
+            Some(m) if !m.is_empty() => self.masks.insert(owner, m),
+            _ => self.masks.remove(&owner),
+        };
+        self.mask = self.masks.values().fold(Mask::default(), |acc, m| acc.union(m));
     }
 
     /// Builds the pyramid of a channel that has raw samples and none yet.

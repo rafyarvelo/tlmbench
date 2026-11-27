@@ -14,11 +14,11 @@ use crate::data::{Ds, State, Tm, dtype};
 use crate::group::{route, slots};
 
 const RAW_MAX: u32 = 10_000_000;
-const MAX_ROWS: usize = 10_000;
+pub(crate) const MAX_ROWS: usize = 10_000;
 /// The most raw samples a view reduces without a pyramid to help.
 const EXACT_RAW_MAX: usize = 4_000_000;
 
-fn time(s: &str) -> Result<i64, String> {
+pub(crate) fn time(s: &str) -> Result<i64, String> {
     s.parse::<i64>().map_err(|_| format!("{s:?} is not a time"))
 }
 
@@ -30,7 +30,7 @@ fn ds_mut(st: &mut State, file: u32) -> Result<&mut Ds, String> {
     st.files.get_mut(file as usize).and_then(|f| f.as_mut()).ok_or_else(|| "that file is not open".to_string())
 }
 
-fn arg<T: for<'a> Deserialize<'a>>(a: &Value, key: &str) -> Result<T, String> {
+pub(crate) fn arg<T: for<'a> Deserialize<'a>>(a: &Value, key: &str) -> Result<T, String> {
     serde_json::from_value(a.get(key).cloned().unwrap_or(Value::Null)).map_err(|e| format!("{key}: {e}"))
 }
 
@@ -195,6 +195,14 @@ pub fn dispatch(st: &mut State, cmd: &str, a: &Value, bin: &[u8]) -> Result<Repl
         "xy_points" => xy_points(st, a),
         "spectrum" => spectrum(st, a),
         "rows" => rows(st, a),
+        "table_query" => crate::table::query(st, a),
+        "table_hit" => crate::table::hit(st, a),
+        "table_marks" => crate::table::marks(st, a),
+        "table_mask" => crate::table::mask(st, a),
+        "table_unmask" => crate::table::unmask(st, a),
+        // a query runs to its end before the next command: there is nothing running to stop
+        "table_cancel" => Ok(Reply::Json(Value::Null)),
+        "filter_check" => Ok(Reply::Json(json!(crate::table::check(&arg::<String>(a, "expr")?)))),
         _ => Err(format!("the viewer has no command {cmd:?}")),
     }
 }
@@ -268,7 +276,7 @@ struct ViewEntry {
 
 /// One channel's trace over `vp` (its file's own clock): the exact view where the raw samples are held, else the
 /// summaries, labelled coarse. Returns the trace, whether it is coarse, and whether a pyramid answered.
-fn channel_trace(d: &Ds, c: usize, vp: Viewport, factor: f64, coarse_first: bool) -> (Trace, bool, bool) {
+pub(crate) fn channel_trace(d: &Ds, c: usize, vp: Viewport, factor: f64, coarse_first: bool) -> (Trace, bool, bool) {
     let (lo, hi) = (d.lower_bound(vp.t0), d.lower_bound(vp.t1));
     let coarse_pays = hi.saturating_sub(lo) / vp.width_px.max(1) as usize >= MIN_BUCKET_SAMPLES;
     let breaks = d.gaps.breaks(factor);
@@ -282,6 +290,8 @@ fn channel_trace(d: &Ds, c: usize, vp: Viewport, factor: f64, coarse_first: bool
     // samples without one is answered from the summaries
     let exact_ok = covered && (pyr.is_some() || hi.saturating_sub(lo) <= EXACT_RAW_MAX);
     let (trace, coarse) = match &pyr {
+        // a table's Apply to charts: the samples it leaves out are missing (every sample in view is read, as in the app)
+        _ if !d.mask.is_empty() && covered => (d.view_masked(c, vp, &d.mask, &breaks, &held), false),
         // raw samples missing for the view: the pyramid answers, labelled coarse
         Some(_) if !exact_ok && !coarse_pays => (summary_trace(d, c, vp), true),
         Some(p) if !exact_ok => (d.view_coarse(c, vp, p, &breaks, &held), true),
@@ -458,6 +468,8 @@ fn values_at(st: &State, a: &Value) -> Result<Reply, String> {
             let s = &sl[si];
             let i = nearest(s.ds, s.map.inverse(t))?;
             let v = s.ds.cols[local].raw.get(i)?;
+            // a sample Apply to charts leaves out has no value
+            let v = if s.ds.mask.hides(i) { f64::NAN } else { v };
             let ts = s.map.apply(s.ds.time_at(i)).to_string();
             Some(json!({ "channel": c, "index": i, "t": ts, "value": (!v.is_nan()).then_some(v) }))
         })
@@ -467,6 +479,11 @@ fn values_at(st: &State, a: &Value) -> Result<Reply, String> {
 
 /// The exact statistics of samples `lo..hi`, when the channel has what they need (see [`exact_summary`]).
 fn stats_of(d: &Ds, c: usize, lo: usize, hi: usize) -> Option<Stats> {
+    if !d.mask.is_empty() {
+        // without what Apply to charts leaves out: each kept stretch from the pyramid and the raw samples
+        let py = d.pyramid(c).filter(|_| d.cols[c].raw.slice(d.len).is_some())?;
+        return Some(d.stats_masked(c, &py, lo, hi, &d.mask, &Held::default()));
+    }
     match d.pyramid(c) {
         Some(py) if d.cols[c].raw.slice(d.len).is_some() => Some(d.stats(c, &py, lo, hi, &Held::default())),
         _ => exact_summary(d, c, lo, hi).map(Stats::from),
@@ -531,7 +548,7 @@ fn widgets_one(d: &Ds, t: i64, view: (i64, i64), asks: &[Value]) -> Option<(usiz
         .map(|w| {
             let c = (w["channel"].as_u64().unwrap_or(0) as usize).min(n.saturating_sub(1));
             let flag = |k: &str| w[k].as_bool().unwrap_or(false);
-            let value = d.cols[c].raw.get(i).and_then(num);
+            let value = d.cols[c].raw.get(i).filter(|_| !d.mask.hides(i)).and_then(num);
             let (mut min, mut max) = (None, None);
             if flag("minmax") {
                 let end = ts.min(v1.saturating_sub(1)).saturating_add(1);
@@ -611,7 +628,8 @@ const XY_SLICE: usize = 1 << 18;
 /// point from a sample the export doesn't hold).
 fn held(d: &Ds, c: usize, a: usize, b: usize) -> Vec<f64> {
     let raw = &d.cols[c].raw;
-    (a..b).map(|i| raw.get(i).unwrap_or(f64::NAN)).collect()
+    // a sample Apply to charts leaves out is missing too
+    (a..b).map(|i| raw.get(i).filter(|_| !d.mask.hides(i)).unwrap_or(f64::NAN)).collect()
 }
 
 /// An XY plot (see the app's `xy_points`): Y channels against an X channel over a span, the pairs reduced to a grid
@@ -817,6 +835,11 @@ fn spectrum(st: &State, a: &Value) -> Result<Reply, String> {
 fn rows(st: &State, a: &Value) -> Result<Reply, String> {
     let sl = slots(st, arg(a, "file")?)?;
     let channels: Vec<u32> = arg(a, "channels")?;
+    // a table query's list (`table_query`): its rows in the query's order
+    if let Some(token) = a.get("query").and_then(Value::as_u64) {
+        let q = st.queries.get(&(token as u32)).ok_or("that query is gone")?;
+        return Ok(Reply::Bytes(crate::table::query_rows(&sl, &channels, q, arg(a, "offset")?, arg(a, "limit")?)));
+    }
     let span: Value = arg(a, "span")?;
     let offset: u64 = arg(a, "offset")?;
     let limit: u32 = arg(a, "limit")?;

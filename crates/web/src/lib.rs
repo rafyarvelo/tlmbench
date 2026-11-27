@@ -11,6 +11,7 @@ mod data;
 mod group;
 mod import;
 mod ops;
+mod table;
 
 // The CSV reader is the decoder's own source, so a file opened in the page reads exactly as it does in the app.
 #[path = "../../decode/src/backwards.rs"]

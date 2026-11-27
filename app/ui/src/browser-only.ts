@@ -13,7 +13,7 @@
 import { folderFile, listFolder, pickFolder, readConfig, readPluginsDir } from './browser-folder';
 import * as plugins from './browser-plugins';
 import { isParquet, parquetDump } from './parquet-wasm';
-import { type Commands, installInternals, loadCore, stubs } from './wasmcore';
+import { type Commands, installInternals, loadCore, stubs, TABLE_COMMANDS } from './wasmcore';
 import { capMemory } from './wasmcap';
 
 export const LOCAL_PREFIX = 'local://';
@@ -475,6 +475,8 @@ export async function installBrowserOnly(): Promise<void> {
     values_at: (a) => core('values_at', a),
     stats: (a) => core('stats', a),
     rows: (a) => core('rows', a),
+    // table sort and filter: they were missing, so a table's sort, filter and ▲ ▼ did nothing (D-ui-62)
+    ...Object.fromEntries(TABLE_COMMANDS.map((c) => [c, (a: Record<string, unknown>) => core(c, a)])),
     // the pane views the core answers: they were missing here, so Gauges stayed at "reading…" and XY and Spectrum drew
     // nothing (owner, on a phone, Nov 26)
     xy_points: (a) => core('xy_points', a),

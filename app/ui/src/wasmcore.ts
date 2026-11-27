@@ -91,6 +91,18 @@ export function installInternals(commands: Commands, debug = false) {
 
 const none = () => null;
 
+/** Table sort and filter (with ▲ ▼ through the matches) and Apply to charts, answered by the core as the app's commands
+ * are; `rows` pages through a query's list by its token. Each page passes them on, the viewer once the columns' raw samples
+ * are here. */
+export const TABLE_COMMANDS: string[] = ['table_query', 'table_hit', 'table_marks', 'table_mask', 'table_unmask', 'table_cancel', 'filter_check'];
+
+/** The channels a table query or mask reads (`c<n>` columns; the time is always here). */
+export const tableChannels = (a: Record<string, unknown>): number[] =>
+  [...((a.filters as { col: string }[] | undefined) ?? []), ...((a.sort as { col: string }[] | undefined) ?? [])].flatMap((k) => {
+    const m = /^c(\d+)$/.exec(k.col);
+    return m ? [Number(m[1])] : [];
+  });
+
 /** Commands the app makes that have no meaning here (no folders, windows, settings in the core, check sets or recipes). */
 export const stubs: Commands = {
   settings_get: none,
@@ -111,7 +123,6 @@ export const stubs: Commands = {
   window_take: none,
   group_state: none,
   missing_between: () => [],
-  filter_check: none,
   browser_access: () => ({ on: false }),
   cache_info: () => ({ bytes: 0, files: 0, root: '' }),
 };
