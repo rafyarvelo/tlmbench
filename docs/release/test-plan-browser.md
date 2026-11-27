@@ -36,7 +36,8 @@ Charts appear, the tab is named after the file. Result:
 
 **A1.5** Reload the page: the files that were open come back, without the import dialog. Result:
 
-**A1.6** Settings › Clear cache, reload: the files have to be chosen again. Result:
+**A1.6** Settings › Clear cache, reload: the files have to be chosen again. Settings ends with this release's version.
+Result:
 
 ### A2. Looking at data
 
@@ -105,11 +106,12 @@ Full, a folder).
 ## C. GitHub Pages (the published copy)
 
 The Pages copy is updated by a release (`v1.0.0`), not by a candidate: until then it shows the last one published (the
-page doesn't show its version; the repository's Actions › the last Pages deployment says which commit).
+end of Settings says which version it is: `TelemetryBench 1.0.0-…`; a copy from before rc.3 doesn't say).
 
 **C1** The README's links open: User Manual, Try it in your browser, A sample export. Result:
 
-**C2** Try it in your browser: the start page loads over HTTPS, with no errors in the browser's console. Result:
+**C2** Try it in your browser: the start page loads over HTTPS, with no errors in the browser's console; Settings ends
+with the version you expect. Result:
 
 **C3** Open a CSV from this machine and from the phone's files: it opens and draws. Result:
 
