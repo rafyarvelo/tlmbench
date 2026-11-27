@@ -228,6 +228,9 @@ offers Export file… instead of Share. Result:
 
 ## 11. Windows and the browser
 
+The browser builds have a plan of their own, `test-plan-browser.md` (served locally, HTML exports, and the copy on
+GitHub Pages); 11.3 and 11.4 here are its quick check.
+
 **11.1** Drag a tab out of the window: a new window; drag it back onto the first window's tab strip. Result:
 
 **11.2** Two windows, quit, reopen: both come back where they were. Result:
