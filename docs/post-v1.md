@@ -62,3 +62,11 @@ Not gaps: v1 meets its budgets without them. Each would make something faster or
   `python.yml` needs `just viewer` before `maturin`. A remote or cloud notebook can't reach the kernel's `127.0.0.1`; the
   single-file export would, with its size limit. Not a GUI over the Python core: the UI's command handlers live in the
   app crate, and a second server would be a second thing to keep in step.
+
+## Limits (owner, Nov 27, from the rc.3 test plan 5.2)
+
+- **Limits in a shared folder.** Limits go by channel name across every file (the design's value board). Files with the
+  same channel name but other hardware need other limits: a folder's `.tlmbench/limits.toml` would set limits for the
+  files in it and win over yours, as its other shared kinds do (read-only folders, Share writing only what changed). Per
+  import profile and per file were weighed: a profile doesn't tell identical loggers apart, and per file shares nothing.
+  Today: set them for the files in front, or derive a renamed copy of the channel for a second set.
