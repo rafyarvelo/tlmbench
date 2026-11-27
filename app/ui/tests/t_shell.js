@@ -1,5 +1,6 @@
 // The shell: the rail and the left sidebar, Settings (Basic/All, search, apply and save, reset, the cache), the top bar's
 // mouse modes and ⋯ menu, Measure docking by hand and by itself, the status bar, and the note for errors.
+import { readFileSync } from 'node:fs';
 import { run } from './lib.js';
 
 run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, wait }) => {
@@ -66,6 +67,9 @@ run('shell', async ({ p, check, text, visible, fake, plotAt, settingsLS, until, 
   // Reset app… with only Settings ticked (the old Reset to defaults, sheet R3): settings go, the file's panes and the sidebars stay
   await p.click('#addPane');
   check('Reset to defaults is gone, Reset app… does it', !(await p.$('#setReset')));
+  // the build says which it is (owner, Nov 26: a page on a static host shows no version): the workspace's version
+  const want = /^\[workspace\.package\][^[]*?^version\s*=\s*"([^"]+)"/m.exec(readFileSync(new URL('../../../Cargo.toml', import.meta.url), 'utf8'))[1];
+  check('Settings says the version', (await text('[data-version]')) === `TelemetryBench ${want}`, [await text('[data-version]'), want]);
   await p.click('#setResetApp');
   for (const b of await p.$$('#resetDlg [data-reset]:not([data-reset="settings"])')) await b.uncheck();
   await p.click('#resetGo');

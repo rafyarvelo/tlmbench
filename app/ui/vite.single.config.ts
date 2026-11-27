@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'no
 import { fileURLToPath } from 'node:url';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
+import { APP_VERSION } from './vite.version';
 
 const out = fileURLToPath(new URL('../viewer/single/', import.meta.url));
 const wasm = fileURLToPath(new URL('../../crates/web/target/wasm32-unknown-unknown/release/tlmbench_web.wasm', import.meta.url));
@@ -23,7 +24,7 @@ function pack(files: [string, Buffer][]): Buffer {
 // The viewer of a one-file export: the page, its script, its styles and fonts in one HTML file with a marker where the
 // export's files go (`<!--TLM_FILES-->`), and the core beside it. Nothing is fetched, so the file opens from `file://`.
 export default defineConfig({
-  define: { __VIEWER__: 'true' },
+  define: { __VIEWER__: 'true', __APP_VERSION__: APP_VERSION },
   plugins: [
     svelte(),
     {

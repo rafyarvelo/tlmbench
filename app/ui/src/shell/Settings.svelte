@@ -353,6 +353,7 @@
   {/if}
   {#if !ui.viewer}
   <footer><span>Saved as you change them</span><button class="tbtn" id="setResetApp" data-tip="Start over: choose what goes (settings, what the app remembers, import profiles, recipes, sets, layouts, events, widgets, the cache)" onclick={() => (resetAsk = new Set(RESET.map(([k]) => k).filter((k) => k !== 'remembered')))}>Reset app…</button></footer>
+  <p class="ver" data-version>TelemetryBench <span class="num">{__APP_VERSION__}</span></p>
   {/if}
   {/if}
 </div>
@@ -528,6 +529,11 @@
     margin: 8px 0;
     color: var(--fg-muted);
     font-size: 12px;
+  }
+  .ver {
+    margin: 6px 0 0;
+    color: var(--fg-muted);
+    font-size: 11px;
   }
   footer {
     display: flex;

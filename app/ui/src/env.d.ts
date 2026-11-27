@@ -7,3 +7,5 @@ declare module '*.svelte' {
 
 /** True in the viewer builds (an HTML export): editing, importing and exporting dialogs are left out of the bundle. */
 declare const __VIEWER__: boolean;
+/** The release's version (the workspace's Cargo.toml), shown in Settings. */
+declare const __APP_VERSION__: string;

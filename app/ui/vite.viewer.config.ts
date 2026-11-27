@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, readdirSync, readFileSync, renameSync, statSy
 import { fileURLToPath } from 'node:url';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
+import { APP_VERSION } from './vite.version';
 
 /** Every file under `dir` as a pack the Rust side embeds: per file a u32 LE path length, the path, a u32 LE data length, the data. */
 function pack(dir: string): Buffer {
@@ -31,7 +32,7 @@ const wasm = fileURLToPath(new URL('../../crates/web/target/wasm32-unknown-unkno
 // The viewer a static export ships: relative paths, so the folder opens from any place on a static host or share.
 // The page is index.html, and the core (crates/web, built by `just viewer`) sits beside it.
 export default defineConfig({
-  define: { __VIEWER__: 'true' },
+  define: { __VIEWER__: 'true', __APP_VERSION__: APP_VERSION },
   plugins: [
     svelte(),
     {

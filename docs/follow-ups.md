@@ -33,3 +33,6 @@ deleted at the release tag (R8).
 - **Nov 26, readouts over days (owner, on a daily file).** In Automatic, a readout of an absolute time over a view of
   more than a day says the date first (`2026-01-01 00:00:00 → 2027-12-31 00:00:00`): the time of day alone read
   `00:00:00 → 00:00:00` on daily data. The design's time format text could say so.
+- **Nov 26, the version (owner).** Settings ends with `TelemetryBench <version>` (the workspace's version, built in),
+  in the app, browser-only mode and the viewer's builds: the copy on GitHub Pages didn't say which build it was. The
+  design's Settings text could list it.
