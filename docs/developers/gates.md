@@ -104,6 +104,19 @@ On the final commit's release build, in this order: `just testdata big` (the 100
 `just gate3 app`; `just gate4`; `just gate5`; then the soak, an hour of a live tab at 4M samples per second. Check
 `df -h /` first: the big files need 10 GB and more, and each recipe deletes what it wrote.
 
+### 1.0.0-rc.2 (Nov 26, 2026, `657160f`; tagged before the window gates, owner's call)
+
+MacBook Air M1, 8 GB; the release build of `657160f`. The gates that open the app's window (`gate`, `gate2`, `gate3 app`,
+`gate4 app`) and the soak are still to run: the screen locked during `just gate` and its window never drew (a locked
+screen stops a window's frames even under `caffeinate -d`; turn off "Require password" for the run). A bug they find
+starts rc.3.
+
+| Gate | Result |
+| --- | --- |
+| `just gate3 core` | pass: 4 × 1 MHz and 32 × 125 kHz, TCP and UDP, every record identical, none dropped by the ring; CSV tails reported |
+| `just gate4` | pass: no failures in the format and convert matrix; the 10 GB zstd packet file's cached reopen 0.041 s (first index build 75.9 s, 136 MB/s) |
+| `just gate5` | pass: first chart view of the Full export 354 ms, no page errors |
+
 ### 1.0.0-rc.1 (Nov 24, 2026, `63360a1`)
 
 MacBook Air M1, 8 GB, 59 Hz, a 1580 px window, 23 GB free; every gate on the release build of `63360a1`.
