@@ -4,7 +4,7 @@
 //
 // Loaded before the page (an init script), it installs window.__TAURI_INTERNALS__ the way Tauri's mockIPC does.
 // Tests drive it through window.__tlmFake: `files` (path → recording), `launch` (a file opened at start), `pick`
-// (what Open… returns; a file spec's `cold` makes exact views slow, `exactMs` of them, 800 by default), `drop(paths)`, `build(path, fraction)` (build progress), `calls` (commands seen).
+// (what Open… returns; a file spec's `cold` makes exact views slow, `exactMs` of them, 800 by default; `built: false, readByReply: true` sends its whole build's progress before the reply), `drop(paths)`, `build(path, fraction)` (build progress), `calls` (commands seen).
 // In Node, require() it for the encoder alone (globalThis.__tlmFakeCore).
 (() => {
   'use strict';
@@ -652,7 +652,15 @@
       r.base = r.chans.slice();
       const { derived, skipped } = applyRecipes(r, [...(recipes ?? []), ...(profile?.recipes ?? []).filter((n) => !(recipes ?? []).includes(n) && !(exclude ?? []).includes(n))], exclude ?? []);
       const info = { path, ...(part ? { part } : {}), format: path.endsWith('.csv') ? 'csv' : 'tlm', samples: r.samples, time: r.index ? { kind: 'index' } : { kind: 'rate', hz: r.rate }, channels: r.chans, skipped: [] };
-      return { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped, missing: missingOf(r, adjust), ...(profile ? { profile } : {}), event_channels: [...(profile?.event_columns ?? []).map((src) => r.chans[numeric.indexOf(src)]?.name).filter(Boolean), ...(fake.descriptorEvents?.[path] ?? [])] };
+      const out = { id, info, range: [String(timeAt(r, 0)), String(timeAt(r, r.samples - 1))], status: r.built ? { state: 'built' } : { state: 'building', done: 0, total: r.samples }, derived, skipped, missing: missingOf(r, adjust), ...(profile ? { profile } : {}), event_channels: [...(profile?.event_columns ?? []).map((src) => r.chans[numeric.indexOf(src)]?.name).filter(Boolean), ...(fake.descriptorEvents?.[path] ?? [])] };
+      // a small file the core reads before its reply gets here (the desktop app's channel is quicker than the reply):
+      // its progress, to the end, comes first
+      if (spec.readByReply && ch) {
+        r.done = r.samples;
+        r.built = true;
+        send(ch, { done: r.samples, total: r.samples, builtUntil: String(timeAt(r, r.samples - 1)), error: null });
+      }
+      return out;
     },
     // derived channels: the library (`recipes`), the recipes each open or apply was given, and what a check or spectrum was asked
     /** The events you added, by file path (the core keeps them per recording in the app cache). */

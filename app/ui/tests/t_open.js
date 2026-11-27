@@ -57,6 +57,15 @@ run('open', async ({ p, check, text, visible, fake, paneCount, plotAt, settingsL
   check('Measure fills in its stats', await until(() => /Std dev/.test(document.getElementById('measure').innerText)), await text('#measure'));
   await p.keyboard.press('Escape');
 
+  // a file read to the end before the core's reply came (its progress came first, sheet 6.2): no hatching left
+  // ("Reading 0%" stayed on the first pane)
+  await fake(() => (window.__tlmFake.files['/data/small.tlm'] = { built: false, readByReply: true, samples: 6000 }));
+  await fake(() => window.__tlmFake.drop(['/data/small.tlm']));
+  await until(() => document.querySelector('#wsTabs [aria-selected=true] .nm')?.textContent === 'small.tlm');
+  await wait(300);
+  check('a file read before the reply: no hatching', (await app('building')) === null, await app('building'));
+  check('and no "Reading" in the status bar', !/Reading/.test(await text('#status')), await text('#status'));
+
   // a cold file: the first view is coarse and labelled, the exact one replaces it
   // closed, then opened again cold (its tab would keep the view it had)
   await p.hover(`#wsTabs .wstab[data-tip="${COLD}"]`);

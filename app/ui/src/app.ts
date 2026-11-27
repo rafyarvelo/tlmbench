@@ -1762,6 +1762,9 @@ async function openPathNow(path: string, part?: string): Promise<void> {
       for (const k of o.skipped ?? []) note(`Recipe ${k.name} doesn't apply to ${nameOf(path)}: ${k.why}`);
       notes = (o.info.notes ?? []).map((n) => `${nameOf(path)}: ${n}`);
       building = o.status.state === 'built' ? null : { done: 0, total: o.info.samples, until: null };
+      // progress that came before the reply (a small file is read by then) is where the build stands, not the reply's status
+      const came = early as Progress | null; // set by the channel's handler, which TypeScript doesn't follow
+      if (came && !came.error) building = buildingOf(came);
     }
     const n = file.info.channels.length - file.derived.length;
     tabData.set(key, {
@@ -2928,6 +2931,11 @@ function newWs(raw: string): string | null {
   return null;
 }
 
+/** A tab's building state from the core's progress (null once read to the end). */
+function buildingOf(p: Progress): TabData['building'] {
+  return p.done >= p.total ? null : { done: p.done, total: p.total, until: p.builtUntil != null ? BigInt(p.builtUntil) : null };
+}
+
 let progressRefresh = 0;
 function onProgress(file: number, p: Progress): void {
   if (p.error) {
@@ -2936,7 +2944,7 @@ function onProgress(file: number, p: Progress): void {
     return;
   }
   const done = p.done >= p.total;
-  const building = done ? null : { done: p.done, total: p.total, until: p.builtUntil != null ? BigInt(p.builtUntil) : null };
+  const building = buildingOf(p);
   // tabs behind keep their file's progress for when they come to the front
   for (const t of tabs.list) {
     const d = tabData.get(t.key);
