@@ -475,6 +475,11 @@ export async function installBrowserOnly(): Promise<void> {
     values_at: (a) => core('values_at', a),
     stats: (a) => core('stats', a),
     rows: (a) => core('rows', a),
+    // the pane views the core answers: they were missing here, so Gauges stayed at "reading…" and XY and Spectrum drew
+    // nothing (owner, on a phone, Nov 26)
+    xy_points: (a) => core('xy_points', a),
+    spectrum: (a) => core('spectrum', a),
+    widgets_frame: (a) => core('widgets_frame', a),
     events_list: () => [],
     list_folder: async (a) => {
       // the folder's own descriptors first, so the files they name list as openable (the app reads them with the listing)

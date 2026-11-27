@@ -116,6 +116,39 @@ try {
     const g = c?.getContext('webgl2') ?? null;
     return !!c && c.width > 0;
   }));
+  // the pane views the core answers (owner, on a phone, Nov 26: Gauges stayed at "reading…", the page had no
+  // widgets_frame): each draws what the core gives
+  const errsBefore = errs.length;
+  const view = async (vm, i = 0) => {
+    await p.hover(`#stack [data-pane="${i}"] .phead`);
+    await p.click(`#stack [data-pane="${i}"] [data-vmenu]`);
+    await p.click(`.menu [data-vm="${vm}"]`);
+  };
+  await view('gauges');
+  check('Gauges read their values (no "reading…")', await until(() => document.querySelectorAll('#stack [data-pane="0"] [data-gw]').length > 0 && !document.querySelector('#stack [data-pane="0"] .gpend')), await p.$eval('#stack [data-pane="0"]', (e) => e.textContent.replace(/\s+/g, ' ').slice(0, 200)));
+  await view('spectrum');
+  check('Spectrum names a peak', await until(() => /peak/.test(document.querySelector('#stack [data-pane="0"] .specinfo')?.textContent ?? '')), await p.$eval('#stack [data-pane="0"]', (e) => e.textContent.replace(/\s+/g, ' ').slice(0, 200)));
+  // XY keeps quiet when the core doesn't answer (it draws empty axes): watch what xy_points gives
+  await p.evaluate(() => {
+    const i = window.__TAURI_INTERNALS__;
+    const inv = i.invoke;
+    window.__xy = [];
+    i.invoke = (c, a) => {
+      const r = inv(c, a);
+      if (c === 'xy_points') Promise.resolve(r).then((x) => window.__xy.push(x?.byteLength > 0 ? 'ok' : 'empty'), (e) => window.__xy.push(String(e?.message ?? e)));
+      return r;
+    };
+  });
+  // XY needs two channels: both, in a pane of their own
+  await view('chart');
+  await p.click('#explorer .tree .row.chan');
+  await p.keyboard.press('ControlOrMeta+a');
+  await p.click('#selBar [data-sel="chart"]');
+  const both = await p.evaluate(() => window.__tlmApp.sel());
+  await view('xy', both);
+  check('XY gets its points from the core', await until(() => window.__xy.includes('ok')), await p.evaluate(() => window.__xy));
+  check('...with no "not available here"', !errs.slice(errsBefore).some((e) => /not available here/.test(e)), errs.slice(errsBefore));
+  await view('chart', both);
 
   // kept in the browser's private storage: after a reload the same file opens from it
   await p.waitForTimeout(800);
