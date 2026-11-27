@@ -36,3 +36,7 @@ deleted at the release tag (R8).
 - **Nov 26, the version (owner).** Settings ends with `TelemetryBench <version>` (the workspace's version, built in),
   in the app, browser-only mode and the viewer's builds: the copy on GitHub Pages didn't say which build it was. The
   design's Settings text could list it.
+- **Nov 26, table sort and filter in the browser builds (D-ui-62).** In browser-only mode and in an HTML export's
+  viewer, a table's sort, filter, ▲ ▼ and Apply to charts did nothing: the page's core (`crates/web`) had none of the
+  table query commands. It now answers them as the app does, and Apply to charts leaves the rows out of the page's
+  charts, statistics, values and XY. A bug fix; nothing for the design.
