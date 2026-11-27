@@ -104,6 +104,24 @@ On the final commit's release build, in this order: `just testdata big` (the 100
 `just gate3 app`; `just gate4`; `just gate5`; then the soak, an hour of a live tab at 4M samples per second. Check
 `df -h /` first: the big files need 10 GB and more, and each recipe deletes what it wrote.
 
+### 1.0.0-rc.3 (Nov 27, 2026, `9ddc1e5`)
+
+MacBook Air M1, 8 GB, 59 Hz; every gate on the release build of `9ddc1e5`, with `caffeinate -d -i -u` held for the
+whole run (the screen locked overnight between gates the first time: `gate3 app`'s 4 × 1 MHz shape ran behind it and
+was invalid, and was run again).
+
+| Gate | Result |
+| --- | --- |
+| `just testdata big` | written |
+| `just gate` | pass on the settled file (runs 3 and 4): 0 and 1 of 1,800 frames missed, longest 1.4 and 1.6 periods; zoomed reduce p95 0.87 and 0.83 ms; round trip p50 4 ms. The two runs straight after the gate files were written (2.8 GB) failed by one long frame each, 3.1 and 3.4 periods, as rc.1's first run did |
+| `just gate2` | pass: reopen first paint 162 ms (coarse), exact 1.3 s; the 20-trace sweep 4 of 1,800 frames missed, longest 2.2 periods. First-ever open: build 6.6 s (1,507 MB/s) |
+| `just gate3 core` | pass: 4 × 1 MHz and 32 × 125 kHz over TCP, every record identical, none missing, ring at most 0.12% (UDP 0.27%); recorder 2.4% of a core; CSV tails reported |
+| `just gate3 app` | pass: 32 × 125 kHz 7 of 3,533 frames missed; 4 × 1 MHz (run again with the screen unlocked) 1 of 3,538; every record verified |
+| `just gate4` | pass: the format and convert matrix with no failures; the 10 GB zstd packet file's cached reopen 0.042 s (first index build 77.5 s, 133 MB/s) |
+| `just gate4 app` | pass: every file of the matrix reads the same in the app |
+| `just gate5` | pass: the 2 h flight's Full export; first chart view 346 ms, no page errors |
+| Soak | pass, an hour (Nov 27, the external exFAT drive as `TMPDIR`): a live tab on 32 × 125 kHz (4M samples/s) over TCP. 450M records sent, recorded and verified, none dropped or missing, the ring under half full; 124 of 215,918 frames missed. App memory 411 to 1,634 MB, mean 1,009 MB in the first quarter hour and 858 MB in the last (no growth); WebKit 100 to 196 MB |
+
 ### 1.0.0-rc.2 (Nov 26, 2026, `657160f`; tagged before the window gates, owner's call)
 
 MacBook Air M1, 8 GB; the release build of `657160f`. The gates that open the app's window (`gate`, `gate2`, `gate3 app`,
