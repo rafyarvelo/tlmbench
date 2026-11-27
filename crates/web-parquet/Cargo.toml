@@ -1,7 +1,7 @@
 [package]
 name = "tlmbench-web-parquet"
 description = "Browser-only mode's Parquet reader: a WASM module the page loads only when a Parquet file is opened. It reads by the decoder's own rules (parquet_core.rs) and answers in the form the page's core loads."
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT OR Apache-2.0"

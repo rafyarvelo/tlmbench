@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-core"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 dependencies = [
  "bytemuck",
  "rayon",
@@ -693,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-expr"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 dependencies = [
  "blake3",
  "serde",
@@ -703,7 +703,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-web"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 dependencies = [
  "blake3",
  "bytemuck",

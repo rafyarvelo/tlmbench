@@ -1133,7 +1133,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-core"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 dependencies = [
  "bytemuck",
  "rayon",
@@ -1142,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "tlmbench-web-parquet"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 dependencies = [
  "arrow-array",
  "arrow-schema",

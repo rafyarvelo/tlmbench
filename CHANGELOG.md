@@ -2,6 +2,18 @@
 
 All notable changes, by release. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.0-rc.3
+
+The third release candidate: fixes to the browser builds (browser-only mode and HTML exports), found on a phone. A
+pre-release; the Python package is not published to PyPI.
+
+- Browser-only mode: Gauges, XY and Spectrum panes work (Gauges stayed at "reading…", XY drew empty axes, Spectrum
+  asked to zoom out).
+- Browser-only mode and HTML exports: tables sort and filter, ▲ ▼ step through the matches, and Apply to charts hides
+  what a filter leaves out, also while Locked (they did nothing).
+- Readouts: over a view of more than a day, a time says its date (a daily file read `00:00:00 → 00:00:00`).
+- Settings ends with the version (`TelemetryBench 1.0.0-rc.3`), so a page on a static host says which build it is.
+
 ## 1.0.0-rc.2
 
 The second release candidate: fixes from testing rc.1 on macOS, and from the test coverage work. A pre-release; the
