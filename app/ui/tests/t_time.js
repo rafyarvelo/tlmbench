@@ -68,4 +68,15 @@ run('time', async ({ p, check, text, settingsLS, until, wait, visible, fake }) =
   await p.click('#rangeTxt');
   check('...and the menu says so', /This file has no time: sample numbers/i.test(await text('.timemenu')), await text('.timemenu'));
   await p.keyboard.press('Escape');
-}, { files: { '/data/flight.tlm': {}, '/data/rel.tlm': { relative: true }, '/data/rows.csv': { time: 'index', samples: 5000 } }, launch: '/data/flight.tlm' });
+
+  // a daily file over two years: the time of day alone is 00:00:00 at both ends, so the readout says the date first
+  // (owner, Nov 26: "00:00:00 → 00:00:00" on a file of daily prices)
+  await fake((f) => window.__tlmFake.drop([f]), '/data/daily.tlm');
+  await until(() => document.querySelector('#wsTabs [aria-selected=true]')?.dataset.tip === '/data/daily.tlm');
+  await p.click('#rangeTxt');
+  await p.click('.timemenu [data-tf="auto"]');
+  check('a view of more than a day reads with its dates', await until(() => /^2026-01-01 00:00:00 → 2027-12-31 00:00:00$/.test(document.getElementById('rangeTxt').textContent)), await range());
+  await p.keyboard.press('ArrowUp');
+  await p.keyboard.press('ArrowUp');
+  check('...and so does a zoomed view while it spans more than a day', await until(() => /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d → \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(document.getElementById('rangeTxt').textContent)), await range());
+}, { files: { '/data/flight.tlm': {}, '/data/rel.tlm': { relative: true }, '/data/rows.csv': { time: 'index', samples: 5000 }, '/data/daily.tlm': { channels: ['close'], samples: 730, rate: 1 / 86400 } }, launch: '/data/flight.tlm' });

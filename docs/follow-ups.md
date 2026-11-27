@@ -30,3 +30,6 @@ deleted at the release tag (R8).
   changes (it showed only when they were next drawn for another reason). A bug fix; nothing for the design.
 - **Nov 26, Loop A–B (owner, rc.1 test plan 3.4).** While looping, a playhead outside A–B goes to A at once (turned on
   while playing past B, it looped only after a pause and play). A bug fix; nothing for the design.
+- **Nov 26, readouts over days (owner, on a daily file).** In Automatic, a readout of an absolute time over a view of
+  more than a day says the date first (`2026-01-01 00:00:00 → 2027-12-31 00:00:00`): the time of day alone read
+  `00:00:00 → 00:00:00` on daily data. The design's time format text could say so.

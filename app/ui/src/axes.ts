@@ -126,7 +126,16 @@ export function timeLabel(tNs: bigint, stepNs: number): string {
 
 /** A time for a readout, at a thousandth of the visible span. */
 export function readoutTime(tNs: bigint, spanNs: number): string {
-  return timeLabel(tNs, Math.max(1, spanNs / 1000));
+  const step = Math.max(1, spanNs / 1000);
+  const s = timeLabel(tNs, step);
+  // a view of more than a day: the time of day alone repeats every day (a daily file read 00:00:00 → 00:00:00, owner
+  // Nov 26), so an absolute time in Automatic says its date first
+  const clock = timeFmt.file() === 'absolute' && timeFmt.mode === 'auto' && (tNs >= BigInt(RELATIVE_BEFORE) || tNs <= -BigInt(RELATIVE_BEFORE));
+  if (clock && spanNs >= 86400 * NS && step < 86400 * NS) {
+    const d = new Date(Number(tNs / 1_000_000n));
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${s}`;
+  }
+  return s;
 }
 
 /** A duration: `250 µs`, `1.25 s`, `00:03:20.5`. */
