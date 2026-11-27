@@ -129,30 +129,30 @@ on by default? Write yes or no in the note. Result: Note (yes/no): Pass, off by 
 
 ## 5. Channels, events, checks
 
-**5.1** Click a chip › Display: change colour, line width, dashed, steps. The chart follows. Result:
+**5.1** Click a chip › Display: change colour, line width, dashed, steps. The chart follows. Result: Pass
 
-**5.2** Limits: give `battery_v` a warn at 13 and an alarm at 12: dashed lines, yellow and red shading. Result:
+**5.2** Limits: give `battery_v` a warn at 13 and an alarm at 12: dashed lines, yellow and red shading. Result: Pass. As a question, Does this automatically apply by channel name to all files or only files with the same header names?
 
-**5.3** Derive a channel: `speed * 3.6`, unit km/h. It appears and plots. Result:
+**5.3** Derive a channel: `speed * 3.6`, unit km/h. It appears and plots. Result: Pass. Note - When applying to files with the same import profile, it worked but only after closing and re-opening open tabs. Do you think it's "safe" to also apply to open tabs with the same import profile (or channels with the same name if that option is selected)?
 
 **5.4** Events: add an event by hand; the flight-1 events from the folder (Takeoff, Hard turn) show with a tag saying
-they're from the folder, and say why they can't be edited. Result:
+they're from the folder, and say why they can't be edited. Result: Pass
 
 **5.5** Open `flight-bad.csv`. Rules & checks › the folder's "Flight limits": the battery check fails (✗), the others
-pass. Result:
+pass. Result: Pass
 
 **5.6** Rules & checks › Run on folder… › Run: the Report tab opens with each file's result; Pass rates and trends,
-sort by pass rate, click a point: that file opens. Quit and reopen: the Report tab is back. Result:
+sort by pass rate, click a point: that file opens. Quit and reopen: the Report tab is back. Result: Pass
 
 **5.7** Edit a check set: + New category… asks for a name in the app's dialog and picks it; Delete set asks first and
-No keeps it. Result:
+No keeps it. Result: Pass
 
 ## 6. Two files in one tab
 
 **6.1** Right-click `flight-2.csv` › Add to this tab (with flight-1 open): channels read `name·2`; Alignment offers
-Align starts, Same clock, Offset, Cross-correlation… Pick Align starts. Result:
+Align starts, Same clock, Offset, Cross-correlation… Pick Align starts. Result: Pass, but it seemed to default to Align starts on it's own? (OK if that's true, just curious)
 
-**6.2** A Table with a channel from each file: sort and filter by the second file's column. Result:
+**6.2** A Table with a channel from each file: sort and filter by the second file's column. Result: Pass, but FAIL on an unrelated bug that showed "Reading 0%" always on the first pane
 
 **6.3** An XY of file 1's channel against file 2's: a line on the shared timeline. Result:
 
