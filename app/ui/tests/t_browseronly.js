@@ -148,6 +148,53 @@ try {
   await view('xy', both);
   check('XY gets its points from the core', await until(() => window.__xy.includes('ok')), await p.evaluate(() => window.__xy));
   check('...with no "not available here"', !errs.slice(errsBefore).some((e) => /not available here/.test(e)), errs.slice(errsBefore));
+  // a table sorts and filters, and ▲ ▼ step through the matches: the page's core runs the query (the commands were
+  // missing, so sort and filter did nothing, Nov 26; D-ui-62)
+  await view('table', both);
+  const T = `#stack [data-pane="${both}"] [data-table]`;
+  /** Column `col`'s cells of the rows on screen, as numbers. */
+  const colVals = (col) => p.$eval(T, (t, col) => {
+    const at = [...t.querySelectorAll('.thead [data-col]')].findIndex((h) => h.getAttribute('data-col') === col);
+    return [...t.querySelectorAll('[data-row]')].map((r) => parseFloat(r.children[at]?.textContent ?? '')).filter((v) => !Number.isNaN(v));
+  }, col);
+  /** Polls until the rows on screen of `col` pass `ok`. */
+  const rowsAre = async (col, ok) => {
+    for (let k = 0; k < 150; k++) {
+      const v = await colVals(col);
+      if (v.length > 3 && ok(v)) return true;
+      await p.waitForTimeout(60);
+    }
+    return false;
+  };
+  const tstat = () => p.$eval(`${T} [data-tstat]`, (e) => e.textContent ?? '').catch(() => '');
+  check('the table shows the rows', await until((t) => /3,000 rows/.test(document.querySelector(`${t} [data-tstat]`)?.textContent ?? ''), T), await tstat());
+  await p.hover(`${T} [data-col="c0"]`);
+  await p.click(`${T} [data-colmenu="c0"]`);
+  await p.click('.menu [data-hm="desc"]');
+  const speed = Array.from({ length: 3000 }, (_, i) => Math.sin(i / 40));
+  const top = Math.max(...speed);
+  check('Sort descending puts the largest Speed first', (await p.getAttribute(`${T} [data-col="c0"]`, 'aria-sort')) === 'descending' && (await rowsAre('c0', (v) => Math.abs(v[0] - top) < 0.001 && v.every((x, j) => j === 0 || x <= v[j - 1]))), await colVals('c0'));
+  await p.hover(`${T} [data-col="c0"]`);
+  await p.click(`${T} [data-colmenu="c0"]`);
+  await p.click('.menu [data-hm="asc"]');
+  check('and ascending the smallest', await rowsAre('c0', (v) => Math.abs(v[0] - Math.min(...speed)) < 0.001 && v.every((x, j) => j === 0 || x >= v[j - 1])), await colVals('c0'));
+  await p.hover(`${T} [data-col="c0"]`);
+  await p.click(`${T} [data-colmenu="c0"]`);
+  await p.click('.menu [data-hm="clear"]');
+  await p.fill(`${T} [data-filter="c0"]`, '> 0.9');
+  const over = speed.filter((v) => v > 0.9).length;
+  const runs = speed.reduce((n, v, i) => n + (v > 0.9 && !(i > 0 && speed[i - 1] > 0.9) ? 1 : 0), 0);
+  check('a filter leaves the rows that pass, counted of the rows in view', await until((n) => new RegExp(`^${n} of 3,000 rows`).test(document.querySelector('[data-table] [data-tstat]')?.textContent ?? ''), over.toLocaleString()), [await tstat(), over]);
+  check('every row shown passes', await rowsAre('c0', (v) => v.every((x) => x > 0.899)), await colVals('c0'));
+  check('it counts the matches (runs)', await until((n) => document.querySelector('[data-table] [data-fpos]')?.textContent === n, `${runs} matches`), await p.$eval(`${T} [data-fpos]`, (e) => e.textContent).catch(() => null));
+  await p.click(`${T} [data-fstep="1"]`);
+  check('▼ goes to the first match, cursor A on it', await until((n) => document.querySelector('[data-table] [data-fpos]')?.textContent === n && window.__tlmApp.cursors().A != null, `1 of ${runs}`), [await p.$eval(`${T} [data-fpos]`, (e) => e.textContent), await p.evaluate(() => window.__tlmApp.cursors())]);
+  const firstMatch = speed.findIndex((v) => v > 0.9);
+  check('...the first row that passes', (await p.evaluate(() => window.__tlmApp.cursors().A)) === String(firstMatch * 100_000_000), [await p.evaluate(() => window.__tlmApp.cursors().A), firstMatch]);
+  await p.click(`${T} [data-fstep="-1"]`);
+  check('▲ steps back, wrapping to the last', await until((n) => document.querySelector('[data-table] [data-fpos]')?.textContent === n, `${runs} of ${runs}`), await p.$eval(`${T} [data-fpos]`, (e) => e.textContent));
+  await p.fill(`${T} [data-filter="c0"]`, '');
+  check('no filter: every row again', await until((t) => /^3,000 rows/.test(document.querySelector(`${t} [data-tstat]`)?.textContent ?? ''), T), await tstat());
   await view('chart', both);
 
   // kept in the browser's private storage: after a reload the same file opens from it

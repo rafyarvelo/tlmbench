@@ -118,6 +118,49 @@ try {
   await p.waitForTimeout(150);
   check('locked: the duplicate shortcut does nothing to the panes', (await panes()) === before, await panes());
 
+  // ---- locked: the table still sorts and filters, and ▲ ▼ step through the matches (D-ui-62): the page's core runs the
+  // query (the commands were missing, so sort and filter did nothing, Nov 26)
+  {
+    const T = '#stack [data-pane="2"] [data-table]';
+    const amps = Array.from({ length: 6000 }, (_, i) => i % 7);
+    const colVals = () => p.$eval(T, (t) => {
+      const at = [...t.querySelectorAll('.thead [data-col]')].findIndex((h) => h.getAttribute('data-col') === 'c3');
+      return [...t.querySelectorAll('[data-row]')].map((r) => parseFloat(r.children[at]?.textContent ?? '')).filter((v) => !Number.isNaN(v));
+    });
+    const rowsAre = async (ok) => {
+      for (let k = 0; k < 150; k++) {
+        const v = await colVals();
+        if (v.length > 3 && ok(v)) return true;
+        await p.waitForTimeout(60);
+      }
+      return false;
+    };
+    const stat = () => p.$eval(`${T} [data-tstat]`, (e) => e.textContent ?? '').catch(() => '');
+    const fpos = () => p.$eval(`${T} [data-fpos]`, (e) => e.textContent ?? '').catch(() => '');
+    check('locked: the table shows its rows', await until(() => /6,000 rows/.test(document.querySelector('#stack [data-pane="2"] [data-tstat]')?.textContent ?? '')), await stat());
+    await p.hover(`${T} [data-col="c3"]`);
+    await p.click(`${T} [data-colmenu="c3"]`);
+    await p.click('.menu [data-hm="desc"]');
+    check('locked: Sort descending puts the largest first', await rowsAre((v) => v[0] === 6 && v.every((x, j) => j === 0 || x <= v[j - 1])), await colVals());
+    await p.hover(`${T} [data-col="c3"]`);
+    await p.click(`${T} [data-colmenu="c3"]`);
+    await p.click('.menu [data-hm="asc"]');
+    check('locked: and ascending the smallest', await rowsAre((v) => v[0] === 0 && v.every((x, j) => j === 0 || x >= v[j - 1])), await colVals());
+    await p.fill(`${T} [data-filter="c3"]`, '> 5');
+    const over = amps.filter((v) => v > 5).length;
+    check('locked: a filter leaves the rows that pass', await until(() => /^857 of 6,000 rows/.test(document.querySelector('#stack [data-pane="2"] [data-tstat]')?.textContent ?? '')) && over === 857, [await stat(), over]);
+    check('locked: every row shown passes', await rowsAre((v) => v.every((x) => x === 6)), await colVals());
+    // rows 70 ms apart join into one match (closer than 0.25 s)
+    check('locked: it counts the matches', await until(() => document.querySelector('#stack [data-pane="2"] [data-fpos]')?.textContent === '1 match'), await fpos());
+    await p.click(`${T} [data-fstep="1"]`);
+    check('locked: ▼ puts cursor A on the first match', await until(() => document.querySelector('#stack [data-pane="2"] [data-fpos]')?.textContent === '1 of 1' && window.__tlmApp.cursors().A === '60000000'), [await fpos(), await p.evaluate(() => window.__tlmApp.cursors())]);
+    await p.click(`${T} [data-fstep="-1"]`);
+    check('locked: ▲ steps back (wrapping)', await until(() => document.querySelector('#stack [data-pane="2"] [data-fpos]')?.textContent === '1 of 1'), await fpos());
+    await p.click(`${T} [data-clear]`);
+    check('locked: Clear sort and filters shows every row again', await until(() => /^6,000 rows/.test(document.querySelector('#stack [data-pane="2"] [data-tstat]')?.textContent ?? '')), await stat());
+    check('locked: and the panes did not change', (await panes()) === before, await panes());
+  }
+
   // ---- unlock: the same moves work
   await p.keyboard.press('l');
   s0 = await pill();
